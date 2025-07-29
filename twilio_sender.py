@@ -1,12 +1,54 @@
 #!/usr/bin/env python3
 """
-Twilio WhatsApp Sandbox SMS Sender
-Simple function to send messages to Kingdon via WhatsApp sandbox
+Twilio WhatsApp/SMS Sender for Mecris
+Integrated messaging for beemergencies and system alerts
 """
 
 import os
+import logging
 from twilio.rest import Client
 from typing import Optional
+from dotenv import load_dotenv
+
+load_dotenv()
+logger = logging.getLogger("mecris.twilio")
+
+def send_sms(message: str, to_number: Optional[str] = None) -> bool:
+    """
+    Send SMS via Twilio (preferred method for beemergencies)
+    
+    Args:
+        message: Text to send
+        to_number: Recipient number (defaults to env var)
+    
+    Returns:
+        True if sent successfully, False otherwise
+    """
+    try:
+        # Twilio credentials from environment
+        account_sid = os.getenv('TWILIO_ACCOUNT_SID')
+        auth_token = os.getenv('TWILIO_AUTH_TOKEN')
+        from_number = os.getenv('TWILIO_FROM_NUMBER')
+        to_number = to_number or os.getenv('TWILIO_TO_NUMBER')
+        
+        if not all([account_sid, auth_token, from_number, to_number]):
+            logger.error("Missing Twilio credentials in environment variables")
+            return False
+        
+        client = Client(account_sid, auth_token)
+        
+        message_obj = client.messages.create(
+            body=message,
+            from_=from_number,
+            to=to_number
+        )
+        
+        logger.info(f"SMS sent: {message_obj.sid}")
+        return True
+        
+    except Exception as e:
+        logger.error(f"Failed to send SMS: {e}")
+        return False
 
 def send_message(message: str, to_number: Optional[str] = None) -> bool:
     """
