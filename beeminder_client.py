@@ -157,12 +157,12 @@ class BeeminderClient:
             slug=goal_data.get("slug", ""),
             title=goal_data.get("title", goal_data.get("slug", "")),
             current_value=float(goal_data.get("curval", 0)),
-            target_value=float(goal_data.get("goalval", 0)),
+            target_value=float(goal_data.get("goalval") or 0),
             safebuf=safebuf,
             deadline=self._calculate_deadline(safebuf),
             derail_risk=self._classify_derail_risk(safebuf),
             pledge=float(goal_data.get("pledge", 0)),
-            rate=float(goal_data.get("rate", 0)),
+            rate=float(goal_data.get("rate") or 0),
             runits=goal_data.get("runits", "d")
         )
     

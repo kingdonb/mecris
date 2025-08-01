@@ -7,5 +7,14 @@
     "daily_burn": 0.0,
     "days_remaining": 4.074091009502315,
     "description": "Test recording"
+  },
+  {
+    "timestamp": "2025-07-31T22:29:12.893270",
+    "credits_used": 0.02000000000000001,
+    "credits_remaining": 0.98,
+    "session_cost": 0.01,
+    "daily_burn": 0.0,
+    "days_remaining": 4.063045216689815,
+    "description": "Test recording"
   }
 ]
