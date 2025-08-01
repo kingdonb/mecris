@@ -149,6 +149,25 @@ class BeeminderClient:
         """Calculate deadline based on safebuf"""
         return datetime.now() + timedelta(days=safebuf)
     
+    def _is_goal_active(self, goal_data: Dict[str, Any]) -> bool:
+        """Check if goal is active (not finished/archived)"""
+        # Goals with rate=0 and achieved target are typically finished
+        rate = float(goal_data.get("rate") or 0)
+        current = float(goal_data.get("curval", 0))
+        target = float(goal_data.get("goalval") or 0)
+        
+        # Check for explicitly finished goals
+        if rate == 0 and current >= target and target > 0:
+            return False
+            
+        # Check for archived/paused goals (common indicators)
+        goal_date = goal_data.get("goaldate")
+        if goal_date and goal_date < datetime.now().strftime("%Y-%m-%d"):
+            # Goal end date has passed
+            return False
+            
+        return True
+    
     def _parse_goal(self, goal_data: Dict[str, Any]) -> BeeminderGoal:
         """Parse raw API response into structured BeeminderGoal"""
         safebuf = goal_data.get("safebuf", 0)
@@ -167,12 +186,17 @@ class BeeminderClient:
         )
     
     async def get_all_goals(self) -> List[Dict[str, Any]]:
-        """Get all goals with structured data and risk assessment"""
+        """Get all active goals with structured data and risk assessment"""
         raw_goals = await self.get_user_goals()
         
         structured_goals = []
         for goal_data in raw_goals:
             try:
+                # Skip inactive/finished goals
+                if not self._is_goal_active(goal_data):
+                    logger.info(f"Skipping inactive goal: {goal_data.get('slug', 'unknown')}")
+                    continue
+                    
                 goal = self._parse_goal(goal_data)
                 structured_goals.append(goal.to_dict())
             except Exception as e:
@@ -196,20 +220,20 @@ class BeeminderClient:
                 if risk == "CRITICAL":
                     urgency = "IMMEDIATE"
                     if safebuf <= 0:
-                        message = f"DERAILING NOW! Need data immediately"
+                        message = f"{slug}: DERAILING NOW! Need data immediately"
                         time_remaining = "0 hours"
                     else:
-                        message = f"Derails in {safebuf} day(s)"
+                        message = f"{slug}: Derails in {safebuf} day(s)"
                         time_remaining = f"{safebuf * 24} hours"
                         
                 elif risk == "WARNING":
                     urgency = "TODAY"
-                    message = f"Derails tomorrow - act today"
+                    message = f"{slug}: Derails tomorrow - act today"
                     time_remaining = "24 hours"
                     
                 else:  # CAUTION
                     urgency = "SOON"
-                    message = f"Derails in {safebuf} days"
+                    message = f"{slug}: Derails in {safebuf} days"
                     time_remaining = f"{safebuf} days"
                 
                 # Generate suggested action
@@ -266,6 +290,27 @@ class BeeminderClient:
             summary.append(f"⏰ {len(caution)} CAUTION: {', '.join([e['goal_slug'] for e in caution])}")
         
         return " | ".join(summary)
+    
+    async def get_runway_summary(self, limit: int = 4) -> List[Dict[str, Any]]:
+        """Get top goals with runway information for peaceful days"""
+        all_goals = await self.get_all_goals()
+        
+        # Sort by safebuf (shortest runway first)
+        safe_goals = [g for g in all_goals if g.get("derail_risk") == "SAFE"]
+        safe_goals.sort(key=lambda x: x.get("safebuf", 999))
+        
+        runway_info = []
+        for goal in safe_goals[:limit]:
+            runway_info.append({
+                "slug": goal.get("slug", ""),
+                "title": goal.get("title", ""),
+                "safebuf": goal.get("safebuf", 0),
+                "runway": f"{goal.get('safebuf', 0)} days",
+                "rate": goal.get("rate", 0),
+                "runits": goal.get("runits", "d")
+            })
+        
+        return runway_info
     
     async def close(self):
         """Close HTTP client"""

@@ -83,7 +83,10 @@ async def check_dependencies():
         for issue in issues:
             logger.warning(f"  - {issue}")
         
-        if input("Continue anyway? (y/N): ").lower() != 'y':
+        # Skip interactive prompt for background execution
+        if os.getenv("SKIP_HEALTH_PROMPT", "false").lower() == "true":
+            logger.warning("Continuing with degraded services (SKIP_HEALTH_PROMPT=true)")
+        elif input("Continue anyway? (y/N): ").lower() != 'y':
             sys.exit(1)
     else:
         logger.info("✅ All health checks passed")

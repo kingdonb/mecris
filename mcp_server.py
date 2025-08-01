@@ -69,6 +69,7 @@ class NarratorContextResponse(BaseModel):
     goals_status: Dict[str, Any]
     urgent_items: List[str]
     beeminder_alerts: List[str]
+    goal_runway: List[Dict[str, Any]]
     budget_status: Dict[str, Any]
     recommendations: List[str]
     last_updated: datetime
@@ -333,6 +334,11 @@ async def get_narrator_context():
         
         beeminder_alerts = [e.get("message", "") for e in emergencies[:5]]
         
+        # Get runway info for peaceful days
+        goal_runway = []
+        if not emergencies:  # Only show runway when no emergencies
+            goal_runway = await beeminder_client.get_runway_summary(limit=4)
+        
         recommendations = []
         if len(pending_todos) > 10:
             recommendations.append("Consider prioritizing todos - large backlog detected")
@@ -348,6 +354,7 @@ async def get_narrator_context():
             goals_status={"total": len(goals), "sources": ["obsidian"]},
             urgent_items=urgent_items,
             beeminder_alerts=beeminder_alerts,
+            goal_runway=goal_runway,
             budget_status=budget_status,
             recommendations=recommendations,
             last_updated=datetime.now()
