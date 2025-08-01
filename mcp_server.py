@@ -15,6 +15,7 @@ from dotenv import load_dotenv
 
 from obsidian_client import ObsidianMCPClient
 from beeminder_client import BeeminderClient
+from claude_monitor import ClaudeMonitor
 from twilio_sender import send_sms
 
 # Load environment variables
@@ -36,6 +37,7 @@ app = FastAPI(
 # Initialize clients
 obsidian_client = ObsidianMCPClient()
 beeminder_client = BeeminderClient()
+claude_monitor = ClaudeMonitor()
 
 # Response models
 class GoalResponse(BaseModel):
@@ -67,8 +69,20 @@ class NarratorContextResponse(BaseModel):
     goals_status: Dict[str, Any]
     urgent_items: List[str]
     beeminder_alerts: List[str]
+    budget_status: Dict[str, Any]
     recommendations: List[str]
     last_updated: datetime
+
+class BudgetResponse(BaseModel):
+    status: str
+    credits_remaining: float
+    credits_used: float
+    daily_burn: float
+    days_remaining: float
+    expiry_date: str
+    budget_limit: float
+    utilization_pct: float
+    last_updated: str
 
 # Health check
 @app.get("/")
@@ -87,6 +101,7 @@ async def health_check():
         "mecris": "ok",
         "obsidian": await obsidian_client.health_check(),
         "beeminder": await beeminder_client.health_check(),
+        "claude_monitor": await claude_monitor.health_check(),
         "twilio": "ok" if os.getenv("TWILIO_ACCOUNT_SID") else "not_configured"
     }
     
@@ -222,6 +237,70 @@ async def send_beeminder_alert(background_tasks: BackgroundTasks):
         logger.error(f"Failed to send beeminder alert: {e}")
         raise HTTPException(status_code=500, detail="Failed to process beeminder alert")
 
+# Claude Budget endpoints
+@app.get("/budget/status", response_model=BudgetResponse)
+async def get_budget_status():
+    """Get current Claude credit budget status"""
+    try:
+        budget_data = await claude_monitor.get_usage_summary()
+        
+        if "error" in budget_data:
+            raise HTTPException(status_code=500, detail=budget_data["error"])
+        
+        return BudgetResponse(**budget_data)
+        
+    except Exception as e:
+        logger.error(f"Failed to fetch budget status: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch budget status")
+
+@app.post("/budget/track")
+async def track_usage(cost: float, description: str = ""):
+    """Record usage cost for budget tracking"""
+    try:
+        success = await claude_monitor.record_usage(cost, description)
+        
+        if success:
+            updated_status = await claude_monitor.get_usage_summary()
+            return {
+                "tracked": True,
+                "cost": cost,
+                "description": description,
+                "updated_status": updated_status,
+                "timestamp": datetime.now().isoformat()
+            }
+        else:
+            raise HTTPException(status_code=500, detail="Failed to track usage")
+            
+    except Exception as e:
+        logger.error(f"Failed to track usage: {e}")
+        raise HTTPException(status_code=500, detail="Failed to track usage")
+
+@app.post("/budget/alert")
+async def send_budget_alert(background_tasks: BackgroundTasks):
+    """Check budget status and send alerts if needed"""
+    try:
+        budget_data = await claude_monitor.get_usage_summary()
+        
+        if "error" in budget_data:
+            return {"alert_sent": False, "error": budget_data["error"]}
+        
+        days_remaining = budget_data.get("days_remaining", float('inf'))
+        
+        if days_remaining <= 1:
+            alert_msg = f"🚨 CRITICAL: Claude credits expire in {days_remaining:.1f} days!\n${budget_data['credits_remaining']:.2f} remaining"
+            background_tasks.add_task(send_sms, alert_msg)
+            return {"alert_sent": True, "level": "critical", "days_remaining": days_remaining}
+        elif days_remaining <= 2:
+            alert_msg = f"⚠️ WARNING: Claude credits expire in {days_remaining:.1f} days\n${budget_data['credits_remaining']:.2f} remaining"
+            background_tasks.add_task(send_sms, alert_msg)
+            return {"alert_sent": True, "level": "warning", "days_remaining": days_remaining}
+        
+        return {"alert_sent": False, "level": "safe", "days_remaining": days_remaining}
+        
+    except Exception as e:
+        logger.error(f"Failed to send budget alert: {e}")
+        raise HTTPException(status_code=500, detail="Failed to process budget alert")
+
 # Unified narrator context
 @app.get("/narrator/context", response_model=NarratorContextResponse)
 async def get_narrator_context():
@@ -232,16 +311,25 @@ async def get_narrator_context():
         todos = await obsidian_client.get_todos()
         beeminder_status = await beeminder_client.get_all_goals()
         emergencies = await beeminder_client.get_emergencies()
+        budget_status = await claude_monitor.get_usage_summary()
         
         # Build strategic summary
         pending_todos = [t for t in todos if not t.get("completed", False)]
         critical_beeminder = [g for g in beeminder_status if g.get("derail_risk") == "CRITICAL"]
         
-        summary = f"Active goals: {len(goals)}, Pending todos: {len(pending_todos)}, Beeminder goals: {len(beeminder_status)}"
+        # Enhanced summary with budget info
+        budget_days = budget_status.get("days_remaining", 0)
+        summary = f"Active goals: {len(goals)}, Pending todos: {len(pending_todos)}, Beeminder goals: {len(beeminder_status)}, Budget: {budget_days:.1f} days left"
         
         urgent_items = []
         if critical_beeminder:
             urgent_items.extend([f"DERAILING: {g['slug']}" for g in critical_beeminder])
+        
+        # Add budget urgency
+        if budget_days <= 1:
+            urgent_items.append(f"BUDGET CRITICAL: {budget_days:.1f} days left")
+        elif budget_days <= 2:
+            urgent_items.append(f"BUDGET WARNING: {budget_days:.1f} days left")
         
         beeminder_alerts = [e.get("message", "") for e in emergencies[:5]]
         
@@ -250,6 +338,8 @@ async def get_narrator_context():
             recommendations.append("Consider prioritizing todos - large backlog detected")
         if critical_beeminder:
             recommendations.append("Address critical Beeminder goals immediately")
+        if budget_days <= 2:
+            recommendations.append("Urgent: Focus on highest-value work due to budget constraints")
         if not goals:
             recommendations.append("No active goals found - consider setting objectives")
         
@@ -258,6 +348,7 @@ async def get_narrator_context():
             goals_status={"total": len(goals), "sources": ["obsidian"]},
             urgent_items=urgent_items,
             beeminder_alerts=beeminder_alerts,
+            budget_status=budget_status,
             recommendations=recommendations,
             last_updated=datetime.now()
         )
