@@ -15,7 +15,7 @@ from dotenv import load_dotenv
 
 from obsidian_client import ObsidianMCPClient
 from beeminder_client import BeeminderClient
-from claude_monitor import ClaudeMonitor
+from usage_tracker import UsageTracker, get_budget_status, record_usage, update_remaining_budget
 from twilio_sender import send_sms
 
 # Load environment variables
@@ -37,7 +37,7 @@ app = FastAPI(
 # Initialize clients
 obsidian_client = ObsidianMCPClient()
 beeminder_client = BeeminderClient()
-claude_monitor = ClaudeMonitor()
+usage_tracker = UsageTracker()
 
 # Response models
 class GoalResponse(BaseModel):
@@ -75,15 +75,16 @@ class NarratorContextResponse(BaseModel):
     last_updated: datetime
 
 class BudgetResponse(BaseModel):
-    status: str
-    credits_remaining: float
-    credits_used: float
-    daily_burn: float
-    days_remaining: float
-    expiry_date: str
-    budget_limit: float
-    utilization_pct: float
-    last_updated: str
+    total_budget: float
+    remaining_budget: float
+    used_budget: float
+    days_remaining: int
+    today_spend: float
+    daily_burn_rate: float
+    projected_spend: float
+    period_end: str
+    alerts: List[str]
+    budget_health: str
 
 # Health check
 @app.get("/")
@@ -102,7 +103,7 @@ async def health_check():
         "mecris": "ok",
         "obsidian": await obsidian_client.health_check(),
         "beeminder": await beeminder_client.health_check(),
-        "claude_monitor": await claude_monitor.health_check(),
+        "usage_tracker": "ok",
         "twilio": "ok" if os.getenv("TWILIO_ACCOUNT_SID") else "not_configured"
     }
     
@@ -238,12 +239,12 @@ async def send_beeminder_alert(background_tasks: BackgroundTasks):
         logger.error(f"Failed to send beeminder alert: {e}")
         raise HTTPException(status_code=500, detail="Failed to process beeminder alert")
 
-# Claude Budget endpoints
-@app.get("/budget/status", response_model=BudgetResponse)
-async def get_budget_status():
-    """Get current Claude credit budget status"""
+# Usage tracking endpoints
+@app.get("/usage", response_model=BudgetResponse)
+async def get_usage_status():
+    """Get current usage and budget status"""
     try:
-        budget_data = await claude_monitor.get_usage_summary()
+        budget_data = get_budget_status()
         
         if "error" in budget_data:
             raise HTTPException(status_code=500, detail=budget_data["error"])
@@ -251,56 +252,99 @@ async def get_budget_status():
         return BudgetResponse(**budget_data)
         
     except Exception as e:
-        logger.error(f"Failed to fetch budget status: {e}")
-        raise HTTPException(status_code=500, detail="Failed to fetch budget status")
+        logger.error(f"Failed to fetch usage status: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch usage status")
 
-@app.post("/budget/track")
-async def track_usage(cost: float, description: str = ""):
-    """Record usage cost for budget tracking"""
+@app.post("/usage/record")
+async def record_usage_session(input_tokens: int, output_tokens: int, model: str = "claude-3-5-sonnet-20241022", session_type: str = "interactive", notes: str = ""):
+    """Record a usage session with token counts"""
     try:
-        success = await claude_monitor.record_usage(cost, description)
+        cost = record_usage(input_tokens, output_tokens, model, session_type, notes)
         
-        if success:
-            updated_status = await claude_monitor.get_usage_summary()
-            return {
-                "tracked": True,
-                "cost": cost,
-                "description": description,
-                "updated_status": updated_status,
-                "timestamp": datetime.now().isoformat()
-            }
-        else:
-            raise HTTPException(status_code=500, detail="Failed to track usage")
+        updated_status = get_budget_status()
+        return {
+            "recorded": True,
+            "input_tokens": input_tokens,
+            "output_tokens": output_tokens,
+            "estimated_cost": cost,
+            "model": model,
+            "session_type": session_type,
+            "updated_status": updated_status,
+            "timestamp": datetime.now().isoformat()
+        }
             
     except Exception as e:
-        logger.error(f"Failed to track usage: {e}")
-        raise HTTPException(status_code=500, detail="Failed to track usage")
+        logger.error(f"Failed to record usage: {e}")
+        raise HTTPException(status_code=500, detail="Failed to record usage")
 
-@app.post("/budget/alert")
-async def send_budget_alert(background_tasks: BackgroundTasks):
-    """Check budget status and send alerts if needed"""
+@app.post("/usage/update_budget")
+async def update_budget(remaining_budget: float):
+    """Manually update remaining budget amount"""
     try:
-        budget_data = await claude_monitor.get_usage_summary()
+        updated_budget = update_remaining_budget(remaining_budget)
+        return {
+            "updated": True,
+            "budget_info": updated_budget,
+            "timestamp": datetime.now().isoformat()
+        }
+    except Exception as e:
+        logger.error(f"Failed to update budget: {e}")
+        raise HTTPException(status_code=500, detail="Failed to update budget")
+
+@app.get("/usage/summary")
+async def get_usage_summary(days: int = 7):
+    """Get detailed usage summary for the last N days"""
+    try:
+        summary = usage_tracker.get_usage_summary(days)
+        return {
+            "summary": summary,
+            "timestamp": datetime.now().isoformat()
+        }
+    except Exception as e:
+        logger.error(f"Failed to get usage summary: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get usage summary")
+
+@app.get("/usage/recent")
+async def get_recent_sessions(limit: int = 10):
+    """Get recent usage sessions"""
+    try:
+        sessions = usage_tracker.get_recent_sessions(limit)
+        return {
+            "sessions": sessions,
+            "count": len(sessions),
+            "timestamp": datetime.now().isoformat()
+        }
+    except Exception as e:
+        logger.error(f"Failed to get recent sessions: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get recent sessions")
+
+@app.post("/usage/alert")
+async def send_usage_alert(background_tasks: BackgroundTasks):
+    """Check usage status and send alerts if needed"""
+    try:
+        budget_data = get_budget_status()
         
         if "error" in budget_data:
             return {"alert_sent": False, "error": budget_data["error"]}
         
         days_remaining = budget_data.get("days_remaining", float('inf'))
+        remaining_budget = budget_data.get("remaining_budget", 0)
+        alerts = budget_data.get("alerts", [])
         
-        if days_remaining <= 1:
-            alert_msg = f"🚨 CRITICAL: Claude credits expire in {days_remaining:.1f} days!\n${budget_data['credits_remaining']:.2f} remaining"
+        if "CRITICAL" in budget_data.get("budget_health", "") or days_remaining <= 1:
+            alert_msg = f"🚨 CRITICAL: {days_remaining} days left!\n${remaining_budget:.2f} remaining"
             background_tasks.add_task(send_sms, alert_msg)
             return {"alert_sent": True, "level": "critical", "days_remaining": days_remaining}
-        elif days_remaining <= 2:
-            alert_msg = f"⚠️ WARNING: Claude credits expire in {days_remaining:.1f} days\n${budget_data['credits_remaining']:.2f} remaining"
+        elif "WARNING" in budget_data.get("budget_health", "") or days_remaining <= 2:
+            alert_msg = f"⚠️ WARNING: {days_remaining} days left\n${remaining_budget:.2f} remaining"
             background_tasks.add_task(send_sms, alert_msg)
             return {"alert_sent": True, "level": "warning", "days_remaining": days_remaining}
         
         return {"alert_sent": False, "level": "safe", "days_remaining": days_remaining}
         
     except Exception as e:
-        logger.error(f"Failed to send budget alert: {e}")
-        raise HTTPException(status_code=500, detail="Failed to process budget alert")
+        logger.error(f"Failed to send usage alert: {e}")
+        raise HTTPException(status_code=500, detail="Failed to process usage alert")
 
 # Unified narrator context
 @app.get("/narrator/context", response_model=NarratorContextResponse)
@@ -312,7 +356,7 @@ async def get_narrator_context():
         todos = await obsidian_client.get_todos()
         beeminder_status = await beeminder_client.get_all_goals()
         emergencies = await beeminder_client.get_emergencies()
-        budget_status = await claude_monitor.get_usage_summary()
+        budget_status = get_budget_status()
         
         # Build strategic summary
         pending_todos = [t for t in todos if not t.get("completed", False)]
