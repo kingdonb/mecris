@@ -121,8 +121,12 @@ async def lifespan(app):
 
 def main():
     """Main entry point"""
+    # Ensure we're using the correct Python executable
+    logger.info(f"Python executable: {sys.executable}")
+    logger.info(f"Python version: {sys.version}")
+    
     port = int(os.getenv("PORT", 8000))
-    host = os.getenv("HOST", "0.0.0.0")
+    host = os.getenv("HOST", "127.0.0.1")  # Secure localhost binding by default
     debug = os.getenv("DEBUG", "false").lower() == "true"
     
     logger.info(f"Starting Mecris MCP Server on {host}:{port}")
@@ -144,7 +148,7 @@ def main():
 
 if __name__ == "__main__":
     try:
-        asyncio.run(main())
+        main()  # main() is not async anymore since uvicorn.run handles it
     except KeyboardInterrupt:
         logger.info("👋 Mecris shutdown requested by user")
     except Exception as e:

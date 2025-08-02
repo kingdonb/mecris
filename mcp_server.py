@@ -98,21 +98,61 @@ async def root():
 
 @app.get("/health")
 async def health_check():
-    """Health check endpoint with service status"""
+    """Enhanced health check endpoint with service status"""
+    import time
+    start_time = time.time()
+    
     status = {
         "mecris": "ok",
-        "obsidian": await obsidian_client.health_check(),
-        "beeminder": await beeminder_client.health_check(),
+        "obsidian": "unknown",
+        "beeminder": "unknown", 
         "usage_tracker": "ok",
-        "twilio": "ok" if os.getenv("TWILIO_ACCOUNT_SID") else "not_configured"
+        "twilio": "not_configured"
     }
     
-    all_healthy = all(s == "ok" for s in status.values())
+    # Test Obsidian client
+    try:
+        status["obsidian"] = await obsidian_client.health_check()
+    except Exception as e:
+        status["obsidian"] = f"error: {str(e)[:50]}"
+    
+    # Test Beeminder client  
+    try:
+        status["beeminder"] = await beeminder_client.health_check()
+    except Exception as e:
+        status["beeminder"] = f"error: {str(e)[:50]}"
+    
+    # Test Twilio configuration
+    if os.getenv("TWILIO_ACCOUNT_SID") and os.getenv("TWILIO_AUTH_TOKEN"):
+        status["twilio"] = "configured"
+    
+    # Test usage tracker
+    try:
+        budget_status = get_budget_status()
+        if "error" not in budget_status:
+            status["usage_tracker"] = "ok"
+        else:
+            status["usage_tracker"] = "error"
+    except Exception:
+        status["usage_tracker"] = "error"
+    
+    # Determine overall health
+    critical_services = ["mecris", "usage_tracker"]
+    critical_healthy = all(status[s] == "ok" for s in critical_services)
+    
+    response_time = round((time.time() - start_time) * 1000, 2)  # ms
+    
+    if critical_healthy:
+        overall_status = "healthy"
+    else:
+        overall_status = "unhealthy"
     
     return {
-        "status": "healthy" if all_healthy else "degraded",
+        "status": overall_status,
         "services": status,
-        "timestamp": datetime.now().isoformat()
+        "response_time_ms": response_time,
+        "timestamp": datetime.now().isoformat(),
+        "version": "0.1.0"
     }
 
 # Obsidian endpoints
@@ -433,7 +473,7 @@ if __name__ == "__main__":
     import uvicorn
     uvicorn.run(
         "mcp_server:app",
-        host="0.0.0.0",
+        host="127.0.0.1",  # Secure localhost binding
         port=int(os.getenv("PORT", 8000)),
         reload=os.getenv("DEBUG", "false").lower() == "true"
     )

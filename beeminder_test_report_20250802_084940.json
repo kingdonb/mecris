@@ -1,0 +1,130 @@
+{
+  "summary": {
+    "passed": 8,
+    "total": 8,
+    "success_rate": 1.0,
+    "timestamp": "2025-08-02T08:49:40.515463"
+  },
+  "results": [
+    {
+      "test": "Configuration Check",
+      "success": true,
+      "details": "Username: yeb*** Token: ********************",
+      "data": null,
+      "timestamp": "2025-08-02T08:49:35.998286"
+    },
+    {
+      "test": "Health Check",
+      "success": true,
+      "details": "API Status: ok",
+      "data": null,
+      "timestamp": "2025-08-02T08:49:36.693891"
+    },
+    {
+      "test": "User Goals Fetch",
+      "success": true,
+      "details": "Retrieved 10 raw goals",
+      "data": {
+        "sample_keys": [
+          "slug",
+          "title",
+          "description",
+          "goalval",
+          "rate"
+        ]
+      },
+      "timestamp": "2025-08-02T08:49:37.322566"
+    },
+    {
+      "test": "Structured Goals",
+      "success": true,
+      "details": "Retrieved 9 structured goals",
+      "data": {
+        "sample_goal": {
+          "slug": "arabiya",
+          "title": "Al arabiyya",
+          "safebuf": 3,
+          "derail_risk": "CAUTION",
+          "current_value": 572478.0,
+          "target_value": 0.0
+        },
+        "risk_levels": [
+          "CAUTION",
+          "SAFE",
+          "SAFE"
+        ]
+      },
+      "timestamp": "2025-08-02T08:49:37.933970"
+    },
+    {
+      "test": "Emergency Detection",
+      "success": true,
+      "details": "Found 1 total emergencies: 0 immediate, 0 today, 1 soon",
+      "data": {
+        "sample_emergency": {
+          "goal_slug": "arabiya",
+          "message": "arabiya: Derails in 3 days",
+          "urgency": "SOON",
+          "suggested_action": "Data entry required",
+          "time_remaining": "3 days",
+          "safebuf": 3,
+          "derail_risk": "CAUTION",
+          "pledge": 0.0
+        },
+        "urgency_breakdown": {
+          "immediate": 0,
+          "today": 0,
+          "soon": 1
+        }
+      },
+      "timestamp": "2025-08-02T08:49:38.531284"
+    },
+    {
+      "test": "Runway Summary",
+      "success": true,
+      "details": "Retrieved 4 runway goals, bike goal included: True",
+      "data": {
+        "runway_goals": [
+          {
+            "slug": "arabiya",
+            "safebuf": 3
+          },
+          {
+            "slug": "ellinika",
+            "safebuf": 7
+          },
+          {
+            "slug": "ob-mirror",
+            "safebuf": 8
+          },
+          {
+            "slug": "bike",
+            "safebuf": 810
+          }
+        ],
+        "bike_goal_present": true
+      },
+      "timestamp": "2025-08-02T08:49:39.172184"
+    },
+    {
+      "test": "Username Configuration",
+      "success": true,
+      "details": "Environment: yebyenw, Client: yebyenw, Match: True",
+      "data": null,
+      "timestamp": "2025-08-02T08:49:39.172252"
+    },
+    {
+      "test": "No Mock Data Check",
+      "success": true,
+      "details": "Data appears realistic: True",
+      "data": {
+        "sample_values": {
+          "slug": "arabiya",
+          "safebuf": 3,
+          "current_value": 572478.0
+        }
+      },
+      "timestamp": "2025-08-02T08:49:40.515098"
+    }
+  ]
+}
