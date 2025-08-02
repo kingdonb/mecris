@@ -378,10 +378,8 @@ async def get_narrator_context():
         
         beeminder_alerts = [e.get("message", "") for e in emergencies[:5]]
         
-        # Get runway info for peaceful days
-        goal_runway = []
-        if not emergencies:  # Only show runway when no emergencies
-            goal_runway = await beeminder_client.get_runway_summary(limit=4)
+        # Always get runway info (most urgent goals + bike goal)
+        goal_runway = await beeminder_client.get_runway_summary(limit=4)
         
         recommendations = []
         if len(pending_todos) > 10:

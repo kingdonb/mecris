@@ -162,9 +162,15 @@ class BeeminderClient:
             
         # Check for archived/paused goals (common indicators)
         goal_date = goal_data.get("goaldate")
-        if goal_date and goal_date < datetime.now().strftime("%Y-%m-%d"):
-            # Goal end date has passed
-            return False
+        if goal_date:
+            # Handle both timestamp (int) and string formats
+            if isinstance(goal_date, int):
+                goal_datetime = datetime.fromtimestamp(goal_date)
+                if goal_datetime < datetime.now():
+                    return False
+            elif isinstance(goal_date, str):
+                if goal_date < datetime.now().strftime("%Y-%m-%d"):
+                    return False
             
         return True
     
@@ -292,22 +298,39 @@ class BeeminderClient:
         return " | ".join(summary)
     
     async def get_runway_summary(self, limit: int = 4) -> List[Dict[str, Any]]:
-        """Get top goals with runway information for peaceful days"""
+        """Get most urgent goals plus bike goal for strategic visibility"""
         all_goals = await self.get_all_goals()
         
-        # Sort by safebuf (shortest runway first)
-        safe_goals = [g for g in all_goals if g.get("derail_risk") == "SAFE"]
-        safe_goals.sort(key=lambda x: x.get("safebuf", 999))
+        # Sort ALL goals by urgency (shortest safebuf first, regardless of risk level)
+        sorted_goals = sorted(all_goals, key=lambda x: x.get("safebuf", 999))
+        
+        # Always include bike goal if it exists, regardless of its urgency
+        bike_goal = None
+        for goal in all_goals:
+            if "bike" in goal.get("slug", "").lower() or "bike" in goal.get("title", "").lower():
+                bike_goal = goal
+                break
+        
+        # Take top N most urgent goals
+        selected_goals = sorted_goals[:limit]
+        
+        # If bike goal exists and isn't already in the top N, replace the least urgent one
+        if bike_goal and bike_goal not in selected_goals:
+            if len(selected_goals) == limit:
+                selected_goals[-1] = bike_goal  # Replace least urgent
+            else:
+                selected_goals.append(bike_goal)
         
         runway_info = []
-        for goal in safe_goals[:limit]:
+        for goal in selected_goals:
             runway_info.append({
                 "slug": goal.get("slug", ""),
                 "title": goal.get("title", ""),
                 "safebuf": goal.get("safebuf", 0),
                 "runway": f"{goal.get('safebuf', 0)} days",
                 "rate": goal.get("rate", 0),
-                "runits": goal.get("runits", "d")
+                "runits": goal.get("runits", "d"),
+                "derail_risk": goal.get("derail_risk", "SAFE")
             })
         
         return runway_info
