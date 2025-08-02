@@ -1,8 +1,8 @@
 #!/bin/bash
-"""
-Mecris MCP Server Shutdown Script
-Graceful server shutdown with cleanup
-"""
+# """
+# Mecris MCP Server Shutdown Script
+# Graceful server shutdown with cleanup
+# """
 
 set -euo pipefail
 

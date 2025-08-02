@@ -1,14 +1,15 @@
 #!/bin/bash
-"""
-Mecris MCP Server Launch Script
-Safe server startup with process management
-"""
+# """
+# Mecris MCP Server Launch Script
+# Safe server startup with process management
+# """
 
 set -euo pipefail
 
 # Configuration
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-VENV_PATH="$SCRIPT_DIR/venv"
+PYTHON_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/.."
+VENV_PATH="$PYTHON_DIR/venv"
 PID_FILE="$SCRIPT_DIR/mecris.pid"
 LOG_FILE="$SCRIPT_DIR/mecris.log"
 HEALTH_URL="http://127.0.0.1:8000/health"
@@ -89,7 +90,7 @@ cleanup() {
 }
 
 # Set trap for cleanup
-trap cleanup EXIT INT TERM
+#trap cleanup EXIT INT TERM
 
 # Main execution
 main() {
@@ -107,8 +108,8 @@ main() {
         exit 1
     fi
     
-    if [ ! -f "$SCRIPT_DIR/start_server.py" ]; then
-        error "start_server.py not found in $SCRIPT_DIR"
+    if [ ! -f "$PYTHON_DIR/start_server.py" ]; then
+        error "start_server.py not found in $PYTHON_DIR"
         exit 1
     fi
     
@@ -119,7 +120,7 @@ main() {
     # Start server in background
     log "Starting server process..."
     export SKIP_HEALTH_PROMPT=true  # Skip interactive health check prompt
-    python "$SCRIPT_DIR/start_server.py" >> "$LOG_FILE" 2>&1 &
+    python "$PYTHON_DIR/start_server.py" >> "$LOG_FILE" 2>&1 &
     local server_pid=$!
     
     # Save PID
