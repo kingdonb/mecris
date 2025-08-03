@@ -299,7 +299,7 @@ class UsageTracker:
         return {
             "total_budget": total,
             "remaining_budget": remaining,
-            "used_budget": total - remaining,
+            "used_budget": round(total - remaining, 2),
             "days_remaining": days_remaining,
             "today_spend": round(today_spend, 4),
             "daily_burn_rate": round(daily_burn_rate, 4),
