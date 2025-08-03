@@ -69,11 +69,11 @@ class UsageTracker:
             # Initialize budget if not exists
             cursor = conn.execute("SELECT COUNT(*) FROM budget_tracking")
             if cursor.fetchone()[0] == 0:
-                # Default budget from your context: $18.21 remaining until Aug 5
+                # Default budget from your context: $13.92 remaining until Aug 5
                 conn.execute("""
                     INSERT INTO budget_tracking 
                     (id, total_budget, remaining_budget, budget_period_start, budget_period_end, last_updated)
-                    VALUES (1, 20.26, 18.21, '2025-08-01', '2025-08-05', ?)
+                    VALUES (1, 20.26, 13.92, '2025-08-01', '2025-08-05', ?)
                 """, (datetime.now().isoformat(),))
     
     def calculate_cost(self, model: str, input_tokens: int, output_tokens: int) -> float:

@@ -318,10 +318,17 @@ async def record_usage_session(input_tokens: int, output_tokens: int, model: str
         raise HTTPException(status_code=500, detail="Failed to record usage")
 
 @app.post("/usage/update_budget")
-async def update_budget(remaining_budget: float):
-    """Manually update remaining budget amount"""
+async def update_budget(remaining_budget: float, total_budget: Optional[float] = None, period_end: Optional[str] = None):
+    """Manually update budget information"""
     try:
-        updated_budget = update_remaining_budget(remaining_budget)
+        if total_budget or period_end:
+            # Use full budget update from usage tracker
+            tracker = UsageTracker()
+            updated_budget = tracker.update_budget(remaining_budget, total_budget, period_end)
+        else:
+            # Use existing convenience function for remaining budget only  
+            updated_budget = update_remaining_budget(remaining_budget)
+        
         return {
             "updated": True,
             "budget_info": updated_budget,

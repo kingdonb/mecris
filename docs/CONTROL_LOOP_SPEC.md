@@ -13,15 +13,33 @@ This is not just task automation - it's **meta-cognitive resource management** w
 ## 💰 Budget Framework
 
 ### Financial Constraints
-- **Total Budget:** $24 Claude API credits (expires August 5, 2025)
-- **Daily Target:** $3/day burn rate (optimal efficiency)
-- **Runtime:** 7 days maximum
+- **Total Budget:** $24.02 Claude API credits (expires August 5, 2025)
+- **Daily Target:** $3-5/day burn rate (efficient with budget buffer)
+- **Runtime:** ~1.5 days remaining
 - **Risk Tolerance:** Willing to forfeit $3 to maximize value extraction
-- **Current Burn:** $1/day (sustainable but underutilized)
+- **Current Status:** $13.92 remaining (real balance from manual update)
+
+### Budget Tracking Architecture
+
+**Two-Source System:**
+1. **Local Estimates:** Token-based "checkbook" tracking for session-to-session
+2. **Manual Reconciliation:** Periodic updates from Anthropic Console balance
+
+**Reconciliation Process:**
+1. Mecris writes "checks" against estimated balance using token costs
+2. User manually checks Anthropic Console (daily/weekly)
+3. User runs `./update_budget.sh <actual_remaining> <actual_total>`
+4. System reconciles discrepancies and adjusts future estimates
+5. Control loop uses reconciled balance for decision making
+
+**Security Considerations:**
+- No stored Anthropic credentials (manual console checks only)
+- Infrequent balance queries to avoid ToS violations
+- User maintains full control of account access
 
 ### Budget States
-- **NORMAL:** < $3/day, continue planned work
-- **ACCELERATE:** > $3/day acceptable if high-value work detected
+- **NORMAL:** < $5/day, continue planned work
+- **ACCELERATE:** > $5/day acceptable if high-value work detected
 - **PRESERVE:** Near daily limit, switch to planning/documentation
 - **EMERGENCY:** Critical budget threshold, halt non-essential operations
 
@@ -74,7 +92,8 @@ Each ping triggers evaluation of:
    - User gave "churn until done" signal
 
 ### Context Sources for Decision Making
-- **Claude Code Monitor:** Current burn rate, session costs, budget remaining
+- **Local Budget Tracker:** Token-based cost estimates, checkbook-style tracking
+- **Manual Budget Updates:** Periodic reconciliation with Anthropic Console balance
 - **Beeminder:** Goal derailment risks, emergency states
 - **Obsidian:** Current todos, progress notes, user instructions
 - **System State:** MCP health, error logs, completion rates
@@ -84,11 +103,11 @@ Each ping triggers evaluation of:
 ## 🔌 MCP Integration Points
 
 ### Required MCP Servers
-1. **Claude Code Monitor MCP** (NEW - Primary Budget Source)
-   - Real-time cost tracking
-   - Session duration monitoring
-   - Budget forecasting
-   - Rate limit awareness
+1. **Local Budget Tracking** (IMPLEMENTED - Primary Budget Source)
+   - Token-based cost estimation ("checkbook" tracking)
+   - Local SQLite database persistence
+   - Manual reconciliation with Anthropic Console
+   - Infrequent scraping to avoid ToS violations
 
 2. **Obsidian MCP** (IMPLEMENTED)
    - Progress notes
@@ -108,10 +127,12 @@ Each ping triggers evaluation of:
 
 ### Data Flow
 ```
-Claude Code Monitor → Budget State → Decision Engine → Action
-                                          ↓
+Local Budget Tracker → Estimated Budget State → Decision Engine → Action
+                                                       ↓
+Manual Console Update → Reconciliation → Updated Budget State
+                                                       ↓
 Beeminder → Emergency State → Decision Engine → Twilio Alert
-                                          ↓
+                                                       ↓
 Obsidian → Progress State → Decision Engine → Continue/Pause
 ```
 
@@ -160,7 +181,8 @@ decision_weights:
 
 ### Phase 1: Infrastructure (Current)
 - ✅ Basic MCP servers (Obsidian, Beeminder, Twilio)
-- 🔄 Claude Code Monitor MCP integration
+- ✅ Local budget tracking with token estimation
+- ✅ Manual budget reconciliation script
 - ⏳ Ping mechanism implementation
 - ⏳ Decision engine framework
 
