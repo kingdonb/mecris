@@ -15,7 +15,7 @@ from dotenv import load_dotenv
 
 from obsidian_client import ObsidianMCPClient
 from beeminder_client import BeeminderClient
-from usage_tracker import UsageTracker, get_budget_status, record_usage, update_remaining_budget
+from usage_tracker import UsageTracker, get_budget_status, record_usage, update_remaining_budget, get_goals, complete_goal, add_goal
 from twilio_sender import send_sms
 
 # Load environment variables
@@ -155,20 +155,42 @@ async def health_check():
         "version": "0.1.0"
     }
 
-# Obsidian endpoints
+# Goals endpoints (local database)
 @app.get("/goals", response_model=GoalResponse)
-async def get_goals():
-    """Extract goals from Obsidian vault"""
+async def get_goals_endpoint():
+    """Get goals from local database"""
     try:
-        goals_data = await obsidian_client.get_goals()
+        goals_data = get_goals()
         return GoalResponse(
             goals=goals_data,
             last_updated=datetime.now(),
-            source="obsidian"
+            source="database"
         )
     except Exception as e:
         logger.error(f"Failed to fetch goals: {e}")
-        raise HTTPException(status_code=500, detail="Failed to fetch goals from Obsidian")
+        raise HTTPException(status_code=500, detail="Failed to fetch goals from database")
+
+@app.post("/goals/{goal_id}/complete")
+async def complete_goal_endpoint(goal_id: int):
+    """Mark a goal as completed"""
+    try:
+        result = complete_goal(goal_id)
+        if "error" in result:
+            raise HTTPException(status_code=404, detail=result["error"])
+        return result
+    except Exception as e:
+        logger.error(f"Failed to complete goal {goal_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to complete goal")
+
+@app.post("/goals")
+async def add_goal_endpoint(title: str, description: str = "", priority: str = "medium", due_date: Optional[str] = None):
+    """Add a new goal"""
+    try:
+        result = add_goal(title, description, priority, due_date)
+        return result
+    except Exception as e:
+        logger.error(f"Failed to add goal: {e}")
+        raise HTTPException(status_code=500, detail="Failed to add goal")
 
 @app.get("/todos", response_model=TodoResponse)
 async def get_todos():
@@ -378,14 +400,25 @@ async def send_usage_alert(background_tasks: BackgroundTasks):
         remaining_budget = budget_data.get("remaining_budget", 0)
         alerts = budget_data.get("alerts", [])
         
+        # Check spam protection
+        tracker = UsageTracker()
+        
         if "CRITICAL" in budget_data.get("budget_health", "") or days_remaining <= 1:
-            alert_msg = f"🚨 CRITICAL: {days_remaining} days left!\n${remaining_budget:.2f} remaining"
-            background_tasks.add_task(send_sms, alert_msg)
-            return {"alert_sent": True, "level": "critical", "days_remaining": days_remaining}
+            if tracker.should_send_alert("budget", "critical", cooldown_minutes=120):  # 2 hour cooldown for critical
+                alert_msg = f"🚨 CRITICAL: {days_remaining} days left!\n${remaining_budget:.2f} remaining"
+                background_tasks.add_task(send_sms, alert_msg)
+                tracker.log_alert("budget", "critical", alert_msg, f"days_remaining: {days_remaining}, budget: {remaining_budget}")
+                return {"alert_sent": True, "level": "critical", "days_remaining": days_remaining}
+            else:
+                return {"alert_sent": False, "level": "critical", "reason": "cooldown_active", "days_remaining": days_remaining}
         elif "WARNING" in budget_data.get("budget_health", "") or days_remaining <= 2:
-            alert_msg = f"⚠️ WARNING: {days_remaining} days left\n${remaining_budget:.2f} remaining"
-            background_tasks.add_task(send_sms, alert_msg)
-            return {"alert_sent": True, "level": "warning", "days_remaining": days_remaining}
+            if tracker.should_send_alert("budget", "warning", cooldown_minutes=360):  # 6 hour cooldown for warnings
+                alert_msg = f"⚠️ WARNING: {days_remaining} days left\n${remaining_budget:.2f} remaining"
+                background_tasks.add_task(send_sms, alert_msg)
+                tracker.log_alert("budget", "warning", alert_msg, f"days_remaining: {days_remaining}, budget: {remaining_budget}")
+                return {"alert_sent": True, "level": "warning", "days_remaining": days_remaining}
+            else:
+                return {"alert_sent": False, "level": "warning", "reason": "cooldown_active", "days_remaining": days_remaining}
         
         return {"alert_sent": False, "level": "safe", "days_remaining": days_remaining}
         
@@ -399,8 +432,12 @@ async def get_narrator_context():
     """Unified context for Claude narrator with strategic insights"""
     try:
         # Gather data from all sources
-        goals = await obsidian_client.get_goals()
-        todos = await obsidian_client.get_todos()
+        goals = get_goals()  # Use local goals instead of Obsidian
+        active_goals = [g for g in goals if g.get("status") == "active"] 
+        try:
+            todos = await obsidian_client.get_todos()  # Keep trying Obsidian for todos
+        except:
+            todos = []  # Fallback if Obsidian not available
         beeminder_status = await beeminder_client.get_all_goals()
         emergencies = await beeminder_client.get_emergencies()
         budget_status = get_budget_status()
@@ -411,7 +448,7 @@ async def get_narrator_context():
         
         # Enhanced summary with budget info
         budget_days = budget_status.get("days_remaining", 0)
-        summary = f"Active goals: {len(goals)}, Pending todos: {len(pending_todos)}, Beeminder goals: {len(beeminder_status)}, Budget: {budget_days:.1f} days left"
+        summary = f"Active goals: {len(active_goals)}, Pending todos: {len(pending_todos)}, Beeminder goals: {len(beeminder_status)}, Budget: {budget_days:.1f} days left"
         
         urgent_items = []
         if critical_beeminder:
@@ -435,12 +472,12 @@ async def get_narrator_context():
             recommendations.append("Address critical Beeminder goals immediately")
         if budget_days <= 2:
             recommendations.append("Urgent: Focus on highest-value work due to budget constraints")
-        if not goals:
+        if not active_goals:
             recommendations.append("No active goals found - consider setting objectives")
         
         return NarratorContextResponse(
             summary=summary,
-            goals_status={"total": len(goals), "sources": ["obsidian"]},
+            goals_status={"total": len(active_goals), "sources": ["database"]},
             urgent_items=urgent_items,
             beeminder_alerts=beeminder_alerts,
             goal_runway=goal_runway,

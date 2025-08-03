@@ -66,6 +66,30 @@ class UsageTracker:
                 )
             """)
             
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS goals (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    title TEXT NOT NULL,
+                    description TEXT DEFAULT '',
+                    priority TEXT DEFAULT 'medium',
+                    status TEXT DEFAULT 'active',
+                    created_at TEXT NOT NULL,
+                    completed_at TEXT DEFAULT NULL,
+                    due_date TEXT DEFAULT NULL
+                )
+            """)
+            
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS alert_log (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    alert_type TEXT NOT NULL,
+                    alert_level TEXT NOT NULL,
+                    message TEXT NOT NULL,
+                    sent_at TEXT NOT NULL,
+                    context TEXT DEFAULT ''
+                )
+            """)
+            
             # Initialize budget if not exists
             cursor = conn.execute("SELECT COUNT(*) FROM budget_tracking")
             if cursor.fetchone()[0] == 0:
@@ -75,6 +99,24 @@ class UsageTracker:
                     (id, total_budget, remaining_budget, budget_period_start, budget_period_end, last_updated)
                     VALUES (1, 20.26, 13.92, '2025-08-01', '2025-08-05', ?)
                 """, (datetime.now().isoformat(),))
+            
+            # Initialize mock goals if not exists
+            cursor = conn.execute("SELECT COUNT(*) FROM goals")
+            if cursor.fetchone()[0] == 0:
+                mock_goals = [
+                    ("Finish KubeCon abstract draft", "Complete the KubeCon proposal with clear value proposition", "high", "active", "2025-08-03"),
+                    ("Test Twilio integration", "Verify SMS alerts work correctly for beemergencies and budget alerts", "high", "active", None),
+                    ("Complete Obsidian MCP integration", "Get goals and todos reading from Obsidian vault", "medium", "active", "2025-08-04"),
+                    ("Optimize budget burn rate", "Use remaining Claude credits effectively without waste", "high", "active", "2025-08-05"),
+                    ("Document Mecris control loop", "Create comprehensive documentation for the accountability system", "medium", "active", None),
+                    ("Set up goal completion workflow", "Create scripts to check off goals like budget updates", "low", "active", None)
+                ]
+                
+                for title, desc, priority, status, due_date in mock_goals:
+                    conn.execute("""
+                        INSERT INTO goals (title, description, priority, status, created_at, due_date)
+                        VALUES (?, ?, ?, ?, ?, ?)
+                    """, (title, desc, priority, status, datetime.now().isoformat(), due_date))
     
     def calculate_cost(self, model: str, input_tokens: int, output_tokens: int) -> float:
         """Calculate estimated cost for a session."""
@@ -289,6 +331,135 @@ class UsageTracker:
                 }
                 for row in cursor.fetchall()
             ]
+    
+    def get_goals(self) -> List[Dict]:
+        """Get all goals with their status."""
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.execute("""
+                SELECT id, title, description, priority, status, created_at, completed_at, due_date
+                FROM goals 
+                ORDER BY 
+                    CASE priority 
+                        WHEN 'high' THEN 1 
+                        WHEN 'medium' THEN 2 
+                        WHEN 'low' THEN 3 
+                    END,
+                    CASE status
+                        WHEN 'active' THEN 1
+                        WHEN 'completed' THEN 2
+                    END,
+                    created_at
+            """)
+            
+            return [
+                {
+                    "id": row[0],
+                    "title": row[1],
+                    "description": row[2],
+                    "priority": row[3],
+                    "status": row[4],
+                    "created_at": row[5],
+                    "completed_at": row[6],
+                    "due_date": row[7],
+                    "completed": row[4] == "completed"
+                }
+                for row in cursor.fetchall()
+            ]
+    
+    def complete_goal(self, goal_id: int) -> Dict:
+        """Mark a goal as completed."""
+        timestamp = datetime.now().isoformat()
+        
+        with sqlite3.connect(self.db_path) as conn:
+            # Check if goal exists
+            cursor = conn.execute("SELECT title FROM goals WHERE id = ?", (goal_id,))
+            goal = cursor.fetchone()
+            
+            if not goal:
+                return {"error": f"Goal {goal_id} not found"}
+            
+            # Mark as completed
+            conn.execute("""
+                UPDATE goals 
+                SET status = 'completed', completed_at = ? 
+                WHERE id = ?
+            """, (timestamp, goal_id))
+            
+            return {
+                "completed": True,
+                "goal_id": goal_id,
+                "title": goal[0],
+                "completed_at": timestamp
+            }
+    
+    def add_goal(self, title: str, description: str = "", priority: str = "medium", due_date: Optional[str] = None) -> Dict:
+        """Add a new goal."""
+        timestamp = datetime.now().isoformat()
+        
+        if priority not in ["high", "medium", "low"]:
+            priority = "medium"
+        
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.execute("""
+                INSERT INTO goals (title, description, priority, status, created_at, due_date)
+                VALUES (?, ?, ?, 'active', ?, ?)
+            """, (title, description, priority, timestamp, due_date))
+            
+            goal_id = cursor.lastrowid
+            
+            return {
+                "added": True,
+                "goal_id": goal_id,
+                "title": title,
+                "priority": priority,
+                "created_at": timestamp
+            }
+    
+    def should_send_alert(self, alert_type: str, alert_level: str, cooldown_minutes: int = 60) -> bool:
+        """Check if an alert should be sent based on cooldown period."""
+        cutoff_time = (datetime.now() - timedelta(minutes=cooldown_minutes)).isoformat()
+        
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.execute("""
+                SELECT COUNT(*) FROM alert_log 
+                WHERE alert_type = ? AND alert_level = ? AND sent_at > ?
+            """, (alert_type, alert_level, cutoff_time))
+            
+            recent_alerts = cursor.fetchone()[0]
+            return recent_alerts == 0
+    
+    def log_alert(self, alert_type: str, alert_level: str, message: str, context: str = "") -> None:
+        """Log an alert that was sent."""
+        timestamp = datetime.now().isoformat()
+        
+        with sqlite3.connect(self.db_path) as conn:
+            conn.execute("""
+                INSERT INTO alert_log (alert_type, alert_level, message, sent_at, context)
+                VALUES (?, ?, ?, ?, ?)
+            """, (alert_type, alert_level, message, timestamp, context))
+    
+    def get_recent_alerts(self, hours: int = 24) -> List[Dict]:
+        """Get recent alerts sent."""
+        cutoff_time = (datetime.now() - timedelta(hours=hours)).isoformat()
+        
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.execute("""
+                SELECT alert_type, alert_level, message, sent_at, context
+                FROM alert_log 
+                WHERE sent_at > ?
+                ORDER BY sent_at DESC
+            """, (cutoff_time,))
+            
+            return [
+                {
+                    "type": row[0],
+                    "level": row[1],
+                    "message": row[2],
+                    "sent_at": row[3],
+                    "context": row[4]
+                }
+                for row in cursor.fetchall()
+            ]
 
 # Convenience functions for MCP server integration
 def record_usage(input_tokens: int, output_tokens: int, model: str = "claude-3-5-sonnet-20241022", 
@@ -306,6 +477,21 @@ def update_remaining_budget(amount: float) -> Dict:
     """Update remaining budget amount."""
     tracker = UsageTracker()
     return tracker.update_budget(amount)
+
+def get_goals() -> List[Dict]:
+    """Get all goals."""
+    tracker = UsageTracker()
+    return tracker.get_goals()
+
+def complete_goal(goal_id: int) -> Dict:
+    """Complete a goal."""
+    tracker = UsageTracker()
+    return tracker.complete_goal(goal_id)
+
+def add_goal(title: str, description: str = "", priority: str = "medium", due_date: Optional[str] = None) -> Dict:
+    """Add a new goal."""
+    tracker = UsageTracker()
+    return tracker.add_goal(title, description, priority, due_date)
 
 if __name__ == "__main__":
     # Test the usage tracker
