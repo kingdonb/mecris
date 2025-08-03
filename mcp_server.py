@@ -277,19 +277,31 @@ async def send_beeminder_alert(background_tasks: BackgroundTasks):
         emergencies = await beeminder_client.get_emergencies()
         critical_emergencies = [e for e in emergencies if e.get("urgency") == "IMMEDIATE"]
         
+        tracker = UsageTracker()
+        
         if critical_emergencies:
-            alert_message = f"🚨 BEEMERGENCY: {len(critical_emergencies)} goals need immediate attention!"
-            for emergency in critical_emergencies[:3]:  # Limit to 3 in SMS
-                alert_message += f"\n• {emergency['goal_slug']}: {emergency['message']}"
-            
-            # Send SMS in background
-            background_tasks.add_task(send_sms, alert_message)
-            
-            return {
-                "alert_sent": True,
-                "critical_count": len(critical_emergencies),
-                "message": "Beemergency alert sent"
-            }
+            # Use shorter cooldown for beemergencies since they're time-critical
+            if tracker.should_send_alert("beeminder", "critical", cooldown_minutes=90):
+                alert_message = f"🚨 BEEMERGENCY: {len(critical_emergencies)} goals need immediate attention!"
+                for emergency in critical_emergencies[:3]:  # Limit to 3 in SMS
+                    alert_message += f"\n• {emergency['goal_slug']}: {emergency['message']}"
+                
+                # Send SMS in background
+                background_tasks.add_task(send_sms, alert_message)
+                tracker.log_alert("beeminder", "critical", alert_message, f"critical_count: {len(critical_emergencies)}")
+                
+                return {
+                    "alert_sent": True,
+                    "critical_count": len(critical_emergencies),
+                    "message": "Beemergency alert sent"
+                }
+            else:
+                return {
+                    "alert_sent": False,
+                    "critical_count": len(critical_emergencies),
+                    "message": "Beemergency alert on cooldown",
+                    "reason": "cooldown_active"
+                }
         
         return {
             "alert_sent": False,
