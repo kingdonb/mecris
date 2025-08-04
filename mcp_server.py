@@ -5,7 +5,7 @@ Main FastAPI application that aggregates multiple MCP sources
 
 import os
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional
 from dataclasses import dataclass
 
@@ -38,6 +38,15 @@ app = FastAPI(
 obsidian_client = ObsidianMCPClient()
 beeminder_client = BeeminderClient()
 usage_tracker = UsageTracker()
+
+# Daily activity cache - avoids hitting Beeminder API more than once per hour
+daily_activity_cache = {
+    # "bike": {
+    #     "last_check": datetime.now(),
+    #     "has_activity_today": False,
+    #     "cache_expires": datetime.now() + timedelta(hours=1)
+    # }
+}
 
 # Response models
 class GoalResponse(BaseModel):
@@ -72,6 +81,7 @@ class NarratorContextResponse(BaseModel):
     goal_runway: List[Dict[str, Any]]
     budget_status: Dict[str, Any]
     recommendations: List[str]
+    daily_walk_status: Optional[Dict[str, Any]] = None
     last_updated: datetime
 
 class BudgetResponse(BaseModel):
@@ -85,6 +95,66 @@ class BudgetResponse(BaseModel):
     period_end: str
     alerts: List[str]
     budget_health: str
+
+# Cache helper functions
+async def get_cached_daily_activity(goal_slug: str = "bike") -> Dict[str, Any]:
+    """Get daily activity status with 1-hour cache to respect API limits"""
+    now = datetime.now()
+    
+    # Check if we have valid cached data
+    if goal_slug in daily_activity_cache:
+        cache_entry = daily_activity_cache[goal_slug]
+        if now < cache_entry["cache_expires"]:
+            logger.info(f"Using cached activity status for {goal_slug}")
+            return {
+                "goal_slug": goal_slug,
+                "has_activity_today": cache_entry["has_activity_today"],
+                "status": "completed" if cache_entry["has_activity_today"] else "needed",
+                "cached": True,
+                "last_check": cache_entry["last_check"].isoformat(),
+                "message": f"✅ Walk logged today" if cache_entry["has_activity_today"] else "🚶‍♂️ No walk detected today"
+            }
+    
+    # Cache expired or doesn't exist - fetch from Beeminder API
+    try:
+        logger.info(f"Fetching fresh activity status for {goal_slug} from Beeminder")
+        activity_status = await beeminder_client.get_daily_activity_status(goal_slug)
+        
+        # Update cache with 1-hour expiration
+        daily_activity_cache[goal_slug] = {
+            "last_check": now,
+            "has_activity_today": activity_status["has_activity_today"],
+            "cache_expires": now + timedelta(hours=1)
+        }
+        
+        # Add cache info to response
+        activity_status["cached"] = False
+        return activity_status
+        
+    except Exception as e:
+        logger.error(f"Failed to fetch daily activity for {goal_slug}: {e}")
+        # Return cached data if available, even if expired
+        if goal_slug in daily_activity_cache:
+            cache_entry = daily_activity_cache[goal_slug]
+            return {
+                "goal_slug": goal_slug,
+                "has_activity_today": cache_entry["has_activity_today"],
+                "status": "completed" if cache_entry["has_activity_today"] else "needed",
+                "cached": True,
+                "last_check": cache_entry["last_check"].isoformat(),
+                "message": f"⚠️ Using stale cache (API error)",
+                "error": str(e)
+            }
+        else:
+            # No cache and API failed
+            return {
+                "goal_slug": goal_slug,
+                "has_activity_today": False,
+                "status": "unknown",
+                "cached": False,
+                "message": "❌ Unable to check activity status",
+                "error": str(e)
+            }
 
 # Health check
 @app.get("/")
@@ -313,6 +383,24 @@ async def send_beeminder_alert(background_tasks: BackgroundTasks):
         logger.error(f"Failed to send beeminder alert: {e}")
         raise HTTPException(status_code=500, detail="Failed to process beeminder alert")
 
+@app.get("/beeminder/daily-activity/{goal_slug}")
+async def get_daily_activity(goal_slug: str = "bike"):
+    """Check if daily activity was logged for specified goal (with 1-hour cache)"""
+    try:
+        activity_status = await get_cached_daily_activity(goal_slug)
+        return {
+            "activity_status": activity_status,
+            "timestamp": datetime.now().isoformat()
+        }
+    except Exception as e:
+        logger.error(f"Failed to check daily activity for {goal_slug}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to check daily activity for {goal_slug}")
+
+@app.get("/beeminder/daily-activity")
+async def get_daily_activity_default():
+    """Check if daily activity was logged for bike goal (default)"""
+    return await get_daily_activity("bike")
+
 # Usage tracking endpoints
 @app.get("/usage", response_model=BudgetResponse)
 async def get_usage_status():
@@ -454,6 +542,9 @@ async def get_narrator_context():
         emergencies = await beeminder_client.get_emergencies()
         budget_status = get_budget_status()
         
+        # Get daily walk status (cached for performance)
+        daily_walk_status = await get_cached_daily_activity("bike")
+        
         # Build strategic summary
         pending_todos = [t for t in todos if not t.get("completed", False)]
         critical_beeminder = [g for g in beeminder_status if g.get("derail_risk") == "CRITICAL"]
@@ -487,6 +578,12 @@ async def get_narrator_context():
         if not active_goals:
             recommendations.append("No active goals found - consider setting objectives")
         
+        # Add walk reminder if needed and it's afternoon
+        current_hour = datetime.now().hour
+        if (daily_walk_status.get("status") == "needed" and 
+            current_hour >= 14):  # After 2 PM
+            recommendations.append("🚶‍♂️ Time for a walk! No activity logged today for bike goal")
+        
         return NarratorContextResponse(
             summary=summary,
             goals_status={"total": len(active_goals), "sources": ["database"]},
@@ -495,6 +592,7 @@ async def get_narrator_context():
             goal_runway=goal_runway,
             budget_status=budget_status,
             recommendations=recommendations,
+            daily_walk_status=daily_walk_status,
             last_updated=datetime.now()
         )
         

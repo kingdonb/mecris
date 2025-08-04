@@ -118,6 +118,62 @@ class BeeminderClient:
         """Get detailed information for specific goal"""
         return await self._api_call(f"users/{self.username}/goals/{goal_slug}.json")
     
+    async def get_goal_datapoints(self, goal_slug: str, since: Optional[datetime] = None, count: int = 7) -> List[Dict[str, Any]]:
+        """Get recent datapoints for a goal
+        
+        Args:
+            goal_slug: The goal to fetch datapoints for
+            since: Only return datapoints after this timestamp
+            count: Maximum number of datapoints to return (default: 7)
+        """
+        endpoint = f"users/{self.username}/goals/{goal_slug}/datapoints.json"
+        
+        # Build query string manually since _api_call handles auth params
+        query_params = [f"count={count}"]
+        if since:
+            query_params.append(f"since={int(since.timestamp())}")
+        
+        if query_params:
+            endpoint += "?" + "&".join(query_params)
+        
+        result = await self._api_call(endpoint)
+        return result if result else []
+    
+    async def has_activity_today(self, goal_slug: str = "bike") -> bool:
+        """Check if any datapoints were added today to the specified goal
+        
+        This is the core method for detecting daily activity without parallel tracking.
+        Returns True if any datapoint was created today (after midnight local time).
+        """
+        today_start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+        datapoints = await self.get_goal_datapoints(goal_slug, since=today_start, count=5)
+        
+        # Check if any datapoints have today's timestamp
+        today_date = today_start.date()
+        for datapoint in datapoints:
+            # Beeminder timestamps are Unix timestamps
+            dp_timestamp = datapoint.get("timestamp", 0)
+            if dp_timestamp:
+                dp_date = datetime.fromtimestamp(dp_timestamp).date()
+                if dp_date == today_date:
+                    logger.info(f"Activity detected for {goal_slug}: datapoint at {datetime.fromtimestamp(dp_timestamp)}")
+                    return True
+        
+        logger.info(f"No activity today for {goal_slug}")
+        return False
+    
+    async def get_daily_activity_status(self, goal_slug: str = "bike") -> Dict[str, Any]:
+        """Get comprehensive daily activity status for narrator context"""
+        has_activity = await self.has_activity_today(goal_slug)
+        
+        return {
+            "goal_slug": goal_slug,
+            "has_activity_today": has_activity,
+            "status": "completed" if has_activity else "needed",
+            "check_time": datetime.now().isoformat(),
+            "message": f"✅ Walk logged today" if has_activity else "🚶‍♂️ No walk detected today"
+        }
+    
     async def add_datapoint(self, goal_slug: str, value: float, comment: str = "") -> bool:
         """Add a datapoint to a goal"""
         data = {
