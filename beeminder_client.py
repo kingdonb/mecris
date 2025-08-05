@@ -267,9 +267,10 @@ class BeeminderClient:
         
         return structured_goals
     
-    async def get_emergencies(self) -> List[Dict[str, Any]]:
+    async def get_emergencies(self, all_goals: Optional[List[Dict[str, Any]]] = None) -> List[Dict[str, Any]]:
         """Get goals requiring immediate attention (beemergencies)"""
-        all_goals = await self.get_all_goals()
+        if all_goals is None:
+            all_goals = await self.get_all_goals()
         emergencies = []
         
         for goal in all_goals:
@@ -324,14 +325,14 @@ class BeeminderClient:
         
         return emergencies
     
-    async def get_critical_goals(self) -> List[Dict[str, Any]]:
+    async def get_critical_goals(self, all_goals: Optional[List[Dict[str, Any]]] = None) -> List[Dict[str, Any]]:
         """Get only goals in CRITICAL state (derailing today/already derailed)"""
-        emergencies = await self.get_emergencies()
+        emergencies = await self.get_emergencies(all_goals)
         return [e for e in emergencies if e["urgency"] == "IMMEDIATE"]
     
-    async def format_emergency_summary(self) -> str:
+    async def format_emergency_summary(self, all_goals: Optional[List[Dict[str, Any]]] = None) -> str:
         """Format emergency summary for narrator context"""
-        emergencies = await self.get_emergencies()
+        emergencies = await self.get_emergencies(all_goals)
         
         if not emergencies:
             return "✅ All Beeminder goals are safe"
@@ -353,9 +354,10 @@ class BeeminderClient:
         
         return " | ".join(summary)
     
-    async def get_runway_summary(self, limit: int = 4) -> List[Dict[str, Any]]:
+    async def get_runway_summary(self, limit: int = 4, all_goals: Optional[List[Dict[str, Any]]] = None) -> List[Dict[str, Any]]:
         """Get most urgent goals plus bike goal for strategic visibility"""
-        all_goals = await self.get_all_goals()
+        if all_goals is None:
+            all_goals = await self.get_all_goals()
         
         # Sort ALL goals by urgency (shortest safebuf first, regardless of risk level)
         sorted_goals = sorted(all_goals, key=lambda x: x.get("safebuf", 999))

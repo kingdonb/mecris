@@ -538,8 +538,11 @@ async def get_narrator_context():
             todos = await obsidian_client.get_todos()  # Keep trying Obsidian for todos
         except:
             todos = []  # Fallback if Obsidian not available
-        beeminder_status = await beeminder_client.get_all_goals()
-        emergencies = await beeminder_client.get_emergencies()
+        # PHASE 1 OPTIMIZATION: Single Beeminder API call, derive all views
+        beeminder_goals = await beeminder_client.get_all_goals()
+        emergencies = await beeminder_client.get_emergencies(beeminder_goals)
+        goal_runway = await beeminder_client.get_runway_summary(limit=4, all_goals=beeminder_goals)
+        
         budget_status = get_budget_status()
         
         # Get daily walk status (cached for performance)
@@ -547,11 +550,11 @@ async def get_narrator_context():
         
         # Build strategic summary
         pending_todos = [t for t in todos if not t.get("completed", False)]
-        critical_beeminder = [g for g in beeminder_status if g.get("derail_risk") == "CRITICAL"]
+        critical_beeminder = [g for g in beeminder_goals if g.get("derail_risk") == "CRITICAL"]
         
         # Enhanced summary with budget info
         budget_days = budget_status.get("days_remaining", 0)
-        summary = f"Active goals: {len(active_goals)}, Pending todos: {len(pending_todos)}, Beeminder goals: {len(beeminder_status)}, Budget: {budget_days:.1f} days left"
+        summary = f"Active goals: {len(active_goals)}, Pending todos: {len(pending_todos)}, Beeminder goals: {len(beeminder_goals)}, Budget: {budget_days:.1f} days left"
         
         urgent_items = []
         if critical_beeminder:
@@ -564,9 +567,6 @@ async def get_narrator_context():
             urgent_items.append(f"BUDGET WARNING: {budget_days:.1f} days left")
         
         beeminder_alerts = [e.get("message", "") for e in emergencies[:5]]
-        
-        # Always get runway info (most urgent goals + bike goal)
-        goal_runway = await beeminder_client.get_runway_summary(limit=4)
         
         recommendations = []
         if len(pending_todos) > 10:
