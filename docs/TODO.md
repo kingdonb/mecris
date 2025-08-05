@@ -2,36 +2,51 @@
 
 ## High Priority
 
-### 1. Obsidian Integration Completion
+### 1. Dog Walking Reminder System (CURRENT SPRINT) 🚶‍♂️
+**Goal**: Walk reminders work with $0 Claude budget - graceful degradation
+- [ ] **Base Mode Implementation** - Walk reminders that work without Claude credits
+- [ ] **Three-Tier Messaging System** - Enhanced → Smart Templates → Base Mode  
+- [ ] **MCP Context Integration** - Use narrator context without consuming Claude credits
+- [ ] **WhatsApp/SMS Delivery** - Twilio integration with WhatsApp sandbox
+- [ ] **Cron Job Setup** - Reliable afternoon walk reminders (2-5 PM)
+- [ ] **No-Spam Logic** - Max 1 walk reminder per day
+- [ ] **Work/Personal Time Filtering** - Appropriate scheduling
+
+### 2. Enhanced Infrastructure Monitoring
+- [ ] **ob_mirror Alerts** - ✅ DONE - Monitor safebuf != 8 after 10am  
+- [ ] **Additional Health Checks** - Extend monitoring patterns
+- [ ] **Graceful Error Handling** - Robust failure modes
+
+## Medium Priority
+
+### 3. Obsidian Integration Completion
 - [ ] **Complete vault parsing** - Read markdown files for goals/todos
 - [ ] **Goal extraction** - Parse structured goals from daily notes
 - [ ] **Todo parsing** - Extract task lists with completion status
 - [ ] **Daily note integration** - Full `/daily/YYYY-MM-DD` endpoint
 - [ ] **Test coverage** - Integration tests for Obsidian client
 
-### 2. Claude API Balance Automation  
+### 4. Claude API Balance Automation  
 - [ ] **Web scraper implementation** - Playwright-based balance retrieval
 - [ ] **Secure credential storage** - Environment-based auth management
 - [ ] **Caching system** - Avoid frequent console requests
 - [ ] **Error handling** - Graceful fallback to manual updates
 - [ ] **Schedule automation** - Cron job for periodic balance checks
 
-## Medium Priority
-
-### 3. Enhanced Narrator Context
+### 5. Enhanced Narrator Context
 - [ ] **Strategic insights** - Pattern recognition across data sources
 - [ ] **Risk detection** - Cross-goal dependency analysis
 - [ ] **Recommendation engine** - Action prioritization based on constraints
 - [ ] **Memory system** - Session-to-session context preservation
 - [ ] **Progress tracking** - Goal velocity and trend analysis
 
-### 4. Autonomous Operation
+### 6. Autonomous Operation
 - [ ] **Periodic check-ins** - Cron-based Claude sessions
 - [ ] **Automated alerts** - Proactive beemergency detection
 - [ ] **Session logging** - Structured activity recording
 - [ ] **Context handoffs** - Seamless multi-session workflows
 
-### 5. Testing & Monitoring
+### 7. Testing & Monitoring
 - [ ] **Integration test suite** - Full system validation
 - [ ] **Performance monitoring** - Response time and resource usage
 - [ ] **Error alerting** - Service failure notifications
@@ -39,13 +54,13 @@
 
 ## Low Priority
 
-### 6. Additional Integrations
+### 8. Additional Integrations
 - [ ] **GitHub Issues** - Development task tracking
 - [ ] **Calendar integration** - Time blocking and scheduling
 - [ ] **Email parsing** - External context ingestion
 - [ ] **Time tracking** - Work/life balance monitoring
 
-### 7. User Experience
+### 9. User Experience
 - [ ] **Web dashboard** - Visual interface for system status
 - [ ] **Mobile alerts** - Enhanced Twilio integration
 - [ ] **Voice notifications** - Audio alert system
@@ -53,14 +68,14 @@
 
 ## Infrastructure & Maintenance
 
-### 8. Production Readiness
+### 10. Production Readiness
 - [ ] **Docker containerization** - Portable deployment
 - [ ] **Environment management** - Production vs development configs
 - [ ] **Backup system** - Data protection and recovery
 - [ ] **Log rotation** - Disk space management
 - [ ] **Security audit** - Credential and access review
 
-### 9. Documentation
+### 11. Documentation
 - [ ] **API documentation** - OpenAPI/Swagger specs
 - [ ] **Deployment guide** - Step-by-step setup instructions
 - [ ] **Troubleshooting guide** - Common issues and solutions
@@ -87,8 +102,10 @@
 ## Notes
 
 ### Budget Constraints
-- **Current**: $18.21 remaining until August 5, 2025
-- **Strategy**: Focus on high-value items that maximize system utility
+- **Current**: $6.82 remaining until August 5, 2025 (24 hours)
+- **Today's Spend**: $3.28 (excellent ROI - ob_mirror monitoring + 6-goal context)
+- **Target**: Spend at least $3 more today to hit spending goals
+- **Strategy**: Focus on dog walking reminder system - immediate user value
 - **Monitoring**: Real-time burn rate tracking with SMS alerts
 
 ### Development Philosophy
