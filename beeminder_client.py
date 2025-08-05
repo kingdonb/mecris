@@ -369,6 +369,24 @@ class BeeminderClient:
                 bike_goal = goal
                 break
         
+        # Monitor ob_mirror goal for issues - alert if safebuf != 8 after 10am
+        ob_mirror_alert = None
+        current_hour = datetime.now().hour
+        if current_hour >= 10:  # After 10am local time
+            for goal in all_goals:
+                if "ob_mirror" in goal.get("slug", "").lower() or "ob-mirror" in goal.get("slug", "").lower():
+                    safebuf = goal.get("safebuf", 0)
+                    if safebuf != 8:
+                        ob_mirror_alert = {
+                            "type": "OB_MIRROR_ANOMALY",
+                            "message": f"🚨 OB Mirror safebuf is {safebuf}, expected 8 - server may need attention",
+                            "goal_slug": goal.get("slug", ""),
+                            "current_safebuf": safebuf,
+                            "expected_safebuf": 8,
+                            "time_detected": datetime.now().isoformat()
+                        }
+                    break
+        
         # Take top N most urgent goals
         selected_goals = sorted_goals[:limit]
         
@@ -389,6 +407,18 @@ class BeeminderClient:
                 "rate": goal.get("rate", 0),
                 "runits": goal.get("runits", "d"),
                 "derail_risk": goal.get("derail_risk", "SAFE")
+            })
+        
+        # Add ob_mirror alert to runway info if detected
+        if ob_mirror_alert:
+            runway_info.append({
+                "slug": "ALERT",
+                "title": ob_mirror_alert["message"],
+                "safebuf": 0,
+                "runway": "IMMEDIATE",
+                "rate": 0,
+                "runits": "alert",
+                "derail_risk": "OB_MIRROR_ANOMALY"
             })
         
         return runway_info

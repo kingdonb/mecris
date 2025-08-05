@@ -645,7 +645,7 @@ async def get_narrator_context():
         # PHASE 2 OPTIMIZATION: Cached Beeminder goals + derived views
         beeminder_goals = await get_cached_beeminder_goals()
         emergencies = await beeminder_client.get_emergencies(beeminder_goals)
-        goal_runway = await beeminder_client.get_runway_summary(limit=4, all_goals=beeminder_goals)
+        goal_runway = await beeminder_client.get_runway_summary(limit=6, all_goals=beeminder_goals)
         
         budget_status = get_budget_status()
         
