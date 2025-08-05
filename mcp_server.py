@@ -727,6 +727,244 @@ async def log_session(session_data: Dict[str, Any]):
         logger.error(f"Failed to log session: {e}")
         raise HTTPException(status_code=500, detail="Failed to log session")
 
+# Intelligent Reminder System
+@app.get("/intelligent-reminder/check")
+async def check_reminder_needed():
+    """Check if any reminders should be sent - works without Claude credits"""
+    try:
+        # Get full MCP context without consuming Claude credits
+        context_response = await get_narrator_context()
+        context = context_response if isinstance(context_response, dict) else {}
+        
+        current_time = datetime.now()
+        current_hour = current_time.hour
+        
+        # Budget tier assessment from context
+        budget_status = context.get("budget_status", {})
+        remaining_budget = budget_status.get("remaining_budget", 0)
+        
+        # Determine messaging tier based on budget
+        if remaining_budget > 2.0:
+            tier = "enhanced"  # Claude available for sophisticated analysis
+        elif remaining_budget > 0.5:
+            tier = "smart_template"  # Claude constrained, use templates with full context
+        else:
+            tier = "base_mode"  # Claude exhausted, basic reminders only
+        
+        # Walk status from MCP context
+        daily_walk_status = context.get("daily_walk_status", {})
+        walk_needed = daily_walk_status.get("status") == "needed"
+        
+        # Base mode: Only walk reminders, 2-5 PM window
+        if tier == "base_mode":
+            if walk_needed and 14 <= current_hour <= 17:
+                import random
+                messages = [
+                    "🚶‍♂️ Walk reminder - dogs are waiting!",
+                    "🐕 Time for that daily walk",
+                    "🚶‍♂️ No walk logged yet today - time to move!"
+                ]
+                return {
+                    "should_send": True,
+                    "tier": tier,
+                    "message": random.choice(messages),
+                    "type": "walk_reminder",
+                    "budget_remaining": remaining_budget
+                }
+            return {"should_send": False, "tier": tier, "reason": "No walk needed or outside time window"}
+        
+        # Smart template mode: Full context analysis with templates
+        elif tier == "smart_template":
+            # Primary: Walk reminders (afternoon window)
+            if walk_needed and 14 <= current_hour <= 17:
+                # Get bike goal info for context
+                goal_runway = context.get("goal_runway", [])
+                bike_goal = next((g for g in goal_runway if "bike" in g.get("slug", "").lower()), None)
+                
+                if bike_goal:
+                    safebuf = bike_goal.get("safebuf", 0)
+                    message = f"🚶‍♂️ No walk logged yet today - your bike goal needs progress ({safebuf} days safe) and the dogs need exercise!"
+                else:
+                    message = "🚶‍♂️ Walk reminder - no activity logged today and the dogs are waiting!"
+                
+                return {
+                    "should_send": True,
+                    "tier": tier,
+                    "message": message,
+                    "type": "walk_reminder",
+                    "budget_remaining": remaining_budget
+                }
+            
+            # Secondary: Check for other urgent items (budget warnings, etc.)
+            urgent_items = context.get("urgent_items", [])
+            if urgent_items and 9 <= current_hour <= 17:
+                budget_critical = any("BUDGET CRITICAL" in item for item in urgent_items)
+                if budget_critical:
+                    return {
+                        "should_send": True,
+                        "tier": tier,
+                        "message": f"💰 Budget alert: ${remaining_budget:.2f} remaining. Focus mode activated.",
+                        "type": "budget_warning",
+                        "budget_remaining": remaining_budget
+                    }
+            
+            return {"should_send": False, "tier": tier, "reason": "No urgent items in appropriate time window"}
+        
+        # Enhanced mode: Would use Claude for sophisticated analysis
+        # For now, fall back to smart template behavior
+        else:  # tier == "enhanced"
+            # TODO: Implement Claude-enhanced decision making
+            # For now, use smart template logic
+            if walk_needed and 14 <= current_hour <= 17:
+                return {
+                    "should_send": True,
+                    "tier": "smart_template",  # Fallback for now
+                    "message": "🚶‍♂️ Perfect timing for a walk! No activity logged today and the dogs need their exercise.",
+                    "type": "walk_reminder",
+                    "budget_remaining": remaining_budget,
+                    "note": "Enhanced mode not yet implemented, using smart template"
+                }
+            
+            return {"should_send": False, "tier": tier, "reason": "No walk needed or outside time window"}
+            
+    except Exception as e:
+        logger.error(f"Failed to check reminder status: {e}")
+        # Graceful degradation - return a basic walk reminder if it's afternoon
+        current_hour = datetime.now().hour
+        if 14 <= current_hour <= 17:
+            return {
+                "should_send": True,
+                "tier": "emergency_fallback",
+                "message": "🚶‍♂️ Walk reminder - system degraded but dogs still need walking!",
+                "type": "walk_reminder",
+                "error": str(e)
+            }
+        
+        return {"should_send": False, "error": str(e)}
+
+@app.post("/intelligent-reminder/send")
+async def send_reminder_message(message_data: Dict[str, Any]):
+    """Send reminder message via WhatsApp/SMS with no-spam protection"""
+    try:
+        # Import Twilio sender
+        from twilio_sender import send_message, send_sms
+        
+        message = message_data.get("message", "")
+        message_type = message_data.get("type", "walk_reminder")
+        tier = message_data.get("tier", "base_mode")
+        
+        if not message:
+            return {"sent": False, "error": "No message provided"}
+        
+        # No-spam protection: Check if we've already sent this type today
+        from datetime import date
+        import json
+        
+        # Simple file-based tracking for no-spam
+        spam_file = "/tmp/mecris_daily_messages.json"
+        today = str(date.today())
+        
+        # Load existing message log
+        daily_messages = {}
+        try:
+            if os.path.exists(spam_file):
+                with open(spam_file, 'r') as f:
+                    daily_messages = json.load(f)
+        except:
+            daily_messages = {}
+        
+        # Check if we've already sent this type today
+        if today in daily_messages:
+            if message_type in daily_messages[today]:
+                return {
+                    "sent": False, 
+                    "reason": "Already sent this message type today",
+                    "message_type": message_type,
+                    "last_sent": daily_messages[today][message_type]
+                }
+        
+        # Try WhatsApp first, fall back to SMS
+        success = False
+        delivery_method = None
+        
+        # Attempt WhatsApp delivery
+        if send_message(message):
+            success = True
+            delivery_method = "whatsapp"
+            logger.info(f"WhatsApp message sent: {message}")
+        elif send_sms(message):
+            success = True
+            delivery_method = "sms"
+            logger.info(f"SMS fallback sent: {message}")
+        
+        if success:
+            # Log successful send to prevent spam
+            if today not in daily_messages:
+                daily_messages[today] = {}
+            daily_messages[today][message_type] = {
+                "timestamp": datetime.now().isoformat(),
+                "message": message,
+                "tier": tier,
+                "delivery_method": delivery_method
+            }
+            
+            # Save updated log
+            try:
+                with open(spam_file, 'w') as f:
+                    json.dump(daily_messages, f)
+            except Exception as e:
+                logger.warning(f"Failed to update no-spam log: {e}")
+            
+            return {
+                "sent": True,
+                "delivery_method": delivery_method,
+                "message_type": message_type,
+                "tier": tier,
+                "timestamp": datetime.now().isoformat()
+            }
+        else:
+            return {
+                "sent": False,
+                "error": "Both WhatsApp and SMS delivery failed",
+                "message_type": message_type
+            }
+            
+    except Exception as e:
+        logger.error(f"Failed to send reminder message: {e}")
+        return {"sent": False, "error": str(e)}
+
+@app.post("/intelligent-reminder/trigger")
+async def trigger_reminder_check():
+    """Check for needed reminders and send them - complete workflow"""
+    try:
+        # Check if reminder is needed
+        check_result = await check_reminder_needed()
+        
+        if not check_result.get("should_send", False):
+            return {
+                "triggered": False,
+                "reason": check_result.get("reason", "No reminder needed"),
+                "tier": check_result.get("tier", "unknown")
+            }
+        
+        # Send the message
+        send_result = await send_reminder_message({
+            "message": check_result.get("message", ""),
+            "type": check_result.get("type", "walk_reminder"),
+            "tier": check_result.get("tier", "base_mode")
+        })
+        
+        return {
+            "triggered": True,
+            "check_result": check_result,
+            "send_result": send_result,
+            "timestamp": datetime.now().isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to trigger reminder: {e}")
+        return {"triggered": False, "error": str(e)}
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(
