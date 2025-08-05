@@ -1,0 +1,285 @@
+{
+  "summary": {
+    "total_tests": 28,
+    "passed": 23,
+    "failed": 5,
+    "success_rate": "82.1%",
+    "timestamp": "2025-08-05T00:44:04.208042"
+  },
+  "components": {
+    "Obsidian": {
+      "passed": 3,
+      "failed": 1,
+      "tests": [
+        {
+          "component": "Obsidian",
+          "test": "Health Check",
+          "success": false,
+          "details": "Status: unreachable",
+          "timestamp": "2025-08-05T00:43:57.842794"
+        },
+        {
+          "component": "Obsidian",
+          "test": "Goals Extraction",
+          "success": true,
+          "details": "Found 0 goals",
+          "timestamp": "2025-08-05T00:43:57.846992"
+        },
+        {
+          "component": "Obsidian",
+          "test": "Todos Extraction",
+          "success": true,
+          "details": "Found 0 todos",
+          "timestamp": "2025-08-05T00:43:57.848488"
+        },
+        {
+          "component": "Obsidian",
+          "test": "Daily Note Access",
+          "success": true,
+          "details": "Note length: 0 chars",
+          "timestamp": "2025-08-05T00:43:57.852539"
+        }
+      ]
+    },
+    "Beeminder": {
+      "passed": 4,
+      "failed": 0,
+      "tests": [
+        {
+          "component": "Beeminder",
+          "test": "Health Check",
+          "success": true,
+          "details": "Status: ok",
+          "timestamp": "2025-08-05T00:43:58.491586"
+        },
+        {
+          "component": "Beeminder",
+          "test": "Goals Retrieval",
+          "success": true,
+          "details": "Found 9 goals",
+          "timestamp": "2025-08-05T00:43:59.137452"
+        },
+        {
+          "component": "Beeminder",
+          "test": "Emergency Detection",
+          "success": true,
+          "details": "Found 0 emergencies",
+          "timestamp": "2025-08-05T00:43:59.755084"
+        },
+        {
+          "component": "Beeminder",
+          "test": "Emergency Summary",
+          "success": true,
+          "details": "Summary: \u2705 All Beeminder goals are safe...",
+          "timestamp": "2025-08-05T00:44:00.370084"
+        }
+      ]
+    },
+    "Claude Monitor": {
+      "passed": 3,
+      "failed": 1,
+      "tests": [
+        {
+          "component": "Claude Monitor",
+          "test": "Health Check",
+          "success": false,
+          "details": "Status: not_configured",
+          "timestamp": "2025-08-05T00:44:00.379741"
+        },
+        {
+          "component": "Claude Monitor",
+          "test": "Usage Retrieval",
+          "success": true,
+          "details": "Credits remaining: $1.00",
+          "timestamp": "2025-08-05T00:44:00.381357"
+        },
+        {
+          "component": "Claude Monitor",
+          "test": "Usage Summary",
+          "success": true,
+          "details": "Status: \ud83d\udea8 CRITICAL",
+          "timestamp": "2025-08-05T00:44:00.381407"
+        },
+        {
+          "component": "Claude Monitor",
+          "test": "Usage Recording",
+          "success": true,
+          "details": "Recorded $0.01 test cost",
+          "timestamp": "2025-08-05T00:44:01.101637"
+        }
+      ]
+    },
+    "Twilio": {
+      "passed": 2,
+      "failed": 0,
+      "tests": [
+        {
+          "component": "Twilio",
+          "test": "Configuration Check",
+          "success": true,
+          "details": "All required variables present",
+          "timestamp": "2025-08-05T00:44:01.102204"
+        },
+        {
+          "component": "Twilio",
+          "test": "SMS Capability",
+          "success": true,
+          "details": "Ready to send (test disabled to avoid spam)",
+          "timestamp": "2025-08-05T00:44:01.102209"
+        }
+      ]
+    },
+    "Server": {
+      "passed": 4,
+      "failed": 2,
+      "tests": [
+        {
+          "component": "Server",
+          "test": "Health Check",
+          "success": true,
+          "details": "Status: healthy",
+          "timestamp": "2025-08-05T00:44:01.683924"
+        },
+        {
+          "component": "Server",
+          "test": "Mecris Service",
+          "success": true,
+          "details": "Status: ok",
+          "timestamp": "2025-08-05T00:44:01.683936"
+        },
+        {
+          "component": "Server",
+          "test": "Obsidian Service",
+          "success": false,
+          "details": "Status: unreachable",
+          "timestamp": "2025-08-05T00:44:01.683940"
+        },
+        {
+          "component": "Server",
+          "test": "Beeminder Service",
+          "success": true,
+          "details": "Status: ok",
+          "timestamp": "2025-08-05T00:44:01.683944"
+        },
+        {
+          "component": "Server",
+          "test": "Usage_Tracker Service",
+          "success": true,
+          "details": "Status: ok",
+          "timestamp": "2025-08-05T00:44:01.683946"
+        },
+        {
+          "component": "Server",
+          "test": "Twilio Service",
+          "success": false,
+          "details": "Status: configured",
+          "timestamp": "2025-08-05T00:44:01.683949"
+        }
+      ]
+    },
+    "API": {
+      "passed": 7,
+      "failed": 1,
+      "tests": [
+        {
+          "component": "API",
+          "test": "Root Endpoint",
+          "success": true,
+          "details": "HTTP 200",
+          "timestamp": "2025-08-05T00:44:01.684979"
+        },
+        {
+          "component": "API",
+          "test": "Health Check",
+          "success": true,
+          "details": "HTTP 200",
+          "timestamp": "2025-08-05T00:44:02.137905"
+        },
+        {
+          "component": "API",
+          "test": "Goals API",
+          "success": true,
+          "details": "HTTP 200",
+          "timestamp": "2025-08-05T00:44:02.140372"
+        },
+        {
+          "component": "API",
+          "test": "Todos API",
+          "success": true,
+          "details": "HTTP 200",
+          "timestamp": "2025-08-05T00:44:02.145104"
+        },
+        {
+          "component": "API",
+          "test": "Beeminder Status",
+          "success": true,
+          "details": "HTTP 200",
+          "timestamp": "2025-08-05T00:44:03.504989"
+        },
+        {
+          "component": "API",
+          "test": "Beeminder Emergency",
+          "success": true,
+          "details": "HTTP 200",
+          "timestamp": "2025-08-05T00:44:04.203570"
+        },
+        {
+          "component": "API",
+          "test": "Budget Status",
+          "success": false,
+          "details": "HTTP 404",
+          "timestamp": "2025-08-05T00:44:04.204392"
+        },
+        {
+          "component": "API",
+          "test": "Narrator Context",
+          "success": true,
+          "details": "HTTP 200",
+          "timestamp": "2025-08-05T00:44:04.208016"
+        }
+      ]
+    }
+  },
+  "failed_tests": [
+    {
+      "component": "Obsidian",
+      "test": "Health Check",
+      "success": false,
+      "details": "Status: unreachable",
+      "timestamp": "2025-08-05T00:43:57.842794"
+    },
+    {
+      "component": "Claude Monitor",
+      "test": "Health Check",
+      "success": false,
+      "details": "Status: not_configured",
+      "timestamp": "2025-08-05T00:44:00.379741"
+    },
+    {
+      "component": "Server",
+      "test": "Obsidian Service",
+      "success": false,
+      "details": "Status: unreachable",
+      "timestamp": "2025-08-05T00:44:01.683940"
+    },
+    {
+      "component": "Server",
+      "test": "Twilio Service",
+      "success": false,
+      "details": "Status: configured",
+      "timestamp": "2025-08-05T00:44:01.683949"
+    },
+    {
+      "component": "API",
+      "test": "Budget Status",
+      "success": false,
+      "details": "HTTP 404",
+      "timestamp": "2025-08-05T00:44:04.204392"
+    }
+  ],
+  "recommendations": [
+    "\u2757 Health check failures detected - verify service configurations",
+    "\u2757 API endpoint failures - check server startup and dependencies",
+    "\u2699\ufe0f Configuration incomplete - review .env file and service credentials"
+  ]
+}
