@@ -48,6 +48,14 @@ daily_activity_cache = {
     # }
 }
 
+# PHASE 2: Beeminder goals cache - 30 minute TTL for goal data
+beeminder_goals_cache = {
+    # "data": [...],
+    # "last_check": datetime.now(),
+    # "cache_expires": datetime.now() + timedelta(minutes=30),
+    # "is_stale": False
+}
+
 # Response models
 class GoalResponse(BaseModel):
     goals: List[Dict[str, Any]]
@@ -97,6 +105,45 @@ class BudgetResponse(BaseModel):
     budget_health: str
 
 # Cache helper functions
+async def get_cached_beeminder_goals() -> List[Dict[str, Any]]:
+    """Get Beeminder goals with 30-minute cache to improve narrator context performance"""
+    now = datetime.now()
+    
+    # Check if we have valid cached data
+    if ("data" in beeminder_goals_cache and 
+        "cache_expires" in beeminder_goals_cache and 
+        now < beeminder_goals_cache["cache_expires"]):
+        logger.info("Using cached Beeminder goals")
+        beeminder_goals_cache["is_stale"] = False
+        return beeminder_goals_cache["data"]
+    
+    # Cache expired or doesn't exist - fetch from Beeminder API
+    try:
+        logger.info("Fetching fresh Beeminder goals from API")
+        goals_data = await beeminder_client.get_all_goals()
+        
+        # Update cache with 30-minute expiration
+        beeminder_goals_cache.update({
+            "data": goals_data,
+            "last_check": now,
+            "cache_expires": now + timedelta(minutes=30),
+            "is_stale": False
+        })
+        
+        return goals_data
+        
+    except Exception as e:
+        logger.error(f"Failed to fetch Beeminder goals: {e}")
+        # Return cached data if available, even if expired (mark as stale)
+        if "data" in beeminder_goals_cache and beeminder_goals_cache["data"]:
+            logger.warning("Using stale Beeminder goals cache due to API error")
+            beeminder_goals_cache["is_stale"] = True
+            return beeminder_goals_cache["data"]
+        else:
+            # No cache and API failed - return empty list
+            logger.error("No cached goals available and API failed")
+            return []
+
 async def get_cached_daily_activity(goal_slug: str = "bike") -> Dict[str, Any]:
     """Get daily activity status with 1-hour cache to respect API limits"""
     now = datetime.now()
@@ -526,6 +573,63 @@ async def send_usage_alert(background_tasks: BackgroundTasks):
         logger.error(f"Failed to send usage alert: {e}")
         raise HTTPException(status_code=500, detail="Failed to process usage alert")
 
+# PHASE 2: Cache management endpoints
+@app.get("/cache/status")
+async def get_cache_status():
+    """Get cache status for monitoring"""
+    now = datetime.now()
+    
+    # Daily activity cache status
+    daily_cache_status = {}
+    for goal_slug, cache_data in daily_activity_cache.items():
+        daily_cache_status[goal_slug] = {
+            "cached": True,
+            "expires": cache_data["cache_expires"].isoformat(),
+            "valid": now < cache_data["cache_expires"],
+            "age_minutes": (now - cache_data["last_check"]).total_seconds() / 60
+        }
+    
+    # Beeminder goals cache status
+    goals_cache_status = {}
+    if "data" in beeminder_goals_cache:
+        goals_cache_status = {
+            "cached": True,
+            "count": len(beeminder_goals_cache["data"]),
+            "expires": beeminder_goals_cache["cache_expires"].isoformat(),
+            "valid": now < beeminder_goals_cache["cache_expires"],
+            "is_stale": beeminder_goals_cache.get("is_stale", False),
+            "age_minutes": (now - beeminder_goals_cache["last_check"]).total_seconds() / 60
+        }
+    else:
+        goals_cache_status = {"cached": False}
+    
+    return {
+        "cache_status": {
+            "daily_activity": daily_cache_status,
+            "beeminder_goals": goals_cache_status
+        },
+        "timestamp": now.isoformat()
+    }
+
+@app.post("/cache/clear")
+async def clear_cache(cache_type: str = "all"):
+    """Clear specific cache or all caches"""
+    cleared = []
+    
+    if cache_type in ["all", "daily_activity"]:
+        daily_activity_cache.clear()
+        cleared.append("daily_activity")
+    
+    if cache_type in ["all", "beeminder_goals"]:
+        beeminder_goals_cache.clear()
+        cleared.append("beeminder_goals")
+    
+    return {
+        "cleared": cleared,
+        "message": f"Cache cleared: {', '.join(cleared)}",
+        "timestamp": datetime.now().isoformat()
+    }
+
 # Unified narrator context
 @app.get("/narrator/context", response_model=NarratorContextResponse)
 async def get_narrator_context():
@@ -538,8 +642,8 @@ async def get_narrator_context():
             todos = await obsidian_client.get_todos()  # Keep trying Obsidian for todos
         except:
             todos = []  # Fallback if Obsidian not available
-        # PHASE 1 OPTIMIZATION: Single Beeminder API call, derive all views
-        beeminder_goals = await beeminder_client.get_all_goals()
+        # PHASE 2 OPTIMIZATION: Cached Beeminder goals + derived views
+        beeminder_goals = await get_cached_beeminder_goals()
         emergencies = await beeminder_client.get_emergencies(beeminder_goals)
         goal_runway = await beeminder_client.get_runway_summary(limit=4, all_goals=beeminder_goals)
         
