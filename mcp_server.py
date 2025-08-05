@@ -846,8 +846,9 @@ async def check_reminder_needed():
 async def send_reminder_message(message_data: Dict[str, Any]):
     """Send reminder message via WhatsApp/SMS with no-spam protection"""
     try:
-        # Import Twilio sender
-        from twilio_sender import send_message, send_sms
+        # Import Twilio sender and consent manager
+        from twilio_sender import smart_send_message
+        from sms_consent_manager import consent_manager
         
         message = message_data.get("message", "")
         message_type = message_data.get("type", "walk_reminder")
@@ -855,6 +856,18 @@ async def send_reminder_message(message_data: Dict[str, Any]):
         
         if not message:
             return {"sent": False, "error": "No message provided"}
+        
+        # Check SMS consent (for A2P compliance)
+        recipient_phone = os.getenv('TWILIO_TO_NUMBER')
+        if recipient_phone:
+            consent_check = consent_manager.can_send_message(recipient_phone, message_type)
+            if not consent_check["can_send"]:
+                return {
+                    "sent": False,
+                    "error": f"Consent check failed: {consent_check['reason']}",
+                    "message_type": message_type,
+                    "consent_status": consent_check
+                }
         
         # No-spam protection: Check if we've already sent this type today
         from datetime import date
@@ -883,21 +896,10 @@ async def send_reminder_message(message_data: Dict[str, Any]):
                     "last_sent": daily_messages[today][message_type]
                 }
         
-        # Try WhatsApp first, fall back to SMS
-        success = False
-        delivery_method = None
+        # Use smart delivery system with fallbacks
+        delivery_result = smart_send_message(message)
         
-        # Attempt WhatsApp delivery
-        if send_message(message):
-            success = True
-            delivery_method = "whatsapp"
-            logger.info(f"WhatsApp message sent: {message}")
-        elif send_sms(message):
-            success = True
-            delivery_method = "sms"
-            logger.info(f"SMS fallback sent: {message}")
-        
-        if success:
+        if delivery_result["sent"]:
             # Log successful send to prevent spam
             if today not in daily_messages:
                 daily_messages[today] = {}
@@ -905,7 +907,8 @@ async def send_reminder_message(message_data: Dict[str, Any]):
                 "timestamp": datetime.now().isoformat(),
                 "message": message,
                 "tier": tier,
-                "delivery_method": delivery_method
+                "delivery_method": delivery_result["method"],
+                "attempts": delivery_result["attempts"]
             }
             
             # Save updated log
@@ -915,18 +918,29 @@ async def send_reminder_message(message_data: Dict[str, Any]):
             except Exception as e:
                 logger.warning(f"Failed to update no-spam log: {e}")
             
+            # Log message for A2P compliance audit trail
+            if recipient_phone:
+                consent_manager.log_message_sent(
+                    recipient_phone, 
+                    message, 
+                    message_type, 
+                    delivery_result["method"]
+                )
+            
             return {
                 "sent": True,
-                "delivery_method": delivery_method,
+                "delivery_method": delivery_result["method"],
                 "message_type": message_type,
                 "tier": tier,
-                "timestamp": datetime.now().isoformat()
+                "timestamp": datetime.now().isoformat(),
+                "delivery_details": delivery_result
             }
         else:
             return {
                 "sent": False,
-                "error": "Both WhatsApp and SMS delivery failed",
-                "message_type": message_type
+                "error": "All delivery methods failed",
+                "message_type": message_type,
+                "delivery_details": delivery_result
             }
             
     except Exception as e:
@@ -964,6 +978,98 @@ async def trigger_reminder_check():
     except Exception as e:
         logger.error(f"Failed to trigger reminder: {e}")
         return {"triggered": False, "error": str(e)}
+
+# SMS Consent Management Endpoints (A2P Compliance)
+@app.post("/sms-consent/opt-in")
+async def opt_in_sms(consent_data: Dict[str, Any]):
+    """Handle SMS opt-in for A2P compliance"""
+    try:
+        from sms_consent_manager import consent_manager
+        
+        phone_number = consent_data.get("phone_number")
+        consent_method = consent_data.get("method", "web")
+        message_types = consent_data.get("message_types", ["walk_reminder", "budget_alert", "beeminder_emergency"])
+        
+        if not phone_number:
+            return {"success": False, "error": "Phone number required"}
+        
+        result = consent_manager.opt_in_user(phone_number, consent_method, message_types)
+        
+        return {
+            "success": True,
+            "message": "Successfully opted in for SMS reminders",
+            "consent_record": result,
+            "timestamp": datetime.now().isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to process SMS opt-in: {e}")
+        return {"success": False, "error": str(e)}
+
+@app.post("/sms-consent/opt-out")
+async def opt_out_sms(opt_out_data: Dict[str, Any]):
+    """Handle SMS opt-out for A2P compliance"""
+    try:
+        from sms_consent_manager import consent_manager
+        
+        phone_number = opt_out_data.get("phone_number")
+        method = opt_out_data.get("method", "web")
+        
+        if not phone_number:
+            return {"success": False, "error": "Phone number required"}
+        
+        result = consent_manager.opt_out_user(phone_number, method)
+        
+        return {
+            "success": result,
+            "message": "Successfully opted out of SMS reminders" if result else "User not found",
+            "timestamp": datetime.now().isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to process SMS opt-out: {e}")
+        return {"success": False, "error": str(e)}
+
+@app.get("/sms-consent/status/{phone_number}")
+async def get_consent_status(phone_number: str):
+    """Get consent status for a phone number"""
+    try:
+        from sms_consent_manager import consent_manager
+        
+        preferences = consent_manager.get_user_preferences(phone_number)
+        
+        if not preferences:
+            return {"found": False, "message": "User not found in consent database"}
+        
+        return {
+            "found": True,
+            "opted_in": preferences.get("opted_in", False),
+            "message_types": preferences.get("message_types", []),
+            "preferences": preferences.get("preferences", {}),
+            "last_updated": preferences.get("last_updated")
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to get consent status: {e}")
+        return {"found": False, "error": str(e)}
+
+@app.get("/sms-consent/summary")
+async def get_consent_summary():
+    """Get consent summary for monitoring and compliance"""
+    try:
+        from sms_consent_manager import consent_manager
+        
+        summary = consent_manager.get_consent_summary()
+        
+        return {
+            "summary": summary,
+            "timestamp": datetime.now().isoformat(),
+            "compliance_status": "active"
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to get consent summary: {e}")
+        return {"error": str(e)}
 
 if __name__ == "__main__":
     import uvicorn
