@@ -727,6 +727,350 @@ async def log_session(session_data: Dict[str, Any]):
         logger.error(f"Failed to log session: {e}")
         raise HTTPException(status_code=500, detail="Failed to log session")
 
+# Intelligent Reminder System
+@app.get("/intelligent-reminder/check")
+async def check_reminder_needed():
+    """Check if any reminders should be sent - works without Claude credits"""
+    try:
+        # Get full MCP context without consuming Claude credits
+        context_response = await get_narrator_context()
+        context = context_response if isinstance(context_response, dict) else {}
+        
+        current_time = datetime.now()
+        current_hour = current_time.hour
+        
+        # Budget tier assessment from context
+        budget_status = context.get("budget_status", {})
+        remaining_budget = budget_status.get("remaining_budget", 0)
+        
+        # Determine messaging tier based on budget
+        if remaining_budget > 2.0:
+            tier = "enhanced"  # Claude available for sophisticated analysis
+        elif remaining_budget > 0.5:
+            tier = "smart_template"  # Claude constrained, use templates with full context
+        else:
+            tier = "base_mode"  # Claude exhausted, basic reminders only
+        
+        # Walk status from MCP context
+        daily_walk_status = context.get("daily_walk_status", {})
+        walk_needed = daily_walk_status.get("status") == "needed"
+        
+        # Base mode: Only walk reminders, 2-5 PM window
+        if tier == "base_mode":
+            if walk_needed and 14 <= current_hour <= 17:
+                import random
+                messages = [
+                    "🚶‍♂️ Walk reminder - dogs are waiting!",
+                    "🐕 Time for that daily walk",
+                    "🚶‍♂️ No walk logged yet today - time to move!"
+                ]
+                return {
+                    "should_send": True,
+                    "tier": tier,
+                    "message": random.choice(messages),
+                    "type": "walk_reminder",
+                    "budget_remaining": remaining_budget
+                }
+            return {"should_send": False, "tier": tier, "reason": "No walk needed or outside time window"}
+        
+        # Smart template mode: Full context analysis with templates
+        elif tier == "smart_template":
+            # Primary: Walk reminders (afternoon window)
+            if walk_needed and 14 <= current_hour <= 17:
+                # Get bike goal info for context
+                goal_runway = context.get("goal_runway", [])
+                bike_goal = next((g for g in goal_runway if "bike" in g.get("slug", "").lower()), None)
+                
+                if bike_goal:
+                    safebuf = bike_goal.get("safebuf", 0)
+                    message = f"🚶‍♂️ No walk logged yet today - your bike goal needs progress ({safebuf} days safe) and the dogs need exercise!"
+                else:
+                    message = "🚶‍♂️ Walk reminder - no activity logged today and the dogs are waiting!"
+                
+                return {
+                    "should_send": True,
+                    "tier": tier,
+                    "message": message,
+                    "type": "walk_reminder",
+                    "budget_remaining": remaining_budget
+                }
+            
+            # Secondary: Check for other urgent items (budget warnings, etc.)
+            urgent_items = context.get("urgent_items", [])
+            if urgent_items and 9 <= current_hour <= 17:
+                budget_critical = any("BUDGET CRITICAL" in item for item in urgent_items)
+                if budget_critical:
+                    return {
+                        "should_send": True,
+                        "tier": tier,
+                        "message": f"💰 Budget alert: ${remaining_budget:.2f} remaining. Focus mode activated.",
+                        "type": "budget_warning",
+                        "budget_remaining": remaining_budget
+                    }
+            
+            return {"should_send": False, "tier": tier, "reason": "No urgent items in appropriate time window"}
+        
+        # Enhanced mode: Would use Claude for sophisticated analysis
+        # For now, fall back to smart template behavior
+        else:  # tier == "enhanced"
+            # TODO: Implement Claude-enhanced decision making
+            # For now, use smart template logic
+            if walk_needed and 14 <= current_hour <= 17:
+                return {
+                    "should_send": True,
+                    "tier": "smart_template",  # Fallback for now
+                    "message": "🚶‍♂️ Perfect timing for a walk! No activity logged today and the dogs need their exercise.",
+                    "type": "walk_reminder",
+                    "budget_remaining": remaining_budget,
+                    "note": "Enhanced mode not yet implemented, using smart template"
+                }
+            
+            return {"should_send": False, "tier": tier, "reason": "No walk needed or outside time window"}
+            
+    except Exception as e:
+        logger.error(f"Failed to check reminder status: {e}")
+        # Graceful degradation - return a basic walk reminder if it's afternoon
+        current_hour = datetime.now().hour
+        if 14 <= current_hour <= 17:
+            return {
+                "should_send": True,
+                "tier": "emergency_fallback",
+                "message": "🚶‍♂️ Walk reminder - system degraded but dogs still need walking!",
+                "type": "walk_reminder",
+                "error": str(e)
+            }
+        
+        return {"should_send": False, "error": str(e)}
+
+@app.post("/intelligent-reminder/send")
+async def send_reminder_message(message_data: Dict[str, Any]):
+    """Send reminder message via WhatsApp/SMS with no-spam protection"""
+    try:
+        # Import Twilio sender and consent manager
+        from twilio_sender import smart_send_message
+        from sms_consent_manager import consent_manager
+        
+        message = message_data.get("message", "")
+        message_type = message_data.get("type", "walk_reminder")
+        tier = message_data.get("tier", "base_mode")
+        
+        if not message:
+            return {"sent": False, "error": "No message provided"}
+        
+        # Check SMS consent (for A2P compliance)
+        recipient_phone = os.getenv('TWILIO_TO_NUMBER')
+        if recipient_phone:
+            consent_check = consent_manager.can_send_message(recipient_phone, message_type)
+            if not consent_check["can_send"]:
+                return {
+                    "sent": False,
+                    "error": f"Consent check failed: {consent_check['reason']}",
+                    "message_type": message_type,
+                    "consent_status": consent_check
+                }
+        
+        # No-spam protection: Check if we've already sent this type today
+        from datetime import date
+        import json
+        
+        # Simple file-based tracking for no-spam
+        spam_file = "/tmp/mecris_daily_messages.json"
+        today = str(date.today())
+        
+        # Load existing message log
+        daily_messages = {}
+        try:
+            if os.path.exists(spam_file):
+                with open(spam_file, 'r') as f:
+                    daily_messages = json.load(f)
+        except:
+            daily_messages = {}
+        
+        # Check if we've already sent this type today
+        if today in daily_messages:
+            if message_type in daily_messages[today]:
+                return {
+                    "sent": False, 
+                    "reason": "Already sent this message type today",
+                    "message_type": message_type,
+                    "last_sent": daily_messages[today][message_type]
+                }
+        
+        # Use smart delivery system with fallbacks
+        delivery_result = smart_send_message(message)
+        
+        if delivery_result["sent"]:
+            # Log successful send to prevent spam
+            if today not in daily_messages:
+                daily_messages[today] = {}
+            daily_messages[today][message_type] = {
+                "timestamp": datetime.now().isoformat(),
+                "message": message,
+                "tier": tier,
+                "delivery_method": delivery_result["method"],
+                "attempts": delivery_result["attempts"]
+            }
+            
+            # Save updated log
+            try:
+                with open(spam_file, 'w') as f:
+                    json.dump(daily_messages, f)
+            except Exception as e:
+                logger.warning(f"Failed to update no-spam log: {e}")
+            
+            # Log message for A2P compliance audit trail
+            if recipient_phone:
+                consent_manager.log_message_sent(
+                    recipient_phone, 
+                    message, 
+                    message_type, 
+                    delivery_result["method"]
+                )
+            
+            return {
+                "sent": True,
+                "delivery_method": delivery_result["method"],
+                "message_type": message_type,
+                "tier": tier,
+                "timestamp": datetime.now().isoformat(),
+                "delivery_details": delivery_result
+            }
+        else:
+            return {
+                "sent": False,
+                "error": "All delivery methods failed",
+                "message_type": message_type,
+                "delivery_details": delivery_result
+            }
+            
+    except Exception as e:
+        logger.error(f"Failed to send reminder message: {e}")
+        return {"sent": False, "error": str(e)}
+
+@app.post("/intelligent-reminder/trigger")
+async def trigger_reminder_check():
+    """Check for needed reminders and send them - complete workflow"""
+    try:
+        # Check if reminder is needed
+        check_result = await check_reminder_needed()
+        
+        if not check_result.get("should_send", False):
+            return {
+                "triggered": False,
+                "reason": check_result.get("reason", "No reminder needed"),
+                "tier": check_result.get("tier", "unknown")
+            }
+        
+        # Send the message
+        send_result = await send_reminder_message({
+            "message": check_result.get("message", ""),
+            "type": check_result.get("type", "walk_reminder"),
+            "tier": check_result.get("tier", "base_mode")
+        })
+        
+        return {
+            "triggered": True,
+            "check_result": check_result,
+            "send_result": send_result,
+            "timestamp": datetime.now().isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to trigger reminder: {e}")
+        return {"triggered": False, "error": str(e)}
+
+# SMS Consent Management Endpoints (A2P Compliance)
+@app.post("/sms-consent/opt-in")
+async def opt_in_sms(consent_data: Dict[str, Any]):
+    """Handle SMS opt-in for A2P compliance"""
+    try:
+        from sms_consent_manager import consent_manager
+        
+        phone_number = consent_data.get("phone_number")
+        consent_method = consent_data.get("method", "web")
+        message_types = consent_data.get("message_types", ["walk_reminder", "budget_alert", "beeminder_emergency"])
+        
+        if not phone_number:
+            return {"success": False, "error": "Phone number required"}
+        
+        result = consent_manager.opt_in_user(phone_number, consent_method, message_types)
+        
+        return {
+            "success": True,
+            "message": "Successfully opted in for SMS reminders",
+            "consent_record": result,
+            "timestamp": datetime.now().isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to process SMS opt-in: {e}")
+        return {"success": False, "error": str(e)}
+
+@app.post("/sms-consent/opt-out")
+async def opt_out_sms(opt_out_data: Dict[str, Any]):
+    """Handle SMS opt-out for A2P compliance"""
+    try:
+        from sms_consent_manager import consent_manager
+        
+        phone_number = opt_out_data.get("phone_number")
+        method = opt_out_data.get("method", "web")
+        
+        if not phone_number:
+            return {"success": False, "error": "Phone number required"}
+        
+        result = consent_manager.opt_out_user(phone_number, method)
+        
+        return {
+            "success": result,
+            "message": "Successfully opted out of SMS reminders" if result else "User not found",
+            "timestamp": datetime.now().isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to process SMS opt-out: {e}")
+        return {"success": False, "error": str(e)}
+
+@app.get("/sms-consent/status/{phone_number}")
+async def get_consent_status(phone_number: str):
+    """Get consent status for a phone number"""
+    try:
+        from sms_consent_manager import consent_manager
+        
+        preferences = consent_manager.get_user_preferences(phone_number)
+        
+        if not preferences:
+            return {"found": False, "message": "User not found in consent database"}
+        
+        return {
+            "found": True,
+            "opted_in": preferences.get("opted_in", False),
+            "message_types": preferences.get("message_types", []),
+            "preferences": preferences.get("preferences", {}),
+            "last_updated": preferences.get("last_updated")
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to get consent status: {e}")
+        return {"found": False, "error": str(e)}
+
+@app.get("/sms-consent/summary")
+async def get_consent_summary():
+    """Get consent summary for monitoring and compliance"""
+    try:
+        from sms_consent_manager import consent_manager
+        
+        summary = consent_manager.get_consent_summary()
+        
+        return {
+            "summary": summary,
+            "timestamp": datetime.now().isoformat(),
+            "compliance_status": "active"
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to get consent summary: {e}")
+        return {"error": str(e)}
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(

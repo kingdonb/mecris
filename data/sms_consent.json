@@ -1,0 +1,79 @@
+{
+  "users": {
+    "1234567890": {
+      "phone_number": "+1234567890",
+      "opted_in": true,
+      "opt_in_date": "2025-08-04T23:59:00.965094",
+      "opt_in_method": "test",
+      "message_types": [
+        "walk_reminder",
+        "budget_alert"
+      ],
+      "preferences": {
+        "time_window_start": 14,
+        "time_window_end": 17,
+        "max_messages_per_day": 3,
+        "enabled_days": [
+          "monday",
+          "tuesday",
+          "wednesday",
+          "thursday",
+          "friday",
+          "saturday",
+          "sunday"
+        ]
+      },
+      "message_history": [
+        {
+          "timestamp": "2025-08-04T23:59:00.965289",
+          "date": "2025-08-04",
+          "message": "Test walk reminder",
+          "message_type": "walk_reminder",
+          "delivery_method": "console"
+        }
+      ],
+      "last_updated": "2025-08-04T23:59:00.965105"
+    },
+    "15852378622": {
+      "phone_number": "+15852378622",
+      "opted_in": true,
+      "opt_in_date": "2025-08-05T00:07:17.100171",
+      "opt_in_method": "system_update",
+      "message_types": [
+        "walk_reminder",
+        "budget_alert",
+        "beeminder_emergency",
+        "system_alert",
+        "test"
+      ],
+      "preferences": {
+        "time_window_start": 0,
+        "time_window_end": 23,
+        "max_messages_per_day": 10,
+        "enabled_days": [
+          "monday",
+          "tuesday",
+          "wednesday",
+          "thursday",
+          "friday",
+          "saturday",
+          "sunday"
+        ]
+      },
+      "message_history": [
+        {
+          "timestamp": "2025-08-05T00:08:06.406683",
+          "date": "2025-08-05",
+          "message": "\ud83e\udde0 Mecris WhatsApp delivery confirmed\\! Consent system working perfectly.",
+          "message_type": "system_alert",
+          "delivery_method": "console"
+        }
+      ],
+      "last_updated": "2025-08-05T00:07:17.100634"
+    }
+  },
+  "global_settings": {
+    "created": "2025-08-04T23:58:43.601998",
+    "version": "1.0"
+  }
+}
