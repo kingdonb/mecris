@@ -93,11 +93,11 @@ class UsageTracker:
             # Initialize budget if not exists
             cursor = conn.execute("SELECT COUNT(*) FROM budget_tracking")
             if cursor.fetchone()[0] == 0:
-                # Default budget from your context: $13.92 remaining until Aug 5
+                # Default budget from your context: $24.95 remaining until September 30
                 conn.execute("""
                     INSERT INTO budget_tracking 
                     (id, total_budget, remaining_budget, budget_period_start, budget_period_end, last_updated)
-                    VALUES (1, 20.26, 13.92, '2025-08-01', '2025-08-05', ?)
+                    VALUES (1, 24.96, 24.95, '2025-08-06', '2025-09-30', ?)
                 """, (datetime.now().isoformat(),))
             
             # Initialize mock goals if not exists
