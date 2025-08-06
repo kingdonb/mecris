@@ -45,7 +45,7 @@
     ]
   },
   "health_check_url": "http://localhost:8000/health",
-  "startup_command": "python3 start_server.py",
+  "startup_command": "make restart",
   "working_directory": "/Users/yebyen/w/mecris",
   "logging": {
     "level": "INFO",
