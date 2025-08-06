@@ -3,7 +3,7 @@
 
 REMAINING=${1}
 TOTAL=${2}
-PERIOD_END="2025-08-05"  # Update this for your billing period
+PERIOD_END="2025-09-30"  # Update this for your billing period
 
 if [ -z "$REMAINING" ]; then
     echo "Usage: $0 <remaining_credits> [total_credits]"
