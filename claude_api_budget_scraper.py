@@ -162,8 +162,8 @@ class ClaudeConsoleScraper:
             total_credits=25.0,
             used_credits=6.79,
             remaining_credits=18.21,
-            billing_period_start="2025-08-01",
-            billing_period_end="2025-08-05",
+            billing_period_start="2025-08-06",
+            billing_period_end="2025-09-30",
             last_updated=datetime.now()
         )
         
@@ -214,8 +214,8 @@ class ClaudeConsoleScraper:
                         total_credits=total,
                         used_credits=used,
                         remaining_credits=total - used,
-                        billing_period_start="2025-08-01",  # Extract from page
-                        billing_period_end="2025-08-05",    # Extract from page
+                        billing_period_start="2025-08-06",  # Extract from page
+                        billing_period_end="2025-09-30",    # Extract from page
                         last_updated=datetime.now()
                     )
                     
@@ -301,7 +301,7 @@ if __name__ == "__main__":
         
         # Test manual update
         print("\n🔧 Testing manual balance update...")
-        manual_balance = scraper.set_manual_balance(15.50, 25.0, "2025-08-05")
+        manual_balance = scraper.set_manual_balance(15.50, 25.0, "2025-08-06")
         print(f"✅ Manual balance set: ${manual_balance.remaining_credits:.2f} remaining")
     
     asyncio.run(test_scraper())
