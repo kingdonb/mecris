@@ -1,0 +1,54 @@
+{
+  "name": "mecris",
+  "description": "Mecris MCP Server - Personal LLM Accountability System",
+  "version": "0.1.0",
+  "transport": {
+    "type": "http",
+    "host": "localhost",
+    "port": 8000
+  },
+  "capabilities": {
+    "tools": true,
+    "resources": false,
+    "sampling": false
+  },
+  "manifest_url": "http://localhost:8000/mcp/manifest",
+  "tool_call_url": "http://localhost:8000/mcp/call",
+  "allowedTools": [
+    "get_narrator_context",
+    "get_beeminder_status", 
+    "get_budget_status",
+    "record_usage_session",
+    "send_beeminder_alert",
+    "get_daily_activity",
+    "add_goal",
+    "complete_goal",
+    "trigger_reminder_check",
+    "update_budget"
+  ],
+  "security": {
+    "trusted": true,
+    "sandbox": false,
+    "network_access": true,
+    "file_access": false
+  },
+  "environment": {
+    "required_env_vars": [
+      "OBSIDIAN_VAULT_PATH",
+      "BEEMINDER_USERNAME",
+      "BEEMINDER_AUTH_TOKEN"
+    ],
+    "optional_env_vars": [
+      "TWILIO_ACCOUNT_SID",
+      "TWILIO_AUTH_TOKEN",
+      "TWILIO_TO_NUMBER"
+    ]
+  },
+  "health_check_url": "http://localhost:8000/health",
+  "startup_command": "python3 start_server.py",
+  "working_directory": "/Users/yebyen/w/mecris",
+  "logging": {
+    "level": "INFO",
+    "file": "mecris_mcp.log"
+  }
+}

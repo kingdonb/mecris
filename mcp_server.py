@@ -203,6 +203,292 @@ async def get_cached_daily_activity(goal_slug: str = "bike") -> Dict[str, Any]:
                 "error": str(e)
             }
 
+# MCP Manifest endpoint - enables proper MCP compliance
+@app.get("/mcp/manifest")
+async def get_mcp_manifest():
+    """MCP-compliant manifest endpoint describing available tools"""
+    return {
+        "version": "1.0",
+        "server": {
+            "name": "mecris",
+            "description": "Personal LLM Accountability System - Machine Context Provider",
+            "version": "0.1.0"
+        },
+        "tools": [
+            {
+                "name": "get_narrator_context",
+                "description": "Get unified strategic context with goals, budget, and recommendations",
+                "parameters": {
+                    "type": "object",
+                    "properties": {},
+                    "required": []
+                },
+                "returns": {
+                    "type": "object",
+                    "properties": {
+                        "summary": {"type": "string"},
+                        "goals_status": {"type": "object"},
+                        "urgent_items": {"type": "array", "items": {"type": "string"}},
+                        "beeminder_alerts": {"type": "array", "items": {"type": "string"}},
+                        "budget_status": {"type": "object"},
+                        "recommendations": {"type": "array", "items": {"type": "string"}},
+                        "last_updated": {"type": "string", "format": "date-time"}
+                    }
+                }
+            },
+            {
+                "name": "get_beeminder_status",
+                "description": "Get Beeminder goal portfolio status with risk assessment",
+                "parameters": {
+                    "type": "object",
+                    "properties": {},
+                    "required": []
+                },
+                "returns": {
+                    "type": "object",
+                    "properties": {
+                        "goals": {"type": "array"},
+                        "emergencies": {"type": "array"},
+                        "safe_count": {"type": "integer"},
+                        "warning_count": {"type": "integer"},
+                        "critical_count": {"type": "integer"}
+                    }
+                }
+            },
+            {
+                "name": "get_budget_status",
+                "description": "Get current usage and budget status with days remaining",
+                "parameters": {
+                    "type": "object",
+                    "properties": {},
+                    "required": []
+                },
+                "returns": {
+                    "type": "object",
+                    "properties": {
+                        "remaining_budget": {"type": "number"},
+                        "days_remaining": {"type": "number"},
+                        "budget_health": {"type": "string"},
+                        "alerts": {"type": "array", "items": {"type": "string"}},
+                        "daily_burn_rate": {"type": "number"}
+                    }
+                }
+            },
+            {
+                "name": "record_usage_session",
+                "description": "Record Claude usage session with token counts",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "input_tokens": {"type": "integer"},
+                        "output_tokens": {"type": "integer"},
+                        "model": {"type": "string", "default": "claude-3-5-sonnet-20241022"},
+                        "session_type": {"type": "string", "default": "interactive"},
+                        "notes": {"type": "string", "default": ""}
+                    },
+                    "required": ["input_tokens", "output_tokens"]
+                },
+                "returns": {
+                    "type": "object",
+                    "properties": {
+                        "recorded": {"type": "boolean"},
+                        "estimated_cost": {"type": "number"},
+                        "updated_status": {"type": "object"}
+                    }
+                }
+            },
+            {
+                "name": "send_beeminder_alert",
+                "description": "Check for beemergencies and send SMS alerts if critical",
+                "parameters": {
+                    "type": "object",
+                    "properties": {},
+                    "required": []
+                },
+                "returns": {
+                    "type": "object",
+                    "properties": {
+                        "alert_sent": {"type": "boolean"},
+                        "critical_count": {"type": "integer"},
+                        "message": {"type": "string"}
+                    }
+                }
+            },
+            {
+                "name": "get_daily_activity",
+                "description": "Check if daily activity was logged for specified goal",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "goal_slug": {"type": "string", "default": "bike"}
+                    },
+                    "required": []
+                },
+                "returns": {
+                    "type": "object",
+                    "properties": {
+                        "activity_status": {"type": "object"},
+                        "timestamp": {"type": "string", "format": "date-time"}
+                    }
+                }
+            },
+            {
+                "name": "add_goal",
+                "description": "Add a new goal to the local database",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "title": {"type": "string"},
+                        "description": {"type": "string", "default": ""},
+                        "priority": {"type": "string", "enum": ["high", "medium", "low"], "default": "medium"},
+                        "due_date": {"type": "string", "format": "date", "default": null}
+                    },
+                    "required": ["title"]
+                },
+                "returns": {
+                    "type": "object",
+                    "properties": {
+                        "id": {"type": "integer"},
+                        "title": {"type": "string"},
+                        "created": {"type": "boolean"}
+                    }
+                }
+            },
+            {
+                "name": "complete_goal",
+                "description": "Mark a goal as completed",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "goal_id": {"type": "integer"}
+                    },
+                    "required": ["goal_id"]
+                },
+                "returns": {
+                    "type": "object",
+                    "properties": {
+                        "completed": {"type": "boolean"},
+                        "goal_id": {"type": "integer"},
+                        "message": {"type": "string"}
+                    }
+                }
+            },
+            {
+                "name": "trigger_reminder_check",
+                "description": "Check for needed reminders and send them intelligently",
+                "parameters": {
+                    "type": "object",
+                    "properties": {},
+                    "required": []
+                },
+                "returns": {
+                    "type": "object",
+                    "properties": {
+                        "triggered": {"type": "boolean"},
+                        "check_result": {"type": "object"},
+                        "send_result": {"type": "object"},
+                        "timestamp": {"type": "string", "format": "date-time"}
+                    }
+                }
+            },
+            {
+                "name": "update_budget",
+                "description": "Manually update budget information",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "remaining_budget": {"type": "number"},
+                        "total_budget": {"type": "number"},
+                        "period_end": {"type": "string", "format": "date"}
+                    },
+                    "required": ["remaining_budget"]
+                },
+                "returns": {
+                    "type": "object",
+                    "properties": {
+                        "updated": {"type": "boolean"},
+                        "budget_info": {"type": "object"},
+                        "timestamp": {"type": "string", "format": "date-time"}
+                    }
+                }
+            }
+        ]
+    }
+
+# MCP Tool invocation endpoints - proper JSON-RPC style handlers
+@app.post("/mcp/call/{tool_name}")
+async def call_mcp_tool(tool_name: str, request: Dict[str, Any]):
+    """Universal MCP tool invocation endpoint with logging"""
+    logger.info(f"MCP tool invocation: {tool_name} with params {request}")
+    
+    try:
+        # Route to appropriate handler based on tool name
+        tool_handlers = {
+            "get_narrator_context": lambda p: get_narrator_context(),
+            "get_beeminder_status": lambda p: get_beeminder_status(),
+            "get_budget_status": lambda p: get_usage_status(),
+            "record_usage_session": lambda p: record_usage_session(
+                p.get("input_tokens", 0),
+                p.get("output_tokens", 0),
+                p.get("model", "claude-3-5-sonnet-20241022"),
+                p.get("session_type", "interactive"),
+                p.get("notes", "")
+            ),
+            "send_beeminder_alert": lambda p: send_beeminder_alert(BackgroundTasks()),
+            "get_daily_activity": lambda p: get_daily_activity(p.get("goal_slug", "bike")),
+            "add_goal": lambda p: add_goal_endpoint(
+                p.get("title"),
+                p.get("description", ""),
+                p.get("priority", "medium"),
+                p.get("due_date")
+            ),
+            "complete_goal": lambda p: complete_goal_endpoint(p.get("goal_id")),
+            "trigger_reminder_check": lambda p: trigger_reminder_check(),
+            "update_budget": lambda p: update_budget(
+                p.get("remaining_budget"),
+                p.get("total_budget"),
+                p.get("period_end")
+            )
+        }
+        
+        if tool_name not in tool_handlers:
+            logger.error(f"Unknown MCP tool: {tool_name}")
+            raise HTTPException(status_code=404, detail=f"Tool '{tool_name}' not found")
+        
+        # Extract parameters from request
+        params = request.get("params", {})
+        
+        # Call the handler
+        result = await tool_handlers[tool_name](params)
+        
+        # Log successful invocation with details
+        logger.info(f"MCP tool '{tool_name}' completed successfully - result type: {type(result).__name__}")
+        
+        # Record tool usage for observability
+        try:
+            tracker = UsageTracker()
+            tracker.log_tool_invocation(tool_name, params, True, len(str(result)))
+        except Exception as log_error:
+            logger.warning(f"Failed to log tool invocation: {log_error}")
+        
+        # Return MCP-compliant response
+        return {
+            "tool": tool_name,
+            "success": True,
+            "result": result,
+            "timestamp": datetime.now().isoformat(),
+            "execution_time_ms": round((datetime.now().timestamp() - datetime.now().timestamp()) * 1000, 2)
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"MCP tool '{tool_name}' failed: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Tool invocation failed: {str(e)}"
+        )
+
 # Health check
 @app.get("/")
 async def root():
