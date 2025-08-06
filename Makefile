@@ -1,4 +1,5 @@
 .PHONY: restart stop start test test-sms test-narrator test-claude test-all
+.PHONY: daemon foreground
 
 restart: stop start
 
