@@ -117,27 +117,44 @@ main() {
     log "Activating virtual environment..."
     source "$VENV_PATH/bin/activate"
     
-    # Start server in background
-    log "Starting server process..."
-    export SKIP_HEALTH_PROMPT=true  # Skip interactive health check prompt
-    python "$PYTHON_DIR/start_server.py" >> "$LOG_FILE" 2>&1 &
-    local server_pid=$!
-    
-    # Save PID
-    echo "$server_pid" > "$PID_FILE"
-    log "Server started with PID: $server_pid"
-    
-    # Wait for health check
-    if wait_for_health; then
-        log "Mecris MCP Server is running successfully!"
-        log "Health endpoint: $HEALTH_URL"
-        log "PID file: $PID_FILE"
-        log "Log file: $LOG_FILE"
-        return 0
+    # Check for foreground mode
+    local foreground_mode=false
+    if [[ "${1:-}" == "foreground" ]]; then
+        foreground_mode=true
+        log "Starting server in foreground mode..."
     else
-        error "Server startup failed"
-        cleanup
-        return 1
+        log "Starting server in background mode..."
+    fi
+
+    # Start server 
+    export SKIP_HEALTH_PROMPT=true  # Skip interactive health check prompt
+    
+    if [ "$foreground_mode" = true ]; then
+        # Start in foreground - no background process, no PID file
+        log "Server starting in foreground (blocking)..."
+        exec python "$PYTHON_DIR/start_server.py"
+    else
+        # Start server in background
+        log "Starting server process..."
+        python "$PYTHON_DIR/start_server.py" >> "$LOG_FILE" 2>&1 &
+        local server_pid=$!
+        
+        # Save PID
+        echo "$server_pid" > "$PID_FILE"
+        log "Server started with PID: $server_pid"
+        
+        # Wait for health check
+        if wait_for_health; then
+            log "Mecris MCP Server is running successfully!"
+            log "Health endpoint: $HEALTH_URL"
+            log "PID file: $PID_FILE"
+            log "Log file: $LOG_FILE"
+            return 0
+        else
+            error "Server startup failed"
+            cleanup
+            return 1
+        fi
     fi
 }
 

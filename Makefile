@@ -8,6 +8,11 @@ stop:
 start:
 	./scripts/launch_server.sh
 
+daemon: stop foreground
+
+foreground:
+	./scripts/launch_server.sh foreground
+
 # Test targets
 test-sms:
 	@echo "🧪 Running SMS tests (mocked - no real messages sent)"
