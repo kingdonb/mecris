@@ -65,28 +65,105 @@ class MCPBridge:
                 
             elif method == "tools/list":
                 # Get tools from your HTTP endpoint
-                response = requests.get(f"{self.base_url}/mcp/manifest")
-                manifest = response.json()
-                return {
-                    "jsonrpc": "2.0",
-                    "id": request.get("id"),
-                    "result": {"tools": manifest.get("tools", [])}
-                }
+                try:
+                    response = requests.get(f"{self.base_url}/mcp/manifest", timeout=5)
+                    print(f"Manifest response status: {response.status_code}", file=sys.stderr)
+                    print(f"Manifest response content: {response.text[:200]}...", file=sys.stderr)
+                    
+                    if response.status_code != 200:
+                        raise Exception(f"HTTP {response.status_code}: {response.text}")
+                    
+                    manifest = response.json()
+                    tools = manifest.get("tools", [])
+                    
+                    # If no tools key, try to extract from a different format
+                    if not tools and isinstance(manifest, list):
+                        tools = manifest
+                    elif not tools and "allowedTools" in manifest:
+                        # Convert from your original format if needed
+                        tools = [{"name": tool, "description": f"Tool: {tool}", "inputSchema": {"type": "object", "additionalProperties": True}} for tool in manifest["allowedTools"]]
+                    
+                    print(f"Returning {len(tools)} tools", file=sys.stderr)
+                    return {
+                        "jsonrpc": "2.0",
+                        "id": request.get("id"),
+                        "result": {"tools": tools}
+                    }
+                except requests.RequestException as e:
+                    print(f"Request error: {e}", file=sys.stderr)
+                    return {
+                        "jsonrpc": "2.0",
+                        "id": request.get("id"),
+                        "error": {"code": -32603, "message": f"Failed to fetch tools: {e}"}
+                    }
+                except json.JSONDecodeError as e:
+                    print(f"JSON decode error: {e}", file=sys.stderr)
+                    print(f"Response was: {response.text}", file=sys.stderr)
+                    return {
+                        "jsonrpc": "2.0",
+                        "id": request.get("id"),
+                        "error": {"code": -32603, "message": f"Invalid JSON response: {e}"}
+                    }
                 
             elif method == "tools/call":
                 # Forward tool call to your HTTP endpoint
                 params = request.get("params", {})
-                response = requests.post(f"{self.base_url}/mcp/call", json={
-                    "tool": params.get("name"),
-                    "parameters": params.get("arguments", {})
-                })
-                result = response.json()
+                tool_name = params.get("name")
+                arguments = params.get("arguments", {})
                 
-                return {
-                    "jsonrpc": "2.0",
-                    "id": request.get("id"),
-                    "result": {"content": [{"type": "text", "text": str(result.get("result", ""))}]}
-                }
+                print(f"Calling tool: {tool_name} with args: {arguments}", file=sys.stderr)
+                
+                try:
+                    response = requests.post(f"{self.base_url}/mcp/call", json={
+                        "tool": tool_name,
+                        "parameters": arguments
+                    }, timeout=10)
+                    
+                    print(f"Tool response status: {response.status_code}", file=sys.stderr)
+                    print(f"Tool response: {response.text[:500]}...", file=sys.stderr)
+                    
+                    if response.status_code != 200:
+                        raise Exception(f"HTTP {response.status_code}: {response.text}")
+                    
+                    result = response.json()
+                    
+                    # Extract the actual result data
+                    result_data = result.get("result", result)
+                    
+                    # Format as proper MCP response
+                    if isinstance(result_data, dict):
+                        # Pretty format JSON for better readability
+                        formatted_result = json.dumps(result_data, indent=2, default=str)
+                    else:
+                        formatted_result = str(result_data)
+                    
+                    return {
+                        "jsonrpc": "2.0",
+                        "id": request.get("id"),
+                        "result": {
+                            "content": [
+                                {
+                                    "type": "text", 
+                                    "text": formatted_result
+                                }
+                            ]
+                        }
+                    }
+                    
+                except requests.RequestException as e:
+                    print(f"Request error calling tool: {e}", file=sys.stderr)
+                    return {
+                        "jsonrpc": "2.0",
+                        "id": request.get("id"),
+                        "error": {"code": -32603, "message": f"Tool call failed: {e}"}
+                    }
+                except json.JSONDecodeError as e:
+                    print(f"JSON decode error from tool response: {e}", file=sys.stderr)
+                    return {
+                        "jsonrpc": "2.0",
+                        "id": request.get("id"),
+                        "error": {"code": -32603, "message": f"Invalid JSON from tool: {e}"}
+                    }
                 
             else:
                 return {
