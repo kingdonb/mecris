@@ -218,66 +218,34 @@ async def get_mcp_manifest():
             {
                 "name": "get_narrator_context",
                 "description": "Get unified strategic context with goals, budget, and recommendations",
-                "parameters": {
+                "inputSchema": {
                     "type": "object",
                     "properties": {},
                     "required": []
-                },
-                "returns": {
-                    "type": "object",
-                    "properties": {
-                        "summary": {"type": "string"},
-                        "goals_status": {"type": "object"},
-                        "urgent_items": {"type": "array", "items": {"type": "string"}},
-                        "beeminder_alerts": {"type": "array", "items": {"type": "string"}},
-                        "budget_status": {"type": "object"},
-                        "recommendations": {"type": "array", "items": {"type": "string"}},
-                        "last_updated": {"type": "string", "format": "date-time"}
-                    }
                 }
             },
             {
                 "name": "get_beeminder_status",
                 "description": "Get Beeminder goal portfolio status with risk assessment",
-                "parameters": {
+                "inputSchema": {
                     "type": "object",
                     "properties": {},
                     "required": []
-                },
-                "returns": {
-                    "type": "object",
-                    "properties": {
-                        "goals": {"type": "array"},
-                        "emergencies": {"type": "array"},
-                        "safe_count": {"type": "integer"},
-                        "warning_count": {"type": "integer"},
-                        "critical_count": {"type": "integer"}
-                    }
                 }
             },
             {
                 "name": "get_budget_status",
                 "description": "Get current usage and budget status with days remaining",
-                "parameters": {
+                "inputSchema": {
                     "type": "object",
                     "properties": {},
                     "required": []
-                },
-                "returns": {
-                    "type": "object",
-                    "properties": {
-                        "remaining_budget": {"type": "number"},
-                        "days_remaining": {"type": "number"},
-                        "budget_health": {"type": "string"},
-                        "alerts": {"type": "array", "items": {"type": "string"}},
-                        "daily_burn_rate": {"type": "number"}
-                    }
                 }
             },
             {
                 "name": "record_usage_session",
                 "description": "Record Claude usage session with token counts",
-                "parameters": {
+                "inputSchema": {
                     "type": "object",
                     "properties": {
                         "input_tokens": {"type": "integer"},
@@ -287,114 +255,66 @@ async def get_mcp_manifest():
                         "notes": {"type": "string", "default": ""}
                     },
                     "required": ["input_tokens", "output_tokens"]
-                },
-                "returns": {
-                    "type": "object",
-                    "properties": {
-                        "recorded": {"type": "boolean"},
-                        "estimated_cost": {"type": "number"},
-                        "updated_status": {"type": "object"}
-                    }
                 }
             },
             {
                 "name": "send_beeminder_alert",
                 "description": "Check for beemergencies and send SMS alerts if critical",
-                "parameters": {
+                "inputSchema": {
                     "type": "object",
                     "properties": {},
                     "required": []
-                },
-                "returns": {
-                    "type": "object",
-                    "properties": {
-                        "alert_sent": {"type": "boolean"},
-                        "critical_count": {"type": "integer"},
-                        "message": {"type": "string"}
-                    }
                 }
             },
             {
                 "name": "get_daily_activity",
                 "description": "Check if daily activity was logged for specified goal",
-                "parameters": {
+                "inputSchema": {
                     "type": "object",
                     "properties": {
                         "goal_slug": {"type": "string", "default": "bike"}
                     },
                     "required": []
-                },
-                "returns": {
-                    "type": "object",
-                    "properties": {
-                        "activity_status": {"type": "object"},
-                        "timestamp": {"type": "string", "format": "date-time"}
-                    }
                 }
             },
             {
                 "name": "add_goal",
                 "description": "Add a new goal to the local database",
-                "parameters": {
+                "inputSchema": {
                     "type": "object",
                     "properties": {
                         "title": {"type": "string"},
                         "description": {"type": "string", "default": ""},
                         "priority": {"type": "string", "enum": ["high", "medium", "low"], "default": "medium"},
-                        "due_date": {"type": "string", "format": "date", "default": null}
+                        "due_date": {"type": "string", "format": "date", "default": None}
                     },
                     "required": ["title"]
-                },
-                "returns": {
-                    "type": "object",
-                    "properties": {
-                        "id": {"type": "integer"},
-                        "title": {"type": "string"},
-                        "created": {"type": "boolean"}
-                    }
                 }
             },
             {
                 "name": "complete_goal",
                 "description": "Mark a goal as completed",
-                "parameters": {
+                "inputSchema": {
                     "type": "object",
                     "properties": {
                         "goal_id": {"type": "integer"}
                     },
                     "required": ["goal_id"]
-                },
-                "returns": {
-                    "type": "object",
-                    "properties": {
-                        "completed": {"type": "boolean"},
-                        "goal_id": {"type": "integer"},
-                        "message": {"type": "string"}
-                    }
                 }
             },
             {
                 "name": "trigger_reminder_check",
                 "description": "Check for needed reminders and send them intelligently",
-                "parameters": {
+                "inputSchema": {
                     "type": "object",
                     "properties": {},
                     "required": []
-                },
-                "returns": {
-                    "type": "object",
-                    "properties": {
-                        "triggered": {"type": "boolean"},
-                        "check_result": {"type": "object"},
-                        "send_result": {"type": "object"},
-                        "timestamp": {"type": "string", "format": "date-time"}
-                    }
                 }
             },
             {
                 "name": "update_budget",
                 "description": "Manually update budget information",
-                "parameters": {
+                "inputSchema": {
                     "type": "object",
                     "properties": {
                         "remaining_budget": {"type": "number"},
@@ -402,14 +322,6 @@ async def get_mcp_manifest():
                         "period_end": {"type": "string", "format": "date"}
                     },
                     "required": ["remaining_budget"]
-                },
-                "returns": {
-                    "type": "object",
-                    "properties": {
-                        "updated": {"type": "boolean"},
-                        "budget_info": {"type": "object"},
-                        "timestamp": {"type": "string", "format": "date-time"}
-                    }
                 }
             }
         ]

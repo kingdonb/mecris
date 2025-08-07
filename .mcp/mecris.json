@@ -1,8 +1,8 @@
 {
   "mcpServers": {
     "mecris": {
-      "command": "make",
-      "args": ["restart"],
+      "command": "python3",
+      "args": ["mcp_bridge.py"],
       "cwd": "/Users/yebyen/w/mecris"
     }
   }
