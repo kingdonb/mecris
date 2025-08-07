@@ -5,9 +5,13 @@ Main FastAPI application that aggregates multiple MCP sources
 
 import os
 import logging
+import asyncio
+import json
+import sys
 from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional
 from dataclasses import dataclass
+from threading import Thread
 
 from fastapi import FastAPI, HTTPException, BackgroundTasks
 from pydantic import BaseModel
@@ -55,6 +59,135 @@ beeminder_goals_cache = {
     # "cache_expires": datetime.now() + timedelta(minutes=30),
     # "is_stale": False
 }
+
+class MCPStdioHandler:
+    def __init__(self, tool_handlers):
+        self.tool_handlers = tool_handlers
+        
+    async def handle_request(self, request):
+        """Handle MCP JSON-RPC requests"""
+        try:
+            if request.get("method") == "tools/list":
+                # Return available tools from manifest
+                manifest = await get_mcp_manifest()
+                tools = manifest["tools"]
+                
+                return {
+                    "jsonrpc": "2.0",
+                    "id": request.get("id"),
+                    "result": {"tools": tools}
+                }
+            
+            elif request.get("method") == "tools/call":
+                # Handle tool calls
+                params = request.get("params", {})
+                tool_name = params.get("name")
+                arguments = params.get("arguments", {})
+                
+                if tool_name in self.tool_handlers:
+                    result = await self.tool_handlers[tool_name](arguments)
+                    return {
+                        "jsonrpc": "2.0",
+                        "id": request.get("id"),
+                        "result": {"content": [{"type": "text", "text": str(result)}]}
+                    }
+                else:
+                    return {
+                        "jsonrpc": "2.0",
+                        "id": request.get("id"),
+                        "error": {"code": -32601, "message": f"Tool {tool_name} not found"}
+                    }
+            
+            elif request.get("method") == "initialize":
+                return {
+                    "jsonrpc": "2.0",
+                    "id": request.get("id"),
+                    "result": {
+                        "protocolVersion": "2024-11-05",
+                        "capabilities": {
+                            "tools": {"listChanged": False}
+                        },
+                        "serverInfo": {
+                            "name": "mecris",
+                            "version": "0.1.0"
+                        }
+                    }
+                }
+            
+            else:
+                return {
+                    "jsonrpc": "2.0",
+                    "id": request.get("id"),
+                    "error": {"code": -32601, "message": "Method not found"}
+                }
+                
+        except Exception as e:
+            return {
+                "jsonrpc": "2.0",
+                "id": request.get("id"),
+                "error": {"code": -32603, "message": str(e)}
+            }
+
+def run_stdio_server(tool_handlers):
+    """Run MCP stdio server in a separate thread"""
+    async def stdio_loop():
+        handler = MCPStdioHandler(tool_handlers)
+        
+        while True:
+            try:
+                line = sys.stdin.readline()
+                if not line:
+                    break
+                    
+                request = json.loads(line.strip())
+                response = await handler.handle_request(request)
+                
+                print(json.dumps(response), flush=True)
+                
+            except Exception as e:
+                error_response = {
+                    "jsonrpc": "2.0",
+                    "id": None,
+                    "error": {"code": -32700, "message": str(e)}
+                }
+                print(json.dumps(error_response), flush=True)
+    
+    def run_async():
+        asyncio.run(stdio_loop())
+    
+    thread = Thread(target=run_async, daemon=True)
+    thread.start()
+
+# Create tool handlers mapping for stdio server
+def get_tool_handlers():
+    """Get tool handlers mapping for MCP stdio server"""
+    return {
+        "get_narrator_context": lambda p: get_narrator_context(),
+        "get_beeminder_status": lambda p: get_beeminder_status(),
+        "get_budget_status": lambda p: get_usage_status(),
+        "record_usage_session": lambda p: record_usage_session(
+            p.get("input_tokens", 0),
+            p.get("output_tokens", 0),
+            p.get("model", "claude-3-5-sonnet-20241022"),
+            p.get("session_type", "interactive"),
+            p.get("notes", "")
+        ),
+        "send_beeminder_alert": lambda p: send_beeminder_alert(BackgroundTasks()),
+        "get_daily_activity": lambda p: get_daily_activity(p.get("goal_slug", "bike")),
+        "add_goal": lambda p: add_goal_endpoint(
+            p.get("title"),
+            p.get("description", ""),
+            p.get("priority", "medium"),
+            p.get("due_date")
+        ),
+        "complete_goal": lambda p: complete_goal_endpoint(p.get("goal_id")),
+        "trigger_reminder_check": lambda p: trigger_reminder_check(),
+        "update_budget": lambda p: update_budget(
+            p.get("remaining_budget"),
+            p.get("total_budget"),
+            p.get("period_end")
+        )
+    }
 
 # Response models
 class GoalResponse(BaseModel):
@@ -1271,9 +1404,26 @@ async def get_consent_summary():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(
-        "mcp_server:app",
-        host="127.0.0.1",  # Secure localhost binding
-        port=int(os.getenv("PORT", 8000)),
-        reload=os.getenv("DEBUG", "false").lower() == "true"
-    )
+    
+    # Check if we should run in stdio mode for MCP
+    if "--stdio" in sys.argv or os.getenv("MCP_STDIO", "false").lower() == "true":
+        # Run only the stdio server for MCP
+        logger.info("Starting Mecris MCP Server in stdio mode...")
+        tool_handlers = get_tool_handlers()
+        run_stdio_server(tool_handlers)
+        
+        # Keep the main thread alive
+        try:
+            while True:
+                import time
+                time.sleep(1)
+        except KeyboardInterrupt:
+            logger.info("Mecris MCP stdio server shutting down...")
+    else:
+        # Run the FastAPI server normally
+        uvicorn.run(
+            "mcp_server:app",
+            host="127.0.0.1",  # Secure localhost binding
+            port=int(os.getenv("PORT", 8000)),
+            reload=os.getenv("DEBUG", "false").lower() == "true"
+        )
