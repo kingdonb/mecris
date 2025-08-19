@@ -61,3 +61,6 @@ mecris.log
 
 # PID file
 /scripts/mecris.pid
+
+# Stakpak local files
+.stakpak
