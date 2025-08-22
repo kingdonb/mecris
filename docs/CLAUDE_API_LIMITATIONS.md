@@ -27,19 +27,17 @@
 - **Cache system** to minimize manual updates
 
 #### 3. Cost Estimation
-- **Token-based calculation** using official Anthropic pricing
-- **Model-specific rates** (Claude-3.5-Sonnet, Claude-3.5-Haiku)
+- **Token-based calculation** using Groq token‑as‑a‑service pricing
+- **Model-specific rates** (GPT‑OSS 20B, GPT‑OSS 120B, Kimi K2 1T)
 - **Session tracking** by type (interactive, emergency, etc.)
 
 ## Current Pricing (as of August 2025)
 
-### Claude-3.5-Sonnet
-- **Input tokens**: $3.00 per million tokens
-- **Output tokens**: $15.00 per million tokens
+### Groq Token‑as‑a‑Service
 
-### Claude-3.5-Haiku  
-- **Input tokens**: $0.25 per million tokens
-- **Output tokens**: $1.25 per million tokens
+- **GPT‑OSS 20B**: $0.10 per million tokens
+- **GPT‑OSS 120B**: $0.15 per million tokens
+- **Kimi K2 1T**: $1.00 per million tokens
 
 ## Usage Workflow
 
