@@ -1,8 +1,8 @@
 {
   "mcpServers": {
     "mecris": {
-      "command": "python3",
-      "args": ["mcp_server.py", "--stdio"],
+      "command": "uv",
+      "args": ["run", "mcp_server.py", "--stdio"],
       "cwd": "/Users/yebyen/w/mecris"
     }
   }

@@ -9,7 +9,6 @@ set -euo pipefail
 # Configuration
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PYTHON_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/.."
-VENV_PATH="$PYTHON_DIR/venv"
 PID_FILE="$SCRIPT_DIR/mecris.pid"
 LOG_FILE="$SCRIPT_DIR/mecris.log"
 HEALTH_URL="http://127.0.0.1:8000/health"
@@ -101,21 +100,10 @@ main() {
         exit 0
     fi
     
-    # Validate environment
-    if [ ! -d "$VENV_PATH" ]; then
-        error "Virtual environment not found at $VENV_PATH"
-        error "Please run: python3 -m venv venv && source venv/bin/activate && pip install -r requirements.txt"
-        exit 1
-    fi
-    
     if [ ! -f "$PYTHON_DIR/start_server.py" ]; then
         error "start_server.py not found in $PYTHON_DIR"
         exit 1
     fi
-    
-    # Activate virtual environment and start server
-    log "Activating virtual environment..."
-    source "$VENV_PATH/bin/activate"
     
     # Check for foreground mode
     local foreground_mode=false
@@ -132,11 +120,11 @@ main() {
     if [ "$foreground_mode" = true ]; then
         # Start in foreground - no background process, no PID file
         log "Server starting in foreground (blocking)..."
-        exec python "$PYTHON_DIR/start_server.py"
+        exec uv run "$PYTHON_DIR/start_server.py"
     else
         # Start server in background
         log "Starting server process..."
-        python "$PYTHON_DIR/start_server.py" >> "$LOG_FILE" 2>&1 &
+        uv run "$PYTHON_DIR/start_server.py" >> "$LOG_FILE" 2>&1 &
         local server_pid=$!
         
         # Save PID
