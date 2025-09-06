@@ -87,3 +87,37 @@ Manual entries are submitted via `POST /budget/source`; the UI/CLI can prompt th
 - **Define data ingestion format for real‑time usage sources (Claude, Groq) and manual entry source** – *pending*
 - **Specify discrepancy detection algorithm and grade calculation** – *pending*
 - **Outline reporting CLI/monitor integration and alerting on drift** – *pending*
+
+## Groq + Claude Integration Plan
+
+**Goal**: Aggregate Claude and Groq usage into a single budget cycle and compute multi‑month roll‑over.
+
+**MCP Endpoints**
+- `POST /budget/source` for Groq: payload `{ "project_id": string, "spent_usd": float, "timestamp": ISO8601 }`.
+- `GET /budget/cycle` will now sum `amount_usd` from all realtime sources (Claude + Groq).
+
+**Background Job**
+- Create a periodic task (`mecris budget ingest-groq`) that fetches Groq usage, transforms to the above payload, and calls `POST /budget/source`.
+
+**Roll‑over Math**
+```python
+# For each completed cycle
+remaining = cycle.target_usd - cycle.overall_usd
+if remaining > 0:
+    next_cycle.target_usd += remaining  # carry forward unused budget
+else:
+    # deficit handling (alert, optional reserve pool)
+    pass
+```
+
+**Discrepancy**
+- Pairwise compare each realtime source against manual entry as before; grades unchanged.
+
+**CLI**
+- Add `mecris budget ingest-groq` command to trigger the job.
+- Update `mecris budget status` to display combined realtime total.
+
+**Todo**
+- Implement ingestion script.
+- Add unit tests for roll‑over logic.
+
