@@ -128,7 +128,7 @@ class GroqOdometerTracker:
             ))
             
             # Update monthly summary
-            self._update_monthly_summary(current_month, value)
+            self._update_monthly_summary_with_conn(conn, current_month, value)
         
         # Calculate derived daily usage
         daily_usage = self._calculate_daily_usage(current_month, value)
@@ -199,33 +199,37 @@ class GroqOdometerTracker:
     
     def _update_monthly_summary(self, month: str, value: float):
         """Update or create monthly summary."""
+        with sqlite3.connect(self.db_path) as conn:
+            self._update_monthly_summary_with_conn(conn, month, value)
+    
+    def _update_monthly_summary_with_conn(self, conn, month: str, value: float):
+        """Update or create monthly summary using existing connection."""
         now = datetime.now()
         
-        with sqlite3.connect(self.db_path) as conn:
-            # Check if summary exists
-            cursor = conn.execute("""
-                SELECT month FROM groq_monthly_summaries WHERE month = ?
-            """, (month,))
-            
-            if cursor.fetchone():
-                # Update existing
-                conn.execute("""
-                    UPDATE groq_monthly_summaries
-                    SET total_cost = ?, 
-                        last_reading_date = ?,
-                        reading_count = reading_count + 1,
-                        updated_at = ?
-                    WHERE month = ?
-                """, (value, now.date().isoformat(), now.isoformat(), month))
-            else:
-                # Create new
-                conn.execute("""
-                    INSERT INTO groq_monthly_summaries
-                    (month, total_cost, first_reading_date, last_reading_date, 
-                     reading_count, created_at, updated_at)
-                    VALUES (?, ?, ?, ?, 1, ?, ?)
-                """, (month, value, now.date().isoformat(), now.date().isoformat(),
-                      now.isoformat(), now.isoformat()))
+        # Check if summary exists
+        cursor = conn.execute("""
+            SELECT month FROM groq_monthly_summaries WHERE month = ?
+        """, (month,))
+        
+        if cursor.fetchone():
+            # Update existing
+            conn.execute("""
+                UPDATE groq_monthly_summaries
+                SET total_cost = ?, 
+                    last_reading_date = ?,
+                    reading_count = reading_count + 1,
+                    updated_at = ?
+                WHERE month = ?
+            """, (value, now.date().isoformat(), now.isoformat(), month))
+        else:
+            # Create new
+            conn.execute("""
+                INSERT INTO groq_monthly_summaries
+                (month, total_cost, first_reading_date, last_reading_date, 
+                 reading_count, created_at, updated_at)
+                VALUES (?, ?, ?, ?, 1, ?, ?)
+            """, (month, value, now.date().isoformat(), now.date().isoformat(),
+                  now.isoformat(), now.isoformat()))
     
     def check_reminder_needs(self) -> Dict:
         """
