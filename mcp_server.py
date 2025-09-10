@@ -798,7 +798,7 @@ async def get_daily_activity_default():
     """Check if daily activity was logged for bike goal (default)"""
     return await get_daily_activity("bike")
 
-# Anthropic Cost API endpoint (requires organization access)
+# Anthropic Cost API endpoint (requires organization workspace)
 @app.get("/anthropic/usage")
 async def get_anthropic_usage():
     """Get Anthropic API usage data directly from their Cost & Usage API"""
@@ -806,15 +806,53 @@ async def get_anthropic_usage():
         return {
             "available": False,
             "error": "Anthropic Cost Tracker not initialized - requires organization access and ANTHROPIC_ADMIN_KEY",
+            "setup_notes": "Ensure API key is from organization workspace (not default workspace)",
             "fallback": "Using local usage tracking instead"
         }
     
     try:
-        usage_summary = anthropic_cost_tracker.get_budget_summary()
+        # Get today's usage with hourly granularity for real-time data
+        from datetime import datetime, UTC
+        start_time = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
+        
+        # Get both usage and cost data
+        usage_data = anthropic_cost_tracker.get_usage(start_time, bucket_width='1h')
+        
+        # Calculate totals from usage data
+        total_input = 0
+        total_output = 0
+        estimated_cost = 0.0
+        
+        for bucket in usage_data.get('data', []):
+            for result in bucket.get('results', []):
+                # Sum up input tokens (cached + uncached + cache creation)
+                input_tokens = result.get('uncached_input_tokens', 0)
+                input_tokens += result.get('cache_read_input_tokens', 0)
+                if 'cache_creation' in result:
+                    input_tokens += result['cache_creation'].get('ephemeral_1h_input_tokens', 0)
+                    input_tokens += result['cache_creation'].get('ephemeral_5m_input_tokens', 0)
+                
+                output_tokens = result.get('output_tokens', 0)
+                total_input += input_tokens
+                total_output += output_tokens
+        
+        # Rough cost estimation (Claude 3.5 Sonnet pricing)
+        estimated_cost = (total_input * 3.0 / 1000000) + (total_output * 15.0 / 1000000)
+        
         return {
             "available": True,
-            "data": usage_summary,
+            "data": {
+                "today_usage": {
+                    "total_input_tokens": total_input,
+                    "total_output_tokens": total_output,
+                    "estimated_cost": round(estimated_cost, 4)
+                },
+                "raw_usage_data": usage_data,
+                "bucket_count": len(usage_data.get('data', [])),
+                "has_usage": total_input > 0 or total_output > 0
+            },
             "source": "anthropic_api",
+            "workspace_note": "Data from organization workspace only",
             "timestamp": datetime.now().isoformat()
         }
     except Exception as e:
@@ -823,6 +861,7 @@ async def get_anthropic_usage():
             "available": False,
             "error": str(e),
             "source": "anthropic_api",
+            "troubleshooting": "Check if API key is from organization workspace, not default workspace",
             "fallback": "Using local usage tracking instead"
         }
 

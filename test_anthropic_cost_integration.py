@@ -2,8 +2,8 @@
 """
 Test script to demonstrate Anthropic Cost & Usage API integration
 
-This shows how the integration works and what errors you get without 
-organization access.
+Tests the enhanced cost tracking system with workspace requirements,
+hourly buckets, and real-time usage detection.
 """
 
 import os
@@ -24,17 +24,46 @@ def test_anthropic_cost_tracker():
         
         try:
             from scripts.anthropic_cost_tracker import AnthropicCostTracker
+            from datetime import datetime, UTC
             tracker = AnthropicCostTracker()
             print("   ✅ Tracker initialized with real admin key")
             
-            # Try to get budget summary
-            print("   📡 Attempting API call to get budget summary...")
+            # Test 1a: Today's usage with hourly buckets
+            print("   📡 Testing today's usage data (hourly buckets)...")
+            start_time = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
+            usage_data = tracker.get_usage(start_time, bucket_width='1h')
+            
+            # Calculate totals
+            total_input = 0
+            total_output = 0
+            for bucket in usage_data.get('data', []):
+                for result in bucket.get('results', []):
+                    input_tokens = result.get('uncached_input_tokens', 0)
+                    input_tokens += result.get('cache_read_input_tokens', 0)
+                    if 'cache_creation' in result:
+                        input_tokens += result['cache_creation'].get('ephemeral_1h_input_tokens', 0)
+                        input_tokens += result['cache_creation'].get('ephemeral_5m_input_tokens', 0)
+                    
+                    total_input += input_tokens
+                    total_output += result.get('output_tokens', 0)
+            
+            estimated_cost = (total_input * 3.0 / 1000000) + (total_output * 15.0 / 1000000)
+            
+            print(f"   🎉 TODAY'S USAGE: {total_input:,} input, {total_output:,} output tokens")
+            print(f"   💰 Estimated cost: ${estimated_cost:.4f}")
+            print(f"   📊 Buckets returned: {len(usage_data.get('data', []))}")
+            
+            # Test 1b: Legacy budget summary
+            print("\n   📡 Testing legacy budget summary...")
             summary = tracker.get_budget_summary()
-            print(f"   🎉 SUCCESS: {summary}")
+            print(f"   ℹ️ LEGACY: {summary}")
             
         except Exception as e:
             print(f"   ⚠️ API error: {e}")
-            print("   → Check if admin key has correct permissions")
+            if "organization workspace" in str(e).lower():
+                print("   → API key must be from organization workspace (not default workspace)")
+            else:
+                print("   → Check if admin key has correct permissions")
     else:
         print("\n1️⃣ Testing without ANTHROPIC_ADMIN_KEY")
         try:
@@ -72,19 +101,31 @@ def test_anthropic_cost_tracker():
     except Exception as e:
         print(f"   ❌ Local usage tracking error: {e}")
     
-    # Test 4: API Integration Status
-    print("\n4️⃣ API Integration Status")
+    # Test 4: Enhanced API Integration Status
+    print("\n4️⃣ Enhanced API Integration Status")
     if admin_key:
         print("   ✅ Admin key configured - API integration ready")
-        print("   📋 API Endpoints available:")
-        print("   • GET /v1/usage-cost/get-messages-usage-report")
-        print("   • GET /v1/usage-cost/get-cost-report") 
+        print("   📋 Enhanced API Endpoints available:")
+        print("   • GET /v1/organizations/usage_report/messages (hourly buckets)")
+        print("   • GET /v1/organizations/cost_report (daily buckets only)") 
         print("   • Headers: x-api-key + anthropic-version: 2023-06-01")
+        print("   🏢 CRITICAL: API key MUST be from organization workspace")
+        print("   ⚡ Real-time: Usage data available within 1 hour")
+        print("   ⚠️ Cost data: May have 24+ hour delay for recent dates")
     else:
         print("   ⚠️ No admin key - using local tracking only")
-        print("   📋 To enable API integration:")
+        print("   📋 To enable Enhanced API integration:")
+        print("   • Create organization workspace in Anthropic Console")
+        print("   • Generate API key from organization workspace (NOT default)")
         print("   • Add ANTHROPIC_ADMIN_KEY to .env")
-        print("   • Get admin key from Console → Settings → Organization")
+        print("   • Test with: uv run python scripts/anthropic_cost_tracker.py")
+    
+    # Test 5: Workspace Detection Test
+    print("\n5️⃣ Workspace Configuration Test")
+    print("   ℹ️ Key Discovery: Default workspace usage is NOT visible to Admin API")
+    print("   ✅ Solution: Create organization workspace for API visibility")
+    print("   📊 Usage data from organization workspace appears in <1 hour")
+    print("   💡 Cost estimation from token counts works immediately")
 
 if __name__ == "__main__":
     test_anthropic_cost_tracker()

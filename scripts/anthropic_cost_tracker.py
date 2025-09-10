@@ -65,12 +65,13 @@ class AnthropicCostTracker:
         
         return response.json()
     
-    def get_usage(self, start_time=None, end_time=None):
+    def get_usage(self, start_time=None, end_time=None, bucket_width='1d'):
         """
         Fetch API usage data with caching
         
         :param start_time: Optional start time for usage data
         :param end_time: Optional end time for usage data
+        :param bucket_width: Bucket width ('1h' for hourly, '1d' for daily)
         :return: Usage data dictionary
         """
         # Use current time if not specified, ensure proper date range
@@ -81,10 +82,23 @@ class AnthropicCostTracker:
         
         # Convert to clean ISO format strings with Z suffix (API expects this format)
         start_str = start_time.replace(microsecond=0).isoformat().replace('+00:00', 'Z')
-        end_str = end_time.replace(microsecond=0).isoformat().replace('+00:00', 'Z')
+        
+        # For hourly buckets on current day, don't specify end time to avoid future dates
+        if bucket_width == '1h' and start_time.date() >= datetime.now(UTC).date():
+            params = {
+                'starting_at': start_str,
+                'bucket_width': bucket_width
+            }
+        else:
+            end_str = end_time.replace(microsecond=0).isoformat().replace('+00:00', 'Z')
+            params = {
+                'starting_at': start_str,
+                'ending_at': end_str,
+                'bucket_width': bucket_width
+            }
         
         # Check cache first
-        cache_key = (start_str, end_str)
+        cache_key = (start_str, params.get('ending_at', 'open'), bucket_width)
         if cache_key in self.usage_cache:
             cached_data, cache_time = self.usage_cache[cache_key]
             # Use cache if less than 1 minute old
@@ -93,12 +107,6 @@ class AnthropicCostTracker:
         
         # Fetch from Admin API
         url = 'https://api.anthropic.com/v1/organizations/usage_report/messages'
-        params = {
-            'starting_at': start_str,
-            'ending_at': end_str,
-            'bucket_width': '1d'
-        }
-        
         usage_data = self._rate_limited_request(url, params=params)
         
         # Cache the result
@@ -202,13 +210,51 @@ def main():
             
         # Get usage and cost data for the specified period
         if start_time or end_time:
-            usage = tracker.get_usage(start_time, end_time)
-            cost = tracker.get_cost(start_time, end_time)
-            
             print("=== USAGE DATA ===")
-            print(json.dumps(usage, indent=2))
+            try:
+                # For today's data, use hourly buckets
+                if start_time and start_time.date() >= datetime.now(UTC).date():
+                    usage = tracker.get_usage(start_time, end_time, bucket_width='1h')
+                else:
+                    usage = tracker.get_usage(start_time, end_time, bucket_width='1d')
+                print(json.dumps(usage, indent=2))
+                
+                # Extract and summarize usage
+                total_input = 0
+                total_output = 0
+                estimated_cost = 0.0
+                
+                for bucket in usage.get('data', []):
+                    for result in bucket.get('results', []):
+                        # Sum up input tokens (cached + uncached + cache creation)
+                        input_tokens = result.get('uncached_input_tokens', 0)
+                        input_tokens += result.get('cache_read_input_tokens', 0)
+                        if 'cache_creation' in result:
+                            input_tokens += result['cache_creation'].get('ephemeral_1h_input_tokens', 0)
+                            input_tokens += result['cache_creation'].get('ephemeral_5m_input_tokens', 0)
+                        
+                        output_tokens = result.get('output_tokens', 0)
+                        total_input += input_tokens
+                        total_output += output_tokens
+                
+                # Rough cost estimation (Claude 3.5 Sonnet pricing)
+                estimated_cost = (total_input * 3.0 / 1000000) + (total_output * 15.0 / 1000000)
+                
+                print(f"\n=== USAGE SUMMARY ===")
+                print(f"Total Input Tokens: {total_input:,}")
+                print(f"Total Output Tokens: {total_output:,}")
+                print(f"Estimated Cost: ${estimated_cost:.4f}")
+                
+            except Exception as e:
+                print(f"Usage API Error: {e}")
+            
             print("\n=== COST DATA ===")
-            print(json.dumps(cost, indent=2))
+            try:
+                cost = tracker.get_cost(start_time, end_time)
+                print(json.dumps(cost, indent=2))
+            except Exception as e:
+                print(f"Cost API Error: {e}")
+                print("Note: Cost API may not support recent date ranges. Try dates 24+ hours old.")
         else:
             # Default behavior - budget summary
             summary = tracker.get_budget_summary()
