@@ -103,7 +103,12 @@ class MCPStdioHandler:
                 arguments = params.get("arguments", {})
                 
                 if tool_name in self.tool_handlers:
-                    result = await self.tool_handlers[tool_name](arguments)
+                    handler_result = self.tool_handlers[tool_name](arguments)
+                    # Handle both async and sync functions
+                    if asyncio.iscoroutine(handler_result):
+                        result = await handler_result
+                    else:
+                        result = handler_result
                     return {
                         "jsonrpc": "2.0",
                         "id": request.get("id"),
@@ -564,7 +569,12 @@ async def call_mcp_tool(tool_name: str, request: Dict[str, Any]):
         params = request.get("params", {})
         
         # Call the handler
-        result = await tool_handlers[tool_name](params)
+        handler_result = tool_handlers[tool_name](params)
+        # Handle both async and sync functions
+        if asyncio.iscoroutine(handler_result):
+            result = await handler_result
+        else:
+            result = handler_result
         
         # Log successful invocation with details
         logger.info(f"MCP tool '{tool_name}' completed successfully - result type: {type(result).__name__}")
