@@ -50,7 +50,8 @@ usage_tracker = UsageTracker()
 # Initialize virtual budget system
 virtual_budget_manager = VirtualBudgetManager()
 billing_reconciler = BillingReconciliation()
-groq_odometer = GroqOdometerTracker()
+# Don't create a separate instance - use the singleton from the imported functions
+# groq_odometer = GroqOdometerTracker()  # REMOVED - causes database locks
 
 # Initialize Anthropic Cost Tracker (optional - requires organization access)
 try:

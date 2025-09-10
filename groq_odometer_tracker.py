@@ -400,20 +400,30 @@ class GroqOdometerTracker:
         
         return context
 
+# Global singleton instance to prevent connection leaks
+_global_tracker = None
+
+def _get_tracker() -> GroqOdometerTracker:
+    """Get singleton tracker instance to prevent connection leaks."""
+    global _global_tracker
+    if _global_tracker is None:
+        _global_tracker = GroqOdometerTracker()
+    return _global_tracker
+
 # Convenience functions for integration
 def record_groq_reading(value: float, notes: str = "") -> Dict:
     """Record a Groq odometer reading."""
-    tracker = GroqOdometerTracker()
+    tracker = _get_tracker()
     return tracker.record_odometer_reading(value, notes)
 
 def get_groq_reminder_status() -> Dict:
     """Check if Groq readings are needed."""
-    tracker = GroqOdometerTracker()
+    tracker = _get_tracker()
     return tracker.check_reminder_needs()
 
 def get_groq_context_for_narrator() -> Dict:
     """Get Groq context for narrator integration."""
-    tracker = GroqOdometerTracker()
+    tracker = _get_tracker()
     return tracker.generate_narrator_context()
 
 if __name__ == "__main__":
