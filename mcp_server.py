@@ -23,6 +23,7 @@ from usage_tracker import UsageTracker, get_budget_status, record_usage, update_
 from virtual_budget_manager import VirtualBudgetManager, Provider, get_virtual_budget_status, record_anthropic_usage, record_groq_usage
 from billing_reconciliation import BillingReconciliation
 from fetch_groq_usage import fetch_groq_usage
+from groq_odometer_tracker import GroqOdometerTracker, record_groq_reading, get_groq_reminder_status, get_groq_context_for_narrator
 from twilio_sender import send_sms
 
 # Load environment variables
@@ -49,6 +50,7 @@ usage_tracker = UsageTracker()
 # Initialize virtual budget system
 virtual_budget_manager = VirtualBudgetManager()
 billing_reconciler = BillingReconciliation()
+groq_odometer = GroqOdometerTracker()
 
 # Initialize Anthropic Cost Tracker (optional - requires organization access)
 try:
@@ -1106,6 +1108,69 @@ async def get_groq_usage_endpoint():
             "timestamp": datetime.now().isoformat()
         }
 
+# Groq Odometer Endpoints
+@app.post("/groq/odometer/record")
+async def record_groq_odometer_reading(value: float, notes: str = ""):
+    """Record a manual Groq odometer reading"""
+    try:
+        result = record_groq_reading(value, notes)
+        
+        # If successful, also record in virtual budget
+        if result.get("recorded"):
+            # Calculate daily usage from odometer
+            daily_estimate = result.get("daily_usage_estimate", 0)
+            
+            # Record in virtual budget system as daily estimate
+            if daily_estimate > 0:
+                # Rough token estimate from cost (using GPT-OSS-20B pricing)
+                estimated_tokens = int(daily_estimate * 1_000_000 / 0.10)
+                virtual_budget_manager.record_usage(
+                    Provider.GROQ,
+                    "openai/gpt-oss-20b",
+                    estimated_tokens // 2,  # Split between input/output
+                    estimated_tokens // 2,
+                    "odometer",
+                    f"Daily estimate from odometer reading: ${value:.2f}"
+                )
+        
+        return {
+            "success": True,
+            "result": result,
+            "timestamp": datetime.now().isoformat()
+        }
+    except Exception as e:
+        logger.error(f"Failed to record Groq odometer: {e}")
+        raise HTTPException(status_code=500, detail="Failed to record odometer reading")
+
+@app.get("/groq/odometer/status")
+async def get_groq_odometer_status():
+    """Get current Groq odometer status and reminders"""
+    try:
+        reminder_status = get_groq_reminder_status()
+        odometer_data = groq_odometer.get_usage_for_virtual_budget()
+        
+        return {
+            "odometer_status": reminder_status,
+            "usage_data": odometer_data,
+            "timestamp": datetime.now().isoformat()
+        }
+    except Exception as e:
+        logger.error(f"Failed to get Groq odometer status: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get odometer status")
+
+@app.get("/groq/odometer/context")
+async def get_groq_narrator_context():
+    """Get Groq context for narrator integration"""
+    try:
+        context = get_groq_context_for_narrator()
+        return {
+            "groq_context": context,
+            "timestamp": datetime.now().isoformat()
+        }
+    except Exception as e:
+        logger.error(f"Failed to get Groq narrator context: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get narrator context")
+
 # Billing Reconciliation Endpoints
 @app.post("/billing/reconcile/daily")
 async def run_daily_reconciliation_endpoint(days_back: int = 1):
@@ -1260,6 +1325,9 @@ async def get_narrator_context():
         # Get daily walk status (cached for performance)
         daily_walk_status = await get_cached_daily_activity("bike")
         
+        # Get Groq odometer context for reminders
+        groq_context = get_groq_context_for_narrator()
+        
         # Build strategic summary
         pending_todos = [t for t in todos if not t.get("completed", False)]
         critical_beeminder = [g for g in beeminder_goals if g.get("derail_risk") == "CRITICAL"]
@@ -1295,6 +1363,15 @@ async def get_narrator_context():
         if (daily_walk_status.get("status") == "needed" and 
             current_hour >= 14):  # After 2 PM
             recommendations.append("🚶‍♂️ Time for a walk! No activity logged today for bike goal")
+        
+        # Add Groq odometer reminders
+        if groq_context.get("groq_tracking", {}).get("needs_action"):
+            groq_urgent = groq_context["groq_tracking"].get("urgent_reminder")
+            if groq_urgent:
+                urgent_items.append(f"GROQ: {groq_urgent}")
+                recommendations.append(groq_urgent)
+            elif groq_context["groq_tracking"].get("days_until_reset", 30) <= 3:
+                recommendations.append(f"📊 Groq usage reading needed in {groq_context['groq_tracking']['days_until_reset']} days")
         
         return NarratorContextResponse(
             summary=summary,
