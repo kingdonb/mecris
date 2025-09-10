@@ -43,6 +43,15 @@ obsidian_client = ObsidianMCPClient()
 beeminder_client = BeeminderClient()
 usage_tracker = UsageTracker()
 
+# Initialize Anthropic Cost Tracker (optional - requires organization access)
+try:
+    from scripts.anthropic_cost_tracker import AnthropicCostTracker
+    anthropic_cost_tracker = AnthropicCostTracker()
+    logger.info("Anthropic Cost Tracker initialized successfully")
+except (ImportError, ValueError) as e:
+    logger.warning(f"Anthropic Cost Tracker not available: {e}")
+    anthropic_cost_tracker = None
+
 # Daily activity cache - avoids hitting Beeminder API more than once per hour
 daily_activity_cache = {
     # "bike": {
@@ -555,6 +564,7 @@ async def health_check():
         "obsidian": "unknown",
         "beeminder": "unknown", 
         "usage_tracker": "ok",
+        "anthropic_cost_tracker": "not_available" if not anthropic_cost_tracker else "ok",
         "twilio": "not_configured"
     }
     
@@ -569,6 +579,15 @@ async def health_check():
         status["beeminder"] = await beeminder_client.health_check()
     except Exception as e:
         status["beeminder"] = f"error: {str(e)[:50]}"
+    
+    # Test Anthropic Cost Tracker
+    if anthropic_cost_tracker:
+        try:
+            # Try to get budget summary (this will test API connectivity)
+            _ = anthropic_cost_tracker.get_budget_summary()
+            status["anthropic_cost_tracker"] = "ok"
+        except Exception as e:
+            status["anthropic_cost_tracker"] = f"error: {str(e)[:50]}"
     
     # Test Twilio configuration
     if os.getenv("TWILIO_ACCOUNT_SID") and os.getenv("TWILIO_AUTH_TOKEN"):
@@ -778,6 +797,34 @@ async def get_daily_activity(goal_slug: str = "bike"):
 async def get_daily_activity_default():
     """Check if daily activity was logged for bike goal (default)"""
     return await get_daily_activity("bike")
+
+# Anthropic Cost API endpoint (requires organization access)
+@app.get("/anthropic/usage")
+async def get_anthropic_usage():
+    """Get Anthropic API usage data directly from their Cost & Usage API"""
+    if not anthropic_cost_tracker:
+        return {
+            "available": False,
+            "error": "Anthropic Cost Tracker not initialized - requires organization access and ANTHROPIC_ADMIN_KEY",
+            "fallback": "Using local usage tracking instead"
+        }
+    
+    try:
+        usage_summary = anthropic_cost_tracker.get_budget_summary()
+        return {
+            "available": True,
+            "data": usage_summary,
+            "source": "anthropic_api",
+            "timestamp": datetime.now().isoformat()
+        }
+    except Exception as e:
+        logger.error(f"Failed to fetch Anthropic usage data: {e}")
+        return {
+            "available": False,
+            "error": str(e),
+            "source": "anthropic_api",
+            "fallback": "Using local usage tracking instead"
+        }
 
 # Usage tracking endpoints
 @app.get("/usage", response_model=BudgetResponse)

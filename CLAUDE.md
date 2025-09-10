@@ -31,7 +31,7 @@ You can always call `mecris__get_narrator_context` without asking permission to 
 5. **Read before writing.** Context window is sacred — no hallucinations
 6. **Warn like a doomsayer.** Beemergencies get escalated via Twilio. Be *correct*, not polite
 7. **Stay within budget.** Every token costs money. Current: ~$18 remaining until Aug 5
-8. **Always use venv.** `source venv/bin/activate` for all Python commands - there is a chance you're already running within a venv.
+8. **Always use uv.** Use `uv run python` for all Python commands. No more venv needed.
 
 ---
 

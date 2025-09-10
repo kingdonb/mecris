@@ -2,19 +2,20 @@ import os
 import time
 import requests
 import json
+import argparse
 from functools import lru_cache
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 
 class AnthropicCostTracker:
-    def __init__(self, api_key=None):
+    def __init__(self, admin_api_key=None):
         """
         Initialize the Anthropic Cost Tracker
         
-        :param api_key: Optional API key. If not provided, uses ANTHROPIC_API_KEY env var
+        :param admin_api_key: Optional Admin API key. If not provided, uses ANTHROPIC_ADMIN_KEY env var
         """
-        self.api_key = api_key or os.environ.get('ANTHROPIC_API_KEY')
-        if not self.api_key:
-            raise ValueError("No Anthropic API key provided")
+        self.admin_api_key = admin_api_key or os.environ.get('ANTHROPIC_ADMIN_KEY')
+        if not self.admin_api_key:
+            raise ValueError("No Anthropic Admin API key provided. This requires organization access.")
         
         # Rate limiting parameters
         self._last_api_call = 0
@@ -40,9 +41,10 @@ class AnthropicCostTracker:
             wait_time = self._min_interval - (current_time - self._last_api_call)
             time.sleep(wait_time)
         
-        # Prepare headers
+        # Prepare headers for Admin API
         headers = {
-            'Authorization': f'Bearer {self.api_key}',
+            'x-api-key': self.admin_api_key,
+            'anthropic-version': '2023-06-01',
             'Content-Type': 'application/json'
         }
         kwargs['headers'] = {**kwargs.get('headers', {}), **headers}
@@ -71,13 +73,15 @@ class AnthropicCostTracker:
         :param end_time: Optional end time for usage data
         :return: Usage data dictionary
         """
-        # Use current time if not specified
-        end_time = end_time or datetime.utcnow()
-        start_time = start_time or (end_time - timedelta(days=1))
+        # Use current time if not specified, ensure proper date range
+        if end_time is None:
+            end_time = datetime.now(UTC)
+        if start_time is None:
+            start_time = end_time - timedelta(days=1)
         
-        # Convert to ISO format strings
-        start_str = start_time.isoformat()
-        end_str = end_time.isoformat()
+        # Convert to clean ISO format strings with Z suffix (API expects this format)
+        start_str = start_time.replace(microsecond=0).isoformat().replace('+00:00', 'Z')
+        end_str = end_time.replace(microsecond=0).isoformat().replace('+00:00', 'Z')
         
         # Check cache first
         cache_key = (start_str, end_str)
@@ -87,11 +91,12 @@ class AnthropicCostTracker:
             if time.time() - cache_time < 60:
                 return cached_data
         
-        # Fetch from API
-        url = 'https://api.anthropic.com/v1/usage'
+        # Fetch from Admin API
+        url = 'https://api.anthropic.com/v1/organizations/usage_report/messages'
         params = {
-            'start_time': start_str,
-            'end_time': end_str
+            'starting_at': start_str,
+            'ending_at': end_str,
+            'bucket_width': '1d'
         }
         
         usage_data = self._rate_limited_request(url, params=params)
@@ -109,13 +114,15 @@ class AnthropicCostTracker:
         :param end_time: Optional end time for cost data
         :return: Cost data dictionary
         """
-        # Use current time if not specified
-        end_time = end_time or datetime.utcnow()
-        start_time = start_time or (end_time - timedelta(days=1))
+        # Use current time if not specified, ensure proper date range
+        if end_time is None:
+            end_time = datetime.now(UTC)
+        if start_time is None:
+            start_time = end_time - timedelta(days=1)
         
-        # Convert to ISO format strings
-        start_str = start_time.isoformat()
-        end_str = end_time.isoformat()
+        # Convert to clean ISO format strings with Z suffix (API expects this format)
+        start_str = start_time.replace(microsecond=0).isoformat().replace('+00:00', 'Z')
+        end_str = end_time.replace(microsecond=0).isoformat().replace('+00:00', 'Z')
         
         # Check cache first
         cache_key = (start_str, end_str)
@@ -125,11 +132,12 @@ class AnthropicCostTracker:
             if time.time() - cache_time < 60:
                 return cached_data
         
-        # Fetch from API
-        url = 'https://api.anthropic.com/v1/cost'
+        # Fetch from Admin API
+        url = 'https://api.anthropic.com/v1/organizations/cost_report'
         params = {
-            'start_time': start_str,
-            'end_time': end_str
+            'starting_at': start_str,
+            'ending_at': end_str,
+            'bucket_width': '1d'
         }
         
         cost_data = self._rate_limited_request(url, params=params)
@@ -145,24 +153,67 @@ class AnthropicCostTracker:
         
         :return: Dictionary with budget and usage information
         """
-        usage = self.get_usage()
-        cost = self.get_cost()
+        # Use same time range for both API calls
+        end_time = datetime.now(UTC)
+        start_time = end_time - timedelta(days=1)
+        
+        usage = self.get_usage(start_time, end_time)
+        cost = self.get_cost(start_time, end_time)
+        
+        # Extract meaningful data from the API response
+        usage_data = usage.get('data', [])
+        cost_data = cost.get('data', [])
+        
+        # Count total usage across all buckets
+        total_messages = sum(len(bucket.get('results', [])) for bucket in usage_data)
+        total_cost_items = sum(len(bucket.get('results', [])) for bucket in cost_data)
         
         return {
-            'total_tokens': usage.get('total_tokens', 0),
-            'total_cost': cost.get('total_cost', 0),
-            'models_used': usage.get('models', []),
-            'timestamp': datetime.utcnow().isoformat()
+            'usage_buckets': len(usage_data),
+            'cost_buckets': len(cost_data),
+            'total_message_records': total_messages,
+            'total_cost_records': total_cost_items,
+            'has_more_usage': usage.get('has_more', False),
+            'has_more_cost': cost.get('has_more', False),
+            'timestamp': datetime.now(UTC).isoformat()
         }
 
 def main():
     """
     Example usage and testing
     """
+    parser = argparse.ArgumentParser(description='Anthropic Cost Tracker')
+    parser.add_argument('--start-date', type=str, help='Start date (YYYY-MM-DD format)')
+    parser.add_argument('--end-date', type=str, help='End date (YYYY-MM-DD format)')
+    
+    args = parser.parse_args()
+    
     try:
         tracker = AnthropicCostTracker()
-        summary = tracker.get_budget_summary()
-        print(json.dumps(summary, indent=2))
+        
+        # Parse dates if provided
+        start_time = None
+        end_time = None
+        
+        if args.start_date:
+            start_time = datetime.fromisoformat(args.start_date).replace(tzinfo=UTC)
+        if args.end_date:
+            end_time = datetime.fromisoformat(args.end_date).replace(tzinfo=UTC)
+            
+        # Get usage and cost data for the specified period
+        if start_time or end_time:
+            usage = tracker.get_usage(start_time, end_time)
+            cost = tracker.get_cost(start_time, end_time)
+            
+            print("=== USAGE DATA ===")
+            print(json.dumps(usage, indent=2))
+            print("\n=== COST DATA ===")
+            print(json.dumps(cost, indent=2))
+        else:
+            # Default behavior - budget summary
+            summary = tracker.get_budget_summary()
+            print(json.dumps(summary, indent=2))
+            
     except Exception as e:
         print(f"Error: {e}")
 
