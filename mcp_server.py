@@ -204,7 +204,13 @@ def get_tool_handlers():
             p.get("remaining_budget"),
             p.get("total_budget"),
             p.get("period_end")
-        )
+        ),
+        "record_groq_reading": lambda p: record_groq_reading(
+            p.get("value"),
+            p.get("notes", "")
+        ),
+        "get_groq_status": lambda p: get_groq_reminder_status(),
+        "get_groq_context": lambda p: get_groq_context_for_narrator()
     }
 
 # Response models
@@ -474,6 +480,36 @@ async def get_mcp_manifest():
                     },
                     "required": ["remaining_budget"]
                 }
+            },
+            {
+                "name": "record_groq_reading",
+                "description": "Record manual Groq odometer reading with cumulative cost",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "value": {"type": "number"},
+                        "notes": {"type": "string", "default": ""}
+                    },
+                    "required": ["value"]
+                }
+            },
+            {
+                "name": "get_groq_status",
+                "description": "Get Groq odometer status and usage reminders",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {},
+                    "required": []
+                }
+            },
+            {
+                "name": "get_groq_context",
+                "description": "Get Groq odometer context for narrator integration",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {},
+                    "required": []
+                }
             }
         ]
     }
@@ -511,7 +547,13 @@ async def call_mcp_tool(tool_name: str, request: Dict[str, Any]):
                 p.get("remaining_budget"),
                 p.get("total_budget"),
                 p.get("period_end")
-            )
+            ),
+            "record_groq_reading": lambda p: record_groq_reading(
+                p.get("value"),
+                p.get("notes", "")
+            ),
+            "get_groq_status": lambda p: get_groq_reminder_status(),
+            "get_groq_context": lambda p: get_groq_context_for_narrator()
         }
         
         if tool_name not in tool_handlers:
