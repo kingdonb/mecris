@@ -20,6 +20,9 @@ from dotenv import load_dotenv
 from obsidian_client import ObsidianMCPClient
 from beeminder_client import BeeminderClient
 from usage_tracker import UsageTracker, get_budget_status, record_usage, update_remaining_budget, get_goals, complete_goal, add_goal
+from virtual_budget_manager import VirtualBudgetManager, Provider, get_virtual_budget_status, record_anthropic_usage, record_groq_usage
+from billing_reconciliation import BillingReconciliation
+from fetch_groq_usage import fetch_groq_usage
 from twilio_sender import send_sms
 
 # Load environment variables
@@ -42,6 +45,10 @@ app = FastAPI(
 obsidian_client = ObsidianMCPClient()
 beeminder_client = BeeminderClient()
 usage_tracker = UsageTracker()
+
+# Initialize virtual budget system
+virtual_budget_manager = VirtualBudgetManager()
+billing_reconciler = BillingReconciliation()
 
 # Initialize Anthropic Cost Tracker (optional - requires organization access)
 try:
@@ -989,6 +996,190 @@ async def send_usage_alert(background_tasks: BackgroundTasks):
     except Exception as e:
         logger.error(f"Failed to send usage alert: {e}")
         raise HTTPException(status_code=500, detail="Failed to process usage alert")
+
+# Virtual Budget System Endpoints
+@app.get("/virtual-budget/status")
+async def get_virtual_budget_status_endpoint():
+    """Get comprehensive virtual budget status across all providers"""
+    try:
+        status = virtual_budget_manager.get_budget_status()
+        return {
+            "virtual_budget": status,
+            "timestamp": datetime.now().isoformat()
+        }
+    except Exception as e:
+        logger.error(f"Failed to get virtual budget status: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get virtual budget status")
+
+@app.post("/virtual-budget/record/anthropic")
+async def record_anthropic_usage_endpoint(
+    model: str,
+    input_tokens: int,
+    output_tokens: int,
+    session_type: str = "interactive",
+    notes: str = "",
+    emergency_override: bool = False
+):
+    """Record Anthropic usage in virtual budget system"""
+    try:
+        result = virtual_budget_manager.record_usage(
+            Provider.ANTHROPIC, model, input_tokens, output_tokens,
+            session_type, notes, emergency_override
+        )
+        
+        return {
+            **result,
+            "provider": "anthropic",
+            "timestamp": datetime.now().isoformat()
+        }
+    except Exception as e:
+        logger.error(f"Failed to record Anthropic usage: {e}")
+        raise HTTPException(status_code=500, detail="Failed to record Anthropic usage")
+
+@app.post("/virtual-budget/record/groq")
+async def record_groq_usage_endpoint(
+    model: str,
+    input_tokens: int,
+    output_tokens: int,
+    session_type: str = "interactive",
+    notes: str = "",
+    emergency_override: bool = False
+):
+    """Record Groq usage in virtual budget system"""
+    try:
+        result = virtual_budget_manager.record_usage(
+            Provider.GROQ, model, input_tokens, output_tokens,
+            session_type, notes, emergency_override
+        )
+        
+        return {
+            **result,
+            "provider": "groq",
+            "timestamp": datetime.now().isoformat()
+        }
+    except Exception as e:
+        logger.error(f"Failed to record Groq usage: {e}")
+        raise HTTPException(status_code=500, detail="Failed to record Groq usage")
+
+@app.get("/virtual-budget/summary")
+async def get_virtual_budget_summary(days: int = 7):
+    """Get comprehensive multi-provider usage summary"""
+    try:
+        summary = virtual_budget_manager.get_usage_summary(days)
+        return {
+            "summary": summary,
+            "timestamp": datetime.now().isoformat()
+        }
+    except Exception as e:
+        logger.error(f"Failed to get virtual budget summary: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get virtual budget summary")
+
+@app.post("/virtual-budget/reset-daily")
+async def reset_daily_budget_endpoint():
+    """Reset daily budget allocation (admin function)"""
+    try:
+        result = virtual_budget_manager.reset_daily_budget()
+        return {
+            **result,
+            "timestamp": datetime.now().isoformat()
+        }
+    except Exception as e:
+        logger.error(f"Failed to reset daily budget: {e}")
+        raise HTTPException(status_code=500, detail="Failed to reset daily budget")
+
+# Groq Integration Endpoints
+@app.get("/groq/usage")
+async def get_groq_usage_endpoint():
+    """Get Groq usage data via scraping (cached)"""
+    try:
+        usage_data = fetch_groq_usage()
+        return {
+            "groq_usage": usage_data,
+            "timestamp": datetime.now().isoformat()
+        }
+    except Exception as e:
+        logger.error(f"Failed to fetch Groq usage: {e}")
+        return {
+            "available": False,
+            "error": str(e),
+            "source": "scraper",
+            "timestamp": datetime.now().isoformat()
+        }
+
+# Billing Reconciliation Endpoints
+@app.post("/billing/reconcile/daily")
+async def run_daily_reconciliation_endpoint(days_back: int = 1):
+    """Run daily billing reconciliation for recent days"""
+    try:
+        results = billing_reconciler.daily_reconciliation(days_back)
+        
+        return {
+            "reconciliation_results": [
+                {
+                    "provider": r.provider,
+                    "date": r.date,
+                    "estimated_total": r.estimated_total,
+                    "actual_total": r.actual_total,
+                    "drift_percentage": r.drift_percentage,
+                    "records_reconciled": r.records_reconciled,
+                    "success": r.success,
+                    "error": r.error
+                }
+                for r in results
+            ],
+            "total_jobs": len(results),
+            "successful_jobs": len([r for r in results if r.success]),
+            "timestamp": datetime.now().isoformat()
+        }
+    except Exception as e:
+        logger.error(f"Failed to run daily reconciliation: {e}")
+        raise HTTPException(status_code=500, detail="Failed to run daily reconciliation")
+
+@app.get("/billing/reconcile/summary")
+async def get_reconciliation_summary_endpoint(days: int = 7):
+    """Get reconciliation accuracy summary"""
+    try:
+        summary = billing_reconciler.get_reconciliation_summary(days)
+        return {
+            "reconciliation_summary": summary,
+            "timestamp": datetime.now().isoformat()
+        }
+    except Exception as e:
+        logger.error(f"Failed to get reconciliation summary: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get reconciliation summary")
+
+@app.post("/billing/reconcile/{provider}")
+async def reconcile_provider_endpoint(provider: str, target_date: str):
+    """Reconcile specific provider for a specific date"""
+    try:
+        from datetime import date
+        target_date_obj = date.fromisoformat(target_date)
+        
+        if provider == "anthropic":
+            result = billing_reconciler.reconcile_anthropic(target_date_obj)
+        elif provider == "groq":
+            result = billing_reconciler.reconcile_groq(target_date_obj)
+        else:
+            raise HTTPException(status_code=400, detail=f"Unknown provider: {provider}")
+        
+        return {
+            "reconciliation_result": {
+                "provider": result.provider,
+                "date": result.date,
+                "estimated_total": result.estimated_total,
+                "actual_total": result.actual_total,
+                "drift_percentage": result.drift_percentage,
+                "records_reconciled": result.records_reconciled,
+                "success": result.success,
+                "error": result.error
+            },
+            "timestamp": datetime.now().isoformat()
+        }
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
+    except Exception as e:
+        logger.error(f"Failed to reconcile {provider}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to reconcile {provider}")
 
 # PHASE 2: Cache management endpoints
 @app.get("/cache/status")
