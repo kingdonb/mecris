@@ -528,6 +528,39 @@ async def get_mcp_manifest():
                     "properties": {},
                     "required": []
                 }
+            },
+            {
+                "name": "record_budget_reconciliation",
+                "description": "Record budget reconciliation with manual adjustment tracking",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "current_budget": {"type": "number", "description": "Actual remaining budget from provider"},
+                        "manual_adjustment": {"type": "number", "default": 0.0, "description": "Manual adjustment amount"},
+                        "adjustment_reason": {"type": "string", "default": "anthropic-console-sync", "description": "Reason for adjustment"}
+                    },
+                    "required": ["current_budget"]
+                }
+            },
+            {
+                "name": "get_reconciliation_history",
+                "description": "Get budget reconciliation audit trail",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "days": {"type": "integer", "default": 7, "description": "Number of days to look back"}
+                    },
+                    "required": []
+                }
+            },
+            {
+                "name": "get_reconciliation_status",
+                "description": "Get budget tracking integrity status and recommendations",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {},
+                    "required": []
+                }
             }
         ]
     }
@@ -573,7 +606,16 @@ async def call_mcp_tool(tool_name: str, request: Dict[str, Any]):
                 p.get("month")
             ),
             "get_groq_status": lambda p: get_groq_reminder_status(),
-            "get_groq_context": lambda p: get_groq_context_for_narrator()
+            "get_groq_context": lambda p: get_groq_context_for_narrator(),
+            "record_budget_reconciliation": lambda p: reconcile_budget_endpoint(
+                p.get("current_budget"),
+                p.get("manual_adjustment", 0.0),
+                p.get("adjustment_reason", "anthropic-console-sync")
+            ),
+            "get_reconciliation_history": lambda p: get_reconciliation_history_endpoint(
+                p.get("days", 7)
+            ),
+            "get_reconciliation_status": lambda p: get_reconciliation_status_endpoint()
         }
         
         if tool_name not in tool_handlers:
@@ -1374,6 +1416,174 @@ async def reconcile_provider_endpoint(provider: str, target_date: str):
     except Exception as e:
         logger.error(f"Failed to reconcile {provider}: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to reconcile {provider}")
+
+# Budget Reconciliation Endpoints
+@app.post("/budget/reconcile")
+async def reconcile_budget_endpoint(
+    current_budget: float,
+    manual_adjustment: float = 0.0,
+    adjustment_reason: str = "anthropic-console-sync"
+):
+    """Record a budget reconciliation with proper plug tracking"""
+    try:
+        import sqlite3
+        from datetime import date, datetime
+        
+        # Get current budget status
+        current_status = tracker.get_budget_status()
+        budget_before = current_status["remaining_budget"]
+        
+        # Record the reconciliation
+        with sqlite3.connect("mecris_usage.db") as conn:
+            conn.execute("""
+                INSERT INTO budget_reconciliation 
+                (reconciliation_date, budget_before, manual_adjustment, budget_after, 
+                 adjustment_reason, api_usage_tracked, manual_plug_amount, reconciled_by)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                date.today().isoformat(),
+                budget_before,
+                manual_adjustment,
+                current_budget,
+                adjustment_reason,
+                current_status["used_budget"],
+                manual_adjustment,
+                "mcp-budget-reconcile"
+            ))
+        
+        # Update budget through existing tracker
+        result = tracker.update_budget(current_budget)
+        
+        return {
+            "success": True,
+            "reconciliation": {
+                "budget_before": budget_before,
+                "budget_after": current_budget,
+                "manual_adjustment": manual_adjustment,
+                "adjustment_reason": adjustment_reason,
+                "date": date.today().isoformat()
+            },
+            "updated_budget": result
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to reconcile budget: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to reconcile budget: {e}")
+
+@app.get("/budget/reconciliation/history")
+async def get_reconciliation_history_endpoint(days: int = 7):
+    """Get budget reconciliation audit trail"""
+    try:
+        import sqlite3
+        from datetime import date, timedelta
+        
+        cutoff_date = (date.today() - timedelta(days=days)).isoformat()
+        
+        with sqlite3.connect("mecris_usage.db") as conn:
+            cursor = conn.execute("""
+                SELECT reconciliation_date, budget_before, manual_adjustment, budget_after,
+                       adjustment_reason, api_usage_tracked, manual_plug_amount, 
+                       reconciled_by, created_at
+                FROM budget_reconciliation 
+                WHERE reconciliation_date > ? 
+                ORDER BY created_at DESC
+            """, (cutoff_date,))
+            
+            reconciliations = []
+            total_adjustments = 0.0
+            
+            for row in cursor.fetchall():
+                reconciliation = {
+                    "date": row[0],
+                    "budget_before": row[1],
+                    "manual_adjustment": row[2],
+                    "budget_after": row[3],
+                    "adjustment_reason": row[4],
+                    "api_usage_tracked": row[5],
+                    "manual_plug_amount": row[6],
+                    "reconciled_by": row[7],
+                    "created_at": row[8]
+                }
+                reconciliations.append(reconciliation)
+                total_adjustments += row[2] or 0.0
+        
+        return {
+            "success": True,
+            "period_days": days,
+            "reconciliations": reconciliations,
+            "summary": {
+                "total_reconciliations": len(reconciliations),
+                "total_adjustments": round(total_adjustments, 2),
+                "avg_adjustment": round(total_adjustments / len(reconciliations), 2) if reconciliations else 0
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to get reconciliation history: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get reconciliation history: {e}")
+
+@app.get("/budget/reconciliation/status")
+async def get_reconciliation_status_endpoint():
+    """Get budget tracking integrity status and recommendations"""
+    try:
+        import sqlite3
+        from datetime import date, timedelta
+        
+        # Get current budget status
+        current_status = tracker.get_budget_status()
+        
+        # Get recent reconciliations
+        with sqlite3.connect("mecris_usage.db") as conn:
+            # Last reconciliation
+            cursor = conn.execute("""
+                SELECT reconciliation_date, manual_adjustment, adjustment_reason, created_at
+                FROM budget_reconciliation 
+                ORDER BY created_at DESC LIMIT 1
+            """)
+            last_reconciliation = cursor.fetchone()
+            
+            # Count of reconciliations this period
+            cursor = conn.execute("""
+                SELECT COUNT(*), SUM(manual_adjustment)
+                FROM budget_reconciliation 
+                WHERE reconciliation_date >= ?
+            """, (current_status.get("period_start", "2025-09-01"),))
+            period_stats = cursor.fetchone()
+        
+        # Calculate recommendations
+        recommendations = []
+        days_since_reconcile = None
+        
+        if last_reconciliation:
+            from datetime import datetime
+            last_date = datetime.fromisoformat(last_reconciliation[3]).date()
+            days_since_reconcile = (date.today() - last_date).days
+            
+            if days_since_reconcile > 3:
+                recommendations.append("Consider running budget reconciliation - last done {} days ago".format(days_since_reconcile))
+        else:
+            recommendations.append("No reconciliations recorded - consider establishing baseline")
+        
+        return {
+            "success": True,
+            "budget_tracking_health": "GOOD" if days_since_reconcile is None or days_since_reconcile <= 3 else "NEEDS_ATTENTION",
+            "current_budget": current_status,
+            "last_reconciliation": {
+                "date": last_reconciliation[0] if last_reconciliation else None,
+                "adjustment": last_reconciliation[1] if last_reconciliation else None,
+                "reason": last_reconciliation[2] if last_reconciliation else None,
+                "days_ago": days_since_reconcile
+            } if last_reconciliation else None,
+            "period_summary": {
+                "reconciliation_count": period_stats[0] if period_stats else 0,
+                "total_adjustments": period_stats[1] if period_stats and period_stats[1] else 0.0
+            },
+            "recommendations": recommendations
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to get reconciliation status: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get reconciliation status: {e}")
 
 # PHASE 2: Cache management endpoints
 @app.get("/cache/status")
