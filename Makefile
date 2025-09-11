@@ -1,8 +1,11 @@
 .PHONY: restart stop start test test-sms test-narrator test-claude test-all
-.PHONY: daemon foreground claude debug-claude
+.PHONY: omnara daemon foreground claude debug-claude
 
 claude:
 	claude --mcp-config .mcp/mecris.json
+
+omnara:
+	uv run omnara
 
 debug-claude:
 	claude --mcp-config .mcp/mecris.json --debug

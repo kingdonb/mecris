@@ -20,6 +20,10 @@ from dotenv import load_dotenv
 from obsidian_client import ObsidianMCPClient
 from beeminder_client import BeeminderClient
 from usage_tracker import UsageTracker, get_budget_status, record_usage, update_remaining_budget, get_goals, complete_goal, add_goal
+from virtual_budget_manager import VirtualBudgetManager, Provider, get_virtual_budget_status, record_anthropic_usage, record_groq_usage
+from billing_reconciliation import BillingReconciliation
+from fetch_groq_usage import fetch_groq_usage
+from groq_odometer_tracker import GroqOdometerTracker, record_groq_reading, get_groq_reminder_status, get_groq_context_for_narrator
 from twilio_sender import send_sms
 
 # Load environment variables
@@ -42,6 +46,21 @@ app = FastAPI(
 obsidian_client = ObsidianMCPClient()
 beeminder_client = BeeminderClient()
 usage_tracker = UsageTracker()
+
+# Initialize virtual budget system
+virtual_budget_manager = VirtualBudgetManager()
+billing_reconciler = BillingReconciliation()
+# Don't create a separate instance - use the singleton from the imported functions
+# groq_odometer = GroqOdometerTracker()  # REMOVED - causes database locks
+
+# Initialize Anthropic Cost Tracker (optional - requires organization access)
+try:
+    from scripts.anthropic_cost_tracker import AnthropicCostTracker
+    anthropic_cost_tracker = AnthropicCostTracker()
+    logger.info("Anthropic Cost Tracker initialized successfully")
+except (ImportError, ValueError) as e:
+    logger.warning(f"Anthropic Cost Tracker not available: {e}")
+    anthropic_cost_tracker = None
 
 # Daily activity cache - avoids hitting Beeminder API more than once per hour
 daily_activity_cache = {
@@ -85,7 +104,12 @@ class MCPStdioHandler:
                 arguments = params.get("arguments", {})
                 
                 if tool_name in self.tool_handlers:
-                    result = await self.tool_handlers[tool_name](arguments)
+                    handler_result = self.tool_handlers[tool_name](arguments)
+                    # Handle both async and sync functions
+                    if asyncio.iscoroutine(handler_result):
+                        result = await handler_result
+                    else:
+                        result = handler_result
                     return {
                         "jsonrpc": "2.0",
                         "id": request.get("id"),
@@ -186,7 +210,15 @@ def get_tool_handlers():
             p.get("remaining_budget"),
             p.get("total_budget"),
             p.get("period_end")
-        )
+        ),
+        "record_groq_reading": lambda p: record_groq_reading(
+            p.get("value"),
+            p.get("notes", ""),
+            p.get("month")
+        ),
+        "get_groq_status": lambda p: get_groq_reminder_status(),
+        "get_groq_context": lambda p: get_groq_context_for_narrator(),
+        "get_unified_cost_status": lambda p: get_unified_cost_status()
     }
 
 # Response models
@@ -456,6 +488,79 @@ async def get_mcp_manifest():
                     },
                     "required": ["remaining_budget"]
                 }
+            },
+            {
+                "name": "record_groq_reading",
+                "description": "Record manual Groq odometer reading with cumulative cost",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "value": {"type": "number"},
+                        "notes": {"type": "string", "default": ""},
+                        "month": {"type": "string", "description": "Optional month in YYYY-MM format for historical records"}
+                    },
+                    "required": ["value"]
+                }
+            },
+            {
+                "name": "get_groq_status",
+                "description": "Get Groq odometer status and usage reminders",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {},
+                    "required": []
+                }
+            },
+            {
+                "name": "get_groq_context",
+                "description": "Get Groq odometer context for narrator integration",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {},
+                    "required": []
+                }
+            },
+            {
+                "name": "get_unified_cost_status",
+                "description": "Get unified cost status combining Claude budget and Groq usage data",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {},
+                    "required": []
+                }
+            },
+            {
+                "name": "record_budget_reconciliation",
+                "description": "Record budget reconciliation with manual adjustment tracking",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "current_budget": {"type": "number", "description": "Actual remaining budget from provider"},
+                        "manual_adjustment": {"type": "number", "default": 0.0, "description": "Manual adjustment amount"},
+                        "adjustment_reason": {"type": "string", "default": "anthropic-console-sync", "description": "Reason for adjustment"}
+                    },
+                    "required": ["current_budget"]
+                }
+            },
+            {
+                "name": "get_reconciliation_history",
+                "description": "Get budget reconciliation audit trail",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "days": {"type": "integer", "default": 7, "description": "Number of days to look back"}
+                    },
+                    "required": []
+                }
+            },
+            {
+                "name": "get_reconciliation_status",
+                "description": "Get budget tracking integrity status and recommendations",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {},
+                    "required": []
+                }
             }
         ]
     }
@@ -472,6 +577,7 @@ async def call_mcp_tool(tool_name: str, request: Dict[str, Any]):
             "get_narrator_context": lambda p: get_narrator_context(),
             "get_beeminder_status": lambda p: get_beeminder_status(),
             "get_budget_status": lambda p: get_usage_status(),
+            "get_unified_cost_status": lambda p: get_unified_cost_status(),
             "record_usage_session": lambda p: record_usage_session(
                 p.get("input_tokens", 0),
                 p.get("output_tokens", 0),
@@ -493,7 +599,23 @@ async def call_mcp_tool(tool_name: str, request: Dict[str, Any]):
                 p.get("remaining_budget"),
                 p.get("total_budget"),
                 p.get("period_end")
-            )
+            ),
+            "record_groq_reading": lambda p: record_groq_reading(
+                p.get("value"),
+                p.get("notes", ""),
+                p.get("month")
+            ),
+            "get_groq_status": lambda p: get_groq_reminder_status(),
+            "get_groq_context": lambda p: get_groq_context_for_narrator(),
+            "record_budget_reconciliation": lambda p: reconcile_budget_endpoint(
+                p.get("current_budget"),
+                p.get("manual_adjustment", 0.0),
+                p.get("adjustment_reason", "anthropic-console-sync")
+            ),
+            "get_reconciliation_history": lambda p: get_reconciliation_history_endpoint(
+                p.get("days", 7)
+            ),
+            "get_reconciliation_status": lambda p: get_reconciliation_status_endpoint()
         }
         
         if tool_name not in tool_handlers:
@@ -504,7 +626,12 @@ async def call_mcp_tool(tool_name: str, request: Dict[str, Any]):
         params = request.get("params", {})
         
         # Call the handler
-        result = await tool_handlers[tool_name](params)
+        handler_result = tool_handlers[tool_name](params)
+        # Handle both async and sync functions
+        if asyncio.iscoroutine(handler_result):
+            result = await handler_result
+        else:
+            result = handler_result
         
         # Log successful invocation with details
         logger.info(f"MCP tool '{tool_name}' completed successfully - result type: {type(result).__name__}")
@@ -555,6 +682,7 @@ async def health_check():
         "obsidian": "unknown",
         "beeminder": "unknown", 
         "usage_tracker": "ok",
+        "anthropic_cost_tracker": "not_available" if not anthropic_cost_tracker else "ok",
         "twilio": "not_configured"
     }
     
@@ -569,6 +697,15 @@ async def health_check():
         status["beeminder"] = await beeminder_client.health_check()
     except Exception as e:
         status["beeminder"] = f"error: {str(e)[:50]}"
+    
+    # Test Anthropic Cost Tracker
+    if anthropic_cost_tracker:
+        try:
+            # Try to get budget summary (this will test API connectivity)
+            _ = anthropic_cost_tracker.get_budget_summary()
+            status["anthropic_cost_tracker"] = "ok"
+        except Exception as e:
+            status["anthropic_cost_tracker"] = f"error: {str(e)[:50]}"
     
     # Test Twilio configuration
     if os.getenv("TWILIO_ACCOUNT_SID") and os.getenv("TWILIO_AUTH_TOKEN"):
@@ -779,6 +916,73 @@ async def get_daily_activity_default():
     """Check if daily activity was logged for bike goal (default)"""
     return await get_daily_activity("bike")
 
+# Anthropic Cost API endpoint (requires organization workspace)
+@app.get("/anthropic/usage")
+async def get_anthropic_usage():
+    """Get Anthropic API usage data directly from their Cost & Usage API"""
+    if not anthropic_cost_tracker:
+        return {
+            "available": False,
+            "error": "Anthropic Cost Tracker not initialized - requires organization access and ANTHROPIC_ADMIN_KEY",
+            "setup_notes": "Ensure API key is from organization workspace (not default workspace)",
+            "fallback": "Using local usage tracking instead"
+        }
+    
+    try:
+        # Get today's usage with hourly granularity for real-time data
+        from datetime import datetime, UTC
+        start_time = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
+        
+        # Get both usage and cost data
+        usage_data = anthropic_cost_tracker.get_usage(start_time, bucket_width='1h')
+        
+        # Calculate totals from usage data
+        total_input = 0
+        total_output = 0
+        estimated_cost = 0.0
+        
+        for bucket in usage_data.get('data', []):
+            for result in bucket.get('results', []):
+                # Sum up input tokens (cached + uncached + cache creation)
+                input_tokens = result.get('uncached_input_tokens', 0)
+                input_tokens += result.get('cache_read_input_tokens', 0)
+                if 'cache_creation' in result:
+                    input_tokens += result['cache_creation'].get('ephemeral_1h_input_tokens', 0)
+                    input_tokens += result['cache_creation'].get('ephemeral_5m_input_tokens', 0)
+                
+                output_tokens = result.get('output_tokens', 0)
+                total_input += input_tokens
+                total_output += output_tokens
+        
+        # Rough cost estimation (Claude 3.5 Sonnet pricing)
+        estimated_cost = (total_input * 3.0 / 1000000) + (total_output * 15.0 / 1000000)
+        
+        return {
+            "available": True,
+            "data": {
+                "today_usage": {
+                    "total_input_tokens": total_input,
+                    "total_output_tokens": total_output,
+                    "estimated_cost": round(estimated_cost, 4)
+                },
+                "raw_usage_data": usage_data,
+                "bucket_count": len(usage_data.get('data', [])),
+                "has_usage": total_input > 0 or total_output > 0
+            },
+            "source": "anthropic_api",
+            "workspace_note": "Data from organization workspace only",
+            "timestamp": datetime.now().isoformat()
+        }
+    except Exception as e:
+        logger.error(f"Failed to fetch Anthropic usage data: {e}")
+        return {
+            "available": False,
+            "error": str(e),
+            "source": "anthropic_api",
+            "troubleshooting": "Check if API key is from organization workspace, not default workspace",
+            "fallback": "Using local usage tracking instead"
+        }
+
 # Usage tracking endpoints
 @app.get("/usage", response_model=BudgetResponse)
 async def get_usage_status():
@@ -794,6 +998,68 @@ async def get_usage_status():
     except Exception as e:
         logger.error(f"Failed to fetch usage status: {e}")
         raise HTTPException(status_code=500, detail="Failed to fetch usage status")
+
+async def get_unified_cost_status():
+    """Get unified cost status combining Claude budget and Groq usage"""
+    try:
+        from groq_odometer_tracker import _get_tracker
+        
+        # Get Claude budget status
+        budget_data = get_budget_status()
+        
+        # Get Groq usage data
+        groq_tracker = _get_tracker()
+        groq_status = groq_tracker.check_reminder_needs()
+        groq_usage = groq_tracker.get_usage_for_virtual_budget()
+        
+        # Get historical Groq data
+        import sqlite3
+        with sqlite3.connect("mecris_virtual_budget.db") as conn:
+            cursor = conn.execute("""
+                SELECT month, total_cost, finalized, reading_count
+                FROM groq_monthly_summaries
+                ORDER BY month
+            """)
+            groq_history = [
+                {
+                    "month": row[0],
+                    "cost": row[1],
+                    "finalized": bool(row[2]),
+                    "readings": row[3]
+                }
+                for row in cursor.fetchall()
+            ]
+        
+        unified_status = {
+            "claude": {
+                "total_budget": budget_data.get("total_budget", 0),
+                "remaining_budget": budget_data.get("remaining_budget", 0),
+                "used_budget": budget_data.get("used_budget", 0),
+                "days_remaining": budget_data.get("days_remaining", 0),
+                "budget_health": budget_data.get("budget_health", "UNKNOWN")
+            },
+            "groq": {
+                "status": groq_status["status"],
+                "current_month": groq_usage.get("month", "unknown"),
+                "current_cost": groq_usage.get("cumulative_cost", 0),
+                "daily_average": groq_usage.get("daily_average", 0),
+                "days_until_reset": groq_status["days_until_reset"],
+                "history": groq_history,
+                "reminders": groq_status["reminders"]
+            },
+            "summary": {
+                "total_spend_this_period": budget_data.get("used_budget", 0) + groq_usage.get("cumulative_cost", 0),
+                "claude_days_left": budget_data.get("days_remaining", 0),
+                "groq_days_until_reset": groq_status["days_until_reset"],
+                "needs_attention": len(groq_status["reminders"]) > 0 or budget_data.get("budget_health") == "CRITICAL"
+            }
+        }
+        
+        return unified_status
+        
+    except Exception as e:
+        logger.error(f"Failed to get unified cost status: {e}")
+        return {"error": f"Failed to get unified cost status: {str(e)}"}
 
 @app.post("/usage/record")
 async def record_usage_session(input_tokens: int, output_tokens: int, model: str = "claude-3-5-sonnet-20241022", session_type: str = "interactive", notes: str = ""):
@@ -904,6 +1170,421 @@ async def send_usage_alert(background_tasks: BackgroundTasks):
         logger.error(f"Failed to send usage alert: {e}")
         raise HTTPException(status_code=500, detail="Failed to process usage alert")
 
+# Virtual Budget System Endpoints
+@app.get("/virtual-budget/status")
+async def get_virtual_budget_status_endpoint():
+    """Get comprehensive virtual budget status across all providers"""
+    try:
+        status = virtual_budget_manager.get_budget_status()
+        return {
+            "virtual_budget": status,
+            "timestamp": datetime.now().isoformat()
+        }
+    except Exception as e:
+        logger.error(f"Failed to get virtual budget status: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get virtual budget status")
+
+@app.post("/virtual-budget/record/anthropic")
+async def record_anthropic_usage_endpoint(
+    model: str,
+    input_tokens: int,
+    output_tokens: int,
+    session_type: str = "interactive",
+    notes: str = "",
+    emergency_override: bool = False
+):
+    """Record Anthropic usage in virtual budget system"""
+    try:
+        result = virtual_budget_manager.record_usage(
+            Provider.ANTHROPIC, model, input_tokens, output_tokens,
+            session_type, notes, emergency_override
+        )
+        
+        return {
+            **result,
+            "provider": "anthropic",
+            "timestamp": datetime.now().isoformat()
+        }
+    except Exception as e:
+        logger.error(f"Failed to record Anthropic usage: {e}")
+        raise HTTPException(status_code=500, detail="Failed to record Anthropic usage")
+
+@app.post("/virtual-budget/record/groq")
+async def record_groq_usage_endpoint(
+    model: str,
+    input_tokens: int,
+    output_tokens: int,
+    session_type: str = "interactive",
+    notes: str = "",
+    emergency_override: bool = False
+):
+    """Record Groq usage in virtual budget system"""
+    try:
+        result = virtual_budget_manager.record_usage(
+            Provider.GROQ, model, input_tokens, output_tokens,
+            session_type, notes, emergency_override
+        )
+        
+        return {
+            **result,
+            "provider": "groq",
+            "timestamp": datetime.now().isoformat()
+        }
+    except Exception as e:
+        logger.error(f"Failed to record Groq usage: {e}")
+        raise HTTPException(status_code=500, detail="Failed to record Groq usage")
+
+@app.get("/virtual-budget/summary")
+async def get_virtual_budget_summary(days: int = 7):
+    """Get comprehensive multi-provider usage summary"""
+    try:
+        summary = virtual_budget_manager.get_usage_summary(days)
+        return {
+            "summary": summary,
+            "timestamp": datetime.now().isoformat()
+        }
+    except Exception as e:
+        logger.error(f"Failed to get virtual budget summary: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get virtual budget summary")
+
+@app.post("/virtual-budget/reset-daily")
+async def reset_daily_budget_endpoint():
+    """Reset daily budget allocation (admin function)"""
+    try:
+        result = virtual_budget_manager.reset_daily_budget()
+        return {
+            **result,
+            "timestamp": datetime.now().isoformat()
+        }
+    except Exception as e:
+        logger.error(f"Failed to reset daily budget: {e}")
+        raise HTTPException(status_code=500, detail="Failed to reset daily budget")
+
+# Groq Integration Endpoints
+@app.get("/groq/usage")
+async def get_groq_usage_endpoint():
+    """Get Groq usage data via scraping (cached)"""
+    try:
+        usage_data = fetch_groq_usage()
+        return {
+            "groq_usage": usage_data,
+            "timestamp": datetime.now().isoformat()
+        }
+    except Exception as e:
+        logger.error(f"Failed to fetch Groq usage: {e}")
+        return {
+            "available": False,
+            "error": str(e),
+            "source": "scraper",
+            "timestamp": datetime.now().isoformat()
+        }
+
+# Groq Odometer Endpoints
+@app.post("/groq/odometer/record")
+async def record_groq_odometer_reading(value: float, notes: str = ""):
+    """Record a manual Groq odometer reading"""
+    try:
+        result = record_groq_reading(value, notes)
+        
+        # If successful, also record in virtual budget
+        if result.get("recorded"):
+            # Calculate daily usage from odometer
+            daily_estimate = result.get("daily_usage_estimate", 0)
+            
+            # Record in virtual budget system as daily estimate
+            if daily_estimate > 0:
+                # Rough token estimate from cost (using GPT-OSS-20B pricing)
+                estimated_tokens = int(daily_estimate * 1_000_000 / 0.10)
+                virtual_budget_manager.record_usage(
+                    Provider.GROQ,
+                    "openai/gpt-oss-20b",
+                    estimated_tokens // 2,  # Split between input/output
+                    estimated_tokens // 2,
+                    "odometer",
+                    f"Daily estimate from odometer reading: ${value:.2f}"
+                )
+        
+        return {
+            "success": True,
+            "result": result,
+            "timestamp": datetime.now().isoformat()
+        }
+    except Exception as e:
+        logger.error(f"Failed to record Groq odometer: {e}")
+        raise HTTPException(status_code=500, detail="Failed to record odometer reading")
+
+@app.get("/groq/odometer/status")
+async def get_groq_odometer_status():
+    """Get current Groq odometer status and reminders"""
+    try:
+        reminder_status = get_groq_reminder_status()
+        odometer_data = groq_odometer.get_usage_for_virtual_budget()
+        
+        return {
+            "odometer_status": reminder_status,
+            "usage_data": odometer_data,
+            "timestamp": datetime.now().isoformat()
+        }
+    except Exception as e:
+        logger.error(f"Failed to get Groq odometer status: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get odometer status")
+
+@app.get("/groq/odometer/context")
+async def get_groq_narrator_context():
+    """Get Groq context for narrator integration"""
+    try:
+        context = get_groq_context_for_narrator()
+        return {
+            "groq_context": context,
+            "timestamp": datetime.now().isoformat()
+        }
+    except Exception as e:
+        logger.error(f"Failed to get Groq narrator context: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get narrator context")
+
+# Billing Reconciliation Endpoints
+@app.post("/billing/reconcile/daily")
+async def run_daily_reconciliation_endpoint(days_back: int = 1):
+    """Run daily billing reconciliation for recent days"""
+    try:
+        results = billing_reconciler.daily_reconciliation(days_back)
+        
+        return {
+            "reconciliation_results": [
+                {
+                    "provider": r.provider,
+                    "date": r.date,
+                    "estimated_total": r.estimated_total,
+                    "actual_total": r.actual_total,
+                    "drift_percentage": r.drift_percentage,
+                    "records_reconciled": r.records_reconciled,
+                    "success": r.success,
+                    "error": r.error
+                }
+                for r in results
+            ],
+            "total_jobs": len(results),
+            "successful_jobs": len([r for r in results if r.success]),
+            "timestamp": datetime.now().isoformat()
+        }
+    except Exception as e:
+        logger.error(f"Failed to run daily reconciliation: {e}")
+        raise HTTPException(status_code=500, detail="Failed to run daily reconciliation")
+
+@app.get("/billing/reconcile/summary")
+async def get_reconciliation_summary_endpoint(days: int = 7):
+    """Get reconciliation accuracy summary"""
+    try:
+        summary = billing_reconciler.get_reconciliation_summary(days)
+        return {
+            "reconciliation_summary": summary,
+            "timestamp": datetime.now().isoformat()
+        }
+    except Exception as e:
+        logger.error(f"Failed to get reconciliation summary: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get reconciliation summary")
+
+@app.post("/billing/reconcile/{provider}")
+async def reconcile_provider_endpoint(provider: str, target_date: str):
+    """Reconcile specific provider for a specific date"""
+    try:
+        from datetime import date
+        target_date_obj = date.fromisoformat(target_date)
+        
+        if provider == "anthropic":
+            result = billing_reconciler.reconcile_anthropic(target_date_obj)
+        elif provider == "groq":
+            result = billing_reconciler.reconcile_groq(target_date_obj)
+        else:
+            raise HTTPException(status_code=400, detail=f"Unknown provider: {provider}")
+        
+        return {
+            "reconciliation_result": {
+                "provider": result.provider,
+                "date": result.date,
+                "estimated_total": result.estimated_total,
+                "actual_total": result.actual_total,
+                "drift_percentage": result.drift_percentage,
+                "records_reconciled": result.records_reconciled,
+                "success": result.success,
+                "error": result.error
+            },
+            "timestamp": datetime.now().isoformat()
+        }
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
+    except Exception as e:
+        logger.error(f"Failed to reconcile {provider}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to reconcile {provider}")
+
+# Budget Reconciliation Endpoints
+@app.post("/budget/reconcile")
+async def reconcile_budget_endpoint(
+    current_budget: float,
+    manual_adjustment: float = 0.0,
+    adjustment_reason: str = "anthropic-console-sync"
+):
+    """Record a budget reconciliation with proper plug tracking"""
+    try:
+        import sqlite3
+        from datetime import date, datetime
+        
+        # Get current budget status
+        current_status = tracker.get_budget_status()
+        budget_before = current_status["remaining_budget"]
+        
+        # Record the reconciliation
+        with sqlite3.connect("mecris_usage.db") as conn:
+            conn.execute("""
+                INSERT INTO budget_reconciliation 
+                (reconciliation_date, budget_before, manual_adjustment, budget_after, 
+                 adjustment_reason, api_usage_tracked, manual_plug_amount, reconciled_by)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                date.today().isoformat(),
+                budget_before,
+                manual_adjustment,
+                current_budget,
+                adjustment_reason,
+                current_status["used_budget"],
+                manual_adjustment,
+                "mcp-budget-reconcile"
+            ))
+        
+        # Update budget through existing tracker
+        result = tracker.update_budget(current_budget)
+        
+        return {
+            "success": True,
+            "reconciliation": {
+                "budget_before": budget_before,
+                "budget_after": current_budget,
+                "manual_adjustment": manual_adjustment,
+                "adjustment_reason": adjustment_reason,
+                "date": date.today().isoformat()
+            },
+            "updated_budget": result
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to reconcile budget: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to reconcile budget: {e}")
+
+@app.get("/budget/reconciliation/history")
+async def get_reconciliation_history_endpoint(days: int = 7):
+    """Get budget reconciliation audit trail"""
+    try:
+        import sqlite3
+        from datetime import date, timedelta
+        
+        cutoff_date = (date.today() - timedelta(days=days)).isoformat()
+        
+        with sqlite3.connect("mecris_usage.db") as conn:
+            cursor = conn.execute("""
+                SELECT reconciliation_date, budget_before, manual_adjustment, budget_after,
+                       adjustment_reason, api_usage_tracked, manual_plug_amount, 
+                       reconciled_by, created_at
+                FROM budget_reconciliation 
+                WHERE reconciliation_date > ? 
+                ORDER BY created_at DESC
+            """, (cutoff_date,))
+            
+            reconciliations = []
+            total_adjustments = 0.0
+            
+            for row in cursor.fetchall():
+                reconciliation = {
+                    "date": row[0],
+                    "budget_before": row[1],
+                    "manual_adjustment": row[2],
+                    "budget_after": row[3],
+                    "adjustment_reason": row[4],
+                    "api_usage_tracked": row[5],
+                    "manual_plug_amount": row[6],
+                    "reconciled_by": row[7],
+                    "created_at": row[8]
+                }
+                reconciliations.append(reconciliation)
+                total_adjustments += row[2] or 0.0
+        
+        return {
+            "success": True,
+            "period_days": days,
+            "reconciliations": reconciliations,
+            "summary": {
+                "total_reconciliations": len(reconciliations),
+                "total_adjustments": round(total_adjustments, 2),
+                "avg_adjustment": round(total_adjustments / len(reconciliations), 2) if reconciliations else 0
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to get reconciliation history: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get reconciliation history: {e}")
+
+@app.get("/budget/reconciliation/status")
+async def get_reconciliation_status_endpoint():
+    """Get budget tracking integrity status and recommendations"""
+    try:
+        import sqlite3
+        from datetime import date, timedelta
+        
+        # Get current budget status
+        current_status = tracker.get_budget_status()
+        
+        # Get recent reconciliations
+        with sqlite3.connect("mecris_usage.db") as conn:
+            # Last reconciliation
+            cursor = conn.execute("""
+                SELECT reconciliation_date, manual_adjustment, adjustment_reason, created_at
+                FROM budget_reconciliation 
+                ORDER BY created_at DESC LIMIT 1
+            """)
+            last_reconciliation = cursor.fetchone()
+            
+            # Count of reconciliations this period
+            cursor = conn.execute("""
+                SELECT COUNT(*), SUM(manual_adjustment)
+                FROM budget_reconciliation 
+                WHERE reconciliation_date >= ?
+            """, (current_status.get("period_start", "2025-09-01"),))
+            period_stats = cursor.fetchone()
+        
+        # Calculate recommendations
+        recommendations = []
+        days_since_reconcile = None
+        
+        if last_reconciliation:
+            from datetime import datetime
+            last_date = datetime.fromisoformat(last_reconciliation[3]).date()
+            days_since_reconcile = (date.today() - last_date).days
+            
+            if days_since_reconcile > 3:
+                recommendations.append("Consider running budget reconciliation - last done {} days ago".format(days_since_reconcile))
+        else:
+            recommendations.append("No reconciliations recorded - consider establishing baseline")
+        
+        return {
+            "success": True,
+            "budget_tracking_health": "GOOD" if days_since_reconcile is None or days_since_reconcile <= 3 else "NEEDS_ATTENTION",
+            "current_budget": current_status,
+            "last_reconciliation": {
+                "date": last_reconciliation[0] if last_reconciliation else None,
+                "adjustment": last_reconciliation[1] if last_reconciliation else None,
+                "reason": last_reconciliation[2] if last_reconciliation else None,
+                "days_ago": days_since_reconcile
+            } if last_reconciliation else None,
+            "period_summary": {
+                "reconciliation_count": period_stats[0] if period_stats else 0,
+                "total_adjustments": period_stats[1] if period_stats and period_stats[1] else 0.0
+            },
+            "recommendations": recommendations
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to get reconciliation status: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get reconciliation status: {e}")
+
 # PHASE 2: Cache management endpoints
 @app.get("/cache/status")
 async def get_cache_status():
@@ -983,6 +1664,9 @@ async def get_narrator_context():
         # Get daily walk status (cached for performance)
         daily_walk_status = await get_cached_daily_activity("bike")
         
+        # Get Groq odometer context for reminders
+        groq_context = get_groq_context_for_narrator()
+        
         # Build strategic summary
         pending_todos = [t for t in todos if not t.get("completed", False)]
         critical_beeminder = [g for g in beeminder_goals if g.get("derail_risk") == "CRITICAL"]
@@ -1018,6 +1702,15 @@ async def get_narrator_context():
         if (daily_walk_status.get("status") == "needed" and 
             current_hour >= 14):  # After 2 PM
             recommendations.append("🚶‍♂️ Time for a walk! No activity logged today for bike goal")
+        
+        # Add Groq odometer reminders
+        if groq_context.get("groq_tracking", {}).get("needs_action"):
+            groq_urgent = groq_context["groq_tracking"].get("urgent_reminder")
+            if groq_urgent:
+                urgent_items.append(f"GROQ: {groq_urgent}")
+                recommendations.append(groq_urgent)
+            elif groq_context["groq_tracking"].get("days_until_reset", 30) <= 3:
+                recommendations.append(f"📊 Groq usage reading needed in {groq_context['groq_tracking']['days_until_reset']} days")
         
         return NarratorContextResponse(
             summary=summary,

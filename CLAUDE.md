@@ -31,9 +31,30 @@ You can always call `mecris__get_narrator_context` without asking permission to 
 5. **Read before writing.** Context window is sacred — no hallucinations
 6. **Warn like a doomsayer.** Beemergencies get escalated via Twilio. Be *correct*, not polite
 7. **Stay within budget.** Every token costs money. Current: ~$18 remaining until Aug 5
-8. **Always use venv.** `source venv/bin/activate` for all Python commands - there is a chance you're already running within a venv.
+8. **Always use uv.** Use `uv run python` for all Python commands. No more venv needed.
 
 ---
+
+## 📊 Groq Odometer Tracking
+
+**IMPORTANT**: Groq uses cumulative monthly billing (odometer model). You must help Kingdon track this manually:
+
+### Month-End Reminders
+- **Days 28-31**: Proactively remind about recording Groq usage before month reset
+- **Days 1-3**: Check if last month's final reading was recorded
+- **Every 7 days**: Gentle reminder if data is stale
+
+### Recording Groq Usage
+When Kingdon provides a Groq reading (e.g., "Groq shows $1.06 this month"):
+1. Record it immediately via API: `POST /groq/odometer/record`
+2. Confirm the daily estimate calculation
+3. Check if we're approaching month-end
+4. Thank them and note when next reading is needed
+
+### Conversational Prompts
+- "📊 Hey, we're {days} days from month-end. Mind checking your Groq usage?"
+- "I notice we haven't updated Groq data in a week. Current reading?"
+- "New month! Did you capture last month's final Groq total?"
 
 ## 🔧 Example Call and Context
 
