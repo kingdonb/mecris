@@ -213,10 +213,12 @@ def get_tool_handlers():
         ),
         "record_groq_reading": lambda p: record_groq_reading(
             p.get("value"),
-            p.get("notes", "")
+            p.get("notes", ""),
+            p.get("month")
         ),
         "get_groq_status": lambda p: get_groq_reminder_status(),
-        "get_groq_context": lambda p: get_groq_context_for_narrator()
+        "get_groq_context": lambda p: get_groq_context_for_narrator(),
+        "get_unified_cost_status": lambda p: get_unified_cost_status()
     }
 
 # Response models
@@ -494,7 +496,8 @@ async def get_mcp_manifest():
                     "type": "object",
                     "properties": {
                         "value": {"type": "number"},
-                        "notes": {"type": "string", "default": ""}
+                        "notes": {"type": "string", "default": ""},
+                        "month": {"type": "string", "description": "Optional month in YYYY-MM format for historical records"}
                     },
                     "required": ["value"]
                 }
@@ -516,6 +519,15 @@ async def get_mcp_manifest():
                     "properties": {},
                     "required": []
                 }
+            },
+            {
+                "name": "get_unified_cost_status",
+                "description": "Get unified cost status combining Claude budget and Groq usage data",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {},
+                    "required": []
+                }
             }
         ]
     }
@@ -532,6 +544,7 @@ async def call_mcp_tool(tool_name: str, request: Dict[str, Any]):
             "get_narrator_context": lambda p: get_narrator_context(),
             "get_beeminder_status": lambda p: get_beeminder_status(),
             "get_budget_status": lambda p: get_usage_status(),
+            "get_unified_cost_status": lambda p: get_unified_cost_status(),
             "record_usage_session": lambda p: record_usage_session(
                 p.get("input_tokens", 0),
                 p.get("output_tokens", 0),
@@ -556,7 +569,8 @@ async def call_mcp_tool(tool_name: str, request: Dict[str, Any]):
             ),
             "record_groq_reading": lambda p: record_groq_reading(
                 p.get("value"),
-                p.get("notes", "")
+                p.get("notes", ""),
+                p.get("month")
             ),
             "get_groq_status": lambda p: get_groq_reminder_status(),
             "get_groq_context": lambda p: get_groq_context_for_narrator()
@@ -942,6 +956,68 @@ async def get_usage_status():
     except Exception as e:
         logger.error(f"Failed to fetch usage status: {e}")
         raise HTTPException(status_code=500, detail="Failed to fetch usage status")
+
+async def get_unified_cost_status():
+    """Get unified cost status combining Claude budget and Groq usage"""
+    try:
+        from groq_odometer_tracker import _get_tracker
+        
+        # Get Claude budget status
+        budget_data = get_budget_status()
+        
+        # Get Groq usage data
+        groq_tracker = _get_tracker()
+        groq_status = groq_tracker.check_reminder_needs()
+        groq_usage = groq_tracker.get_usage_for_virtual_budget()
+        
+        # Get historical Groq data
+        import sqlite3
+        with sqlite3.connect("mecris_virtual_budget.db") as conn:
+            cursor = conn.execute("""
+                SELECT month, total_cost, finalized, reading_count
+                FROM groq_monthly_summaries
+                ORDER BY month
+            """)
+            groq_history = [
+                {
+                    "month": row[0],
+                    "cost": row[1],
+                    "finalized": bool(row[2]),
+                    "readings": row[3]
+                }
+                for row in cursor.fetchall()
+            ]
+        
+        unified_status = {
+            "claude": {
+                "total_budget": budget_data.get("total_budget", 0),
+                "remaining_budget": budget_data.get("remaining_budget", 0),
+                "used_budget": budget_data.get("used_budget", 0),
+                "days_remaining": budget_data.get("days_remaining", 0),
+                "budget_health": budget_data.get("budget_health", "UNKNOWN")
+            },
+            "groq": {
+                "status": groq_status["status"],
+                "current_month": groq_usage.get("month", "unknown"),
+                "current_cost": groq_usage.get("cumulative_cost", 0),
+                "daily_average": groq_usage.get("daily_average", 0),
+                "days_until_reset": groq_status["days_until_reset"],
+                "history": groq_history,
+                "reminders": groq_status["reminders"]
+            },
+            "summary": {
+                "total_spend_this_period": budget_data.get("used_budget", 0) + groq_usage.get("cumulative_cost", 0),
+                "claude_days_left": budget_data.get("days_remaining", 0),
+                "groq_days_until_reset": groq_status["days_until_reset"],
+                "needs_attention": len(groq_status["reminders"]) > 0 or budget_data.get("budget_health") == "CRITICAL"
+            }
+        }
+        
+        return unified_status
+        
+    except Exception as e:
+        logger.error(f"Failed to get unified cost status: {e}")
+        return {"error": f"Failed to get unified cost status: {str(e)}"}
 
 @app.post("/usage/record")
 async def record_usage_session(input_tokens: int, output_tokens: int, model: str = "claude-3-5-sonnet-20241022", session_type: str = "interactive", notes: str = ""):

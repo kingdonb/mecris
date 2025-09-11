@@ -80,47 +80,56 @@ class GroqOdometerTracker:
                 )
             """)
     
-    def record_odometer_reading(self, value: float, notes: str = "") -> Dict:
+    def record_odometer_reading(self, value: float, notes: str = "", month: Optional[str] = None) -> Dict:
         """
         Record a new odometer reading, handling month boundaries intelligently.
         
         Args:
             value: Current cumulative cost shown in Groq console
             notes: Optional notes about the reading
+            month: Optional month in YYYY-MM format (defaults to current month)
             
         Returns:
             Dict with recording status and derived daily costs
         """
         now = datetime.now()
-        current_month = now.strftime("%Y-%m")
+        target_month = month if month else now.strftime("%Y-%m")
         
-        # Check for odometer reset
+        # Check for odometer reset (only for current month recordings)
         last_reading = self.get_last_reading()
         reset_detected = False
         
-        if last_reading:
+        if last_reading and not month:  # Only do reset detection for current month
             last_month = last_reading['month']
             last_value = last_reading['value']
             
             # Detect reset: new value < old value OR month changed
-            if value < last_value and current_month != last_month:
+            if value < last_value and target_month != last_month:
                 reset_detected = True
                 # Finalize the previous month
                 self._finalize_month(last_month, last_value)
-            elif current_month != last_month and value < 1.0:
+            elif target_month != last_month and value < 1.0:
                 # Month changed and value is near zero - likely a reset
                 reset_detected = True
                 self._finalize_month(last_month, last_value)
         
         # Record the reading
         with sqlite3.connect(self.db_path) as conn:
+            # For historical records, use a timestamp from that month
+            if month:
+                # Use first day of the specified month for historical records
+                historical_date = datetime.strptime(f"{month}-01", "%Y-%m-%d")
+                record_timestamp = historical_date.isoformat()
+            else:
+                record_timestamp = now.isoformat()
+            
             conn.execute("""
                 INSERT INTO groq_odometer_readings 
                 (timestamp, month, cumulative_value, is_reset, notes, created_at)
                 VALUES (?, ?, ?, ?, ?, ?)
             """, (
-                now.isoformat(),
-                current_month,
+                record_timestamp,
+                target_month,
                 value,
                 reset_detected,
                 notes,
@@ -128,22 +137,26 @@ class GroqOdometerTracker:
             ))
             
             # Update monthly summary
-            self._update_monthly_summary_with_conn(conn, current_month, value)
+            self._update_monthly_summary_with_conn(conn, target_month, value)
         
-        # Calculate derived daily usage
-        daily_usage = self._calculate_daily_usage(current_month, value)
-        
-        # Check if we need reminders
-        reminder_status = self.check_reminder_needs()
+        # Calculate derived daily usage (only for current month)
+        if not month:
+            daily_usage = self._calculate_daily_usage(target_month, value)
+            reminder_status = self.check_reminder_needs()
+        else:
+            # For historical records, don't calculate daily usage
+            daily_usage = 0.0
+            reminder_status = {"status": "historical", "reminders": []}
         
         return {
             "recorded": True,
-            "month": current_month,
+            "month": target_month,
             "cumulative_value": value,
             "reset_detected": reset_detected,
             "daily_usage_estimate": daily_usage,
             "reminder_status": reminder_status,
-            "timestamp": now.isoformat()
+            "timestamp": record_timestamp if month else now.isoformat(),
+            "historical_record": bool(month)
         }
     
     def get_last_reading(self) -> Optional[Dict]:
@@ -415,10 +428,10 @@ def _get_tracker() -> GroqOdometerTracker:
     return _global_tracker
 
 # Convenience functions for integration
-def record_groq_reading(value: float, notes: str = "") -> Dict:
+def record_groq_reading(value: float, notes: str = "", month: Optional[str] = None) -> Dict:
     """Record a Groq odometer reading."""
     tracker = _get_tracker()
-    return tracker.record_odometer_reading(value, notes)
+    return tracker.record_odometer_reading(value, notes, month)
 
 def get_groq_reminder_status() -> Dict:
     """Check if Groq readings are needed."""
