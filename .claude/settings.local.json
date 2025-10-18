@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__mecris__get_narrator_context",
+      "mcp__mecris__get_beeminder_status",
+      "mcp__mecris__get_daily_activity",
+      "Bash(!claude-code-tamagotchi:*)",
+      "Bash(claude-code-tamagotchi:*)",
+      "mcp__mecris__get_budget_status",
+      "Bash(uv run:*)",
+      "mcp__mecris__get_groq_status",
+      "mcp__mecris__get_groq_context",
+      "Bash(bunx claude-code-tamagotchi feed:*)",
+      "mcp__mecris__record_groq_reading",
+      "Bash(bunx claude-code-tamagotchi clean:*)",
+      "Bash(bunx claude-code-tamagotchi sleep:*)",
+      "mcp__mecris__get_unified_cost_status"
+    ],
+    "deny": []
+  }
+}

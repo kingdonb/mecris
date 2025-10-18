@@ -1,4 +1,12 @@
 {
+  "provider": "github",
+  "github": {
+    "repo": "kingdon-ci/kaniko-builder",
+    "token_env": "GITHUB_TOKEN",
+    "webhook_secret_env": "GH_WEBHOOK_SECRET"
+  },
+  "cache_dir": ".mecris/cache",
+  "log_level": "info",
   "mcpServers": {
     "mecris": {
       "command": "uv",
