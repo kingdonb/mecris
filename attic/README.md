@@ -46,11 +46,15 @@ Permanent Tree   GitHub Issues   Closed Issues     Permanent Docs      Retired D
 
 ### Retirement Candidates
 Documents awaiting retirement after issue resolution:
-- `AUTONOMOUS_DEPLOYMENT_PLAN.md` - Autonomous EC2 deployment planning
-- `ENHANCEMENT_ASSESSMENT.md` - Tamagotchi & Stakpak integration notes
 - `FORMALIZATION_PLAN.md` - Production formalization planning
 - `ANTHROPIC_COST_USAGE_NOTES.md` - Cost tracking implementation notes
+- `docs/TODO.md` - Comprehensive todo list (converting to GitHub issues)
 - Various spec and planning documents in `/docs`
+
+### Recently Retired
+Documents moved to cold storage (2025-10-19):
+- `AUTONOMOUS_DEPLOYMENT_PLAN.md` → Issue #11 (Autonomous EC2 Deployment)
+- `ENHANCEMENT_ASSESSMENT.md` → Issue #12 (Tamagotchi & Stakpak Integration)
 
 ## Guidelines
 
