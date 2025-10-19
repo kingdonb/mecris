@@ -1,0 +1,8 @@
+target/**
+
+# Environment variables (managed by direnv)
+.envrc
+.direnv/
+
+# Spin logs
+.spin/logs/
