@@ -16,6 +16,8 @@ jobs:
           echo "Checking if Boris and Fiona need their walk..."
           
           # Call the Spin Cloud WASM endpoint
+          # TODO: Replace with actual Spin Cloud app URL after deployment
+          # Expected format: https://boris-fiona-walker-xxx.fermyon.app/check
           response=$(curl -s -w "\n%{http_code}" \
             -X POST \
             -H "Content-Type: application/json" \
