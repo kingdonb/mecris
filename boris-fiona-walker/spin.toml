@@ -17,9 +17,17 @@ openweather_api_key = { required = true }
 route = "/check"
 component = "walk-reminder"
 
+[[trigger.http]]
+route = "/..."
+component = "walk-reminder"
+
 [component.walk-reminder]
 source = "target/wasm32-wasip1/release/boris_fiona_walker.wasm"
 allowed_outbound_hosts = ["https://api.twilio.com", "https://api.openweathermap.org"]
+
+[component.walk-reminder.build]
+command = "cargo build --target wasm32-wasip1 --release"
+watch = ["src/**/*.rs", "Cargo.toml"]
 
 [component.walk-reminder.variables]
 twilio_account_sid = "{{ twilio_account_sid }}"
