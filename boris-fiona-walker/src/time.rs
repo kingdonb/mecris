@@ -1,5 +1,5 @@
-use anyhow::{anyhow, Result};
-use chrono::{DateTime, TimeZone, Utc};
+use anyhow::Result;
+use chrono::{TimeZone, Timelike, Utc};
 use chrono_tz::US::Eastern;
 
 /// Get current hour in Eastern timezone (0-23)

@@ -1,5 +1,4 @@
 use spin_sdk::http::{IntoResponse, Request, Response};
-use spin_sdk::variables;
 use serde_json::json;
 use anyhow::Result;
 
@@ -8,8 +7,8 @@ mod time;
 
 /// Main HTTP handler for walk reminder checks
 #[spin_sdk::http_component]
-fn handle_walk_check(_req: Request) -> Result<impl IntoResponse> {
-    let result = check_and_send_reminder();
+async fn handle_walk_check(_req: Request) -> Result<impl IntoResponse> {
+    let result = check_and_send_reminder().await;
     
     match result {
         Ok(reminded) => {
@@ -44,7 +43,7 @@ fn handle_walk_check(_req: Request) -> Result<impl IntoResponse> {
 }
 
 /// Core logic: check if we should send a reminder and do it
-fn check_and_send_reminder() -> Result<bool> {
+async fn check_and_send_reminder() -> Result<bool> {
     let current_hour = time::get_current_hour_eastern()?;
     
     // Only remind between 2 PM and 6 PM Eastern
@@ -59,7 +58,7 @@ fn check_and_send_reminder() -> Result<bool> {
     
     // Send the reminder!
     let message = get_walk_message(current_hour);
-    sms::send_walk_reminder(&message)?;
+    sms::send_walk_reminder(&message).await?;
     
     // Mark that we sent a reminder today
     mark_reminder_sent()?;

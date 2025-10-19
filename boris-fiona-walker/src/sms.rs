@@ -1,9 +1,8 @@
 use spin_sdk::variables;
 use anyhow::{anyhow, Result};
-use serde_json::json;
 
 /// Send SMS walk reminder via Twilio
-pub fn send_walk_reminder(message: &str) -> Result<()> {
+pub async fn send_walk_reminder(message: &str) -> Result<()> {
     let account_sid = variables::get("twilio_account_sid")
         .map_err(|_| anyhow!("Missing twilio_account_sid variable"))?;
     let auth_token = variables::get("twilio_auth_token")
@@ -26,15 +25,16 @@ pub fn send_walk_reminder(message: &str) -> Result<()> {
     
     // Send the HTTP request
     let request = spin_sdk::http::Request::builder()
-        .method("POST")
+        .method(spin_sdk::http::Method::Post)
         .uri(&url)
         .header("Content-Type", "application/x-www-form-urlencoded")
         .header("Authorization", format!("Basic {}", encode_basic_auth(&account_sid, &auth_token)))
-        .body(body.into_bytes())?;
+        .body(body.into_bytes())
+        .build();
     
-    let response = spin_sdk::http::send(request)?;
+    let response: spin_sdk::http::Response = spin_sdk::http::send(request).await?;
     
-    if response.status().as_u16() >= 200 && response.status().as_u16() < 300 {
+    if *response.status() >= 200 && *response.status() < 300 {
         println!("SMS sent successfully: {}", message);
         Ok(())
     } else {

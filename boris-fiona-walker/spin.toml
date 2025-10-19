@@ -6,13 +6,20 @@ version = "0.1.0"
 authors = ["Kingdon Barrett <kingdon@urmanac.com>"]
 description = "WASM walk reminder system for Boris and Fiona"
 
+[variables]
+twilio_account_sid = { required = true }
+twilio_auth_token = { required = true }
+twilio_from_number = { required = true }
+twilio_to_number = { required = true }
+openweather_api_key = { required = true }
+
 [[trigger.http]]
 route = "/check"
 component = "walk-reminder"
 
 [component.walk-reminder]
-source = "target/wasm32-wasi/release/boris_fiona_walker.wasm"
-allowed_outbound_hosts = ["api.twilio.com", "api.openweathermap.org"]
+source = "target/wasm32-wasip1/release/boris_fiona_walker.wasm"
+allowed_outbound_hosts = ["https://api.twilio.com", "https://api.openweathermap.org"]
 
 [component.walk-reminder.variables]
 twilio_account_sid = "{{ twilio_account_sid }}"
