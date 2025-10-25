@@ -7,6 +7,12 @@
 # This template shows all required environment variables for the walk reminder system.
 
 # =============================================================================
+# Security Configuration (REQUIRED for production deployment)
+# =============================================================================
+# Generate a strong random secret: openssl rand -hex 32
+export SPIN_VARIABLE_WEBHOOK_SECRET="your_webhook_secret_here_generate_with_openssl_rand"  # Webhook authentication
+
+# =============================================================================
 # Twilio SMS Configuration (REQUIRED for SMS sending)
 # =============================================================================
 # Get these from your Twilio Console: https://console.twilio.com/

@@ -15,12 +15,13 @@ jobs:
         run: |
           echo "Checking if Boris and Fiona need their walk..."
           
-          # Call the Spin Cloud WASM endpoint
+          # Call the Spin Cloud WASM endpoint with authentication
           # TODO: Replace with actual Spin Cloud app URL after deployment
           # Expected format: https://boris-fiona-walker-xxx.fermyon.app/check
           response=$(curl -s -w "\n%{http_code}" \
             -X POST \
             -H "Content-Type: application/json" \
+            -H "Authorization: Bearer ${{ secrets.WEBHOOK_SECRET }}" \
             "${{ secrets.SPIN_APP_URL }}/check" || echo "000")
           
           http_code=$(echo "$response" | tail -n1)

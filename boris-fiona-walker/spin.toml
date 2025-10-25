@@ -12,6 +12,7 @@ twilio_auth_token = { required = true }
 twilio_from_number = { required = true }
 twilio_to_number = { required = true }
 openweather_api_key = { required = true }
+webhook_secret = { required = true }
 
 [[trigger.http]]
 route = "/check"
@@ -34,4 +35,5 @@ twilio_account_sid = "{{ twilio_account_sid }}"
 twilio_auth_token = "{{ twilio_auth_token }}"  
 twilio_from_number = "{{ twilio_from_number }}"
 twilio_to_number = "{{ twilio_to_number }}"
+webhook_secret = "{{ webhook_secret }}"
 openweather_api_key = "{{ openweather_api_key }}"
