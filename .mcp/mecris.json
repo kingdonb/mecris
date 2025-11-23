@@ -1,17 +1,19 @@
 {
-  "provider": "github",
-  "github": {
-    "repo": "kingdon-ci/kaniko-builder",
-    "token_env": "GITHUB_TOKEN",
-    "webhook_secret_env": "GH_WEBHOOK_SECRET"
-  },
-  "cache_dir": ".mecris/cache",
-  "log_level": "info",
   "mcpServers": {
+    "github": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-github"],
+      "env": {
+        "GITHUB_PERSONAL_ACCESS_TOKEN": "${GITHUB_TOKEN}"
+      }
+    },
     "mecris": {
       "command": "uv",
       "args": ["run", "mcp_server.py", "--stdio"],
-      "cwd": "/Users/yebyen/w/mecris"
+      "cwd": "/Users/yebyen/w/mecris",
+      "env": {
+        "GITHUB_TOKEN": "${GITHUB_TOKEN}"
+      }
     }
   }
 }

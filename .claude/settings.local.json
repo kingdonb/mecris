@@ -14,7 +14,10 @@
       "mcp__mecris__record_groq_reading",
       "Bash(bunx claude-code-tamagotchi clean:*)",
       "Bash(bunx claude-code-tamagotchi sleep:*)",
-      "mcp__mecris__get_unified_cost_status"
+      "mcp__mecris__get_unified_cost_status",
+      "mcp__github__list_issues",
+      "mcp__github__get_issue",
+      "Skill(tdg:atomic)"
     ],
     "deny": []
   }

@@ -1,6 +1,9 @@
-use spin_sdk::http::{Request, Response};
+use spin_sdk::http::{Request, Response, Method};
+use spin_sdk::variables;
 use serde_json::json;
-use anyhow::Result;
+use anyhow::{Result, anyhow};
+use std::collections::HashMap;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 mod sms;
 mod time;
@@ -10,15 +13,41 @@ mod time;
 async fn handle_walk_check(req: Request) -> Result<Response> {
     let path = req.path();
     
+    // Security check: Log all incoming requests with IP and timestamp
+    log_request(&req);
+    
     match path {
-        "/check" => handle_check_api().await,
-        "/" | "/debug" => handle_debug_frontend().await,
-        _ => handle_debug_frontend().await, // Default to debug page
+        "/check" => handle_check_api(req).await,
+        "/health" => handle_health_check().await,
+        // Debug endpoints removed for production security
+        _ => handle_not_found().await,
     }
 }
 
-/// Handle the API endpoint for walk reminder checks
-async fn handle_check_api() -> Result<Response> {
+/// Handle the API endpoint for walk reminder checks with authentication and rate limiting
+async fn handle_check_api(req: Request) -> Result<Response> {
+    // Security Layer 1: Method validation
+    if req.method() != &Method::Post {
+        return create_error_response(405, "Method not allowed. Use POST.");
+    }
+    
+    // Security Layer 2: Authentication
+    if let Err(e) = validate_webhook_secret(&req) {
+        eprintln!("Authentication failed: {}", e);
+        return create_error_response(401, "Unauthorized");
+    }
+    
+    // Security Layer 3: Rate limiting  
+    if let Err(e) = check_rate_limit(&req) {
+        eprintln!("Rate limit exceeded: {}", e);
+        return create_error_response(429, "Rate limit exceeded");
+    }
+    
+    // Security Layer 4: Request size validation
+    if req.body().len() > 1024 {
+        return create_error_response(413, "Request too large");
+    }
+    
     let result = check_and_send_reminder().await;
     
     match result {
@@ -256,6 +285,116 @@ async fn check_and_send_reminder() -> Result<bool> {
     mark_reminder_sent()?;
     
     Ok(true)
+}
+
+/// Security: Validate webhook secret from Authorization header
+fn validate_webhook_secret(req: &Request) -> Result<()> {
+    let expected_secret = variables::get("webhook_secret")
+        .map_err(|_| anyhow!("Missing webhook_secret configuration"))?;
+    
+    let auth_header = req.header("authorization")
+        .or_else(|| req.header("Authorization"))
+        .ok_or_else(|| anyhow!("Missing Authorization header"))?;
+    
+    let expected_auth = format!("Bearer {}", expected_secret);
+    
+    if auth_header != expected_auth.as_str() {
+        return Err(anyhow!("Invalid webhook secret"));
+    }
+    
+    Ok(())
+}
+
+/// Security: Simple rate limiting using timestamp tracking
+fn check_rate_limit(req: &Request) -> Result<()> {
+    // Get client IP from headers (Spin Cloud should provide this)
+    let client_ip = req.header("x-forwarded-for")
+        .or_else(|| req.header("x-real-ip"))
+        .unwrap_or("unknown");
+    
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    
+    let rate_limit_key = format!("rate_limit:{}", client_ip);
+    
+    match spin_sdk::key_value::Store::open_default() {
+        Ok(store) => {
+            if let Ok(Some(last_request_bytes)) = store.get(&rate_limit_key) {
+                if let Ok(last_request_str) = String::from_utf8(last_request_bytes) {
+                    if let Ok(last_request_time) = last_request_str.parse::<u64>() {
+                        // Rate limit: Allow only 1 request per hour per IP
+                        if now - last_request_time < 3600 {
+                            return Err(anyhow!("Rate limit: Only 1 request per hour allowed"));
+                        }
+                    }
+                }
+            }
+            
+            // Update rate limit timestamp
+            let _ = store.set(&rate_limit_key, now.to_string().as_bytes());
+        }
+        Err(_) => {
+            // If key-value store fails, log but don't block the request
+            eprintln!("Warning: Rate limiting unavailable - key-value store error");
+        }
+    }
+    
+    Ok(())
+}
+
+/// Security: Log all incoming requests for monitoring
+fn log_request(req: &Request) {
+    let client_ip = req.header("x-forwarded-for")
+        .or_else(|| req.header("x-real-ip"))
+        .unwrap_or("unknown");
+    
+    let user_agent = req.header("user-agent").unwrap_or("unknown");
+    let method = req.method();
+    let path = req.path();
+    
+    println!("REQUEST: {} {} {} UA:{} IP:{}", 
+             chrono::Utc::now().format("%Y-%m-%d %H:%M:%S"),
+             method, path, user_agent, client_ip);
+}
+
+/// Security: Create standardized error responses
+fn create_error_response(status: u16, message: &str) -> Result<Response> {
+    let error_response = json!({
+        "status": "error",
+        "error": message,
+        "timestamp": chrono::Utc::now().to_rfc3339()
+    });
+    
+    Ok(Response::builder()
+        .status(status)
+        .header("content-type", "application/json")
+        .header("x-content-type-options", "nosniff")
+        .header("x-frame-options", "DENY")
+        .body(error_response.to_string())
+        .build())
+}
+
+/// Health check endpoint (no authentication required)
+async fn handle_health_check() -> Result<Response> {
+    let health_response = json!({
+        "status": "healthy",
+        "service": "boris-fiona-walker",
+        "timestamp": chrono::Utc::now().to_rfc3339(),
+        "version": "0.1.0"
+    });
+    
+    Ok(Response::builder()
+        .status(200)
+        .header("content-type", "application/json")
+        .body(health_response.to_string())
+        .build())
+}
+
+/// Handle 404 responses (debug endpoints removed for security)
+async fn handle_not_found() -> Result<Response> {
+    create_error_response(404, "Endpoint not found")
 }
 
 /// Generate walk message based on time of day

@@ -19,6 +19,7 @@ Before deploying to production, update `.envrc` with real credentials:
 nano .envrc
 
 # Required changes:
+export SPIN_VARIABLE_WEBHOOK_SECRET="$(openssl rand -hex 32)"                # Generate secure webhook secret
 export SPIN_VARIABLE_TWILIO_ACCOUNT_SID="ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"  # Real Twilio Account SID
 export SPIN_VARIABLE_TWILIO_AUTH_TOKEN="your_real_auth_token_here"            # Real Twilio Auth Token  
 export SPIN_VARIABLE_TWILIO_FROM_NUMBER="+1234567890"                        # Real Twilio phone number
@@ -61,6 +62,9 @@ spin deploy
 After deployment, set production environment variables in Spin Cloud:
 
 ```bash
+# Set security credentials (CRITICAL - must be first)
+spin cloud variables set WEBHOOK_SECRET "$(openssl rand -hex 32)"
+
 # Set Twilio credentials
 spin cloud variables set TWILIO_ACCOUNT_SID "ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
 spin cloud variables set TWILIO_AUTH_TOKEN "your_real_auth_token_here"
@@ -76,11 +80,13 @@ spin cloud variables set OPENWEATHER_API_KEY "your_real_api_key_here"
 # Get your app URL
 spin cloud apps info boris-fiona-walker
 
-# Test the API endpoint
-curl -X POST https://boris-fiona-walker-xxx.fermyon.app/check
+# Test the health endpoint (no auth required)
+curl https://boris-fiona-walker-xxx.fermyon.app/health
 
-# Test the web frontend
-open https://boris-fiona-walker-xxx.fermyon.app/
+# Test the authenticated API endpoint
+curl -X POST \
+  -H "Authorization: Bearer YOUR_WEBHOOK_SECRET" \
+  https://boris-fiona-walker-xxx.fermyon.app/check
 ```
 
 ## 🔧 GitHub Actions Integration

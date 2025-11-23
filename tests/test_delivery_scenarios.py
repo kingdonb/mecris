@@ -7,6 +7,7 @@ Tests console, SMS, WhatsApp, and fallback behaviors
 import os
 import requests
 import json
+import pytest
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -45,11 +46,13 @@ def test_delivery_method(method, test_mode=False):
                 status = '✅' if attempt['success'] else '❌'
                 print(f"     {i+1}. {attempt['method']}: {status}")
         
-        return result
+        # Proper assertions instead of return
+        assert result.get('sent') is not None, "Response should include 'sent' field"
+        assert 'delivery_method' in result, "Response should include 'delivery_method'"
         
     except Exception as e:
         print(f"   ❌ Error: {e}")
-        return None
+        pytest.fail(f"Test failed with exception: {e}")
         
     finally:
         # Restore original environment
@@ -111,7 +114,11 @@ def test_full_reminder_workflow():
     
     print(f"   Triggered: {trigger_result.get('triggered', False)}")
     
-    return check_result, trigger_result
+    # Assert instead of return
+    assert check_response.status_code == 200, f"Check endpoint failed: {check_response.status_code}"
+    assert trigger_response.status_code == 200, f"Trigger endpoint failed: {trigger_response.status_code}"
+    assert isinstance(check_result, dict), "Check response should be JSON object"
+    assert isinstance(trigger_result, dict), "Trigger response should be JSON object"
 
 if __name__ == "__main__":
     print("🧠 Mecris Delivery System Test Suite")
