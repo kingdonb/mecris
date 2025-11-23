@@ -6,6 +6,7 @@ Tests all three tiers and delivery modes
 
 import requests
 import json
+import pytest
 from datetime import datetime
 
 def test_reminder_check():
@@ -15,12 +16,16 @@ def test_reminder_check():
         response = requests.get("http://localhost:8000/intelligent-reminder/check")
         result = response.json()
         print(f"✅ Reminder check: {json.dumps(result, indent=2)}")
-        return result
+        
+        # Proper assertions
+        assert response.status_code == 200, f"Expected 200, got {response.status_code}"
+        assert isinstance(result, dict), "Response should be a JSON object"
+        
     except Exception as e:
         print(f"❌ Reminder check failed: {e}")
-        return None
+        pytest.fail(f"Reminder check failed: {e}")
 
-def test_message_send(message, message_type="test"):
+def test_message_send(message):
     """Test message sending (will fail without Twilio creds, but shows the flow)"""
     print(f"📤 Testing message send: {message}")
     try:
@@ -28,16 +33,20 @@ def test_message_send(message, message_type="test"):
             "http://localhost:8000/intelligent-reminder/send",
             json={
                 "message": message,
-                "type": message_type,
+                "type": "test",
                 "tier": "base_mode"
             }
         )
         result = response.json()
         print(f"📱 Send result: {json.dumps(result, indent=2)}")
-        return result
+        
+        # Proper assertions
+        assert response.status_code == 200, f"Expected 200, got {response.status_code}"
+        assert isinstance(result, dict), "Response should be a JSON object"
+        
     except Exception as e:
         print(f"❌ Message send failed: {e}")
-        return None
+        pytest.fail(f"Message send failed: {e}")
 
 def test_full_trigger():
     """Test the complete trigger workflow"""
@@ -46,10 +55,14 @@ def test_full_trigger():
         response = requests.post("http://localhost:8000/intelligent-reminder/trigger")
         result = response.json()
         print(f"🎯 Trigger result: {json.dumps(result, indent=2)}")
-        return result
+        
+        # Proper assertions
+        assert response.status_code == 200, f"Expected 200, got {response.status_code}"
+        assert isinstance(result, dict), "Response should be a JSON object"
+        
     except Exception as e:
         print(f"❌ Full trigger failed: {e}")
-        return None
+        pytest.fail(f"Full trigger failed: {e}")
 
 def test_narrator_context():
     """Test that we can get context without consuming Claude credits"""
@@ -66,10 +79,13 @@ def test_narrator_context():
         print(f"💰 Budget remaining: ${budget_status.get('remaining_budget', 0):.2f}")
         print(f"📈 Budget tier: {'base_mode' if budget_status.get('remaining_budget', 0) < 0.5 else 'smart_template' if budget_status.get('remaining_budget', 0) < 2.0 else 'enhanced'}")
         
-        return result
+        # Proper assertions
+        assert response.status_code == 200, f"Expected 200, got {response.status_code}"
+        assert isinstance(result, dict), "Response should be a JSON object"
+        
     except Exception as e:
         print(f"❌ Context check failed: {e}")
-        return None
+        pytest.fail(f"Context check failed: {e}")
 
 if __name__ == "__main__":
     print("🧠 Mecris Intelligent Reminder System Test")

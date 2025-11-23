@@ -7,13 +7,22 @@ Tests real API calls to verify Beeminder data accuracy
 import asyncio
 import os
 import json
+import sys
+import pytest
 from datetime import datetime
 from dotenv import load_dotenv
+
+# Add project root to path for imports
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from beeminder_client import BeeminderClient
 
 load_dotenv()
 
+@pytest.mark.skipif(
+    not os.getenv("BEEMINDER_API_KEY") or os.getenv("SKIP_LIVE_TESTS", "true").lower() == "true",
+    reason="Live tests require BEEMINDER_API_KEY and SKIP_LIVE_TESTS=false"
+)
 class BeeminderLiveTest:
     """Live integration tests for Beeminder API"""
     
