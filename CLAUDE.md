@@ -9,7 +9,7 @@
 **We have tools collecting dust:**
 - `Skill(tdg:atomic)` - **Use after EVERY coding session** - atomic commits that actually work
 - `Skill(tdg:tdg)` - **Use before writing new code** - test-driven generation
-- You → oss-gpt-120b → kimi-k2 - model routing for real work
+- oss-gpt-20b → oss-gpt-120b → kimi-k2 - model routing for real work
 - **$195/month unused budget** - we could spend $200 safely
 
 **One rule: 30-minute cap per task. Walk Boris. Test something small. Move on.**
@@ -26,9 +26,9 @@
 ## 🎯 Model Switching Protocol
 
 **When to switch models:**
-- **You** → quick fixes, status checks, small edits (<30 min)
-- **oss-gpt-120b** → architectural thinking, refactor strategy (>30 min thinking needed)
-- **kimi-k2** → heavy lifting, new frameworks, complex setup
+- haiku: **oss-gpt-20b** → quick fixes, status checks, small edits (<30 min)
+- sonnet: **oss-gpt-120b** → architectural thinking, refactor strategy (>30 min thinking needed)
+- opus: **kimi-k2** → heavy lifting, new frameworks, complex setup
 
 **Decision trigger:** "This feels hard" = suggest model switch immediately.
 
@@ -142,8 +142,8 @@ Mecris uses a **stdio-based MCP server model** which means:
 
 ```
 ┌──────────────┐     ┌──────────────┐     ┌──────────────┐
-│ Claude Code  │──► │   MCP Stdio  │──► │    Mecris    │
-│    CLI       │     │  Framework    │     │   Server     │
+│ Claude Code  │ ──► │   MCP Stdio  │ ──► │    Mecris    │
+│    CLI       │     │  Framework   │     │   Server     │
 └──────────────┘     └──────────────┘     └──────────────┘
                                                  │
                                                  ▼
