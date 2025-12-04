@@ -68,3 +68,7 @@ mecris.log
 # Clone of claude-code-tamagotchi
 /claude-code-tamagotchi
 /claude-code-tamagotchi/**
+
+# model-context-protocol
+/servers
+/servers/**

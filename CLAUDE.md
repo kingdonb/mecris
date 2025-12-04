@@ -30,7 +30,7 @@ Call any of these MCP functions without permission:
 4. **Narrate with purpose** - Provide strategic insight, detect risks, illuminate paths forward
 5. **Read before writing** - Context window is sacred - no hallucinations
 6. **Warn like a doomsayer** - Beemergencies get escalated via Twilio. Be *correct*, not polite
-7. **Stay within budget** - Every token costs money. Current: ~$18 remaining until Aug 5
+7. **Stay within budget** - Every token costs money. Current: $19.54 remaining until Jan 20, 2026 (46 days)
 8. **Never restart Mecris** - If MCP connection fails, ask user to restart. Don't attempt HTTP debugging
 
 ## 🔥 MCP Troubleshooting Protocol
@@ -53,14 +53,16 @@ The server lifecycle is managed by Claude Code's configuration: `.mcp/mecris.jso
 
 **IMPORTANT**: Groq uses cumulative monthly billing (odometer model). Help Kingdon track this manually:
 
+**⚠️ Current Status**: Groq data is currently 33+ days old. Consider asking Kingdon for current usage reading before month-end.
+
 ### Month-End Reminders
-• **Days 28-31**: Prompt about recording Groq usage before month reset  
-• **Days 1-3**: Verify last month's final reading was saved
-• **Every 7 days**: Check if data is stale
+  • **Days 28-31**: Prompt about recording Groq usage before month reset
+  • **Days 1-3**: Verify last month's final reading was saved
+  • **Every 7 days**: Check if data is stale (current data is 33+ days old)
 
 ### Recording Usage
 When user reports current Groq reading (e.g., "Groq shows $1.06 this month"):
-1. Record immediately with `mcp__mecris__record_groq_reading(0.8, "Final August 2025 usage", "2025-08")`
+1. Record immediately with `mcp__mecris__record_groq_reading(0.8, "Final December 2025 usage", "2025-12")`
 2. Confirm the daily estimate based on period
 3. Remind when next reading should be collected
 
