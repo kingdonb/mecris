@@ -8,7 +8,7 @@ Mecris is a persistent cognitive agent system designed to extend Claude's narrat
 
 **Core Technologies:**
 
-*   **Backend:** The primary backend is a Python [FastAPI](https://fastapi.tiangolo.com/) server. It serves as the Machine Context Provider (MCP) and aggregates data from various sources.
+*   **Backend:** The primary backend, using Python with [FastMCP](https://github.com/mcp-framework/fastmcp), serves as the Machine Context Provider (MCP). While FastAPI is used internally for modularity, the MCP exclusively communicates via standard I/O (stdio) and **does not expose any HTTP endpoints externally.**
 *   **Integrations:**
     *   **Beeminder:** Tracks goals and deadlines.
     *   **Obsidian:** Manages notes, todos, and session logs.
@@ -20,7 +20,7 @@ Mecris is a persistent cognitive agent system designed to extend Claude's narrat
 
 **Architecture:**
 
-The system is built around a central FastAPI server that exposes a series of endpoints. These endpoints provide a unified interface to the various integrated services. The server is designed to be MCP-compliant, allowing it to be used as a tool by other AI agents.
+The system is built around a central server that communicates exclusively via standard I/O (stdio), managed by the Gemini CLI. It is designed to be MCP-compliant, acting as a tool for other AI agents. All interactions are handled over stdio; **no HTTP endpoints are exposed for external communication.**
 
 ## 2. Building and Running
 
@@ -38,7 +38,7 @@ The system is built around a central FastAPI server that exposes a series of end
 
 ### Running the Server (stdio mode for Gemini CLI)
 
-To use the Mecris server with the Gemini CLI, you need to run it in `stdio` mode. This is the only supported mode for Gemini CLI integration.
+To use the Mecris server with the Gemini CLI, you need to run it in `stdio` mode. This is the **only supported mode** for Gemini CLI integration, ensuring secure and direct communication via standard input/output.
 
 *   **Run the stdio server:**
     ```bash

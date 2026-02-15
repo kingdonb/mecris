@@ -11,9 +11,7 @@ from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional
 
 from dotenv import load_dotenv
-from mcp.server import Server, NotificationOptions
-from mcp.server.stdio import stdio_server
-from mcp.server.models import InitializationOptions
+from mcp.server.fastmcp import FastMCP
 
 from obsidian_client import ObsidianMCPClient
 from beeminder_client import BeeminderClient
@@ -35,7 +33,7 @@ logging.basicConfig(
 logger = logging.getLogger("mecris")
 
 # Initialize the MCP Server
-server = Server("mecris")
+mcp = FastMCP("mecris")
 
 # Initialize clients
 obsidian_client = ObsidianMCPClient()
@@ -89,7 +87,7 @@ async def get_cached_daily_activity(goal_slug: str = "bike") -> Dict[str, Any]:
 
 # --- Tool Implementations ---
 
-@server.tool(description="Get unified strategic context with goals, budget, and recommendations.", input_schema={})
+@mcp.tool(description="Get unified strategic context with goals, budget, and recommendations.")
 async def get_narrator_context() -> Dict[str, Any]:
     """Get unified strategic context with goals, budget, and recommendations."""
     try:
@@ -138,7 +136,7 @@ async def get_narrator_context() -> Dict[str, Any]:
         logger.error(f"Failed to build narrator context: {e}")
         return {"error": f"Failed to build narrator context: {e}"}
 
-@server.tool(description="Get Beeminder goal portfolio status with risk assessment.", input_schema={})
+@mcp.tool(description="Get Beeminder goal portfolio status with risk assessment.")
 async def get_beeminder_status() -> Dict[str, Any]:
     """Get Beeminder goal portfolio status with risk assessment."""
     try:
@@ -154,24 +152,11 @@ async def get_beeminder_status() -> Dict[str, Any]:
         logger.error(f"Failed to fetch Beeminder status: {e}")
         return {"error": f"Failed to fetch Beeminder status: {e}"}
 
-@server.tool(description="Get current usage and budget status with days remaining.", input_schema={})
+@mcp.tool(description="Get current usage and budget status with days remaining.")
 def get_budget_status() -> Dict[str, Any]:
     return get_budget_status_from_tracker()
 
-@server.tool(
-    description="Record Claude usage session with token counts.",
-    input_schema={
-        "type": "object",
-        "properties": {
-            "input_tokens": {"type": "integer", "description": "Number of input tokens."},
-            "output_tokens": {"type": "integer", "description": "Number of output tokens."},
-            "model": {"type": "string", "description": "The model used for the session.", "default": "claude-3-5-sonnet-20241022"},
-            "session_type": {"type": "string", "description": "Type of session.", "default": "interactive"},
-            "notes": {"type": "string", "description": "Additional notes for the session.", "default": ""},
-        },
-        "required": ["input_tokens", "output_tokens"],
-    }
-)
+@mcp.tool(description="Record Claude usage session with token counts.")
 def record_usage_session(input_tokens: int, output_tokens: int, model: str = "claude-3-5-sonnet-20241022", session_type: str = "interactive", notes: str = "") -> Dict[str, Any]:
     try:
         cost = record_usage(input_tokens, output_tokens, model, session_type, notes)
@@ -180,7 +165,7 @@ def record_usage_session(input_tokens: int, output_tokens: int, model: str = "cl
         logger.error(f"Failed to record usage: {e}")
         return {"error": f"Failed to record usage: {e}"}
 
-@server.tool(description="Check for beemergencies and send SMS alerts if critical.", input_schema={})
+@mcp.tool(description="Check for beemergencies and send SMS alerts if critical.")
 async def send_beeminder_alert() -> Dict[str, Any]:
     try:
         emergencies = await beeminder_client.get_emergencies()
@@ -195,86 +180,35 @@ async def send_beeminder_alert() -> Dict[str, Any]:
         logger.error(f"Failed to send beeminder alert: {e}")
         return {"error": f"Failed to send beeminder alert: {e}"}
 
-@server.tool(
-    description="Check if daily activity was logged for a specific goal.",
-    input_schema={
-        "type": "object",
-        "properties": {
-            "goal_slug": {"type": "string", "description": "The slug of the goal to check.", "default": "bike"},
-        },
-    }
-)
+@mcp.tool(description="Check if daily activity was logged for a specific goal.")
 async def get_daily_activity(goal_slug: str = "bike") -> Dict[str, Any]:
     return await get_cached_daily_activity(goal_slug)
 
-@server.tool(
-    description="Add a new goal to the local database.",
-    input_schema={
-        "type": "object",
-        "properties": {
-            "title": {"type": "string", "description": "Title of the goal."},
-            "description": {"type": "string", "description": "Description of the goal.", "default": ""},
-            "priority": {"type": "string", "description": "Priority of the goal.", "default": "medium"},
-            "due_date": {"type": "string", "description": "Due date for the goal (YYYY-MM-DD)."},
-        },
-        "required": ["title"],
-    }
-)
+@mcp.tool(description="Add a new goal to the local database.")
 def add_goal(title: str, description: str = "", priority: str = "medium", due_date: Optional[str] = None) -> Dict[str, Any]:
     return add_goal_from_tracker(title, description, priority, due_date)
 
-@server.tool(
-    description="Mark a goal as completed.",
-    input_schema={
-        "type": "object",
-        "properties": {
-            "goal_id": {"type": "integer", "description": "The ID of the goal to complete."},
-        },
-        "required": ["goal_id"],
-    }
-)
+@mcp.tool(description="Mark a goal as completed.")
 def complete_goal(goal_id: int) -> Dict[str, Any]:
     return complete_goal_from_tracker(goal_id)
 
-@server.tool(
-    description="Manually update budget information.",
-    input_schema={
-        "type": "object",
-        "properties": {
-            "remaining_budget": {"type": "number", "description": "The remaining budget amount."},
-            "total_budget": {"type": "number", "description": "The total budget amount."},
-            "period_end": {"type": "string", "description": "The end date of the budget period (YYYY-MM-DD)."},
-        },
-        "required": ["remaining_budget"],
-    }
-)
+@mcp.tool(description="Manually update budget information.")
 def update_budget(remaining_budget: float, total_budget: Optional[float] = None, period_end: Optional[str] = None) -> Dict[str, Any]:
     return usage_tracker.update_budget(remaining_budget, total_budget, period_end)
 
-@server.tool(
-    description="Record manual Groq odometer reading with cumulative cost.",
-    input_schema={
-        "type": "object",
-        "properties": {
-            "value": {"type": "number", "description": "The odometer reading value."},
-            "notes": {"type": "string", "description": "Notes for the reading.", "default": ""},
-            "month": {"type": "string", "description": "The month for the reading (YYYY-MM)."},
-        },
-        "required": ["value"],
-    }
-)
+@mcp.tool(description="Record manual Groq odometer reading with cumulative cost.")
 def record_groq_reading(value: float, notes: str = "", month: Optional[str] = None) -> Dict[str, Any]:
     return record_groq_reading_from_tracker(value, notes, month)
 
-@server.tool(description="Get Groq odometer status and usage reminders.", input_schema={})
+@mcp.tool(description="Get Groq odometer status and usage reminders.")
 def get_groq_status() -> Dict[str, Any]:
     return get_groq_reminder_status()
 
-@server.tool(description="Get Groq odometer context for narrator integration.", input_schema={})
+@mcp.tool(description="Get Groq odometer context for narrator integration.")
 def get_groq_context() -> Dict[str, Any]:
     return get_groq_context_for_narrator()
 
-@server.tool(description="Get unified cost status combining Claude budget and Groq usage data.", input_schema={})
+@mcp.tool(description="Get unified cost status combining Claude budget and Groq usage data.")
 async def get_unified_cost_status() -> Dict[str, Any]:
     try:
         from groq_odometer_tracker import _get_tracker
@@ -287,7 +221,7 @@ async def get_unified_cost_status() -> Dict[str, Any]:
         logger.error(f"Failed to get unified cost status: {e}")
         return {"error": f"Failed to get unified cost status: {e}"}
 
-@server.tool(description="Check for needed reminders and send them intelligently.", input_schema={})
+@mcp.tool(description="Check for needed reminders and send them intelligently.")
 async def trigger_reminder_check() -> Dict[str, Any]:
     try:
         check_result = await check_reminder_needed()
@@ -334,29 +268,5 @@ async def send_reminder_message(message_data: Dict[str, Any]) -> Dict[str, Any]:
 
 
 
-async def main():
-    # Note: Starting message must go to stderr to avoid breaking MCP handshake
-    logger.error("Starting Mecris MCP Server in stdio mode...")
-    try:
-        async with stdio_server() as (read_stream, write_stream):
-            # Corrected capability retrieval for the latest SDK
-            capabilities = server.get_capabilities(
-                notification_options=NotificationOptions(),
-                experimental_capabilities={}
-            )
-            logger.error(f"Capabilities: {capabilities}")
-            init_options = InitializationOptions(
-                server_name="mecris",
-                server_version="0.2.0",
-                capabilities=capabilities
-            )
-            await server.run(read_stream, write_stream, init_options)
-    except (KeyboardInterrupt, SystemExit):
-        logger.info("Mecris MCP stdio server shutting down.")
-    except Exception as e:
-        logger.error(f"Mcp Stdio Server failed: {e}", exc_info=True)
-        sys.exit(1)
-
-
 if __name__ == "__main__":
-    asyncio.run(main())
+    mcp.run()
