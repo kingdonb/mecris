@@ -154,3 +154,8 @@ If MCP calls return errors or timeout:
 
 **Never**: Attempt alternative connection methods, HTTP requests, or restart the server.
 **Always**: Ask the user for a restart or updated MCP configuration if connection issues persist.
+
+## Interaction Protocol
+- At the start of every session, run `get_narrator_context` to understand current priorities.
+- If the Claude budget shows a "WARNING" or "CRITICAL" state, prioritize brevity in responses.
+- Check `get_beeminder_status` before starting any work to see if there are any "Emergency" (0-day) goals that need immediate logging.
