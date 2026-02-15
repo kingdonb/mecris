@@ -8,8 +8,8 @@
       }
     },
     "mecris": {
-      "command": "uv",
-      "args": ["run", "mcp_server.py", "--stdio"],
+      "command": ".venv/bin/python",
+      "args": ["mcp_stdio_server.py"],
       "cwd": "/Users/yebyen/w/mecris",
       "env": {
         "GITHUB_TOKEN": "${GITHUB_TOKEN}"

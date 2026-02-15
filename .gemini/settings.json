@@ -1,0 +1,18 @@
+{
+    "mcpServers": {
+        "mecris": {
+            "command": "uv",
+            "args": [
+                "--quiet",
+                "run",
+                "--no-sync",
+                "--offline",
+                "/Users/yebyen/w/mecris/mcp_server.py",
+                "--stdio"
+            ],
+            "env": {
+                "PYTHONPATH": "/Users/yebyen/w/mecris"
+            }
+        }
+    }
+}
