@@ -1,2122 +1,272 @@
 """
 Mecris MCP Server - Personal LLM Accountability System
-Main FastAPI application that aggregates multiple MCP sources
+This version is refactored to use the MCP Python SDK for stdio communication with the Handler Pattern.
 """
 
 import os
 import logging
 import asyncio
-import json
 import sys
 from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional
-from dataclasses import dataclass
-from threading import Thread
 
-from fastapi import FastAPI, HTTPException, BackgroundTasks
-from pydantic import BaseModel
 from dotenv import load_dotenv
+from mcp.server.fastmcp import FastMCP
 
 from obsidian_client import ObsidianMCPClient
 from beeminder_client import BeeminderClient
-from usage_tracker import UsageTracker, get_budget_status, record_usage, update_remaining_budget, get_goals, complete_goal, add_goal
-from virtual_budget_manager import VirtualBudgetManager, Provider, get_virtual_budget_status, record_anthropic_usage, record_groq_usage
+from usage_tracker import UsageTracker, get_budget_status as get_budget_status_from_tracker, record_usage, update_remaining_budget, get_goals, complete_goal as complete_goal_from_tracker, add_goal as add_goal_from_tracker
+from virtual_budget_manager import VirtualBudgetManager
 from billing_reconciliation import BillingReconciliation
-from fetch_groq_usage import fetch_groq_usage
-from groq_odometer_tracker import GroqOdometerTracker, record_groq_reading, get_groq_reminder_status, get_groq_context_for_narrator
-from twilio_sender import send_sms
+from groq_odometer_tracker import get_groq_context_for_narrator, get_groq_reminder_status, record_groq_reading as record_groq_reading_from_tracker
+from twilio_sender import smart_send_message, send_sms
 
 # Load environment variables
 load_dotenv()
 
-# Configure logging
+# Configure logging to stderr with ERROR level
 logging.basicConfig(
-    level=logging.INFO if os.getenv("DEBUG") == "true" else logging.WARNING,
+    level=logging.ERROR,
+    stream=sys.stderr,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger("mecris")
 
-app = FastAPI(
-    title="Mecris MCP Server",
-    description="Personal LLM Accountability System - Machine Context Provider",
-    version="0.1.0"
-)
+# Initialize the MCP Server
+mcp = FastMCP("mecris")
 
 # Initialize clients
 obsidian_client = ObsidianMCPClient()
 beeminder_client = BeeminderClient()
 usage_tracker = UsageTracker()
-
-# Initialize virtual budget system
 virtual_budget_manager = VirtualBudgetManager()
 billing_reconciler = BillingReconciliation()
-# Don't create a separate instance - use the singleton from the imported functions
-# groq_odometer = GroqOdometerTracker()  # REMOVED - causes database locks
 
-# Initialize Anthropic Cost Tracker (optional - requires organization access)
-try:
-    from scripts.anthropic_cost_tracker import AnthropicCostTracker
-    anthropic_cost_tracker = AnthropicCostTracker()
-    logger.info("Anthropic Cost Tracker initialized successfully")
-except (ImportError, ValueError) as e:
-    logger.warning(f"Anthropic Cost Tracker not available: {e}")
-    anthropic_cost_tracker = None
+# --- Cache Implementation ---
+daily_activity_cache = {}
+beeminder_goals_cache = {}
 
-# Daily activity cache - avoids hitting Beeminder API more than once per hour
-daily_activity_cache = {
-    # "bike": {
-    #     "last_check": datetime.now(),
-    #     "has_activity_today": False,
-    #     "cache_expires": datetime.now() + timedelta(hours=1)
-    # }
-}
-
-# PHASE 2: Beeminder goals cache - 30 minute TTL for goal data
-beeminder_goals_cache = {
-    # "data": [...],
-    # "last_check": datetime.now(),
-    # "cache_expires": datetime.now() + timedelta(minutes=30),
-    # "is_stale": False
-}
-
-class MCPStdioHandler:
-    def __init__(self, tool_handlers):
-        self.tool_handlers = tool_handlers
-        
-    async def handle_request(self, request):
-        """Handle MCP JSON-RPC requests"""
-        try:
-            if request.get("method") == "tools/list":
-                # Return available tools from manifest
-                manifest = await get_mcp_manifest()
-                tools = manifest["tools"]
-                
-                return {
-                    "jsonrpc": "2.0",
-                    "id": request.get("id"),
-                    "result": {"tools": tools}
-                }
-            
-            elif request.get("method") == "tools/call":
-                # Handle tool calls
-                params = request.get("params", {})
-                tool_name = params.get("name")
-                arguments = params.get("arguments", {})
-                
-                if tool_name in self.tool_handlers:
-                    handler_result = self.tool_handlers[tool_name](arguments)
-                    # Handle both async and sync functions
-                    if asyncio.iscoroutine(handler_result):
-                        result = await handler_result
-                    else:
-                        result = handler_result
-                    return {
-                        "jsonrpc": "2.0",
-                        "id": request.get("id"),
-                        "result": {"content": [{"type": "text", "text": str(result)}]}
-                    }
-                else:
-                    return {
-                        "jsonrpc": "2.0",
-                        "id": request.get("id"),
-                        "error": {"code": -32601, "message": f"Tool {tool_name} not found"}
-                    }
-            
-            elif request.get("method") == "initialize":
-                return {
-                    "jsonrpc": "2.0",
-                    "id": request.get("id"),
-                    "result": {
-                        "protocolVersion": "2024-11-05",
-                        "capabilities": {
-                            "tools": {"listChanged": False}
-                        },
-                        "serverInfo": {
-                            "name": "mecris",
-                            "version": "0.1.0"
-                        }
-                    }
-                }
-            
-            else:
-                return {
-                    "jsonrpc": "2.0",
-                    "id": request.get("id"),
-                    "error": {"code": -32601, "message": "Method not found"}
-                }
-                
-        except Exception as e:
-            return {
-                "jsonrpc": "2.0",
-                "id": request.get("id"),
-                "error": {"code": -32603, "message": str(e)}
-            }
-
-def run_stdio_server(tool_handlers):
-    """Run MCP stdio server in a separate thread"""
-    async def stdio_loop():
-        handler = MCPStdioHandler(tool_handlers)
-        
-        while True:
-            try:
-                line = sys.stdin.readline()
-                if not line:
-                    break
-                    
-                request = json.loads(line.strip())
-                response = await handler.handle_request(request)
-                
-                print(json.dumps(response), flush=True)
-                
-            except Exception as e:
-                error_response = {
-                    "jsonrpc": "2.0",
-                    "id": None,
-                    "error": {"code": -32700, "message": str(e)}
-                }
-                print(json.dumps(error_response), flush=True)
-    
-    def run_async():
-        asyncio.run(stdio_loop())
-    
-    thread = Thread(target=run_async, daemon=True)
-    thread.start()
-
-# Create tool handlers mapping for stdio server
-def get_tool_handlers():
-    """Get tool handlers mapping for MCP stdio server"""
-    return {
-        "get_narrator_context": lambda p: get_narrator_context(),
-        "get_beeminder_status": lambda p: get_beeminder_status(),
-        "get_budget_status": lambda p: get_usage_status(),
-        "record_usage_session": lambda p: record_usage_session(
-            p.get("input_tokens", 0),
-            p.get("output_tokens", 0),
-            p.get("model", "claude-3-5-sonnet-20241022"),
-            p.get("session_type", "interactive"),
-            p.get("notes", "")
-        ),
-        "send_beeminder_alert": lambda p: send_beeminder_alert(BackgroundTasks()),
-        "get_daily_activity": lambda p: get_daily_activity(p.get("goal_slug", "bike")),
-        "add_goal": lambda p: add_goal_endpoint(
-            p.get("title"),
-            p.get("description", ""),
-            p.get("priority", "medium"),
-            p.get("due_date")
-        ),
-        "complete_goal": lambda p: complete_goal_endpoint(p.get("goal_id")),
-        "trigger_reminder_check": lambda p: trigger_reminder_check(),
-        "update_budget": lambda p: update_budget(
-            p.get("remaining_budget"),
-            p.get("total_budget"),
-            p.get("period_end")
-        ),
-        "record_groq_reading": lambda p: record_groq_reading(
-            p.get("value"),
-            p.get("notes", ""),
-            p.get("month")
-        ),
-        "get_groq_status": lambda p: get_groq_reminder_status(),
-        "get_groq_context": lambda p: get_groq_context_for_narrator(),
-        "get_unified_cost_status": lambda p: get_unified_cost_status()
-    }
-
-# Response models
-class GoalResponse(BaseModel):
-    goals: List[Dict[str, Any]]
-    last_updated: datetime
-    source: str
-
-class TodoResponse(BaseModel):
-    todos: List[Dict[str, Any]]
-    completed_count: int
-    pending_count: int
-    source: str
-
-class DailyNoteResponse(BaseModel):
-    date: str
-    content: str
-    word_count: int
-    source: str
-
-class BeeminderStatusResponse(BaseModel):
-    goals: List[Dict[str, Any]]
-    emergencies: List[Dict[str, Any]]
-    safe_count: int
-    warning_count: int
-    critical_count: int
-
-class NarratorContextResponse(BaseModel):
-    summary: str
-    goals_status: Dict[str, Any]
-    urgent_items: List[str]
-    beeminder_alerts: List[str]
-    goal_runway: List[Dict[str, Any]]
-    budget_status: Dict[str, Any]
-    recommendations: List[str]
-    daily_walk_status: Optional[Dict[str, Any]] = None
-    last_updated: datetime
-
-class BudgetResponse(BaseModel):
-    total_budget: float
-    remaining_budget: float
-    used_budget: float
-    days_remaining: int
-    today_spend: float
-    daily_burn_rate: float
-    projected_spend: float
-    period_end: str
-    alerts: List[str]
-    budget_health: str
-
-# Cache helper functions
 async def get_cached_beeminder_goals() -> List[Dict[str, Any]]:
-    """Get Beeminder goals with 30-minute cache to improve narrator context performance"""
+    """Get Beeminder goals with 30-minute cache."""
     now = datetime.now()
-    
-    # Check if we have valid cached data
-    if ("data" in beeminder_goals_cache and 
-        "cache_expires" in beeminder_goals_cache and 
-        now < beeminder_goals_cache["cache_expires"]):
-        logger.info("Using cached Beeminder goals")
+    if ("data" in beeminder_goals_cache and "cache_expires" in beeminder_goals_cache and now < beeminder_goals_cache["cache_expires"]):
         beeminder_goals_cache["is_stale"] = False
         return beeminder_goals_cache["data"]
     
-    # Cache expired or doesn't exist - fetch from Beeminder API
     try:
-        logger.info("Fetching fresh Beeminder goals from API")
         goals_data = await beeminder_client.get_all_goals()
-        
-        # Update cache with 30-minute expiration
         beeminder_goals_cache.update({
-            "data": goals_data,
-            "last_check": now,
-            "cache_expires": now + timedelta(minutes=30),
-            "is_stale": False
+            "data": goals_data, "last_check": now, "cache_expires": now + timedelta(minutes=30), "is_stale": False
         })
-        
         return goals_data
-        
     except Exception as e:
         logger.error(f"Failed to fetch Beeminder goals: {e}")
-        # Return cached data if available, even if expired (mark as stale)
-        if "data" in beeminder_goals_cache and beeminder_goals_cache["data"]:
-            logger.warning("Using stale Beeminder goals cache due to API error")
+        if "data" in beeminder_goals_cache:
             beeminder_goals_cache["is_stale"] = True
             return beeminder_goals_cache["data"]
-        else:
-            # No cache and API failed - return empty list
-            logger.error("No cached goals available and API failed")
-            return []
+        return []
 
 async def get_cached_daily_activity(goal_slug: str = "bike") -> Dict[str, Any]:
-    """Get daily activity status with 1-hour cache to respect API limits"""
+    """Get daily activity status with 1-hour cache."""
     now = datetime.now()
-    
-    # Check if we have valid cached data
     if goal_slug in daily_activity_cache:
         cache_entry = daily_activity_cache[goal_slug]
         if now < cache_entry["cache_expires"]:
-            logger.info(f"Using cached activity status for {goal_slug}")
-            return {
-                "goal_slug": goal_slug,
-                "has_activity_today": cache_entry["has_activity_today"],
-                "status": "completed" if cache_entry["has_activity_today"] else "needed",
-                "cached": True,
-                "last_check": cache_entry["last_check"].isoformat(),
-                "message": f"✅ Walk logged today" if cache_entry["has_activity_today"] else "🚶‍♂️ No walk detected today"
-            }
-    
-    # Cache expired or doesn't exist - fetch from Beeminder API
+            return {"goal_slug": goal_slug, "has_activity_today": cache_entry["has_activity_today"], "status": "completed" if cache_entry["has_activity_today"] else "needed", "cached": True}
+
     try:
-        logger.info(f"Fetching fresh activity status for {goal_slug} from Beeminder")
         activity_status = await beeminder_client.get_daily_activity_status(goal_slug)
-        
-        # Update cache with 1-hour expiration
-        daily_activity_cache[goal_slug] = {
-            "last_check": now,
-            "has_activity_today": activity_status["has_activity_today"],
-            "cache_expires": now + timedelta(hours=1)
-        }
-        
-        # Add cache info to response
+        daily_activity_cache[goal_slug] = {"last_check": now, "has_activity_today": activity_status["has_activity_today"], "cache_expires": now + timedelta(hours=1)}
         activity_status["cached"] = False
         return activity_status
-        
     except Exception as e:
         logger.error(f"Failed to fetch daily activity for {goal_slug}: {e}")
-        # Return cached data if available, even if expired
         if goal_slug in daily_activity_cache:
-            cache_entry = daily_activity_cache[goal_slug]
-            return {
-                "goal_slug": goal_slug,
-                "has_activity_today": cache_entry["has_activity_today"],
-                "status": "completed" if cache_entry["has_activity_today"] else "needed",
-                "cached": True,
-                "last_check": cache_entry["last_check"].isoformat(),
-                "message": f"⚠️ Using stale cache (API error)",
-                "error": str(e)
-            }
-        else:
-            # No cache and API failed
-            return {
-                "goal_slug": goal_slug,
-                "has_activity_today": False,
-                "status": "unknown",
-                "cached": False,
-                "message": "❌ Unable to check activity status",
-                "error": str(e)
-            }
+            return {"goal_slug": goal_slug, "has_activity_today": daily_activity_cache[goal_slug]["has_activity_today"], "status": "stale", "error": str(e)}
+        return {"goal_slug": goal_slug, "has_activity_today": False, "status": "unknown", "error": str(e)}
 
-# MCP Manifest endpoint - enables proper MCP compliance
-@app.get("/mcp/manifest")
-async def get_mcp_manifest():
-    """MCP-compliant manifest endpoint describing available tools"""
-    return {
-        "version": "1.0",
-        "server": {
-            "name": "mecris",
-            "description": "Personal LLM Accountability System - Machine Context Provider",
-            "version": "0.1.0"
-        },
-        "tools": [
-            {
-                "name": "get_narrator_context",
-                "description": "Get unified strategic context with goals, budget, and recommendations",
-                "inputSchema": {
-                    "type": "object",
-                    "properties": {},
-                    "required": []
-                }
-            },
-            {
-                "name": "get_beeminder_status",
-                "description": "Get Beeminder goal portfolio status with risk assessment",
-                "inputSchema": {
-                    "type": "object",
-                    "properties": {},
-                    "required": []
-                }
-            },
-            {
-                "name": "get_budget_status",
-                "description": "Get current usage and budget status with days remaining",
-                "inputSchema": {
-                    "type": "object",
-                    "properties": {},
-                    "required": []
-                }
-            },
-            {
-                "name": "record_usage_session",
-                "description": "Record Claude usage session with token counts",
-                "inputSchema": {
-                    "type": "object",
-                    "properties": {
-                        "input_tokens": {"type": "integer"},
-                        "output_tokens": {"type": "integer"},
-                        "model": {"type": "string", "default": "claude-3-5-sonnet-20241022"},
-                        "session_type": {"type": "string", "default": "interactive"},
-                        "notes": {"type": "string", "default": ""}
-                    },
-                    "required": ["input_tokens", "output_tokens"]
-                }
-            },
-            {
-                "name": "send_beeminder_alert",
-                "description": "Check for beemergencies and send SMS alerts if critical",
-                "inputSchema": {
-                    "type": "object",
-                    "properties": {},
-                    "required": []
-                }
-            },
-            {
-                "name": "get_daily_activity",
-                "description": "Check if daily activity was logged for specified goal",
-                "inputSchema": {
-                    "type": "object",
-                    "properties": {
-                        "goal_slug": {"type": "string", "default": "bike"}
-                    },
-                    "required": []
-                }
-            },
-            {
-                "name": "add_goal",
-                "description": "Add a new goal to the local database",
-                "inputSchema": {
-                    "type": "object",
-                    "properties": {
-                        "title": {"type": "string"},
-                        "description": {"type": "string", "default": ""},
-                        "priority": {"type": "string", "enum": ["high", "medium", "low"], "default": "medium"},
-                        "due_date": {"type": "string", "format": "date", "default": None}
-                    },
-                    "required": ["title"]
-                }
-            },
-            {
-                "name": "complete_goal",
-                "description": "Mark a goal as completed",
-                "inputSchema": {
-                    "type": "object",
-                    "properties": {
-                        "goal_id": {"type": "integer"}
-                    },
-                    "required": ["goal_id"]
-                }
-            },
-            {
-                "name": "trigger_reminder_check",
-                "description": "Check for needed reminders and send them intelligently",
-                "inputSchema": {
-                    "type": "object",
-                    "properties": {},
-                    "required": []
-                }
-            },
-            {
-                "name": "update_budget",
-                "description": "Manually update budget information",
-                "inputSchema": {
-                    "type": "object",
-                    "properties": {
-                        "remaining_budget": {"type": "number"},
-                        "total_budget": {"type": "number"},
-                        "period_end": {"type": "string", "format": "date"}
-                    },
-                    "required": ["remaining_budget"]
-                }
-            },
-            {
-                "name": "record_groq_reading",
-                "description": "Record manual Groq odometer reading with cumulative cost",
-                "inputSchema": {
-                    "type": "object",
-                    "properties": {
-                        "value": {"type": "number"},
-                        "notes": {"type": "string", "default": ""},
-                        "month": {"type": "string", "description": "Optional month in YYYY-MM format for historical records"}
-                    },
-                    "required": ["value"]
-                }
-            },
-            {
-                "name": "get_groq_status",
-                "description": "Get Groq odometer status and usage reminders",
-                "inputSchema": {
-                    "type": "object",
-                    "properties": {},
-                    "required": []
-                }
-            },
-            {
-                "name": "get_groq_context",
-                "description": "Get Groq odometer context for narrator integration",
-                "inputSchema": {
-                    "type": "object",
-                    "properties": {},
-                    "required": []
-                }
-            },
-            {
-                "name": "get_unified_cost_status",
-                "description": "Get unified cost status combining Claude budget and Groq usage data",
-                "inputSchema": {
-                    "type": "object",
-                    "properties": {},
-                    "required": []
-                }
-            },
-            {
-                "name": "record_budget_reconciliation",
-                "description": "Record budget reconciliation with manual adjustment tracking",
-                "inputSchema": {
-                    "type": "object",
-                    "properties": {
-                        "current_budget": {"type": "number", "description": "Actual remaining budget from provider"},
-                        "manual_adjustment": {"type": "number", "default": 0.0, "description": "Manual adjustment amount"},
-                        "adjustment_reason": {"type": "string", "default": "anthropic-console-sync", "description": "Reason for adjustment"}
-                    },
-                    "required": ["current_budget"]
-                }
-            },
-            {
-                "name": "get_reconciliation_history",
-                "description": "Get budget reconciliation audit trail",
-                "inputSchema": {
-                    "type": "object",
-                    "properties": {
-                        "days": {"type": "integer", "default": 7, "description": "Number of days to look back"}
-                    },
-                    "required": []
-                }
-            },
-            {
-                "name": "get_reconciliation_status",
-                "description": "Get budget tracking integrity status and recommendations",
-                "inputSchema": {
-                    "type": "object",
-                    "properties": {},
-                    "required": []
-                }
-            }
-        ]
-    }
+# --- Tool Implementations ---
 
-# MCP Tool invocation endpoints - proper JSON-RPC style handlers
-@app.post("/mcp/call/{tool_name}")
-async def call_mcp_tool(tool_name: str, request: Dict[str, Any]):
-    """Universal MCP tool invocation endpoint with logging"""
-    logger.info(f"MCP tool invocation: {tool_name} with params {request}")
-    
+@mcp.tool(description="Get unified strategic context with goals, budget, and recommendations.")
+async def get_narrator_context() -> Dict[str, Any]:
+    """Get unified strategic context with goals, budget, and recommendations."""
     try:
-        # Route to appropriate handler based on tool name
-        tool_handlers = {
-            "get_narrator_context": lambda p: get_narrator_context(),
-            "get_beeminder_status": lambda p: get_beeminder_status(),
-            "get_budget_status": lambda p: get_usage_status(),
-            "get_unified_cost_status": lambda p: get_unified_cost_status(),
-            "record_usage_session": lambda p: record_usage_session(
-                p.get("input_tokens", 0),
-                p.get("output_tokens", 0),
-                p.get("model", "claude-3-5-sonnet-20241022"),
-                p.get("session_type", "interactive"),
-                p.get("notes", "")
-            ),
-            "send_beeminder_alert": lambda p: send_beeminder_alert(BackgroundTasks()),
-            "get_daily_activity": lambda p: get_daily_activity(p.get("goal_slug", "bike")),
-            "add_goal": lambda p: add_goal_endpoint(
-                p.get("title"),
-                p.get("description", ""),
-                p.get("priority", "medium"),
-                p.get("due_date")
-            ),
-            "complete_goal": lambda p: complete_goal_endpoint(p.get("goal_id")),
-            "trigger_reminder_check": lambda p: trigger_reminder_check(),
-            "update_budget": lambda p: update_budget(
-                p.get("remaining_budget"),
-                p.get("total_budget"),
-                p.get("period_end")
-            ),
-            "record_groq_reading": lambda p: record_groq_reading(
-                p.get("value"),
-                p.get("notes", ""),
-                p.get("month")
-            ),
-            "get_groq_status": lambda p: get_groq_reminder_status(),
-            "get_groq_context": lambda p: get_groq_context_for_narrator(),
-            "record_budget_reconciliation": lambda p: reconcile_budget_endpoint(
-                p.get("current_budget"),
-                p.get("manual_adjustment", 0.0),
-                p.get("adjustment_reason", "anthropic-console-sync")
-            ),
-            "get_reconciliation_history": lambda p: get_reconciliation_history_endpoint(
-                p.get("days", 7)
-            ),
-            "get_reconciliation_status": lambda p: get_reconciliation_status_endpoint()
-        }
-        
-        if tool_name not in tool_handlers:
-            logger.error(f"Unknown MCP tool: {tool_name}")
-            raise HTTPException(status_code=404, detail=f"Tool '{tool_name}' not found")
-        
-        # Extract parameters from request
-        params = request.get("params", {})
-        
-        # Call the handler
-        handler_result = tool_handlers[tool_name](params)
-        # Handle both async and sync functions
-        if asyncio.iscoroutine(handler_result):
-            result = await handler_result
-        else:
-            result = handler_result
-        
-        # Log successful invocation with details
-        logger.info(f"MCP tool '{tool_name}' completed successfully - result type: {type(result).__name__}")
-        
-        # Record tool usage for observability
+        goals = get_goals()
+        active_goals = [g for g in goals if g.get("status") == "active"]
         try:
-            tracker = UsageTracker()
-            tracker.log_tool_invocation(tool_name, params, True, len(str(result)))
-        except Exception as log_error:
-            logger.warning(f"Failed to log tool invocation: {log_error}")
+            todos = await obsidian_client.get_todos()
+        except Exception:
+            todos = []
         
-        # Return MCP-compliant response
-        return {
-            "tool": tool_name,
-            "success": True,
-            "result": result,
-            "timestamp": datetime.now().isoformat(),
-            "execution_time_ms": round((datetime.now().timestamp() - datetime.now().timestamp()) * 1000, 2)
-        }
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"MCP tool '{tool_name}' failed: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Tool invocation failed: {str(e)}"
-        )
-
-# Health check
-@app.get("/")
-async def root():
-    return {
-        "service": "Mecris MCP Server",
-        "status": "operational",
-        "version": "0.1.0",
-        "timestamp": datetime.now().isoformat()
-    }
-
-@app.get("/health")
-async def health_check():
-    """Enhanced health check endpoint with service status"""
-    import time
-    start_time = time.time()
-    
-    status = {
-        "mecris": "ok",
-        "obsidian": "unknown",
-        "beeminder": "unknown", 
-        "usage_tracker": "ok",
-        "anthropic_cost_tracker": "not_available" if not anthropic_cost_tracker else "ok",
-        "twilio": "not_configured"
-    }
-    
-    # Test Obsidian client
-    try:
-        status["obsidian"] = await obsidian_client.health_check()
-    except Exception as e:
-        status["obsidian"] = f"error: {str(e)[:50]}"
-    
-    # Test Beeminder client  
-    try:
-        status["beeminder"] = await beeminder_client.health_check()
-    except Exception as e:
-        status["beeminder"] = f"error: {str(e)[:50]}"
-    
-    # Test Anthropic Cost Tracker
-    if anthropic_cost_tracker:
-        try:
-            # Try to get budget summary (this will test API connectivity)
-            _ = anthropic_cost_tracker.get_budget_summary()
-            status["anthropic_cost_tracker"] = "ok"
-        except Exception as e:
-            status["anthropic_cost_tracker"] = f"error: {str(e)[:50]}"
-    
-    # Test Twilio configuration
-    if os.getenv("TWILIO_ACCOUNT_SID") and os.getenv("TWILIO_AUTH_TOKEN"):
-        status["twilio"] = "configured"
-    
-    # Test usage tracker
-    try:
-        budget_status = get_budget_status()
-        if "error" not in budget_status:
-            status["usage_tracker"] = "ok"
-        else:
-            status["usage_tracker"] = "error"
-    except Exception:
-        status["usage_tracker"] = "error"
-    
-    # Determine overall health
-    critical_services = ["mecris", "usage_tracker"]
-    critical_healthy = all(status[s] == "ok" for s in critical_services)
-    
-    response_time = round((time.time() - start_time) * 1000, 2)  # ms
-    
-    if critical_healthy:
-        overall_status = "healthy"
-    else:
-        overall_status = "unhealthy"
-    
-    return {
-        "status": overall_status,
-        "services": status,
-        "response_time_ms": response_time,
-        "timestamp": datetime.now().isoformat(),
-        "version": "0.1.0"
-    }
-
-# Goals endpoints (local database)
-@app.get("/goals", response_model=GoalResponse)
-async def get_goals_endpoint():
-    """Get goals from local database"""
-    try:
-        goals_data = get_goals()
-        return GoalResponse(
-            goals=goals_data,
-            last_updated=datetime.now(),
-            source="database"
-        )
-    except Exception as e:
-        logger.error(f"Failed to fetch goals: {e}")
-        raise HTTPException(status_code=500, detail="Failed to fetch goals from database")
-
-@app.post("/goals/{goal_id}/complete")
-async def complete_goal_endpoint(goal_id: int):
-    """Mark a goal as completed"""
-    try:
-        result = complete_goal(goal_id)
-        if "error" in result:
-            raise HTTPException(status_code=404, detail=result["error"])
-        return result
-    except Exception as e:
-        logger.error(f"Failed to complete goal {goal_id}: {e}")
-        raise HTTPException(status_code=500, detail="Failed to complete goal")
-
-@app.post("/goals")
-async def add_goal_endpoint(title: str, description: str = "", priority: str = "medium", due_date: Optional[str] = None):
-    """Add a new goal"""
-    try:
-        result = add_goal(title, description, priority, due_date)
-        return result
-    except Exception as e:
-        logger.error(f"Failed to add goal: {e}")
-        raise HTTPException(status_code=500, detail="Failed to add goal")
-
-@app.get("/todos", response_model=TodoResponse)
-async def get_todos():
-    """Extract todos from Obsidian vault"""
-    try:
-        todos_data = await obsidian_client.get_todos()
-        completed = len([t for t in todos_data if t.get("completed", False)])
-        pending = len(todos_data) - completed
-        
-        return TodoResponse(
-            todos=todos_data,
-            completed_count=completed,
-            pending_count=pending,
-            source="obsidian"
-        )
-    except Exception as e:
-        logger.error(f"Failed to fetch todos: {e}")
-        raise HTTPException(status_code=500, detail="Failed to fetch todos from Obsidian")
-
-@app.get("/daily/{date}", response_model=DailyNoteResponse)
-async def get_daily_note(date: str):
-    """Get daily note content for specific date (YYYY-MM-DD format)"""
-    try:
-        # Validate date format
-        datetime.strptime(date, "%Y-%m-%d")
-        
-        content = await obsidian_client.get_daily_note(date)
-        word_count = len(content.split()) if content else 0
-        
-        return DailyNoteResponse(
-            date=date,
-            content=content,
-            word_count=word_count,
-            source="obsidian"
-        )
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
-    except Exception as e:
-        logger.error(f"Failed to fetch daily note for {date}: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to fetch daily note for {date}")
-
-# Beeminder endpoints
-@app.get("/beeminder/status", response_model=BeeminderStatusResponse)
-async def get_beeminder_status():
-    """Get overall Beeminder goal portfolio status"""
-    try:
-        goals = await beeminder_client.get_all_goals()
-        emergencies = await beeminder_client.get_emergencies()
-        
-        # Count by risk level
-        safe = len([g for g in goals if g.get("derail_risk") == "SAFE"])
-        warning = len([g for g in goals if g.get("derail_risk") in ["WARNING", "CAUTION"]])
-        critical = len([g for g in goals if g.get("derail_risk") == "CRITICAL"])
-        
-        return BeeminderStatusResponse(
-            goals=goals,
-            emergencies=emergencies,
-            safe_count=safe,
-            warning_count=warning,
-            critical_count=critical
-        )
-    except Exception as e:
-        logger.error(f"Failed to fetch Beeminder status: {e}")
-        raise HTTPException(status_code=500, detail="Failed to fetch Beeminder status")
-
-@app.get("/beeminder/emergency")
-async def get_beeminder_emergencies():
-    """Get goals requiring immediate attention"""
-    try:
-        emergencies = await beeminder_client.get_emergencies()
-        return {
-            "emergencies": emergencies,
-            "count": len(emergencies),
-            "timestamp": datetime.now().isoformat()
-        }
-    except Exception as e:
-        logger.error(f"Failed to fetch beemergencies: {e}")
-        raise HTTPException(status_code=500, detail="Failed to fetch emergency goals")
-
-@app.post("/beeminder/alert")
-async def send_beeminder_alert(background_tasks: BackgroundTasks):
-    """Check for beemergencies and send SMS alerts if needed"""
-    try:
-        emergencies = await beeminder_client.get_emergencies()
-        critical_emergencies = [e for e in emergencies if e.get("urgency") == "IMMEDIATE"]
-        
-        tracker = UsageTracker()
-        
-        if critical_emergencies:
-            # Use shorter cooldown for beemergencies since they're time-critical
-            if tracker.should_send_alert("beeminder", "critical", cooldown_minutes=90):
-                alert_message = f"🚨 BEEMERGENCY: {len(critical_emergencies)} goals need immediate attention!"
-                for emergency in critical_emergencies[:3]:  # Limit to 3 in SMS
-                    alert_message += f"\n• {emergency['goal_slug']}: {emergency['message']}"
-                
-                # Send SMS in background
-                background_tasks.add_task(send_sms, alert_message)
-                tracker.log_alert("beeminder", "critical", alert_message, f"critical_count: {len(critical_emergencies)}")
-                
-                return {
-                    "alert_sent": True,
-                    "critical_count": len(critical_emergencies),
-                    "message": "Beemergency alert sent"
-                }
-            else:
-                return {
-                    "alert_sent": False,
-                    "critical_count": len(critical_emergencies),
-                    "message": "Beemergency alert on cooldown",
-                    "reason": "cooldown_active"
-                }
-        
-        return {
-            "alert_sent": False,
-            "critical_count": 0,
-            "message": "No critical emergencies found"
-        }
-        
-    except Exception as e:
-        logger.error(f"Failed to send beeminder alert: {e}")
-        raise HTTPException(status_code=500, detail="Failed to process beeminder alert")
-
-@app.get("/beeminder/daily-activity/{goal_slug}")
-async def get_daily_activity(goal_slug: str = "bike"):
-    """Check if daily activity was logged for specified goal (with 1-hour cache)"""
-    try:
-        activity_status = await get_cached_daily_activity(goal_slug)
-        return {
-            "activity_status": activity_status,
-            "timestamp": datetime.now().isoformat()
-        }
-    except Exception as e:
-        logger.error(f"Failed to check daily activity for {goal_slug}: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to check daily activity for {goal_slug}")
-
-@app.get("/beeminder/daily-activity")
-async def get_daily_activity_default():
-    """Check if daily activity was logged for bike goal (default)"""
-    return await get_daily_activity("bike")
-
-# Anthropic Cost API endpoint (requires organization workspace)
-@app.get("/anthropic/usage")
-async def get_anthropic_usage():
-    """Get Anthropic API usage data directly from their Cost & Usage API"""
-    if not anthropic_cost_tracker:
-        return {
-            "available": False,
-            "error": "Anthropic Cost Tracker not initialized - requires organization access and ANTHROPIC_ADMIN_KEY",
-            "setup_notes": "Ensure API key is from organization workspace (not default workspace)",
-            "fallback": "Using local usage tracking instead"
-        }
-    
-    try:
-        # Get today's usage with hourly granularity for real-time data
-        from datetime import datetime, UTC
-        start_time = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
-        
-        # Get both usage and cost data
-        usage_data = anthropic_cost_tracker.get_usage(start_time, bucket_width='1h')
-        
-        # Calculate totals from usage data
-        total_input = 0
-        total_output = 0
-        estimated_cost = 0.0
-        
-        for bucket in usage_data.get('data', []):
-            for result in bucket.get('results', []):
-                # Sum up input tokens (cached + uncached + cache creation)
-                input_tokens = result.get('uncached_input_tokens', 0)
-                input_tokens += result.get('cache_read_input_tokens', 0)
-                if 'cache_creation' in result:
-                    input_tokens += result['cache_creation'].get('ephemeral_1h_input_tokens', 0)
-                    input_tokens += result['cache_creation'].get('ephemeral_5m_input_tokens', 0)
-                
-                output_tokens = result.get('output_tokens', 0)
-                total_input += input_tokens
-                total_output += output_tokens
-        
-        # Rough cost estimation (Claude 3.5 Sonnet pricing)
-        estimated_cost = (total_input * 3.0 / 1000000) + (total_output * 15.0 / 1000000)
-        
-        return {
-            "available": True,
-            "data": {
-                "today_usage": {
-                    "total_input_tokens": total_input,
-                    "total_output_tokens": total_output,
-                    "estimated_cost": round(estimated_cost, 4)
-                },
-                "raw_usage_data": usage_data,
-                "bucket_count": len(usage_data.get('data', [])),
-                "has_usage": total_input > 0 or total_output > 0
-            },
-            "source": "anthropic_api",
-            "workspace_note": "Data from organization workspace only",
-            "timestamp": datetime.now().isoformat()
-        }
-    except Exception as e:
-        logger.error(f"Failed to fetch Anthropic usage data: {e}")
-        return {
-            "available": False,
-            "error": str(e),
-            "source": "anthropic_api",
-            "troubleshooting": "Check if API key is from organization workspace, not default workspace",
-            "fallback": "Using local usage tracking instead"
-        }
-
-# Usage tracking endpoints
-@app.get("/usage", response_model=BudgetResponse)
-async def get_usage_status():
-    """Get current usage and budget status"""
-    try:
-        budget_data = get_budget_status()
-        
-        if "error" in budget_data:
-            raise HTTPException(status_code=500, detail=budget_data["error"])
-        
-        return BudgetResponse(**budget_data)
-        
-    except Exception as e:
-        logger.error(f"Failed to fetch usage status: {e}")
-        raise HTTPException(status_code=500, detail="Failed to fetch usage status")
-
-async def get_unified_cost_status():
-    """Get unified cost status combining Claude budget and Groq usage"""
-    try:
-        from groq_odometer_tracker import _get_tracker
-        
-        # Get Claude budget status
-        budget_data = get_budget_status()
-        
-        # Get Groq usage data
-        groq_tracker = _get_tracker()
-        groq_status = groq_tracker.check_reminder_needs()
-        groq_usage = groq_tracker.get_usage_for_virtual_budget()
-        
-        # Get historical Groq data
-        import sqlite3
-        with sqlite3.connect("mecris_virtual_budget.db") as conn:
-            cursor = conn.execute("""
-                SELECT month, total_cost, finalized, reading_count
-                FROM groq_monthly_summaries
-                ORDER BY month
-            """)
-            groq_history = [
-                {
-                    "month": row[0],
-                    "cost": row[1],
-                    "finalized": bool(row[2]),
-                    "readings": row[3]
-                }
-                for row in cursor.fetchall()
-            ]
-        
-        unified_status = {
-            "claude": {
-                "total_budget": budget_data.get("total_budget", 0),
-                "remaining_budget": budget_data.get("remaining_budget", 0),
-                "used_budget": budget_data.get("used_budget", 0),
-                "days_remaining": budget_data.get("days_remaining", 0),
-                "budget_health": budget_data.get("budget_health", "UNKNOWN")
-            },
-            "groq": {
-                "status": groq_status["status"],
-                "current_month": groq_usage.get("month", "unknown"),
-                "current_cost": groq_usage.get("cumulative_cost", 0),
-                "daily_average": groq_usage.get("daily_average", 0),
-                "days_until_reset": groq_status["days_until_reset"],
-                "history": groq_history,
-                "reminders": groq_status["reminders"]
-            },
-            "summary": {
-                "total_spend_this_period": budget_data.get("used_budget", 0) + groq_usage.get("cumulative_cost", 0),
-                "claude_days_left": budget_data.get("days_remaining", 0),
-                "groq_days_until_reset": groq_status["days_until_reset"],
-                "needs_attention": len(groq_status["reminders"]) > 0 or budget_data.get("budget_health") == "CRITICAL"
-            }
-        }
-        
-        return unified_status
-        
-    except Exception as e:
-        logger.error(f"Failed to get unified cost status: {e}")
-        return {"error": f"Failed to get unified cost status: {str(e)}"}
-
-@app.post("/usage/record")
-async def record_usage_session(input_tokens: int, output_tokens: int, model: str = "claude-3-5-sonnet-20241022", session_type: str = "interactive", notes: str = ""):
-    """Record a usage session with token counts"""
-    try:
-        cost = record_usage(input_tokens, output_tokens, model, session_type, notes)
-        
-        updated_status = get_budget_status()
-        return {
-            "recorded": True,
-            "input_tokens": input_tokens,
-            "output_tokens": output_tokens,
-            "estimated_cost": cost,
-            "model": model,
-            "session_type": session_type,
-            "updated_status": updated_status,
-            "timestamp": datetime.now().isoformat()
-        }
-            
-    except Exception as e:
-        logger.error(f"Failed to record usage: {e}")
-        raise HTTPException(status_code=500, detail="Failed to record usage")
-
-@app.post("/usage/update_budget")
-async def update_budget(remaining_budget: float, total_budget: Optional[float] = None, period_end: Optional[str] = None):
-    """Manually update budget information"""
-    try:
-        if total_budget or period_end:
-            # Use full budget update from usage tracker
-            tracker = UsageTracker()
-            updated_budget = tracker.update_budget(remaining_budget, total_budget, period_end)
-        else:
-            # Use existing convenience function for remaining budget only  
-            updated_budget = update_remaining_budget(remaining_budget)
-        
-        return {
-            "updated": True,
-            "budget_info": updated_budget,
-            "timestamp": datetime.now().isoformat()
-        }
-    except Exception as e:
-        logger.error(f"Failed to update budget: {e}")
-        raise HTTPException(status_code=500, detail="Failed to update budget")
-
-@app.get("/usage/summary")
-async def get_usage_summary(days: int = 7):
-    """Get detailed usage summary for the last N days"""
-    try:
-        summary = usage_tracker.get_usage_summary(days)
-        return {
-            "summary": summary,
-            "timestamp": datetime.now().isoformat()
-        }
-    except Exception as e:
-        logger.error(f"Failed to get usage summary: {e}")
-        raise HTTPException(status_code=500, detail="Failed to get usage summary")
-
-@app.get("/usage/recent")
-async def get_recent_sessions(limit: int = 10):
-    """Get recent usage sessions"""
-    try:
-        sessions = usage_tracker.get_recent_sessions(limit)
-        return {
-            "sessions": sessions,
-            "count": len(sessions),
-            "timestamp": datetime.now().isoformat()
-        }
-    except Exception as e:
-        logger.error(f"Failed to get recent sessions: {e}")
-        raise HTTPException(status_code=500, detail="Failed to get recent sessions")
-
-@app.post("/usage/alert")
-async def send_usage_alert(background_tasks: BackgroundTasks):
-    """Check usage status and send alerts if needed"""
-    try:
-        budget_data = get_budget_status()
-        
-        if "error" in budget_data:
-            return {"alert_sent": False, "error": budget_data["error"]}
-        
-        days_remaining = budget_data.get("days_remaining", float('inf'))
-        remaining_budget = budget_data.get("remaining_budget", 0)
-        alerts = budget_data.get("alerts", [])
-        
-        # Check spam protection
-        tracker = UsageTracker()
-        
-        if "CRITICAL" in budget_data.get("budget_health", "") or days_remaining <= 1:
-            if tracker.should_send_alert("budget", "critical", cooldown_minutes=120):  # 2 hour cooldown for critical
-                alert_msg = f"🚨 CRITICAL: {days_remaining} days left!\n${remaining_budget:.2f} remaining"
-                background_tasks.add_task(send_sms, alert_msg)
-                tracker.log_alert("budget", "critical", alert_msg, f"days_remaining: {days_remaining}, budget: {remaining_budget}")
-                return {"alert_sent": True, "level": "critical", "days_remaining": days_remaining}
-            else:
-                return {"alert_sent": False, "level": "critical", "reason": "cooldown_active", "days_remaining": days_remaining}
-        elif "WARNING" in budget_data.get("budget_health", "") or days_remaining <= 2:
-            if tracker.should_send_alert("budget", "warning", cooldown_minutes=360):  # 6 hour cooldown for warnings
-                alert_msg = f"⚠️ WARNING: {days_remaining} days left\n${remaining_budget:.2f} remaining"
-                background_tasks.add_task(send_sms, alert_msg)
-                tracker.log_alert("budget", "warning", alert_msg, f"days_remaining: {days_remaining}, budget: {remaining_budget}")
-                return {"alert_sent": True, "level": "warning", "days_remaining": days_remaining}
-            else:
-                return {"alert_sent": False, "level": "warning", "reason": "cooldown_active", "days_remaining": days_remaining}
-        
-        return {"alert_sent": False, "level": "safe", "days_remaining": days_remaining}
-        
-    except Exception as e:
-        logger.error(f"Failed to send usage alert: {e}")
-        raise HTTPException(status_code=500, detail="Failed to process usage alert")
-
-# Virtual Budget System Endpoints
-@app.get("/virtual-budget/status")
-async def get_virtual_budget_status_endpoint():
-    """Get comprehensive virtual budget status across all providers"""
-    try:
-        status = virtual_budget_manager.get_budget_status()
-        return {
-            "virtual_budget": status,
-            "timestamp": datetime.now().isoformat()
-        }
-    except Exception as e:
-        logger.error(f"Failed to get virtual budget status: {e}")
-        raise HTTPException(status_code=500, detail="Failed to get virtual budget status")
-
-@app.post("/virtual-budget/record/anthropic")
-async def record_anthropic_usage_endpoint(
-    model: str,
-    input_tokens: int,
-    output_tokens: int,
-    session_type: str = "interactive",
-    notes: str = "",
-    emergency_override: bool = False
-):
-    """Record Anthropic usage in virtual budget system"""
-    try:
-        result = virtual_budget_manager.record_usage(
-            Provider.ANTHROPIC, model, input_tokens, output_tokens,
-            session_type, notes, emergency_override
-        )
-        
-        return {
-            **result,
-            "provider": "anthropic",
-            "timestamp": datetime.now().isoformat()
-        }
-    except Exception as e:
-        logger.error(f"Failed to record Anthropic usage: {e}")
-        raise HTTPException(status_code=500, detail="Failed to record Anthropic usage")
-
-@app.post("/virtual-budget/record/groq")
-async def record_groq_usage_endpoint(
-    model: str,
-    input_tokens: int,
-    output_tokens: int,
-    session_type: str = "interactive",
-    notes: str = "",
-    emergency_override: bool = False
-):
-    """Record Groq usage in virtual budget system"""
-    try:
-        result = virtual_budget_manager.record_usage(
-            Provider.GROQ, model, input_tokens, output_tokens,
-            session_type, notes, emergency_override
-        )
-        
-        return {
-            **result,
-            "provider": "groq",
-            "timestamp": datetime.now().isoformat()
-        }
-    except Exception as e:
-        logger.error(f"Failed to record Groq usage: {e}")
-        raise HTTPException(status_code=500, detail="Failed to record Groq usage")
-
-@app.get("/virtual-budget/summary")
-async def get_virtual_budget_summary(days: int = 7):
-    """Get comprehensive multi-provider usage summary"""
-    try:
-        summary = virtual_budget_manager.get_usage_summary(days)
-        return {
-            "summary": summary,
-            "timestamp": datetime.now().isoformat()
-        }
-    except Exception as e:
-        logger.error(f"Failed to get virtual budget summary: {e}")
-        raise HTTPException(status_code=500, detail="Failed to get virtual budget summary")
-
-@app.post("/virtual-budget/reset-daily")
-async def reset_daily_budget_endpoint():
-    """Reset daily budget allocation (admin function)"""
-    try:
-        result = virtual_budget_manager.reset_daily_budget()
-        return {
-            **result,
-            "timestamp": datetime.now().isoformat()
-        }
-    except Exception as e:
-        logger.error(f"Failed to reset daily budget: {e}")
-        raise HTTPException(status_code=500, detail="Failed to reset daily budget")
-
-# Groq Integration Endpoints
-@app.get("/groq/usage")
-async def get_groq_usage_endpoint():
-    """Get Groq usage data via scraping (cached)"""
-    try:
-        usage_data = fetch_groq_usage()
-        return {
-            "groq_usage": usage_data,
-            "timestamp": datetime.now().isoformat()
-        }
-    except Exception as e:
-        logger.error(f"Failed to fetch Groq usage: {e}")
-        return {
-            "available": False,
-            "error": str(e),
-            "source": "scraper",
-            "timestamp": datetime.now().isoformat()
-        }
-
-# Groq Odometer Endpoints
-@app.post("/groq/odometer/record")
-async def record_groq_odometer_reading(value: float, notes: str = ""):
-    """Record a manual Groq odometer reading"""
-    try:
-        result = record_groq_reading(value, notes)
-        
-        # If successful, also record in virtual budget
-        if result.get("recorded"):
-            # Calculate daily usage from odometer
-            daily_estimate = result.get("daily_usage_estimate", 0)
-            
-            # Record in virtual budget system as daily estimate
-            if daily_estimate > 0:
-                # Rough token estimate from cost (using GPT-OSS-20B pricing)
-                estimated_tokens = int(daily_estimate * 1_000_000 / 0.10)
-                virtual_budget_manager.record_usage(
-                    Provider.GROQ,
-                    "openai/gpt-oss-20b",
-                    estimated_tokens // 2,  # Split between input/output
-                    estimated_tokens // 2,
-                    "odometer",
-                    f"Daily estimate from odometer reading: ${value:.2f}"
-                )
-        
-        return {
-            "success": True,
-            "result": result,
-            "timestamp": datetime.now().isoformat()
-        }
-    except Exception as e:
-        logger.error(f"Failed to record Groq odometer: {e}")
-        raise HTTPException(status_code=500, detail="Failed to record odometer reading")
-
-@app.get("/groq/odometer/status")
-async def get_groq_odometer_status():
-    """Get current Groq odometer status and reminders"""
-    try:
-        reminder_status = get_groq_reminder_status()
-        odometer_data = groq_odometer.get_usage_for_virtual_budget()
-        
-        return {
-            "odometer_status": reminder_status,
-            "usage_data": odometer_data,
-            "timestamp": datetime.now().isoformat()
-        }
-    except Exception as e:
-        logger.error(f"Failed to get Groq odometer status: {e}")
-        raise HTTPException(status_code=500, detail="Failed to get odometer status")
-
-@app.get("/groq/odometer/context")
-async def get_groq_narrator_context():
-    """Get Groq context for narrator integration"""
-    try:
-        context = get_groq_context_for_narrator()
-        return {
-            "groq_context": context,
-            "timestamp": datetime.now().isoformat()
-        }
-    except Exception as e:
-        logger.error(f"Failed to get Groq narrator context: {e}")
-        raise HTTPException(status_code=500, detail="Failed to get narrator context")
-
-# Billing Reconciliation Endpoints
-@app.post("/billing/reconcile/daily")
-async def run_daily_reconciliation_endpoint(days_back: int = 1):
-    """Run daily billing reconciliation for recent days"""
-    try:
-        results = billing_reconciler.daily_reconciliation(days_back)
-        
-        return {
-            "reconciliation_results": [
-                {
-                    "provider": r.provider,
-                    "date": r.date,
-                    "estimated_total": r.estimated_total,
-                    "actual_total": r.actual_total,
-                    "drift_percentage": r.drift_percentage,
-                    "records_reconciled": r.records_reconciled,
-                    "success": r.success,
-                    "error": r.error
-                }
-                for r in results
-            ],
-            "total_jobs": len(results),
-            "successful_jobs": len([r for r in results if r.success]),
-            "timestamp": datetime.now().isoformat()
-        }
-    except Exception as e:
-        logger.error(f"Failed to run daily reconciliation: {e}")
-        raise HTTPException(status_code=500, detail="Failed to run daily reconciliation")
-
-@app.get("/billing/reconcile/summary")
-async def get_reconciliation_summary_endpoint(days: int = 7):
-    """Get reconciliation accuracy summary"""
-    try:
-        summary = billing_reconciler.get_reconciliation_summary(days)
-        return {
-            "reconciliation_summary": summary,
-            "timestamp": datetime.now().isoformat()
-        }
-    except Exception as e:
-        logger.error(f"Failed to get reconciliation summary: {e}")
-        raise HTTPException(status_code=500, detail="Failed to get reconciliation summary")
-
-@app.post("/billing/reconcile/{provider}")
-async def reconcile_provider_endpoint(provider: str, target_date: str):
-    """Reconcile specific provider for a specific date"""
-    try:
-        from datetime import date
-        target_date_obj = date.fromisoformat(target_date)
-        
-        if provider == "anthropic":
-            result = billing_reconciler.reconcile_anthropic(target_date_obj)
-        elif provider == "groq":
-            result = billing_reconciler.reconcile_groq(target_date_obj)
-        else:
-            raise HTTPException(status_code=400, detail=f"Unknown provider: {provider}")
-        
-        return {
-            "reconciliation_result": {
-                "provider": result.provider,
-                "date": result.date,
-                "estimated_total": result.estimated_total,
-                "actual_total": result.actual_total,
-                "drift_percentage": result.drift_percentage,
-                "records_reconciled": result.records_reconciled,
-                "success": result.success,
-                "error": result.error
-            },
-            "timestamp": datetime.now().isoformat()
-        }
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
-    except Exception as e:
-        logger.error(f"Failed to reconcile {provider}: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to reconcile {provider}")
-
-# Budget Reconciliation Endpoints
-@app.post("/budget/reconcile")
-async def reconcile_budget_endpoint(
-    current_budget: float,
-    manual_adjustment: float = 0.0,
-    adjustment_reason: str = "anthropic-console-sync"
-):
-    """Record a budget reconciliation with proper plug tracking"""
-    try:
-        import sqlite3
-        from datetime import date, datetime
-        
-        # Get current budget status
-        current_status = tracker.get_budget_status()
-        budget_before = current_status["remaining_budget"]
-        
-        # Record the reconciliation
-        with sqlite3.connect("mecris_usage.db") as conn:
-            conn.execute("""
-                INSERT INTO budget_reconciliation 
-                (reconciliation_date, budget_before, manual_adjustment, budget_after, 
-                 adjustment_reason, api_usage_tracked, manual_plug_amount, reconciled_by)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """, (
-                date.today().isoformat(),
-                budget_before,
-                manual_adjustment,
-                current_budget,
-                adjustment_reason,
-                current_status["used_budget"],
-                manual_adjustment,
-                "mcp-budget-reconcile"
-            ))
-        
-        # Update budget through existing tracker
-        result = tracker.update_budget(current_budget)
-        
-        return {
-            "success": True,
-            "reconciliation": {
-                "budget_before": budget_before,
-                "budget_after": current_budget,
-                "manual_adjustment": manual_adjustment,
-                "adjustment_reason": adjustment_reason,
-                "date": date.today().isoformat()
-            },
-            "updated_budget": result
-        }
-        
-    except Exception as e:
-        logger.error(f"Failed to reconcile budget: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to reconcile budget: {e}")
-
-@app.get("/budget/reconciliation/history")
-async def get_reconciliation_history_endpoint(days: int = 7):
-    """Get budget reconciliation audit trail"""
-    try:
-        import sqlite3
-        from datetime import date, timedelta
-        
-        cutoff_date = (date.today() - timedelta(days=days)).isoformat()
-        
-        with sqlite3.connect("mecris_usage.db") as conn:
-            cursor = conn.execute("""
-                SELECT reconciliation_date, budget_before, manual_adjustment, budget_after,
-                       adjustment_reason, api_usage_tracked, manual_plug_amount, 
-                       reconciled_by, created_at
-                FROM budget_reconciliation 
-                WHERE reconciliation_date > ? 
-                ORDER BY created_at DESC
-            """, (cutoff_date,))
-            
-            reconciliations = []
-            total_adjustments = 0.0
-            
-            for row in cursor.fetchall():
-                reconciliation = {
-                    "date": row[0],
-                    "budget_before": row[1],
-                    "manual_adjustment": row[2],
-                    "budget_after": row[3],
-                    "adjustment_reason": row[4],
-                    "api_usage_tracked": row[5],
-                    "manual_plug_amount": row[6],
-                    "reconciled_by": row[7],
-                    "created_at": row[8]
-                }
-                reconciliations.append(reconciliation)
-                total_adjustments += row[2] or 0.0
-        
-        return {
-            "success": True,
-            "period_days": days,
-            "reconciliations": reconciliations,
-            "summary": {
-                "total_reconciliations": len(reconciliations),
-                "total_adjustments": round(total_adjustments, 2),
-                "avg_adjustment": round(total_adjustments / len(reconciliations), 2) if reconciliations else 0
-            }
-        }
-        
-    except Exception as e:
-        logger.error(f"Failed to get reconciliation history: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to get reconciliation history: {e}")
-
-@app.get("/budget/reconciliation/status")
-async def get_reconciliation_status_endpoint():
-    """Get budget tracking integrity status and recommendations"""
-    try:
-        import sqlite3
-        from datetime import date, timedelta
-        
-        # Get current budget status
-        current_status = tracker.get_budget_status()
-        
-        # Get recent reconciliations
-        with sqlite3.connect("mecris_usage.db") as conn:
-            # Last reconciliation
-            cursor = conn.execute("""
-                SELECT reconciliation_date, manual_adjustment, adjustment_reason, created_at
-                FROM budget_reconciliation 
-                ORDER BY created_at DESC LIMIT 1
-            """)
-            last_reconciliation = cursor.fetchone()
-            
-            # Count of reconciliations this period
-            cursor = conn.execute("""
-                SELECT COUNT(*), SUM(manual_adjustment)
-                FROM budget_reconciliation 
-                WHERE reconciliation_date >= ?
-            """, (current_status.get("period_start", "2025-09-01"),))
-            period_stats = cursor.fetchone()
-        
-        # Calculate recommendations
-        recommendations = []
-        days_since_reconcile = None
-        
-        if last_reconciliation:
-            from datetime import datetime
-            last_date = datetime.fromisoformat(last_reconciliation[3]).date()
-            days_since_reconcile = (date.today() - last_date).days
-            
-            if days_since_reconcile > 3:
-                recommendations.append("Consider running budget reconciliation - last done {} days ago".format(days_since_reconcile))
-        else:
-            recommendations.append("No reconciliations recorded - consider establishing baseline")
-        
-        return {
-            "success": True,
-            "budget_tracking_health": "GOOD" if days_since_reconcile is None or days_since_reconcile <= 3 else "NEEDS_ATTENTION",
-            "current_budget": current_status,
-            "last_reconciliation": {
-                "date": last_reconciliation[0] if last_reconciliation else None,
-                "adjustment": last_reconciliation[1] if last_reconciliation else None,
-                "reason": last_reconciliation[2] if last_reconciliation else None,
-                "days_ago": days_since_reconcile
-            } if last_reconciliation else None,
-            "period_summary": {
-                "reconciliation_count": period_stats[0] if period_stats else 0,
-                "total_adjustments": period_stats[1] if period_stats and period_stats[1] else 0.0
-            },
-            "recommendations": recommendations
-        }
-        
-    except Exception as e:
-        logger.error(f"Failed to get reconciliation status: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to get reconciliation status: {e}")
-
-# PHASE 2: Cache management endpoints
-@app.get("/cache/status")
-async def get_cache_status():
-    """Get cache status for monitoring"""
-    now = datetime.now()
-    
-    # Daily activity cache status
-    daily_cache_status = {}
-    for goal_slug, cache_data in daily_activity_cache.items():
-        daily_cache_status[goal_slug] = {
-            "cached": True,
-            "expires": cache_data["cache_expires"].isoformat(),
-            "valid": now < cache_data["cache_expires"],
-            "age_minutes": (now - cache_data["last_check"]).total_seconds() / 60
-        }
-    
-    # Beeminder goals cache status
-    goals_cache_status = {}
-    if "data" in beeminder_goals_cache:
-        goals_cache_status = {
-            "cached": True,
-            "count": len(beeminder_goals_cache["data"]),
-            "expires": beeminder_goals_cache["cache_expires"].isoformat(),
-            "valid": now < beeminder_goals_cache["cache_expires"],
-            "is_stale": beeminder_goals_cache.get("is_stale", False),
-            "age_minutes": (now - beeminder_goals_cache["last_check"]).total_seconds() / 60
-        }
-    else:
-        goals_cache_status = {"cached": False}
-    
-    return {
-        "cache_status": {
-            "daily_activity": daily_cache_status,
-            "beeminder_goals": goals_cache_status
-        },
-        "timestamp": now.isoformat()
-    }
-
-@app.post("/cache/clear")
-async def clear_cache(cache_type: str = "all"):
-    """Clear specific cache or all caches"""
-    cleared = []
-    
-    if cache_type in ["all", "daily_activity"]:
-        daily_activity_cache.clear()
-        cleared.append("daily_activity")
-    
-    if cache_type in ["all", "beeminder_goals"]:
-        beeminder_goals_cache.clear()
-        cleared.append("beeminder_goals")
-    
-    return {
-        "cleared": cleared,
-        "message": f"Cache cleared: {', '.join(cleared)}",
-        "timestamp": datetime.now().isoformat()
-    }
-
-# Unified narrator context
-@app.get("/narrator/context", response_model=NarratorContextResponse)
-async def get_narrator_context():
-    """Unified context for Claude narrator with strategic insights"""
-    try:
-        # Gather data from all sources
-        goals = get_goals()  # Use local goals instead of Obsidian
-        active_goals = [g for g in goals if g.get("status") == "active"] 
-        try:
-            todos = await obsidian_client.get_todos()  # Keep trying Obsidian for todos
-        except:
-            todos = []  # Fallback if Obsidian not available
-        # PHASE 2 OPTIMIZATION: Cached Beeminder goals + derived views
         beeminder_goals = await get_cached_beeminder_goals()
         emergencies = await beeminder_client.get_emergencies(beeminder_goals)
         goal_runway = await beeminder_client.get_runway_summary(limit=6, all_goals=beeminder_goals)
-        
-        budget_status = get_budget_status()
-        
-        # Get daily walk status (cached for performance)
+        budget_status = get_budget_status_from_tracker()
         daily_walk_status = await get_cached_daily_activity("bike")
-        
-        # Get Groq odometer context for reminders
         groq_context = get_groq_context_for_narrator()
-        
-        # Build strategic summary
+
         pending_todos = [t for t in todos if not t.get("completed", False)]
         critical_beeminder = [g for g in beeminder_goals if g.get("derail_risk") == "CRITICAL"]
         
-        # Enhanced summary with budget info
         budget_days = budget_status.get("days_remaining", 0)
         summary = f"Active goals: {len(active_goals)}, Pending todos: {len(pending_todos)}, Beeminder goals: {len(beeminder_goals)}, Budget: {budget_days:.1f} days left"
         
-        urgent_items = []
-        if critical_beeminder:
-            urgent_items.extend([f"DERAILING: {g['slug']}" for g in critical_beeminder])
-        
-        # Add budget urgency
-        if budget_days <= 1:
-            urgent_items.append(f"BUDGET CRITICAL: {budget_days:.1f} days left")
-        elif budget_days <= 2:
-            urgent_items.append(f"BUDGET WARNING: {budget_days:.1f} days left")
-        
-        beeminder_alerts = [e.get("message", "") for e in emergencies[:5]]
-        
+        urgent_items = [f"DERAILING: {g['slug']}" for g in critical_beeminder]
+        if budget_days <= 1: urgent_items.append(f"BUDGET CRITICAL: {budget_days:.1f} days left")
+        elif budget_days <= 2: urgent_items.append(f"BUDGET WARNING: {budget_days:.1f} days left")
+
         recommendations = []
-        if len(pending_todos) > 10:
-            recommendations.append("Consider prioritizing todos - large backlog detected")
-        if critical_beeminder:
-            recommendations.append("Address critical Beeminder goals immediately")
-        if budget_days <= 2:
-            recommendations.append("Urgent: Focus on highest-value work due to budget constraints")
-        if not active_goals:
-            recommendations.append("No active goals found - consider setting objectives")
-        
-        # Add walk reminder if needed and it's afternoon
-        current_hour = datetime.now().hour
-        if (daily_walk_status.get("status") == "needed" and 
-            current_hour >= 14):  # After 2 PM
-            recommendations.append("🚶‍♂️ Time for a walk! No activity logged today for bike goal")
-        
-        # Add Groq odometer reminders
+        if len(pending_todos) > 10: recommendations.append("Consider prioritizing todos - large backlog detected")
+        if critical_beeminder: recommendations.append("Address critical Beeminder goals immediately")
+        if budget_days <= 2: recommendations.append("Urgent: Focus on highest-value work due to budget constraints")
+
         if groq_context.get("groq_tracking", {}).get("needs_action"):
             groq_urgent = groq_context["groq_tracking"].get("urgent_reminder")
             if groq_urgent:
                 urgent_items.append(f"GROQ: {groq_urgent}")
                 recommendations.append(groq_urgent)
-            elif groq_context["groq_tracking"].get("days_until_reset", 30) <= 3:
-                recommendations.append(f"📊 Groq usage reading needed in {groq_context['groq_tracking']['days_until_reset']} days")
-        
-        return NarratorContextResponse(
-            summary=summary,
-            goals_status={"total": len(active_goals), "sources": ["database"]},
-            urgent_items=urgent_items,
-            beeminder_alerts=beeminder_alerts,
-            goal_runway=goal_runway,
-            budget_status=budget_status,
-            recommendations=recommendations,
-            daily_walk_status=daily_walk_status,
-            last_updated=datetime.now()
-        )
-        
+
+        return {
+            "summary": summary, "goals_status": {"total": len(active_goals)},
+            "urgent_items": urgent_items, "beeminder_alerts": [e.get("message", "") for e in emergencies[:5]],
+            "goal_runway": goal_runway, "budget_status": budget_status, "recommendations": recommendations,
+            "daily_walk_status": daily_walk_status, "last_updated": datetime.now().isoformat()
+        }
     except Exception as e:
         logger.error(f"Failed to build narrator context: {e}")
-        raise HTTPException(status_code=500, detail="Failed to build narrator context")
+        return {"error": f"Failed to build narrator context: {e}"}
 
-# Session logging
-@app.post("/log-session")
-async def log_session(session_data: Dict[str, Any]):
-    """Log session summary back to Obsidian"""
+@mcp.tool(description="Get Beeminder goal portfolio status with risk assessment.")
+async def get_beeminder_status() -> Dict[str, Any]:
+    """Get Beeminder goal portfolio status with risk assessment."""
     try:
-        timestamp = datetime.now().isoformat()
-        log_entry = f"\n## Session Log - {timestamp}\n"
-        log_entry += f"Duration: {session_data.get('duration', 'unknown')}\n"
-        log_entry += f"Actions: {session_data.get('actions_taken', [])}\n"
-        log_entry += f"Outcomes: {session_data.get('outcomes', 'none specified')}\n"
-        
-        await obsidian_client.append_to_session_log(log_entry)
-        
+        goals = await beeminder_client.get_all_goals()
+        emergencies = await beeminder_client.get_emergencies()
         return {
-            "logged": True,
-            "timestamp": timestamp,
-            "message": "Session logged to Obsidian"
+            "goals": goals, "emergencies": emergencies,
+            "safe_count": len([g for g in goals if g.get("derail_risk") == "SAFE"]),
+            "warning_count": len([g for g in goals if g.get("derail_risk") in ["WARNING", "CAUTION"]]),
+            "critical_count": len([g for g in goals if g.get("derail_risk") == "CRITICAL"])
         }
-        
     except Exception as e:
-        logger.error(f"Failed to log session: {e}")
-        raise HTTPException(status_code=500, detail="Failed to log session")
+        logger.error(f"Failed to fetch Beeminder status: {e}")
+        return {"error": f"Failed to fetch Beeminder status: {e}"}
 
-# Intelligent Reminder System
-@app.get("/intelligent-reminder/check")
-async def check_reminder_needed():
-    """Check if any reminders should be sent - works without Claude credits"""
+@mcp.tool(description="Get current usage and budget status with days remaining.")
+def get_budget_status() -> Dict[str, Any]:
+    return get_budget_status_from_tracker()
+
+@mcp.tool(description="Record Claude usage session with token counts.")
+def record_usage_session(input_tokens: int, output_tokens: int, model: str = "claude-3-5-sonnet-20241022", session_type: str = "interactive", notes: str = "") -> Dict[str, Any]:
     try:
-        # Get full MCP context without consuming Claude credits
-        context_response = await get_narrator_context()
-        context = context_response if isinstance(context_response, dict) else {}
-        
-        current_time = datetime.now()
-        current_hour = current_time.hour
-        
-        # Budget tier assessment from context
-        budget_status = context.get("budget_status", {})
-        remaining_budget = budget_status.get("remaining_budget", 0)
-        
-        # Determine messaging tier based on budget
-        if remaining_budget > 2.0:
-            tier = "enhanced"  # Claude available for sophisticated analysis
-        elif remaining_budget > 0.5:
-            tier = "smart_template"  # Claude constrained, use templates with full context
-        else:
-            tier = "base_mode"  # Claude exhausted, basic reminders only
-        
-        # Walk status from MCP context
-        daily_walk_status = context.get("daily_walk_status", {})
-        walk_needed = daily_walk_status.get("status") == "needed"
-        
-        # Base mode: Only walk reminders, 2-5 PM window
-        if tier == "base_mode":
-            if walk_needed and 14 <= current_hour <= 17:
-                import random
-                messages = [
-                    "🚶‍♂️ Walk reminder - dogs are waiting!",
-                    "🐕 Time for that daily walk",
-                    "🚶‍♂️ No walk logged yet today - time to move!"
-                ]
-                return {
-                    "should_send": True,
-                    "tier": tier,
-                    "message": random.choice(messages),
-                    "type": "walk_reminder",
-                    "budget_remaining": remaining_budget
-                }
-            return {"should_send": False, "tier": tier, "reason": "No walk needed or outside time window"}
-        
-        # Smart template mode: Full context analysis with templates
-        elif tier == "smart_template":
-            # Primary: Walk reminders (afternoon window)
-            if walk_needed and 14 <= current_hour <= 17:
-                # Get bike goal info for context
-                goal_runway = context.get("goal_runway", [])
-                bike_goal = next((g for g in goal_runway if "bike" in g.get("slug", "").lower()), None)
-                
-                if bike_goal:
-                    safebuf = bike_goal.get("safebuf", 0)
-                    message = f"🚶‍♂️ No walk logged yet today - your bike goal needs progress ({safebuf} days safe) and the dogs need exercise!"
-                else:
-                    message = "🚶‍♂️ Walk reminder - no activity logged today and the dogs are waiting!"
-                
-                return {
-                    "should_send": True,
-                    "tier": tier,
-                    "message": message,
-                    "type": "walk_reminder",
-                    "budget_remaining": remaining_budget
-                }
-            
-            # Secondary: Check for other urgent items (budget warnings, etc.)
-            urgent_items = context.get("urgent_items", [])
-            if urgent_items and 9 <= current_hour <= 17:
-                budget_critical = any("BUDGET CRITICAL" in item for item in urgent_items)
-                if budget_critical:
-                    return {
-                        "should_send": True,
-                        "tier": tier,
-                        "message": f"💰 Budget alert: ${remaining_budget:.2f} remaining. Focus mode activated.",
-                        "type": "budget_warning",
-                        "budget_remaining": remaining_budget
-                    }
-            
-            return {"should_send": False, "tier": tier, "reason": "No urgent items in appropriate time window"}
-        
-        # Enhanced mode: Would use Claude for sophisticated analysis
-        # For now, fall back to smart template behavior
-        else:  # tier == "enhanced"
-            # TODO: Implement Claude-enhanced decision making
-            # For now, use smart template logic
-            if walk_needed and 14 <= current_hour <= 17:
-                return {
-                    "should_send": True,
-                    "tier": "smart_template",  # Fallback for now
-                    "message": "🚶‍♂️ Perfect timing for a walk! No activity logged today and the dogs need their exercise.",
-                    "type": "walk_reminder",
-                    "budget_remaining": remaining_budget,
-                    "note": "Enhanced mode not yet implemented, using smart template"
-                }
-            
-            return {"should_send": False, "tier": tier, "reason": "No walk needed or outside time window"}
-            
+        cost = record_usage(input_tokens, output_tokens, model, session_type, notes)
+        return {"recorded": True, "estimated_cost": cost, "updated_status": get_budget_status_from_tracker()}
     except Exception as e:
-        logger.error(f"Failed to check reminder status: {e}")
-        # Graceful degradation - return a basic walk reminder if it's afternoon
-        current_hour = datetime.now().hour
-        if 14 <= current_hour <= 17:
-            return {
-                "should_send": True,
-                "tier": "emergency_fallback",
-                "message": "🚶‍♂️ Walk reminder - system degraded but dogs still need walking!",
-                "type": "walk_reminder",
-                "error": str(e)
-            }
-        
-        return {"should_send": False, "error": str(e)}
+        logger.error(f"Failed to record usage: {e}")
+        return {"error": f"Failed to record usage: {e}"}
 
-@app.post("/intelligent-reminder/send")
-async def send_reminder_message(message_data: Dict[str, Any]):
-    """Send reminder message via WhatsApp/SMS with no-spam protection"""
+@mcp.tool(description="Check for beemergencies and send SMS alerts if critical.")
+async def send_beeminder_alert() -> Dict[str, Any]:
     try:
-        # Import Twilio sender and consent manager
-        from twilio_sender import smart_send_message
-        from sms_consent_manager import consent_manager
-        
-        message = message_data.get("message", "")
-        message_type = message_data.get("type", "walk_reminder")
-        tier = message_data.get("tier", "base_mode")
-        
-        if not message:
-            return {"sent": False, "error": "No message provided"}
-        
-        # Check SMS consent (for A2P compliance)
-        recipient_phone = os.getenv('TWILIO_TO_NUMBER')
-        if recipient_phone:
-            consent_check = consent_manager.can_send_message(recipient_phone, message_type)
-            if not consent_check["can_send"]:
-                return {
-                    "sent": False,
-                    "error": f"Consent check failed: {consent_check['reason']}",
-                    "message_type": message_type,
-                    "consent_status": consent_check
-                }
-        
-        # No-spam protection: Check if we've already sent this type today
-        from datetime import date
-        import json
-        
-        # Simple file-based tracking for no-spam
-        spam_file = "/tmp/mecris_daily_messages.json"
-        today = str(date.today())
-        
-        # Load existing message log
-        daily_messages = {}
-        try:
-            if os.path.exists(spam_file):
-                with open(spam_file, 'r') as f:
-                    daily_messages = json.load(f)
-        except:
-            daily_messages = {}
-        
-        # Check if we've already sent this type today
-        if today in daily_messages:
-            if message_type in daily_messages[today]:
-                return {
-                    "sent": False, 
-                    "reason": "Already sent this message type today",
-                    "message_type": message_type,
-                    "last_sent": daily_messages[today][message_type]
-                }
-        
-        # Use smart delivery system with fallbacks
-        delivery_result = smart_send_message(message)
-        
-        if delivery_result["sent"]:
-            # Log successful send to prevent spam
-            if today not in daily_messages:
-                daily_messages[today] = {}
-            daily_messages[today][message_type] = {
-                "timestamp": datetime.now().isoformat(),
-                "message": message,
-                "tier": tier,
-                "delivery_method": delivery_result["method"],
-                "attempts": delivery_result["attempts"]
-            }
-            
-            # Save updated log
-            try:
-                with open(spam_file, 'w') as f:
-                    json.dump(daily_messages, f)
-            except Exception as e:
-                logger.warning(f"Failed to update no-spam log: {e}")
-            
-            # Log message for A2P compliance audit trail
-            if recipient_phone:
-                consent_manager.log_message_sent(
-                    recipient_phone, 
-                    message, 
-                    message_type, 
-                    delivery_result["method"]
-                )
-            
-            return {
-                "sent": True,
-                "delivery_method": delivery_result["method"],
-                "message_type": message_type,
-                "tier": tier,
-                "timestamp": datetime.now().isoformat(),
-                "delivery_details": delivery_result
-            }
-        else:
-            return {
-                "sent": False,
-                "error": "All delivery methods failed",
-                "message_type": message_type,
-                "delivery_details": delivery_result
-            }
-            
+        emergencies = await beeminder_client.get_emergencies()
+        critical_emergencies = [e for e in emergencies if e.get("urgency") == "IMMEDIATE"]
+        if critical_emergencies and usage_tracker.should_send_alert("beeminder", "critical", cooldown_minutes=90):
+            alert_message = f"🚨 BEEMERGENCY: {len(critical_emergencies)} goals need immediate attention!"
+            send_sms(alert_message)
+            usage_tracker.log_alert("beeminder", "critical", alert_message, f"count: {len(critical_emergencies)}")
+            return {"alert_sent": True, "count": len(critical_emergencies)}
+        return {"alert_sent": False, "reason": "No critical emergencies or on cooldown"}
     except Exception as e:
-        logger.error(f"Failed to send reminder message: {e}")
-        return {"sent": False, "error": str(e)}
+        logger.error(f"Failed to send beeminder alert: {e}")
+        return {"error": f"Failed to send beeminder alert: {e}"}
 
-@app.post("/intelligent-reminder/trigger")
-async def trigger_reminder_check():
-    """Check for needed reminders and send them - complete workflow"""
+@mcp.tool(description="Check if daily activity was logged for a specific goal.")
+async def get_daily_activity(goal_slug: str = "bike") -> Dict[str, Any]:
+    return await get_cached_daily_activity(goal_slug)
+
+@mcp.tool(description="Add a new goal to the local database.")
+def add_goal(title: str, description: str = "", priority: str = "medium", due_date: Optional[str] = None) -> Dict[str, Any]:
+    return add_goal_from_tracker(title, description, priority, due_date)
+
+@mcp.tool(description="Mark a goal as completed.")
+def complete_goal(goal_id: int) -> Dict[str, Any]:
+    return complete_goal_from_tracker(goal_id)
+
+@mcp.tool(description="Manually update budget information.")
+def update_budget(remaining_budget: float, total_budget: Optional[float] = None, period_end: Optional[str] = None) -> Dict[str, Any]:
+    return usage_tracker.update_budget(remaining_budget, total_budget, period_end)
+
+@mcp.tool(description="Record manual Groq odometer reading with cumulative cost.")
+def record_groq_reading(value: float, notes: str = "", month: Optional[str] = None) -> Dict[str, Any]:
+    return record_groq_reading_from_tracker(value, notes, month)
+
+@mcp.tool(description="Get Groq odometer status and usage reminders.")
+def get_groq_status() -> Dict[str, Any]:
+    return get_groq_reminder_status()
+
+@mcp.tool(description="Get Groq odometer context for narrator integration.")
+def get_groq_context() -> Dict[str, Any]:
+    return get_groq_context_for_narrator()
+
+@mcp.tool(description="Get unified cost status combining Claude budget and Groq usage data.")
+async def get_unified_cost_status() -> Dict[str, Any]:
     try:
-        # Check if reminder is needed
+        from groq_odometer_tracker import _get_tracker
+        budget_data = get_budget_status_from_tracker()
+        groq_tracker = _get_tracker()
+        groq_status = groq_tracker.check_reminder_needs()
+        groq_usage = groq_tracker.get_usage_for_virtual_budget()
+        return {"claude": budget_data, "groq": {**groq_status, **groq_usage}}
+    except Exception as e:
+        logger.error(f"Failed to get unified cost status: {e}")
+        return {"error": f"Failed to get unified cost status: {e}"}
+
+@mcp.tool(description="Check for needed reminders and send them intelligently.")
+async def trigger_reminder_check() -> Dict[str, Any]:
+    try:
         check_result = await check_reminder_needed()
+        if not check_result.get("should_send"):
+            return {"triggered": False, "reason": check_result.get("reason")}
         
-        if not check_result.get("should_send", False):
-            return {
-                "triggered": False,
-                "reason": check_result.get("reason", "No reminder needed"),
-                "tier": check_result.get("tier", "unknown")
-            }
-        
-        # Send the message
-        send_result = await send_reminder_message({
-            "message": check_result.get("message", ""),
-            "type": check_result.get("type", "walk_reminder"),
-            "tier": check_result.get("tier", "base_mode")
-        })
-        
-        return {
-            "triggered": True,
-            "check_result": check_result,
-            "send_result": send_result,
-            "timestamp": datetime.now().isoformat()
-        }
-        
+        send_result = await send_reminder_message(check_result)
+        return {"triggered": True, "check": check_result, "send": send_result}
     except Exception as e:
-        logger.error(f"Failed to trigger reminder: {e}")
-        return {"triggered": False, "error": str(e)}
+        logger.error(f"Reminder trigger failed: {e}")
+        return {"error": f"Reminder trigger failed: {e}"}
 
-# SMS Consent Management Endpoints (A2P Compliance)
-@app.post("/sms-consent/opt-in")
-async def opt_in_sms(consent_data: Dict[str, Any]):
-    """Handle SMS opt-in for A2P compliance"""
-    try:
-        from sms_consent_manager import consent_manager
-        
-        phone_number = consent_data.get("phone_number")
-        consent_method = consent_data.get("method", "web")
-        message_types = consent_data.get("message_types", ["walk_reminder", "budget_alert", "beeminder_emergency"])
-        
-        if not phone_number:
-            return {"success": False, "error": "Phone number required"}
-        
-        result = consent_manager.opt_in_user(phone_number, consent_method, message_types)
-        
-        return {
-            "success": True,
-            "message": "Successfully opted in for SMS reminders",
-            "consent_record": result,
-            "timestamp": datetime.now().isoformat()
-        }
-        
-    except Exception as e:
-        logger.error(f"Failed to process SMS opt-in: {e}")
-        return {"success": False, "error": str(e)}
+async def check_reminder_needed() -> Dict[str, Any]:
+    context = await get_narrator_context()
+    current_hour = datetime.now().hour
+    budget_status = context.get("budget_status", {})
+    remaining_budget = budget_status.get("remaining_budget", 0)
+    tier = "base_mode"
+    if remaining_budget > 2.0: tier = "enhanced"
+    elif remaining_budget > 0.5: tier = "smart_template"
 
-@app.post("/sms-consent/opt-out")
-async def opt_out_sms(opt_out_data: Dict[str, Any]):
-    """Handle SMS opt-out for A2P compliance"""
-    try:
-        from sms_consent_manager import consent_manager
+    walk_needed = context.get("daily_walk_status", {}).get("status") == "needed"
+    if walk_needed and 14 <= current_hour <= 17:
+        return {"should_send": True, "tier": tier, "message": "🚶‍♂️ Walk reminder!", "type": "walk_reminder"}
         
-        phone_number = opt_out_data.get("phone_number")
-        method = opt_out_data.get("method", "web")
-        
-        if not phone_number:
-            return {"success": False, "error": "Phone number required"}
-        
-        result = consent_manager.opt_out_user(phone_number, method)
-        
-        return {
-            "success": result,
-            "message": "Successfully opted out of SMS reminders" if result else "User not found",
-            "timestamp": datetime.now().isoformat()
-        }
-        
-    except Exception as e:
-        logger.error(f"Failed to process SMS opt-out: {e}")
-        return {"success": False, "error": str(e)}
+    return {"should_send": False, "reason": "Conditions not met"}
 
-@app.get("/sms-consent/status/{phone_number}")
-async def get_consent_status(phone_number: str):
-    """Get consent status for a phone number"""
-    try:
-        from sms_consent_manager import consent_manager
-        
-        preferences = consent_manager.get_user_preferences(phone_number)
-        
-        if not preferences:
-            return {"found": False, "message": "User not found in consent database"}
-        
-        return {
-            "found": True,
-            "opted_in": preferences.get("opted_in", False),
-            "message_types": preferences.get("message_types", []),
-            "preferences": preferences.get("preferences", {}),
-            "last_updated": preferences.get("last_updated")
-        }
-        
-    except Exception as e:
-        logger.error(f"Failed to get consent status: {e}")
-        return {"found": False, "error": str(e)}
+async def send_reminder_message(message_data: Dict[str, Any]) -> Dict[str, Any]:
+    message = message_data.get("message")
+    msg_type = message_data.get("type")
+    
+    spam_file = "/tmp/mecris_daily_reminders.log"
+    today = str(datetime.now().date())
+    if os.path.exists(spam_file):
+        with open(spam_file, 'r') as f:
+            if f.read().strip() == f"{today}:{msg_type}":
+                return {"sent": False, "reason": "Already sent today"}
 
-@app.get("/sms-consent/summary")
-async def get_consent_summary():
-    """Get consent summary for monitoring and compliance"""
-    try:
-        from sms_consent_manager import consent_manager
-        
-        summary = consent_manager.get_consent_summary()
-        
-        return {
-            "summary": summary,
-            "timestamp": datetime.now().isoformat(),
-            "compliance_status": "active"
-        }
-        
-    except Exception as e:
-        logger.error(f"Failed to get consent summary: {e}")
-        return {"error": str(e)}
+    delivery_result = smart_send_message(message)
+    if delivery_result["sent"]:
+        with open(spam_file, 'w') as f:
+            f.write(f"{today}:{msg_type}")
+    return delivery_result
+
+
 
 if __name__ == "__main__":
-    import uvicorn
-    
-    # Check if we should run in stdio mode for MCP
-    if "--stdio" in sys.argv or os.getenv("MCP_STDIO", "false").lower() == "true":
-        # Run only the stdio server for MCP
-        logger.info("Starting Mecris MCP Server in stdio mode...")
-        tool_handlers = get_tool_handlers()
-        run_stdio_server(tool_handlers)
-        
-        # Keep the main thread alive
-        try:
-            while True:
-                import time
-                time.sleep(1)
-        except KeyboardInterrupt:
-            logger.info("Mecris MCP stdio server shutting down...")
-    else:
-        # Run the FastAPI server normally
-        uvicorn.run(
-            "mcp_server:app",
-            host="127.0.0.1",  # Secure localhost binding
-            port=int(os.getenv("PORT", 8000)),
-            reload=os.getenv("DEBUG", "false").lower() == "true"
-        )
+    mcp.run()
