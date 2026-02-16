@@ -72,3 +72,4 @@ mecris.log
 # model-context-protocol
 /servers
 /servers/**
+tools/talktype/talktype_whisper_server.pid
