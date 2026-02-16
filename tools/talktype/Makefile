@@ -46,7 +46,7 @@ server:
 	}
 	@sleep 2
 	@echo "$(GREEN)Whisper server started. Check talktype_whisper_server.log for details. $(RESET)"
-	@echo "$(YELLOW)PID: $$(cat ../talktype_whisper_server.pid)$(RESET)"
+	@PID=$$(cat talktype_whisper_server.pid); echo "$(YELLOW)PID: $$PID$(RESET)"
 
 client:
 	@echo "$(GREEN)Running TalkType client, connecting to server on port $(WHISPER_PORT)...$(RESET)"
@@ -56,36 +56,47 @@ client:
 
 stop-server:
 	@echo "$(YELLOW)Attempting to stop Whisper API server...$(RESET)"
-	@if [ -f "talktype_whisper_server.pid" ]; then 
-		kill $$(cat talktype_whisper_server.pid); 
-		rm talktype_whisper_server.pid; 
-		echo "$(GREEN)Whisper API server stopped.$(RESET)"; 
-	else 
-		echo "$(YELLOW)No PID file found. Server might not be running or PID file is missing.$(RESET)"; 
-		pkill -f "whisper_server.py"; 
-		echo "$(YELLOW)Attempted to kill any running whisper_server.py processes directly.$(RESET)"; 
+	@if [ -f "talktype_whisper_server.pid" ]; then \
+		PID=$$(cat talktype_whisper_server.pid); \
+		if ps -p $$PID > /dev/null; then \
+			echo "$(GREEN)Stopping Whisper API server (PID: $$PID)...$(RESET)"; \
+			kill $$PID; \
+			rm talktype_whisper_server.pid; \
+			echo "$(GREEN)Whisper API server stopped.$(RESET)"; \
+		else \
+			echo "$(YELLOW)PID file found, but no matching process is running. Removing stale PID file.$(RESET)"; \
+			rm talktype_whisper_server.pid; \
+		fi; \
+	else \
+		echo "$(YELLOW)No PID file found. Checking for running processes...$(RESET)"; \
+		if pgrep -f "whisper_server.py" > /dev/null; then \
+			pkill -f "whisper_server.py"; \
+			echo "$(YELLOW)Attempted to kill any running whisper_server.py processes directly.$(RESET)"; \
+		else \
+			echo "$(GREEN)No running whisper_server.py process found.$(RESET)"; \
+		fi; \
 	fi
 
 status:
 	@echo "$(BLUE)Checking Whisper API server status...$(RESET)"
-	@if [ -f "talktype_whisper_server.pid" ]; then 
-		PID=$$(cat talktype_whisper_server.pid); 
-		if ps -p $$PID > /dev/null; then 
-			echo "$(GREEN)Whisper API server is running (PID: $$PID).$(RESET)"; 
-		else 
-			echo "$(RED)Whisper API server PID file found, but process not running. Removing PID file.$(RESET)"; 
-			rm talktype_whisper_server.pid; 
-		fi; 
-	else 
-		echo "$(YELLOW)No PID file found. Checking actively running processes...$(RESET)"; 
-		if pgrep -f "whisper_server.py" > /dev/null; then 
-			echo "$(GREEN)A whisper_server.py process is running (PID: $$(pgrep -f "whisper_server.py")).$(RESET)"; 
-		else 
-			echo "$(RED)Whisper API server is NOT running.$(RESET)"; 
-		fi; 
-	fi
-	@if curl -s http://localhost:$(WHISPER_PORT)/health > /dev/null; then 
-		echo "$(GREEN)Whisper API server health endpoint is responsive.$(RESET)"; 
-	else 
-		echo "$(RED)Whisper API server health endpoint is NOT responsive.$(RESET)"; 
+	@if [ -f "talktype_whisper_server.pid" ]; then \
+		PID=$$(cat talktype_whisper_server.pid); \
+		if ps -p $$PID > /dev/null; then \
+			echo "$(GREEN)Whisper API server is running (PID: $$PID).$(RESET)"; \
+		else \
+			echo "$(RED)Whisper API server PID file found, but process not running. Removing PID file.$(RESET)"; \
+			rm talktype_whisper_server.pid; \
+		fi; \
+	else \
+		echo "$(YELLOW)No PID file found. Checking actively running processes...$(RESET)"; \
+		if pgrep -f "whisper_server.py" > /dev/null; then \
+			echo "$(GREEN)A whisper_server.py process is running (PID: $$(pgrep -f "whisper_server.py")).$(RESET)"; \
+		else \
+			echo "$(RED)Whisper API server is NOT running.$(RESET)"; \
+		fi; \
+	fi; \
+	if curl -s http://localhost:$(WHISPER_PORT)/health > /dev/null; then \
+		echo "$(GREEN)Whisper API server health endpoint is responsive.$(RESET)"; \
+	else \
+		echo "$(RED)Whisper API server health endpoint is NOT responsive.$(RESET)"; \
 	fi
