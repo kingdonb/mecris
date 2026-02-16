@@ -52,6 +52,12 @@ class BeemergencyAlert:
     suggested_action: str
     time_remaining: str
 
+class BeeminderAPIError(Exception):
+    """Custom exception for Beeminder API errors."""
+    def __init__(self, message, status_code=None):
+        super().__init__(message)
+        self.status_code = status_code
+
 class BeeminderClient:
     """Client for Beeminder API with derailment detection"""
     
@@ -84,8 +90,7 @@ class BeeminderClient:
     async def _api_call(self, endpoint: str, method: str = "GET", data: Dict = None) -> Optional[Dict]:
         """Make authenticated API call to Beeminder"""
         if not self.username or not self.auth_token:
-            logger.error("Beeminder credentials not configured")
-            return None
+            raise BeeminderAPIError("Beeminder credentials not configured", status_code=401)
         
         url = f"{self.base_url}/{endpoint}"
         params = {"auth_token": self.auth_token}
@@ -96,23 +101,27 @@ class BeeminderClient:
             elif method == "POST":
                 response = await self.client.post(url, params=params, json=data or {})
             else:
-                logger.error(f"Unsupported HTTP method: {method}")
-                return None
+                raise BeeminderAPIError(f"Unsupported HTTP method: {method}", status_code=400)
             
             if response.status_code != 200:
-                logger.error(f"Beeminder API call failed: {response.status_code} - {response.text}")
-                return None
+                msg = f"Beeminder API call failed: {response.status_code} - {response.text}"
+                logger.error(msg)
+                raise BeeminderAPIError(msg, status_code=response.status_code)
             
             return response.json()
             
-        except Exception as e:
-            logger.error(f"Beeminder API call to {endpoint} failed: {e}")
-            return None
+        except httpx.RequestError as e:
+            msg = f"Beeminder API call to {endpoint} failed: {e}"
+            logger.error(msg)
+            raise BeeminderAPIError(msg) from e
     
     async def get_user_goals(self) -> List[Dict[str, Any]]:
         """Get all goals for the authenticated user"""
-        result = await self._api_call(f"users/{self.username}/goals.json")
-        return result if result else []
+        try:
+            result = await self._api_call(f"users/{self.username}/goals.json")
+            return result if result else []
+        except BeeminderAPIError:
+            return []
     
     async def get_goal_details(self, goal_slug: str) -> Optional[Dict[str, Any]]:
         """Get detailed information for specific goal"""
@@ -164,15 +173,32 @@ class BeeminderClient:
     
     async def get_daily_activity_status(self, goal_slug: str = "bike") -> Dict[str, Any]:
         """Get comprehensive daily activity status for narrator context"""
-        has_activity = await self.has_activity_today(goal_slug)
-        
-        return {
-            "goal_slug": goal_slug,
-            "has_activity_today": has_activity,
-            "status": "completed" if has_activity else "needed",
-            "check_time": datetime.now().isoformat(),
-            "message": f"✅ Walk logged today" if has_activity else "🚶‍♂️ No walk detected today"
-        }
+        try:
+            has_activity = await self.has_activity_today(goal_slug)
+            return {
+                "goal_slug": goal_slug,
+                "has_activity_today": has_activity,
+                "status": "completed" if has_activity else "needed",
+                "check_time": datetime.now().isoformat(),
+                "message": f"✅ Walk logged today" if has_activity else "🚶‍♂️ No walk detected today"
+            }
+        except BeeminderAPIError as e:
+            if e.status_code == 404:
+                return {
+                    "goal_slug": goal_slug,
+                    "has_activity_today": False,
+                    "status": "error",
+                    "check_time": datetime.now().isoformat(),
+                    "message": "Goal not found"
+                }
+            else:
+                return {
+                    "goal_slug": goal_slug,
+                    "has_activity_today": False,
+                    "status": "error",
+                    "check_time": datetime.now().isoformat(),
+                    "message": f"API Error: {str(e)}"
+                }
     
     async def add_datapoint(self, goal_slug: str, value: float, comment: str = "") -> bool:
         """Add a datapoint to a goal"""

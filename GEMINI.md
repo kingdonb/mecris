@@ -26,10 +26,12 @@ The system is built around a central server that communicates exclusively via st
 
 ### Setup
 
-1.  **Install Dependencies:**
+1.  **Install Dependencies (using `uv`):**
+    *   **Always use `uv`** for Python virtual environment and dependency management. If `uv` is not installed, install it first (`brew install uv` on macOS, or follow instructions on `https://astral.sh/uv`).
     ```bash
-    source venv/bin/activate
-    pip install -r requirements.txt
+    uv venv
+    source .venv/bin/activate
+    uv pip install -r requirements.txt
     ```
 
 2.  **Configure Environment:**
@@ -88,6 +90,8 @@ As the Gemini CLI Agent interacting with Mecris, these are your core operational
 1.  **Remind the user to walk Boris & Fiona first.**
 2.  Then, proceed with checking Beeminder status.
 3.  Then, technical work.
+
+**Note on Beeminder Logging:** The user's physical activities, including walks with either Boris or Fiona, are logged to the Beeminder goal with the slug `bike`. This is the default slug for the `get_daily_activity` tool and is used automatically by `get_narrator_context`. When asked to check for a walk, always use `get_daily_activity(goal_slug='bike')` and do not infer other goal names.
 
 ### 🎯 Task Complexity Protocol
 
