@@ -234,20 +234,49 @@ async def trigger_reminder_check() -> Dict[str, Any]:
         logger.error(f"Reminder trigger failed: {e}")
         return {"error": f"Reminder trigger failed: {e}"}
 
+from services.coaching_service import CoachingService
+
+@mcp.tool(description="Get a personalized coaching insight based on momentum and current needs.")
+async def get_coaching_insight() -> Dict[str, Any]:
+    """Analyze current state and provide a momentum-aware coaching pivot."""
+    try:
+        # Dependency Injection for the Service
+        async def _get_obsidian_context():
+            today = datetime.now().strftime("%Y-%m-%d")
+            return await obsidian_client.get_daily_note(today)
+
+        service = CoachingService(
+            context_provider=get_narrator_context,
+            goal_provider=get_cached_beeminder_goals,
+            obsidian_provider=_get_obsidian_context
+        )
+        
+        insight = await service.generate_insight()
+        return insight.to_dict()
+            
+    except Exception as e:
+        logger.error(f"Failed to generate coaching insight: {e}")
+        return {"error": str(e)}
+
 async def check_reminder_needed() -> Dict[str, Any]:
     context = await get_narrator_context()
     current_hour = datetime.now().hour
     budget_status = context.get("budget_status", {})
     remaining_budget = budget_status.get("remaining_budget", 0)
-    tier = "base_mode"
-    if remaining_budget > 2.0: tier = "enhanced"
-    elif remaining_budget > 0.5: tier = "smart_template"
-
+    
+    insight = await get_coaching_insight()
+    
     walk_needed = context.get("daily_walk_status", {}).get("status") == "needed"
-    if walk_needed and 14 <= current_hour <= 17:
-        return {"should_send": True, "tier": tier, "message": "🚶‍♂️ Walk reminder!", "type": "walk_reminder"}
+    
+    # Logic: Only send walk reminders in the afternoon window
+    if 14 <= current_hour <= 17:
+        if walk_needed:
+             return {"should_send": True, "message": insight.get("message"), "type": "walk_reminder"}
+        elif insight.get("momentum") == "high" and current_hour >= 16:
+             # Even if walked, if it's late and momentum is high, send a coaching pivot
+             return {"should_send": True, "message": insight.get("message"), "type": "momentum_coaching"}
         
-    return {"should_send": False, "reason": "Conditions not met"}
+    return {"should_send": False, "reason": "Conditions not met or already handled"}
 
 async def send_reminder_message(message_data: Dict[str, Any]) -> Dict[str, Any]:
     message = message_data.get("message")
