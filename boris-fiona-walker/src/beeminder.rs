@@ -50,9 +50,23 @@ pub fn filter_urgent_goals(goals: Vec<Goal>) -> Vec<Goal> {
         .collect()
 }
 
+pub fn pick_pivot_goal(goals: Vec<Goal>) -> Option<Goal> {
+    filter_urgent_goals(goals).into_iter().next()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_pick_pivot_goal() {
+        let goals = vec![
+            Goal { slug: "urgent".into(), title: "Urgent".into(), derail_risk: "WARNING".into() },
+        ];
+        let pivot = pick_pivot_goal(goals);
+        assert!(pivot.is_some());
+        assert_eq!(pivot.unwrap().slug, "urgent");
+    }
 
     #[test]
     fn test_urgent_goals_filtering() {
