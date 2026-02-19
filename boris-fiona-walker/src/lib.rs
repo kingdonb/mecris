@@ -7,6 +7,11 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 mod sms;
 mod time;
+mod weather;
+mod daylight;
+mod beeminder;
+
+use weather::WeatherCondition;
 
 /// Main HTTP handler for walk reminder checks
 #[spin_sdk::http_component]
@@ -276,9 +281,23 @@ async fn check_and_send_reminder() -> Result<bool> {
     if already_reminded_today()? {
         return Ok(false);
     }
+
+    // Fetch walk status from Beeminder
+    let walked = beeminder::has_walked_today("bike").await.unwrap_or(false);
+
+    // Fetch weather condition
+    let weather = weather::get_current_weather().await?;
     
-    // Send the reminder!
-    let message = get_walk_message(current_hour);
+    // Check if weather is safe
+    let (is_safe, reason) = weather::is_weather_safe(&weather);
+    if !is_safe && !walked {
+        // If it's unsafe and we HAVEN'T walked, skip the nag
+        eprintln!("Walk skipped: {}", reason);
+        return Ok(false);
+    }
+    
+    // Send the reminder/congrats!
+    let message = get_weather_aware_message(current_hour, &weather, walked);
     sms::send_walk_reminder(&message).await?;
     
     // Mark that we sent a reminder today
@@ -293,7 +312,8 @@ fn validate_webhook_secret(req: &Request) -> Result<()> {
         .map_err(|_| anyhow!("Missing webhook_secret configuration"))?;
     
     let auth_header = req.header("authorization")
-        .or_else(|| req.header("Authorization"))
+        .or_else(|| req.header("Authorization")).and_then(|v| v.as_str())
+        .and_then(|v| v.as_str())
         .ok_or_else(|| anyhow!("Missing Authorization header"))?;
     
     let expected_auth = format!("Bearer {}", expected_secret);
@@ -309,7 +329,8 @@ fn validate_webhook_secret(req: &Request) -> Result<()> {
 fn check_rate_limit(req: &Request) -> Result<()> {
     // Get client IP from headers (Spin Cloud should provide this)
     let client_ip = req.header("x-forwarded-for")
-        .or_else(|| req.header("x-real-ip"))
+        .or_else(|| req.header("x-real-ip")).and_then(|v| v.as_str())
+        .and_then(|v| v.as_str())
         .unwrap_or("unknown");
     
     let now = SystemTime::now()
@@ -347,10 +368,14 @@ fn check_rate_limit(req: &Request) -> Result<()> {
 /// Security: Log all incoming requests for monitoring
 fn log_request(req: &Request) {
     let client_ip = req.header("x-forwarded-for")
-        .or_else(|| req.header("x-real-ip"))
+        .or_else(|| req.header("x-real-ip")).and_then(|v| v.as_str())
+        .and_then(|v| v.as_str())
         .unwrap_or("unknown");
     
-    let user_agent = req.header("user-agent").unwrap_or("unknown");
+    let user_agent = req.header("user-agent")
+        .and_then(|v| v.as_str())
+        .unwrap_or("unknown");
+    
     let method = req.method();
     let path = req.path();
     
@@ -397,7 +422,42 @@ async fn handle_not_found() -> Result<Response> {
     create_error_response(404, "Endpoint not found")
 }
 
-/// Generate walk message based on time of day
+/// Generate walk message based on time of day, weather, and walk status
+fn get_weather_aware_message(hour: u8, weather: &WeatherCondition, walked: bool) -> String {
+    if walked {
+        let mut msg = "🌟 Great job on the walk earlier! You capitalized on the day.".to_string();
+        
+        if weather.temperature > 60.0 && weather.temperature < 80.0 && !weather.is_raining {
+            msg = format!("{} It's still gorgeous out ({}°F).", msg, weather.temperature);
+        }
+
+        return format!("{} Since you're on a roll, how about clearing some Greek or Arabic cards? 📚", msg);
+    }
+
+    let mut base_message = match hour {
+        14..=15 => "🐕 Afternoon walk time! Boris and Fiona are ready for their adventure.".to_string(),
+        16..=17 => "🌅 Golden hour walk! Boris and Fiona would love a sunset stroll.".to_string(),
+        18..=19 => "🌆 Evening walk time! Boris and Fiona are waiting by the door.".to_string(),
+        _ => "🐕 Walk time! Boris and Fiona need their daily adventure.".to_string(),
+    };
+
+    // Add weather context
+    if weather.temperature < 40.0 {
+        base_message = format!("{} Brrr, it's chilly ({}°F)! 🧣", base_message, weather.temperature);
+    } else if weather.temperature > 85.0 {
+        base_message = format!("{} It's a bit warm ({}°F). 💧", base_message, weather.temperature);
+    }
+
+    if !daylight::is_daylight(weather) {
+        base_message = format!("{} Watch out, it's getting dark! 🔦", base_message);
+    } else if daylight::is_approaching_sunset(weather) {
+        base_message = format!("{} Sunset is coming soon! 🌇", base_message);
+    }
+
+    base_message
+}
+
+/// Generate walk message based on time of day (Legacy)
 fn get_walk_message(hour: u8) -> String {
     match hour {
         14..=15 => "🐕 Afternoon walk time! Boris and Fiona are ready for their adventure.".to_string(),
@@ -437,6 +497,30 @@ fn mark_reminder_sent() -> Result<()> {
 mod tests {
     use super::*;
     
+    #[test]
+    fn test_weather_aware_message() {
+        let hour = 16;
+        let mut weather = WeatherCondition {
+            temperature: 70.0,
+            sunrise: 100,
+            sunset: 1000,
+            ..Default::default()
+        };
+        
+        let msg = get_weather_aware_message(hour, &weather, false);
+        assert!(msg.contains("Golden hour"));
+        
+        // Test cold weather
+        weather.temperature = 30.0;
+        let msg_cold = get_weather_aware_message(hour, &weather, false);
+        assert!(msg_cold.contains("chilly"));
+        
+        // Test already walked
+        let msg_walked = get_weather_aware_message(hour, &weather, true);
+        assert!(msg_walked.contains("Great job"));
+        assert!(msg_walked.contains("on a roll"));
+    }
+
     #[test]
     fn test_walk_message_generation() {
         // Test that we generate appropriate messages for Boris & Fiona at different times
