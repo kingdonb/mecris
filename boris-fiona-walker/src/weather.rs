@@ -45,13 +45,14 @@ struct Sys {
     sunset: i64,
 }
 
-/// Get current weather for South Bend, IN (41.6764°N, 86.2520°W)
+/// Get current weather for configured location (default South Bend, IN)
 pub async fn get_current_weather() -> Result<WeatherCondition> {
     let api_key = variables::get("openweather_api_key")
         .map_err(|_| anyhow!("Missing openweather_api_key variable"))?;
     
-    let lat = "41.6764";
-    let lon = "-86.2520";
+    let lat = variables::get("latitude").unwrap_or_else(|_| "41.6764".to_string());
+    let lon = variables::get("longitude").unwrap_or_else(|_| "-86.2520".to_string());
+    
     let url = format!(
         "https://api.openweathermap.org/data/2.5/weather?lat={}&lon={}&appid={}&units=imperial",
         lat, lon, api_key
