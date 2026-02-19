@@ -2,6 +2,13 @@ use serde::Deserialize;
 use anyhow::{anyhow, Result};
 use spin_sdk::variables;
 
+#[derive(Debug, Deserialize, Clone, PartialEq)]
+pub struct Goal {
+    pub slug: String,
+    pub title: String,
+    pub derail_risk: String,
+}
+
 #[derive(Debug, Deserialize)]
 pub struct Datapoint {
     pub daystamp: String,
@@ -15,8 +22,6 @@ pub async fn has_walked_today(goal_slug: &str) -> Result<bool> {
     let username = variables::get("beeminder_username")
         .map_err(|_| anyhow!("Missing beeminder_username variable"))?;
     
-    // Get today's date in Beeminder format (YYYYMMDD) or just check recent datapoints
-    // For simplicity, we'll fetch the last few datapoints and check the date
     let url = format!(
         "https://www.beeminder.com/api/v1/users/{}/goals/{}/datapoints.json?auth_token={}&count=5",
         username, goal_slug, api_key
@@ -31,14 +36,35 @@ pub async fn has_walked_today(goal_slug: &str) -> Result<bool> {
 
     if *response.status() == 200 {
         let datapoints: Vec<Datapoint> = serde_json::from_slice(response.body())?;
-        
-        // Check if any datapoint is from today (Eastern time)
-        // We'll use the date from our time module
         let today = chrono::Utc::now().format("%Y%m%d").to_string();
-        
         Ok(datapoints.iter().any(|d| d.daystamp == today))
     } else {
         let error_body = String::from_utf8_lossy(response.body());
         Err(anyhow!("Beeminder API error {}: {}", response.status(), error_body))
+    }
+}
+
+pub fn filter_urgent_goals(goals: Vec<Goal>) -> Vec<Goal> {
+    goals.into_iter()
+        .filter(|g| g.derail_risk == "WARNING" || g.derail_risk == "CRITICAL")
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_urgent_goals_filtering() {
+        let goals = vec![
+            Goal { slug: "safe".into(), title: "Safe Goal".into(), derail_risk: "SAFE".into() },
+            Goal { slug: "urgent".into(), title: "Urgent Goal".into(), derail_risk: "WARNING".into() },
+            Goal { slug: "critical".into(), title: "Critical Goal".into(), derail_risk: "CRITICAL".into() },
+        ];
+        
+        let urgent = filter_urgent_goals(goals);
+        assert_eq!(urgent.len(), 2, "Should find WARNING and CRITICAL goals");
+        assert!(urgent.iter().any(|g| g.slug == "urgent"));
+        assert!(urgent.iter().any(|g| g.slug == "critical"));
     }
 }

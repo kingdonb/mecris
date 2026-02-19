@@ -2,7 +2,6 @@ use spin_sdk::http::{Request, Response, Method};
 use spin_sdk::variables;
 use serde_json::json;
 use anyhow::{Result, anyhow};
-use std::collections::HashMap;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 mod sms;
@@ -312,8 +311,8 @@ fn validate_webhook_secret(req: &Request) -> Result<()> {
         .map_err(|_| anyhow!("Missing webhook_secret configuration"))?;
     
     let auth_header = req.header("authorization")
-        .or_else(|| req.header("Authorization")).and_then(|v| v.as_str())
-        .and_then(|v| v.as_str())
+        .or_else(|| req.header("Authorization"))
+        .and_then(|v| std::str::from_utf8(v.as_bytes()).ok())
         .ok_or_else(|| anyhow!("Missing Authorization header"))?;
     
     let expected_auth = format!("Bearer {}", expected_secret);
@@ -329,8 +328,8 @@ fn validate_webhook_secret(req: &Request) -> Result<()> {
 fn check_rate_limit(req: &Request) -> Result<()> {
     // Get client IP from headers (Spin Cloud should provide this)
     let client_ip = req.header("x-forwarded-for")
-        .or_else(|| req.header("x-real-ip")).and_then(|v| v.as_str())
-        .and_then(|v| v.as_str())
+        .or_else(|| req.header("x-real-ip"))
+        .and_then(|v| std::str::from_utf8(v.as_bytes()).ok())
         .unwrap_or("unknown");
     
     let now = SystemTime::now()
@@ -368,12 +367,12 @@ fn check_rate_limit(req: &Request) -> Result<()> {
 /// Security: Log all incoming requests for monitoring
 fn log_request(req: &Request) {
     let client_ip = req.header("x-forwarded-for")
-        .or_else(|| req.header("x-real-ip")).and_then(|v| v.as_str())
-        .and_then(|v| v.as_str())
+        .or_else(|| req.header("x-real-ip"))
+        .and_then(|v| std::str::from_utf8(v.as_bytes()).ok())
         .unwrap_or("unknown");
     
     let user_agent = req.header("user-agent")
-        .and_then(|v| v.as_str())
+        .and_then(|v| std::str::from_utf8(v.as_bytes()).ok())
         .unwrap_or("unknown");
     
     let method = req.method();
