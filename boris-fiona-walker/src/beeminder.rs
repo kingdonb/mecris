@@ -44,6 +44,33 @@ pub async fn has_walked_today(goal_slug: &str) -> Result<bool> {
     }
 }
 
+pub async fn get_all_goals() -> Result<Vec<Goal>> {
+    let api_key = variables::get("beeminder_api_key")
+        .map_err(|_| anyhow!("Missing beeminder_api_key variable"))?;
+    let username = variables::get("beeminder_username")
+        .map_err(|_| anyhow!("Missing beeminder_username variable"))?;
+    
+    let url = format!(
+        "https://www.beeminder.com/api/v1/users/{}/goals.json?auth_token={}",
+        username, api_key
+    );
+
+    let request = spin_sdk::http::Request::builder()
+        .method(spin_sdk::http::Method::Get)
+        .uri(&url)
+        .build();
+
+    let response: spin_sdk::http::Response = spin_sdk::http::send(request).await?;
+
+    if *response.status() == 200 {
+        let goals: Vec<Goal> = serde_json::from_slice(response.body())?;
+        Ok(goals)
+    } else {
+        let error_body = String::from_utf8_lossy(response.body());
+        Err(anyhow!("Beeminder API error {}: {}", response.status(), error_body))
+    }
+}
+
 pub fn filter_urgent_goals(goals: Vec<Goal>) -> Vec<Goal> {
     goals.into_iter()
         .filter(|g| g.derail_risk == "WARNING" || g.derail_risk == "CRITICAL")

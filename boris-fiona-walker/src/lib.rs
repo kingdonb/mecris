@@ -11,6 +11,7 @@ mod daylight;
 mod beeminder;
 
 use weather::WeatherCondition;
+use beeminder::Goal;
 
 /// Main HTTP handler for walk reminder checks
 #[spin_sdk::http_component]
@@ -284,6 +285,14 @@ async fn check_and_send_reminder() -> Result<bool> {
     // Fetch walk status from Beeminder
     let walked = beeminder::has_walked_today("bike").await.unwrap_or(false);
 
+    // Fetch all goals and pick a pivot if we walked
+    let pivot = if walked {
+        let all_goals = beeminder::get_all_goals().await.unwrap_or_default();
+        beeminder::pick_pivot_goal(all_goals)
+    } else {
+        None
+    };
+
     // Fetch weather condition
     let weather = weather::get_current_weather().await?;
     
@@ -296,7 +305,7 @@ async fn check_and_send_reminder() -> Result<bool> {
     }
     
     // Send the reminder/congrats!
-    let message = get_weather_aware_message(current_hour, &weather, walked);
+    let message = get_weather_aware_message(current_hour, &weather, walked, pivot);
     sms::send_walk_reminder(&message).await?;
     
     // Mark that we sent a reminder today
@@ -422,7 +431,7 @@ async fn handle_not_found() -> Result<Response> {
 }
 
 /// Generate walk message based on time of day, weather, and walk status
-fn get_weather_aware_message(hour: u8, weather: &WeatherCondition, walked: bool) -> String {
+fn get_weather_aware_message(hour: u8, weather: &WeatherCondition, walked: bool, pivot: Option<Goal>) -> String {
     if walked {
         let mut msg = "🌟 Great job on the walk earlier! You capitalized on the day.".to_string();
         
@@ -430,7 +439,12 @@ fn get_weather_aware_message(hour: u8, weather: &WeatherCondition, walked: bool)
             msg = format!("{} It's still gorgeous out ({}°F).", msg, weather.temperature);
         }
 
-        return format!("{} Since you're on a roll, how about clearing some Greek or Arabic cards? 📚", msg);
+        let pivot_text = match pivot {
+            Some(g) => format!("how about clearing some cards for {}? 📚", g.title),
+            None => "how about clearing some Greek or Arabic cards? 📚".to_string(),
+        };
+
+        return format!("{} Since you're on a roll, {}", msg, pivot_text);
     }
 
     let mut base_message = match hour {
@@ -506,18 +520,19 @@ mod tests {
             ..Default::default()
         };
         
-        let msg = get_weather_aware_message(hour, &weather, false);
+        let msg = get_weather_aware_message(hour, &weather, false, None);
         assert!(msg.contains("Golden hour"));
         
         // Test cold weather
         weather.temperature = 30.0;
-        let msg_cold = get_weather_aware_message(hour, &weather, false);
+        let msg_cold = get_weather_aware_message(hour, &weather, false, None);
         assert!(msg_cold.contains("chilly"));
         
-        // Test already walked
-        let msg_walked = get_weather_aware_message(hour, &weather, true);
+        // Test already walked with dynamic pivot
+        let pivot = Some(Goal { slug: "greek".into(), title: "Greek Language".into(), derail_risk: "WARNING".into() });
+        let msg_walked = get_weather_aware_message(hour, &weather, true, pivot);
         assert!(msg_walked.contains("Great job"));
-        assert!(msg_walked.contains("on a roll"));
+        assert!(msg_walked.contains("Greek Language"));
     }
 
     #[test]
