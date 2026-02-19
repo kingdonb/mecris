@@ -234,20 +234,94 @@ async def trigger_reminder_check() -> Dict[str, Any]:
         logger.error(f"Reminder trigger failed: {e}")
         return {"error": f"Reminder trigger failed: {e}"}
 
+@mcp.tool(description="Get a personalized coaching insight based on momentum and current needs.")
+async def get_coaching_insight() -> Dict[str, Any]:
+    """Analyze current state and provide a momentum-aware coaching pivot."""
+    try:
+        context = await get_narrator_context()
+        walk_status = context.get("daily_walk_status", {})
+        has_walked = walk_status.get("has_activity_today", False)
+        
+        beeminder_goals = await get_cached_beeminder_goals()
+        warning_goals = [g for g in beeminder_goals if g.get("derail_risk") in ["WARNING", "CAUTION"]]
+        critical_goals = [g for g in beeminder_goals if g.get("derail_risk") == "CRITICAL"]
+        
+        # Priority 1: High Momentum (Already walked) -> Pivot to Warn/Critical
+        if has_walked:
+            if critical_goals:
+                target = critical_goals[0]
+                return {
+                    "type": "momentum_pivot",
+                    "momentum": "high",
+                    "message": f"🌟 Great job on the walk! Since you're on a roll, let's tackle the critical '{target['title']}' goal next. 🚀",
+                    "target_slug": target["slug"]
+                }
+            elif warning_goals:
+                target = warning_goals[0]
+                return {
+                    "type": "momentum_pivot",
+                    "momentum": "high",
+                    "message": f"🔥 Solid work walking Boris and Fiona! Ready to keep the streak going with some progress on '{target['title']}'? 📚",
+                    "target_slug": target["slug"]
+                }
+            else:
+                # Check for Obsidian context if no beeminder goals are urgent
+                today = datetime.now().strftime("%Y-%m-%d")
+                daily_note = await obsidian_client.get_daily_note(today)
+                if "Mecris" in daily_note:
+                    return {
+                        "type": "obsidian_pivot",
+                        "momentum": "high",
+                        "message": "🏗️ You've been crushing it on the Mecris architecture today and you've already walked. Keep that momentum! 🚀"
+                    }
+                
+                return {
+                    "type": "celebration",
+                    "momentum": "high",
+                    "message": "🌈 You're all caught up and you've already walked! Enjoy the headspace for some creative work. ✨"
+                }
+        
+        # Priority 2: Needs Walk (Low Momentum) -> Environmental Check
+        else:
+            # Here we could call out to a weather service, but for now we'll suggest the walk as the momentum starter
+            if critical_goals:
+                target = critical_goals[0]
+                return {
+                    "type": "urgency_alert",
+                    "momentum": "low",
+                    "message": f"⚠️ Heads up! '{target['title']}' is critical. A quick walk with Boris and Fiona might be the reset you need to dive in. 🐕",
+                    "target_slug": target["slug"]
+                }
+            
+            return {
+                "type": "walk_prompt",
+                "momentum": "neutral",
+                "message": "🐕 Boris and Fiona are ready when you are. A walk now will set a great tone for the rest of your goals! 🌳"
+            }
+            
+    except Exception as e:
+        logger.error(f"Failed to generate coaching insight: {e}")
+        return {"error": str(e)}
+
 async def check_reminder_needed() -> Dict[str, Any]:
     context = await get_narrator_context()
     current_hour = datetime.now().hour
     budget_status = context.get("budget_status", {})
     remaining_budget = budget_status.get("remaining_budget", 0)
-    tier = "base_mode"
-    if remaining_budget > 2.0: tier = "enhanced"
-    elif remaining_budget > 0.5: tier = "smart_template"
-
+    
+    insight = await get_coaching_insight()
+    
     walk_needed = context.get("daily_walk_status", {}).get("status") == "needed"
-    if walk_needed and 14 <= current_hour <= 17:
-        return {"should_send": True, "tier": tier, "message": "🚶‍♂️ Walk reminder!", "type": "walk_reminder"}
+    
+    # Logic: Only send walk reminders in the afternoon window
+    if 14 <= current_hour <= 17:
+        if walk_needed:
+             return {"should_send": True, "message": insight.get("message"), "type": "walk_reminder"}
+        elif insight.get("momentum") == "high" and current_hour >= 16:
+             # Even if walked, if it's late and momentum is high, send a coaching pivot
+             return {"should_send": True, "message": insight.get("message"), "type": "momentum_coaching"}
         
-    return {"should_send": False, "reason": "Conditions not met"}
+    return {"should_send": False, "reason": "Conditions not met or already handled"}
 
 async def send_reminder_message(message_data: Dict[str, Any]) -> Dict[str, Any]:
     message = message_data.get("message")
