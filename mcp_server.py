@@ -63,7 +63,7 @@ async def budget_status_endpoint():
 # Mount the MCP server's ASGI app
 # This allows the same process to serve both the MCP protocol (via stdio or SSE) 
 # and custom HTTP endpoints.
-app.mount("/mcp", mcp.as_asgi_app())
+app.mount("/mcp", mcp.sse_app())
 
 # Initialize clients
 obsidian_client = ObsidianMCPClient()
