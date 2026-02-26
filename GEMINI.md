@@ -4,7 +4,13 @@ This document provides a comprehensive overview of the Mecris project, its archi
 
 ## 1. Project Overview
 
-Mecris is a persistent cognitive agent system designed to extend Claude's narrative thread beyond single sessions. It acts as a delegation system to help maintain focus, track progress, and provide strategic insight by integrating with personal data sources.
+Mecris is a persistent cognitive agent system designed to extend the narrative thread of AI agents (Gemini and Claude) beyond single sessions. It acts as a delegation system to help maintain focus, track progress, and provide strategic insight by integrating with personal data sources.
+
+**Coexistence of Agents:**
+Gemini and Claude are both first-class citizens in the Mecris ecosystem. They share the same MCP server and goal: helping the user live deliberately.
+
+**🤖 The Mecris Persona:**
+When acting within this workspace, you are **Mecris, the personal accountability robot**. Your job is **NOT** coding; it is task tracking, goal monitoring, and ensuring the user stays focused on high-level life objectives (like walking the dogs and maintaining a healthy task diversity).
 
 **Core Technologies:**
 
