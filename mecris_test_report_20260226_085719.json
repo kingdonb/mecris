@@ -1,0 +1,284 @@
+{
+  "summary": {
+    "total_tests": 23,
+    "passed": 13,
+    "failed": 10,
+    "success_rate": "56.5%",
+    "timestamp": "2026-02-26T08:57:19.060830"
+  },
+  "components": {
+    "Obsidian": {
+      "passed": 3,
+      "failed": 1,
+      "tests": [
+        {
+          "component": "Obsidian",
+          "test": "Health Check",
+          "success": false,
+          "details": "Status: unreachable",
+          "timestamp": "2026-02-26T08:57:15.506043"
+        },
+        {
+          "component": "Obsidian",
+          "test": "Goals Extraction",
+          "success": true,
+          "details": "Found 0 goals",
+          "timestamp": "2026-02-26T08:57:15.510171"
+        },
+        {
+          "component": "Obsidian",
+          "test": "Todos Extraction",
+          "success": true,
+          "details": "Found 0 todos",
+          "timestamp": "2026-02-26T08:57:15.511596"
+        },
+        {
+          "component": "Obsidian",
+          "test": "Daily Note Access",
+          "success": true,
+          "details": "Note length: 0 chars",
+          "timestamp": "2026-02-26T08:57:15.515718"
+        }
+      ]
+    },
+    "Beeminder": {
+      "passed": 4,
+      "failed": 0,
+      "tests": [
+        {
+          "component": "Beeminder",
+          "test": "Health Check",
+          "success": true,
+          "details": "Status: ok",
+          "timestamp": "2026-02-26T08:57:16.130784"
+        },
+        {
+          "component": "Beeminder",
+          "test": "Goals Retrieval",
+          "success": true,
+          "details": "Found 8 goals",
+          "timestamp": "2026-02-26T08:57:16.887507"
+        },
+        {
+          "component": "Beeminder",
+          "test": "Emergency Detection",
+          "success": true,
+          "details": "Found 1 emergencies",
+          "timestamp": "2026-02-26T08:57:17.591693"
+        },
+        {
+          "component": "Beeminder",
+          "test": "Emergency Summary",
+          "success": true,
+          "details": "Summary: \u23f0 1 CAUTION: ellinika...",
+          "timestamp": "2026-02-26T08:57:18.230883"
+        }
+      ]
+    },
+    "Claude Monitor": {
+      "passed": 4,
+      "failed": 0,
+      "tests": [
+        {
+          "component": "Claude Monitor",
+          "test": "Health Check",
+          "success": true,
+          "details": "Status: ok",
+          "timestamp": "2026-02-26T08:57:18.241644"
+        },
+        {
+          "component": "Claude Monitor",
+          "test": "Usage Retrieval",
+          "success": true,
+          "details": "Credits remaining: $0.97",
+          "timestamp": "2026-02-26T08:57:18.241763"
+        },
+        {
+          "component": "Claude Monitor",
+          "test": "Usage Summary",
+          "success": true,
+          "details": "Status: \ud83d\udea8 CRITICAL",
+          "timestamp": "2026-02-26T08:57:18.241840"
+        },
+        {
+          "component": "Claude Monitor",
+          "test": "Usage Recording",
+          "success": true,
+          "details": "Recorded $0.01 test cost",
+          "timestamp": "2026-02-26T08:57:19.050469"
+        }
+      ]
+    },
+    "Twilio": {
+      "passed": 2,
+      "failed": 0,
+      "tests": [
+        {
+          "component": "Twilio",
+          "test": "Configuration Check",
+          "success": true,
+          "details": "All required variables present",
+          "timestamp": "2026-02-26T08:57:19.051164"
+        },
+        {
+          "component": "Twilio",
+          "test": "SMS Capability",
+          "success": true,
+          "details": "Ready to send (test disabled to avoid spam)",
+          "timestamp": "2026-02-26T08:57:19.051178"
+        }
+      ]
+    },
+    "Server": {
+      "passed": 0,
+      "failed": 1,
+      "tests": [
+        {
+          "component": "Server",
+          "test": "Health Check",
+          "success": false,
+          "details": "All connection attempts failed",
+          "timestamp": "2026-02-26T08:57:19.052707"
+        }
+      ]
+    },
+    "API": {
+      "passed": 0,
+      "failed": 8,
+      "tests": [
+        {
+          "component": "API",
+          "test": "Root Endpoint",
+          "success": false,
+          "details": "All connection attempts failed",
+          "timestamp": "2026-02-26T08:57:19.053659"
+        },
+        {
+          "component": "API",
+          "test": "Health Check",
+          "success": false,
+          "details": "All connection attempts failed",
+          "timestamp": "2026-02-26T08:57:19.054476"
+        },
+        {
+          "component": "API",
+          "test": "Goals API",
+          "success": false,
+          "details": "All connection attempts failed",
+          "timestamp": "2026-02-26T08:57:19.056990"
+        },
+        {
+          "component": "API",
+          "test": "Todos API",
+          "success": false,
+          "details": "All connection attempts failed",
+          "timestamp": "2026-02-26T08:57:19.057782"
+        },
+        {
+          "component": "API",
+          "test": "Beeminder Status",
+          "success": false,
+          "details": "All connection attempts failed",
+          "timestamp": "2026-02-26T08:57:19.058595"
+        },
+        {
+          "component": "API",
+          "test": "Beeminder Emergency",
+          "success": false,
+          "details": "All connection attempts failed",
+          "timestamp": "2026-02-26T08:57:19.059283"
+        },
+        {
+          "component": "API",
+          "test": "Budget Status",
+          "success": false,
+          "details": "All connection attempts failed",
+          "timestamp": "2026-02-26T08:57:19.060005"
+        },
+        {
+          "component": "API",
+          "test": "Narrator Context",
+          "success": false,
+          "details": "All connection attempts failed",
+          "timestamp": "2026-02-26T08:57:19.060797"
+        }
+      ]
+    }
+  },
+  "failed_tests": [
+    {
+      "component": "Obsidian",
+      "test": "Health Check",
+      "success": false,
+      "details": "Status: unreachable",
+      "timestamp": "2026-02-26T08:57:15.506043"
+    },
+    {
+      "component": "Server",
+      "test": "Health Check",
+      "success": false,
+      "details": "All connection attempts failed",
+      "timestamp": "2026-02-26T08:57:19.052707"
+    },
+    {
+      "component": "API",
+      "test": "Root Endpoint",
+      "success": false,
+      "details": "All connection attempts failed",
+      "timestamp": "2026-02-26T08:57:19.053659"
+    },
+    {
+      "component": "API",
+      "test": "Health Check",
+      "success": false,
+      "details": "All connection attempts failed",
+      "timestamp": "2026-02-26T08:57:19.054476"
+    },
+    {
+      "component": "API",
+      "test": "Goals API",
+      "success": false,
+      "details": "All connection attempts failed",
+      "timestamp": "2026-02-26T08:57:19.056990"
+    },
+    {
+      "component": "API",
+      "test": "Todos API",
+      "success": false,
+      "details": "All connection attempts failed",
+      "timestamp": "2026-02-26T08:57:19.057782"
+    },
+    {
+      "component": "API",
+      "test": "Beeminder Status",
+      "success": false,
+      "details": "All connection attempts failed",
+      "timestamp": "2026-02-26T08:57:19.058595"
+    },
+    {
+      "component": "API",
+      "test": "Beeminder Emergency",
+      "success": false,
+      "details": "All connection attempts failed",
+      "timestamp": "2026-02-26T08:57:19.059283"
+    },
+    {
+      "component": "API",
+      "test": "Budget Status",
+      "success": false,
+      "details": "All connection attempts failed",
+      "timestamp": "2026-02-26T08:57:19.060005"
+    },
+    {
+      "component": "API",
+      "test": "Narrator Context",
+      "success": false,
+      "details": "All connection attempts failed",
+      "timestamp": "2026-02-26T08:57:19.060797"
+    }
+  ],
+  "recommendations": [
+    "\u2757 Health check failures detected - verify service configurations",
+    "\u2757 API endpoint failures - check server startup and dependencies"
+  ]
+}
