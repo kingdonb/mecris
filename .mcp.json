@@ -8,10 +8,17 @@
       }
     },
     "mecris": {
-      "command": ".venv/bin/python",
-      "args": ["mcp_stdio_server.py"],
+      "command": "/opt/homebrew/bin/uv",
+      "args": [
+        "--quiet",
+        "run",
+        "--project", "/Users/yebyen/w/mecris",
+        "/Users/yebyen/w/mecris/mcp_server.py",
+        "--stdio"
+      ],
       "cwd": "/Users/yebyen/w/mecris",
       "env": {
+        "PYTHONPATH": "/Users/yebyen/w/mecris",
         "GITHUB_TOKEN": "${GITHUB_TOKEN}"
       }
     }
