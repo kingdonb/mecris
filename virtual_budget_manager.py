@@ -30,7 +30,7 @@ class ProviderUsage:
 
 class VirtualBudgetManager:
     def __init__(self, db_path: str = "mecris_virtual_budget.db"):
-        self.db_path = db_path
+        self.db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), db_path)
         
         # Budget configuration - must be set before init_database()
         self.daily_budget = float(os.getenv('DAILY_BUDGET', '2.00'))

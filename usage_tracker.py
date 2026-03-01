@@ -23,7 +23,7 @@ class UsageSession:
 
 class UsageTracker:
     def __init__(self, db_path: str = "mecris_usage.db"):
-        self.db_path = db_path
+        self.db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), db_path)
         self.init_database()
         
         # Current pricing (as of 2025) - Claude 3.5 Sonnet
