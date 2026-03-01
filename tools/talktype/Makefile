@@ -12,6 +12,7 @@ VENV_PYTHON := ./.venv/bin/python
 WHISPER_MODEL ?= small
 WHISPER_DEVICE ?= cpu
 WHISPER_PORT ?= 8002
+WHISPER_COMPUTE ?= auto
 
 # Colors for output
 BLUE := \033[36m
@@ -26,7 +27,7 @@ all: help
 help:
 	@echo "$(BLUE)TalkType Management Commands$(RESET)"
 	@echo ""
-	@echo "  $(GREEN)server$(RESET)       - Start the Whisper API server in the background (model: $(WHISPER_MODEL), device: $(WHISPER_DEVICE))"
+	@echo "  $(GREEN)server$(RESET)       - Start the Whisper API server in the background (model: $(WHISPER_MODEL), device: $(WHISPER_DEVICE), compute: $(WHISPER_COMPUTE))"
 	@echo "                   Set WHISPER_MODEL=medium/large-v3, WHISPER_DEVICE=mps/cpu/cuda to override."
 	@echo "                   Example: make server WHISPER_MODEL=medium WHISPER_DEVICE=mps"
 	@echo "  $(GREEN)client$(RESET)       - Run the TalkType client (connects to local server)"
@@ -38,10 +39,10 @@ help:
 	@echo "$(YELLOW)First run of 'make server' will download the chosen Whisper model. $(RESET)"
 
 server:
-	@echo "$(GREEN)Starting Whisper API server (model: $(WHISPER_MODEL), device: $(WHISPER_DEVICE)) on port $(WHISPER_PORT)...$(RESET)"
+	@echo "$(GREEN)Starting Whisper API server (model: $(WHISPER_MODEL), device: $(WHISPER_DEVICE), compute: $(WHISPER_COMPUTE)) on port $(WHISPER_PORT)...$(RESET)"
 	@echo "$(YELLOW)Output is redirected to talktype_whisper_server.log$(RESET)"
 	@cd $(TALKTYPE_REPO) && { \
-		nohup $(VENV_PYTHON) $(WHISPER_SERVER_PY) --model $(WHISPER_MODEL) --device $(WHISPER_DEVICE) --port $(WHISPER_PORT) &> ../talktype_whisper_server.log & \
+		nohup $(VENV_PYTHON) $(WHISPER_SERVER_PY) --model $(WHISPER_MODEL) --device $(WHISPER_DEVICE) --port $(WHISPER_PORT) --compute $(WHISPER_COMPUTE) &> ../talktype_whisper_server.log & \
 		echo $$! > ../talktype_whisper_server.pid; \
 	}
 	@sleep 2
@@ -52,7 +53,7 @@ client:
 	@echo "$(GREEN)Running TalkType client, connecting to server on port $(WHISPER_PORT)...$(RESET)"
 	@cd $(TALKTYPE_REPO) && \
 	source $(VENV_ACTIVATE) && \
-	python $(TALKTYPE_PY) --api http://localhost:$(WHISPER_PORT)/transcribe
+	uv run $(TALKTYPE_PY) --api http://localhost:$(WHISPER_PORT)/transcribe --minimal
 
 stop-server:
 	@echo "$(YELLOW)Attempting to stop Whisper API server...$(RESET)"

@@ -27,14 +27,10 @@ def main():
     """Main entry point for the stdio server."""
     logger.info("Starting Mecris MCP Server in stdio mode...")
     try:
-        from mcp_server import get_tool_handlers, run_stdio_server
-
-        tool_handlers = get_tool_handlers()
-        run_stdio_server(tool_handlers)
-        
-        # The stdio server runs in a daemon thread, so we need to keep the main thread alive.
-        while True:
-            time.sleep(1)
+        from mcp_server import mcp
+        # mcp.run() by default uses stdio transport when no arguments are provided
+        # and it's called in a way that it can detect the environment.
+        mcp.run()
 
     except (KeyboardInterrupt, SystemExit):
         logger.info("Mecris MCP stdio server shutting down.")

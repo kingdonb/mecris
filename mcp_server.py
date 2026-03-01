@@ -12,6 +12,7 @@ from typing import List, Dict, Any, Optional
 
 from dotenv import load_dotenv
 from mcp.server.fastmcp import FastMCP
+from fastapi import FastAPI
 
 from obsidian_client import ObsidianMCPClient
 from beeminder_client import BeeminderClient
@@ -20,6 +21,7 @@ from virtual_budget_manager import VirtualBudgetManager
 from billing_reconciliation import BillingReconciliation
 from groq_odometer_tracker import get_groq_context_for_narrator, get_groq_reminder_status, record_groq_reading as record_groq_reading_from_tracker
 from twilio_sender import smart_send_message, send_sms
+from scripts.anthropic_cost_tracker import AnthropicCostTracker
 
 # Load environment variables
 load_dotenv()
@@ -35,12 +37,45 @@ logger = logging.getLogger("mecris")
 # Initialize the MCP Server
 mcp = FastMCP("mecris")
 
+# Create FastAPI app for HTTP endpoints
+app = FastAPI(title="Mecris API")
+
+@app.get("/health")
+async def health_check():
+    return {"status": "ok", "timestamp": datetime.now().isoformat()}
+
+@app.post("/intelligent-reminder/trigger")
+async def trigger_reminder_endpoint():
+    return await trigger_reminder_check()
+
+@app.get("/narrator/context")
+async def narrator_context_endpoint():
+    return await get_narrator_context()
+
+@app.get("/beeminder/status")
+async def beeminder_status_endpoint():
+    return await get_beeminder_status()
+
+@app.get("/budget/status")
+async def budget_status_endpoint():
+    return get_budget_status()
+
+# Mount the MCP server's ASGI app
+# This allows the same process to serve both the MCP protocol (via stdio or SSE) 
+# and custom HTTP endpoints.
+app.mount("/mcp", mcp.sse_app())
+
 # Initialize clients
 obsidian_client = ObsidianMCPClient()
 beeminder_client = BeeminderClient()
 usage_tracker = UsageTracker()
 virtual_budget_manager = VirtualBudgetManager()
 billing_reconciler = BillingReconciliation()
+try:
+    anthropic_cost_tracker = AnthropicCostTracker()
+except Exception as e:
+    logger.warning(f"Failed to initialize AnthropicCostTracker: {e}")
+    anthropic_cost_tracker = None
 
 # --- Cache Implementation ---
 daily_activity_cache = {}
@@ -119,6 +154,13 @@ async def get_narrator_context() -> Dict[str, Any]:
         if len(pending_todos) > 10: recommendations.append("Consider prioritizing todos - large backlog detected")
         if critical_beeminder: recommendations.append("Address critical Beeminder goals immediately")
         if budget_days <= 2: recommendations.append("Urgent: Focus on highest-value work due to budget constraints")
+        
+        if daily_walk_status.get("status") == "needed":
+            recommendations.append("🐾 Priority: Walk Boris & Fiona first")
+            urgent_items.append("WALK NEEDED: Boris & Fiona")
+        
+        if anthropic_cost_tracker:
+            recommendations.append("📊 Real-time budget tracking is active via Anthropic Admin API")
 
         if groq_context.get("groq_tracking", {}).get("needs_action"):
             groq_urgent = groq_context["groq_tracking"].get("urgent_reminder")
@@ -156,6 +198,10 @@ async def get_beeminder_status() -> Dict[str, Any]:
 def get_budget_status() -> Dict[str, Any]:
     return get_budget_status_from_tracker()
 
+@mcp.tool(description="Get recent usage sessions.")
+def get_recent_usage(limit: int = 10) -> List[Dict[str, Any]]:
+    return usage_tracker.get_recent_sessions(limit)
+
 @mcp.tool(description="Record Claude usage session with token counts.")
 def record_usage_session(input_tokens: int, output_tokens: int, model: str = "claude-3-5-sonnet-20241022", session_type: str = "interactive", notes: str = "") -> Dict[str, Any]:
     try:
@@ -164,6 +210,60 @@ def record_usage_session(input_tokens: int, output_tokens: int, model: str = "cl
     except Exception as e:
         logger.error(f"Failed to record usage: {e}")
         return {"error": f"Failed to record usage: {e}"}
+
+@mcp.tool(description="Record Claude Code CLI usage specifically.")
+def record_claude_code_usage(input_tokens: int, output_tokens: int, model: str = "claude-3-5-sonnet-20241022", notes: str = "") -> Dict[str, Any]:
+    """Specific tool for Claude Code CLI to report its own usage."""
+    try:
+        cost = record_usage(input_tokens, output_tokens, model, "claude-code", notes)
+        return {
+            "recorded": True, 
+            "estimated_cost": cost, 
+            "message": f"Recorded ${cost:.4f} usage for Claude Code session.",
+            "updated_status": get_budget_status_from_tracker()
+        }
+    except Exception as e:
+        logger.error(f"Failed to record Claude Code usage: {e}")
+        return {"error": str(e)}
+
+@mcp.tool(description="Get real usage data from Anthropic Admin API (organization level).")
+async def get_real_anthropic_usage(days: int = 1) -> Dict[str, Any]:
+    """Fetch actual usage data from Anthropic organization report."""
+    if not anthropic_cost_tracker:
+        return {"error": "Anthropic Admin API key not configured or tracker failed to initialize."}
+    
+    try:
+        from datetime import datetime, timedelta, UTC
+        end_time = datetime.now(UTC)
+        start_time = end_time - timedelta(days=days)
+        
+        usage = anthropic_cost_tracker.get_usage(start_time, end_time)
+        
+        # Summarize usage
+        total_input = 0
+        total_output = 0
+        for bucket in usage.get('data', []):
+            for result in bucket.get('results', []):
+                total_input += result.get('uncached_input_tokens', 0)
+                total_input += result.get('cache_read_input_tokens', 0)
+                if 'cache_creation' in result:
+                    total_input += result['cache_creation'].get('ephemeral_1h_input_tokens', 0)
+                total_output += result.get('output_tokens', 0)
+        
+        # Estimate cost based on Sonnet pricing
+        est_cost = (total_input * 3.0 / 1_000_000) + (total_output * 15.0 / 1_000_000)
+        
+        return {
+            "start_time": start_time.isoformat(),
+            "end_time": end_time.isoformat(),
+            "total_input_tokens": total_input,
+            "total_output_tokens": total_output,
+            "estimated_cost": round(est_cost, 4),
+            "raw_data": usage
+        }
+    except Exception as e:
+        logger.error(f"Failed to fetch real Anthropic usage: {e}")
+        return {"error": str(e)}
 
 @mcp.tool(description="Check for beemergencies and send SMS alerts if critical.")
 async def send_beeminder_alert() -> Dict[str, Any]:

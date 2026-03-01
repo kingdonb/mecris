@@ -63,7 +63,7 @@ mecris.log
 /scripts/mecris.pid
 
 # Stakpak local files
-.stakpak
+.stakpak/session*
 
 # Clone of claude-code-tamagotchi
 /claude-code-tamagotchi

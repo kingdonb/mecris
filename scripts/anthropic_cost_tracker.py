@@ -3,8 +3,13 @@ import time
 import requests
 import json
 import argparse
+import logging
 from functools import lru_cache
 from datetime import datetime, timedelta, UTC
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 class AnthropicCostTracker:
     def __init__(self, admin_api_key=None):
@@ -50,12 +55,16 @@ class AnthropicCostTracker:
         kwargs['headers'] = {**kwargs.get('headers', {}), **headers}
         
         # Make the request
-        if method == 'GET':
-            response = requests.get(url, **kwargs)
-        elif method == 'POST':
-            response = requests.post(url, **kwargs)
-        else:
-            raise ValueError(f"Unsupported HTTP method: {method}")
+        try:
+            if method == 'GET':
+                response = requests.get(url, timeout=30, **kwargs)
+            elif method == 'POST':
+                response = requests.post(url, timeout=30, **kwargs)
+            else:
+                raise ValueError(f"Unsupported HTTP method: {method}")
+        except requests.exceptions.Timeout:
+            logger.error(f"Timeout occurred while calling {url}")
+            raise
         
         # Update last API call time
         self._last_api_call = time.time()

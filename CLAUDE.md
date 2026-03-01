@@ -1,4 +1,4 @@
-# GEMINI.md - Mecris Personal LLM Accountability System
+# CLAUDE.md - Mecris Personal LLM Accountability System
 
 This document provides a comprehensive overview of the Mecris project, its architecture, and how to interact with it.
 

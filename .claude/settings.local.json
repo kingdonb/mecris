@@ -20,5 +20,9 @@
       "Skill(tdg:atomic)"
     ],
     "deny": []
-  }
+  },
+  "enabledMcpjsonServers": [
+    "github",
+    "mecris"
+  ]
 }

@@ -13,6 +13,7 @@ from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass
 from enum import Enum
 import logging
+import os
 
 logger = logging.getLogger("groq_odometer")
 
@@ -33,7 +34,7 @@ class OdometerReading:
 
 class GroqOdometerTracker:
     def __init__(self, db_path: str = "mecris_virtual_budget.db"):
-        self.db_path = db_path
+        self.db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), db_path)
         self.init_database()
         
     def init_database(self):
