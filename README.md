@@ -10,9 +10,13 @@ Mecris is a **persistent cognitive agent system** that extends Claude's narrativ
 
 ## Quick Start
 
+For detailed setup instructions for different agents, see [docs/SETUP_GUIDE.md](docs/SETUP_GUIDE.md).
+
 ```bash
-# 1. Install dependencies
-source venv/bin/activate && pip install -r requirements.txt
+# 1. Install dependencies using uv
+uv venv
+source .venv/bin/activate
+uv pip install -r requirements.txt
 
 # 2. Configure environment (copy and edit .env.example if needed)
 # Set BEEMINDER_USERNAME, BEEMINDER_AUTH_TOKEN, TWILIO credentials, etc.
@@ -22,9 +26,6 @@ source venv/bin/activate && pip install -r requirements.txt
 
 # 4. Test health endpoint
 curl http://127.0.0.1:8000/health
-
-# 5. Get narrator context
-curl http://127.0.0.1:8000/narrator/context
 ```
 
 ## Architecture Overview
