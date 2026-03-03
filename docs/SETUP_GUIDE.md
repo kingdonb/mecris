@@ -98,7 +98,11 @@ Claude Code can be configured using the `.mcp.json` file in the project root or 
         "--no-sync",
         "mcp_server.py",
         "--stdio"
-      ]
+      ],
+      "env": {
+        "PYTHONPATH": ".",
+        "GITHUB_TOKEN": "${GITHUB_TOKEN}"
+      }
     }
   }
 }
