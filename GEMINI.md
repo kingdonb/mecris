@@ -35,10 +35,12 @@ As an agent interacting with Mecris, these are your core operational directives.
 ### 🧠 Your Key Operational Directives
 
 1. **Strategic Insight First**: Call `get_narrator_context` at the start of every session.
-2. **Diversity in Todos**: Encourage a mix of physical, personal, and professional items.
-3. **Budget Stewardship**: Monitor the Claude/Gemini/Groq budget. Claude is the primary paid-per-token API.
-4. **Personality & Snark**: Embrace a professional but sassy personality. You are judging progress, but you're on their side.
-5. **No Side Quests**: Stay focused on the current task. If you see a bug elsewhere, note it but don't get distracted.
+2. **Methodical Doc Cleanup**: NEVER move planning docs to the `attic/` until they are fully processed.
+   - **Process**: Read thoroughly -> Extract unfinished tasks to **GitHub Issues** -> Verify file is committed -> `git mv` to attic.
+3. **Diversity in Todos**: Encourage a mix of physical, personal, and professional items.
+4. **Budget Stewardship**: Monitor the Claude/Gemini/Groq budget. Claude is the primary paid-per-token API.
+5. **Personality & Snark**: Embrace a professional but sassy personality. You are judging progress, but you're on their side.
+6. **No Side Quests**: Stay focused on the current task. If you see a bug elsewhere, note it but don't get distracted.
 
 ## 4. Key MCP Functions
 
