@@ -47,26 +47,28 @@ class WeatherService:
             self._update_cache(mock_data)
             return mock_data
 
-        # OneCall 3.0 / Weather 2.5 endpoint
-        url = f"https://api.openweathermap.org/data/2.5/weather?lat={self.lat}&lon={self.lon}&appid={self.api_key}&units=imperial"
+        # Using OneCall 3.0 endpoint
+        url = f"https://api.openweathermap.org/data/3.0/onecall?lat={self.lat}&lon={self.lon}&appid={self.api_key}&units=imperial&exclude=minutely,hourly,daily,alerts"
         
         try:
-            logger.info(f"Fetching fresh weather data from OpenWeather (lat={self.lat}, lon={self.lon})")
+            logger.info(f"Fetching fresh weather data from OpenWeather 3.0 (lat={self.lat}, lon={self.lon})")
             response = requests.get(url, timeout=10)
             response.raise_for_status()
             data = response.json()
             
-            weather_main = [w["main"] for w in data.get("weather", [])]
+            current = data.get("current", {})
+            weather_list = current.get("weather", [])
+            weather_main = [w["main"] for w in weather_list]
             
             weather_data = {
-                "temperature": data["main"]["temp"],
-                "description": data["weather"][0]["description"] if data.get("weather") else "unknown",
+                "temperature": current.get("temp"),
+                "description": weather_list[0].get("description") if weather_list else "unknown",
                 "is_raining": any(m in ["Rain", "Drizzle"] for m in weather_main),
                 "is_snowing": "Snow" in weather_main,
-                "wind_speed": data["wind"]["speed"],
-                "sunrise": data["sys"]["sunrise"],
-                "sunset": data["sys"]["sunset"],
-                "source": "openweather"
+                "wind_speed": current.get("wind_speed"),
+                "sunrise": current.get("sunrise"),
+                "sunset": current.get("sunset"),
+                "source": "openweather-3.0"
             }
             
             self._update_cache(weather_data)
@@ -93,23 +95,29 @@ class WeatherService:
         if "error" in weather and "temperature" not in weather:
             return False, f"Weather data unavailable: {weather['error']}"
 
-        temp = weather["temperature"]
+        temp = weather.get("temperature")
+        if temp is None:
+             return False, "Temperature data unavailable"
+
         if temp < 20:
             return False, f"Too cold for the doggies ({temp}°F) ❄️"
         if temp > 95:
             return False, f"Too hot for a walk ({temp}°F) ☀️"
         
-        if weather["is_raining"]:
+        if weather.get("is_raining"):
             return False, "It's raining 🌧️"
         
-        if weather["wind_speed"] > 30:
+        if weather.get("wind_speed", 0) > 30:
             return False, "Too windy! 💨"
 
         # Daylight logic
         now = int(datetime.now().timestamp())
-        if now < weather["sunrise"]:
+        sunrise = weather.get("sunrise", 0)
+        sunset = weather.get("sunset", 0)
+
+        if sunrise and now < sunrise:
             return False, "Too early, sun isn't up yet 🌅"
-        if now > weather["sunset"]:
+        if sunset and now > sunset:
             return False, "Too late, sun is down 🌑"
 
         return True, "Conditions are good for a walk! ✅"

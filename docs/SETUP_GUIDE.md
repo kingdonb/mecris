@@ -112,4 +112,3 @@ Claude Code can be configured using the `.mcp.json` file in the project root or 
 
 - **Check Health**: `curl http://localhost:8000/health`
 - **Run Tests**: `PYTHONPATH=. uv run python3 tests/test_mecris.py`
-- **Stop Server**: `pkill -f mcp_server.py`
