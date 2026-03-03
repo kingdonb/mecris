@@ -56,8 +56,35 @@ Configuration is located in `.gemini/settings.json`.
 }
 ```
 
+### Claude Desktop (macOS)
+
+For Claude Desktop, configuration is typically located at `~/Library/Application Support/Claude/claude_desktop_config.json`. 
+
+> **Note:** Claude Desktop requires absolute paths for the `command`, `args`, and `env` fields.
+
+```json
+{
+  "mcpServers": {
+    "mecris": {
+      "command": "/opt/homebrew/bin/uv",
+      "args": [
+          "--quiet",
+          "run",
+          "--project", "/Users/yebyen/w/mecris",
+          "/Users/yebyen/w/mecris/mcp_server.py",
+          "--stdio"
+      ],
+      "cwd": "/Users/yebyen/w/mecris",
+      "env": {
+          "PYTHONPATH": "/Users/yebyen/w/mecris"
+      }
+    }
+  }
+}
+```
+
 ### Claude Code
-Claude Code can be configured using the same `.mcp.json` or by following Claude's internal MCP setup process. 
+Claude Code can be configured using the `.mcp.json` file in the project root or by following Claude's internal MCP setup process. 
 
 ### Shared MCP Config (`.mcp.json`)
 ```json
@@ -71,7 +98,11 @@ Claude Code can be configured using the same `.mcp.json` or by following Claude'
         "--no-sync",
         "mcp_server.py",
         "--stdio"
-      ]
+      ],
+      "env": {
+        "PYTHONPATH": ".",
+        "GITHUB_TOKEN": "${GITHUB_TOKEN}"
+      }
     }
   }
 }
@@ -81,4 +112,3 @@ Claude Code can be configured using the same `.mcp.json` or by following Claude'
 
 - **Check Health**: `curl http://localhost:8000/health`
 - **Run Tests**: `PYTHONPATH=. uv run python3 tests/test_mecris.py`
-- **Stop Server**: `pkill -f mcp_server.py`
