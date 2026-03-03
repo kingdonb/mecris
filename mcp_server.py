@@ -22,6 +22,7 @@ from billing_reconciliation import BillingReconciliation
 from groq_odometer_tracker import get_groq_context_for_narrator, get_groq_reminder_status, record_groq_reading as record_groq_reading_from_tracker
 from twilio_sender import smart_send_message, send_sms
 from scripts.anthropic_cost_tracker import AnthropicCostTracker
+from services.weather_service import WeatherService
 
 # Load environment variables
 load_dotenv()
@@ -71,6 +72,7 @@ beeminder_client = BeeminderClient()
 usage_tracker = UsageTracker()
 virtual_budget_manager = VirtualBudgetManager()
 billing_reconciler = BillingReconciliation()
+weather_service = WeatherService()
 try:
     anthropic_cost_tracker = AnthropicCostTracker()
 except Exception as e:
@@ -139,6 +141,10 @@ async def get_narrator_context() -> Dict[str, Any]:
         budget_status = get_budget_status_from_tracker()
         daily_walk_status = await get_cached_daily_activity("bike")
         groq_context = get_groq_context_for_narrator()
+        
+        # Weather-aware logic
+        weather = weather_service.get_weather()
+        is_appropriate, weather_msg = weather_service.is_walk_appropriate(weather)
 
         pending_todos = [t for t in todos if not t.get("completed", False)]
         critical_beeminder = [g for g in beeminder_goals if g.get("derail_risk") == "CRITICAL"]
@@ -155,9 +161,13 @@ async def get_narrator_context() -> Dict[str, Any]:
         if critical_beeminder: recommendations.append("Address critical Beeminder goals immediately")
         if budget_days <= 2: recommendations.append("Urgent: Focus on highest-value work due to budget constraints")
         
+        # Enhanced walk logic: Only recommend if walk needed AND weather/sun is appropriate
         if daily_walk_status.get("status") == "needed":
-            recommendations.append("🐾 Priority: Walk Boris & Fiona first")
-            urgent_items.append("WALK NEEDED: Boris & Fiona")
+            if is_appropriate:
+                recommendations.append(f"🐾 Priority: {weather_msg} - Walk Boris & Fiona!")
+                urgent_items.append("WALK NEEDED: Boris & Fiona")
+            else:
+                recommendations.append(f"🐕 Walk status: Needed, but {weather_msg}")
         
         if anthropic_cost_tracker:
             recommendations.append("📊 Real-time budget tracking is active via Anthropic Admin API")
@@ -283,6 +293,17 @@ async def send_beeminder_alert() -> Dict[str, Any]:
 @mcp.tool(description="Check if daily activity was logged for a specific goal.")
 async def get_daily_activity(goal_slug: str = "bike") -> Dict[str, Any]:
     return await get_cached_daily_activity(goal_slug)
+
+@mcp.tool(description="Get current weather and a recommendation for outdoor activity.")
+def get_weather_report() -> Dict[str, Any]:
+    """Get current weather and a walk suitability check."""
+    weather = weather_service.get_weather()
+    is_appropriate, message = weather_service.is_walk_appropriate(weather)
+    return {
+        "weather": weather,
+        "is_appropriate": is_appropriate,
+        "recommendation": message
+    }
 
 @mcp.tool(description="Add a new goal to the local database.")
 def add_goal(title: str, description: str = "", priority: str = "medium", due_date: Optional[str] = None) -> Dict[str, Any]:
