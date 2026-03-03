@@ -1,18 +1,26 @@
 {
     "mcpServers": {
-        "mecris": {
-            "command": "uv",
-            "args": [
-                "--quiet",
-                "run",
-                "--no-sync",
-                "--offline",
-                "/Users/yebyen/w/mecris/mcp_server.py",
-                "--stdio"
-            ],
-            "env": {
-                "PYTHONPATH": "/Users/yebyen/w/mecris"
-            }
-        }
+    "github": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-github"],
+      "env": {
+        "GITHUB_PERSONAL_ACCESS_TOKEN": "${GITHUB_TOKEN}"
+      }
+    },
+    "mecris": {
+      "command": "uv",
+      "args": [
+        "--quiet",
+        "run",
+        "--no-sync",
+        "--offline",
+        "/Users/yebyen/w/mecris/mcp_server.py",
+        "--stdio"
+      ],
+      "env": {
+        "PYTHONPATH": "/Users/yebyen/w/mecris",
+        "GITHUB_TOKEN": "${GITHUB_TOKEN}"
+      }
     }
+  }
 }
