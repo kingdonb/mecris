@@ -97,27 +97,9 @@ async def lifespan(app):
     logger.info("🧠 Mecris MCP Server starting up...")
     await check_dependencies()
     
-    # Send startup notification
-    try:
-        from twilio_sender import send_sms
-        await asyncio.create_task(
-            asyncio.to_thread(send_sms, "🧠 Mecris narrator is online and monitoring your goals.")
-        )
-    except Exception as e:
-        logger.warning(f"Failed to send startup notification: {e}")
-    
     yield
     
     logger.info("🧠 Mecris MCP Server shutting down...")
-    
-    # Send shutdown notification
-    try:
-        from twilio_sender import send_sms
-        await asyncio.create_task(
-            asyncio.to_thread(send_sms, "🧠 Mecris narrator going offline.")
-        )
-    except Exception as e:
-        logger.warning(f"Failed to send shutdown notification: {e}")
 
 def main():
     """Main entry point"""

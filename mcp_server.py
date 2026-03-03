@@ -305,6 +305,11 @@ def get_weather_report() -> Dict[str, Any]:
         "recommendation": message
     }
 
+@mcp.tool(description="Get the full, raw weather status data from the OneCall API.")
+def get_weather_full_report() -> Dict[str, Any]:
+    """Get the complete, cached weather status including all OneCall data fields."""
+    return weather_service.get_weather()
+
 @mcp.tool(description="Add a new goal to the local database.")
 def add_goal(title: str, description: str = "", priority: str = "medium", due_date: Optional[str] = None) -> Dict[str, Any]:
     return add_goal_from_tracker(title, description, priority, due_date)
