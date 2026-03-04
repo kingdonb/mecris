@@ -22,6 +22,10 @@
 6. **Channel Investigation (Facebook Messenger):**
    - Researched using the approved Content Template on Facebook Messenger as a workaround.
    - Concluded it is not viable for asynchronous cron alerts because Messenger is strictly an "in-session" channel requiring the user to initiate the conversation first via a Facebook Page, after which a 24-hour window applies.
+7. **Compliance & Cost Strategy (A2P vs WhatsApp):**
+   - Documented the rationale for prioritizing WhatsApp over SMS as the primary fallback mechanism.
+   - We currently do not have an active A2P 10DLC campaign (which costs ~$2/mo). Until we have a fully functional compliance engine that can also process inbound messages (including allowing LLM agents to "receive" messages), we will not incur this recurring cost.
+   - WhatsApp serves as our zero-cost baseline fallback while we build out the compliance infrastructure.
 
 ## Next Steps
 - Wait for the new Utility template (`mecris_daily_alert_v1`) to be approved by Meta (it is currently pending quality review).
