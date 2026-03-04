@@ -20,10 +20,10 @@ try:
         content_sid=content_sid,
         content_variables=json.dumps({
             "1": "Boris and Fiona's walk",
-            "2": "Clozemaster Arabic",
-            "3": "65",
-            "4": "Pending",
-            "5": "Due today"
+            "2": "Pending",
+            "3": "Clozemaster Arabic",
+            "4": "Due today",
+            "5": "65"
         })
     )
     print(f"Message SID: {message.sid}")

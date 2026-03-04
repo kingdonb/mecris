@@ -15,14 +15,14 @@ try:
         friendly_name='mecris_daily_alert_v1',
         variables={
             "1": "Boris and Fiona's walk",
-            "2": "Clozemaster Arabic",
-            "3": "65",
-            "4": "Pending",
-            "5": "Due today"
+            "2": "Pending",
+            "3": "Clozemaster Arabic",
+            "4": "Due today",
+            "5": "65"
         },
         types={
             "twilio/text": {
-                "body": "Mecris System Alert: This is your daily activity update.\n{{1}}: {{4}}.\n{{2}}: {{5}}.\nCurrent local temperature: {{3}}F.\nPlease log your activity to maintain your account standing."
+                "body": "Mecris System Alert: This is your daily activity update.\n{{1}}: {{2}}.\n{{3}}: {{4}}.\nCurrent local temperature: {{5}}F.\nPlease log your activity to maintain your account standing."
             }
         }
     )

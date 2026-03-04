@@ -13,14 +13,14 @@ payload = {
     "language": "en",
     "variables": {
         "1": "activity1",
-        "2": "activity2",
-        "3": "temp",
-        "4": "status1",
-        "5": "status2"
+        "2": "status1",
+        "3": "activity2",
+        "4": "status2",
+        "5": "temp"
     },
     "types": {
         "twilio/text": {
-            "body": "Mecris System Alert: This is your daily activity update.\n{{1}}: {{4}}.\n{{2}}: {{5}}.\nCurrent local temperature: {{3}}F.\nPlease log your activity to maintain your account standing."
+            "body": "Mecris System Alert: This is your daily activity update.\n{{1}}: {{2}}.\n{{3}}: {{4}}.\nCurrent local temperature: {{5}}F.\nPlease log your activity to maintain your account standing."
         }
     }
 }
