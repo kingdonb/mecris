@@ -6,9 +6,9 @@ from dotenv import load_dotenv
 load_dotenv()
 account_sid = os.getenv('TWILIO_ACCOUNT_SID')
 auth_token = os.getenv('TWILIO_AUTH_TOKEN')
-to_number = "whatsapp:+15852378622"
-from_number = "whatsapp:+15744757115"
-content_sid = "HXbb3327078f3e3361dad21f0a2dc6a8dd"
+to_number = f"whatsapp:{os.getenv('TWILIO_TO_NUMBER', '').replace('whatsapp:', '')}"
+from_number = os.getenv('TWILIO_WHATSAPP_FROM')
+content_sid = os.getenv('TWILIO_WHATSAPP_TEMPLATE_SID')
 
 client = Client(account_sid, auth_token)
 

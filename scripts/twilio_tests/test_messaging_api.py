@@ -9,8 +9,8 @@ auth_token = os.getenv('TWILIO_AUTH_TOKEN')
 
 url = f"https://api.twilio.com/2010-04-01/Accounts/{account_sid}/Messages.json"
 data = {
-    "To": "whatsapp:+15852378622",
-    "From": "whatsapp:+15744757115",
+    "To": f"whatsapp:{os.getenv('TWILIO_TO_NUMBER', '').replace('whatsapp:', '')}",
+    "From": os.getenv('TWILIO_WHATSAPP_FROM'),
     "Body": "Mecris System Alert: This is your daily activity update.\nBoris and Fiona's walk: Pending.\nClozemaster Arabic: Due today.\nCurrent local temperature: 65F.\nPlease log your activity to maintain your account standing."
 }
 

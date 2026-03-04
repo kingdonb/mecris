@@ -14,8 +14,8 @@ print("Fetching WhatsApp templates via Meta/WhatsApp API endpoint...")
 
 url = f"https://api.twilio.com/2010-04-01/Accounts/{account_sid}/Messages.json"
 data = {
-    "To": "whatsapp:+15852378622",
-    "From": "whatsapp:+15744757115",
+    "To": f"whatsapp:{os.getenv('TWILIO_TO_NUMBER', '').replace('whatsapp:', '')}",
+    "From": os.getenv('TWILIO_WHATSAPP_FROM'),
     "Body": "Trying to use template: mecris_status_update"
 }
 

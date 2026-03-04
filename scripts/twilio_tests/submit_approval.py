@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 load_dotenv()
 account_sid = os.getenv('TWILIO_ACCOUNT_SID')
 auth_token = os.getenv('TWILIO_AUTH_TOKEN')
-content_sid = 'HXbb3327078f3e3361dad21f0a2dc6a8dd'
+content_sid = os.getenv('TWILIO_WHATSAPP_TEMPLATE_SID')
 
 url = f"https://content.twilio.com/v1/Content/{content_sid}/ApprovalRequests/whatsapp"
 payload = {

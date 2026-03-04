@@ -6,13 +6,13 @@ from dotenv import load_dotenv
 load_dotenv()
 account_sid = os.getenv('TWILIO_ACCOUNT_SID')
 auth_token = os.getenv('TWILIO_AUTH_TOKEN')
-to_number = "whatsapp:+15852378622"
-from_number = "whatsapp:+15744757115"
+to_number = f"whatsapp:{os.getenv('TWILIO_TO_NUMBER', '').replace('whatsapp:', '')}"
+from_number = os.getenv('TWILIO_WHATSAPP_FROM')
 
 client = Client(account_sid, auth_token)
 
 # Try sending via Content API again with proper variables
-content_sid = 'HX5798991275215c2cf083bb7c244bcebe'  # Needs an actual SID
+content_sid = os.getenv('TWILIO_WHATSAPP_TEMPLATE_SID')
 
 # Get the contents first to find the SID
 contents = client.content.v1.contents.list(limit=10)
