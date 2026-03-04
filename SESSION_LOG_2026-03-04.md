@@ -1,0 +1,21 @@
+# Session Log: 2026-03-04
+
+## Goals
+- Address the "Dog Walking Reminder System (CURRENT SPRINT)" by implementing the "Base Mode" functionality.
+- Ensure reminders are sent reliably, even when Claude API funds are depleted or the 24-hour WhatsApp messaging window is closed.
+
+## Actions Taken
+1. **Created Base Mode Script:** Wrote `scripts/base_walk_reminder.py` to directly fetch Beeminder activity and send a zero-token reminder if the dogs haven't been walked.
+2. **Updated Cron Job:** Modified `cron_reminder_check.sh` to try the MCP `/intelligent-reminder/trigger` endpoint first, and automatically fall back to the Base Mode script if the API is unreachable or returns an error.
+3. **Twilio/WhatsApp Template Debugging:**
+   - Discovered that freeform WhatsApp messages were failing with Twilio error `63016` due to Meta's strict 24-hour customer service window constraint.
+   - Identified that standard WhatsApp templates (using exact string matching) were still being blocked.
+   - Downloaded and reviewed Meta's Template Categorization Guidelines (`template_category_guidelines.pdf`). Discovered that the previous template design was categorized as "Marketing" due to its conversational phrasing.
+4. **Created Utility Template:** 
+   - Drafted a new template (`mecris_daily_alert_v1`) specifically structured to fit the strict "Utility - Account Alert" guidelines (using rigid, transactional language).
+   - Programmatically submitted the template to the Twilio Content API and WhatsApp for approval using a suite of Python scripts.
+
+## Next Steps
+- Wait for the new Utility template to be approved by Meta (it is currently pending quality review).
+- Tomorrow: Run the test scripts in `scripts/twilio_tests/` (specifically `test_new_content_template.py`) to verify the template can successfully bypass the 24-hour window constraint.
+- Once verified, update `smart_send_message` and `base_walk_reminder.py` to use the new Content SID.
