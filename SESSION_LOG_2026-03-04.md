@@ -14,8 +14,16 @@
 4. **Created Utility Template:** 
    - Drafted a new template (`mecris_daily_alert_v1`) specifically structured to fit the strict "Utility - Account Alert" guidelines (using rigid, transactional language).
    - Programmatically submitted the template to the Twilio Content API and WhatsApp for approval using a suite of Python scripts.
+   - Corrected positional variable mapping (e.g., `{{1}}`, `{{2}}`) to be strictly sequential as required by Twilio/WhatsApp compilation.
+5. **Security Audit & Remediation:**
+   - Discovered hard-coded Twilio SIDs (`HX...`, `SM...`) and phone numbers in the new test scripts.
+   - Opened Issues #47, #48, and #49 to track the exposure.
+   - Ran a scrubbing script across the `HEAD` commit to replace all sensitive hard-coded identifiers with `.env` lookups (e.g., `os.getenv('TWILIO_WHATSAPP_TEMPLATE_SID')`).
+6. **Channel Investigation (Facebook Messenger):**
+   - Researched using the approved Content Template on Facebook Messenger as a workaround.
+   - Concluded it is not viable for asynchronous cron alerts because Messenger is strictly an "in-session" channel requiring the user to initiate the conversation first via a Facebook Page, after which a 24-hour window applies.
 
 ## Next Steps
-- Wait for the new Utility template to be approved by Meta (it is currently pending quality review).
+- Wait for the new Utility template (`mecris_daily_alert_v1`) to be approved by Meta (it is currently pending quality review).
 - Tomorrow: Run the test scripts in `scripts/twilio_tests/` (specifically `test_new_content_template.py`) to verify the template can successfully bypass the 24-hour window constraint.
 - Once verified, update `smart_send_message` and `base_walk_reminder.py` to use the new Content SID.
