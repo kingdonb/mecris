@@ -28,7 +28,7 @@ make client
 ## 📋 Prerequisites
 
 - **`uv`**: Fast Python package manager.
-- **`ffmpeg`**: Required for audio processing.
+- **`portaudio`**: Required for audio capture (macOS: `brew install portaudio`).
 - **Python 3.10+**: Managed via `uv`.
 - **macOS Permissions**: Terminal/IDE requires **Accessibility** and **Microphone** permissions.
 

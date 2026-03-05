@@ -48,7 +48,6 @@ help:
 
 check-deps:
 	@command -v uv >/dev/null 2>&1 || { echo "$(RED)Error: 'uv' is not installed. $(RESET)"; exit 1; }
-	@command -v ffmpeg >/dev/null 2>&1 || { echo "$(RED)Error: 'ffmpeg' is not installed. (Required for audio processing)$(RESET)"; exit 1; }
 
 setup: check-deps
 	@echo "$(GREEN)Initializing virtual environment...$(RESET)"
