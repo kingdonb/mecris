@@ -1,0 +1,32 @@
+[
+  {
+    "name": "mecris_status_v2",
+    "sid": "HX9403f1b85350b8c05780a1128b79f3c2",
+    "status": "submitted"
+  },
+  {
+    "name": "mecris_activity_check_v2",
+    "sid": "HX9e6692d8a5689ee3c0b855f43092563a",
+    "status": "submitted"
+  },
+  {
+    "name": "mecris_budget_statement_v2",
+    "sid": "HX1aa68d63582981d8dee93596760334cf",
+    "status": "submitted"
+  },
+  {
+    "name": "mecris_daily_briefing_v2",
+    "sid": "HXf39921201717621e5bac94a4e6d4eab3",
+    "status": "submitted"
+  },
+  {
+    "name": "mecris_system_maintenance_v2",
+    "sid": "HXdf745ded3d0f6373f3333765ba18fd07",
+    "status": "submitted"
+  },
+  {
+    "name": "mecris_sync_confirmation_v2",
+    "sid": "HX62f7e3269007f950cfde304f2a290b6d",
+    "status": "submitted"
+  }
+]

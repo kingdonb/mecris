@@ -1,0 +1,42 @@
+[
+  {
+    "name": "mecris_daily_briefing_v1",
+    "sid": "HX68d572109da9c9b471430ae6553c3dc3"
+  },
+  {
+    "name": "mecris_urgency_alert_v2",
+    "sid": "HX638b7f9403e04c8fa880370f1b7a9ba1"
+  },
+  {
+    "name": "mecris_activity_verification_v1",
+    "sid": "HX97c5978812394a2daf5fefca76078934"
+  },
+  {
+    "name": "mecris_budget_statement_v1",
+    "sid": "HXea6a3568dbe497a81c80cdefe61a59cc"
+  },
+  {
+    "name": "mecris_sync_confirmation_v1",
+    "sid": "HX290b03d1d5dc1bbe4af9a586f8d94bcb"
+  },
+  {
+    "name": "mecris_vacation_status_v1",
+    "sid": "HX972c462373528836832b8cb9a9f8e54d"
+  },
+  {
+    "name": "mecris_milestone_notice_v1",
+    "sid": "HXf7661d0e55ad51e926e2bddb3c7c66ce"
+  },
+  {
+    "name": "mecris_preference_update_v1",
+    "sid": "HXecc09b4995719ceb65dfb6da544343cc"
+  },
+  {
+    "name": "mecris_security_checkpoint_v1",
+    "sid": "HX138b3d037c5ebcb6a828d85ad8e9f3a8"
+  },
+  {
+    "name": "mecris_system_maintenance_v1",
+    "sid": "HX3de8de15a2829f7fdae0607f0d2fa692"
+  }
+]

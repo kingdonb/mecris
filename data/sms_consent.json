@@ -47,6 +47,7 @@
         "test"
       ],
       "preferences": {
+        "vacation_mode": true,
         "time_window_start": 0,
         "time_window_end": 23,
         "max_messages_per_day": 10,
@@ -62,11 +63,39 @@
       },
       "message_history": [
         {
-          "timestamp": "2025-08-05T00:08:06.406683",
-          "date": "2025-08-05",
-          "message": "\ud83e\udde0 Mecris WhatsApp delivery confirmed\\! Consent system working perfectly.",
-          "message_type": "system_alert",
-          "delivery_method": "console"
+          "timestamp": "2026-03-04T09:26:11.860454",
+          "date": "2026-03-04",
+          "message": "\ud83d\udc3e Mecris Base Alert: Boris and Fiona haven't been walked yet today! Time to hit the trail.",
+          "message_type": "walk_reminder",
+          "delivery_method": "whatsapp_freeform"
+        },
+        {
+          "timestamp": "2026-03-04T09:27:22.457386",
+          "date": "2026-03-04",
+          "message": "\ud83d\udc3e Mecris Base Alert: Boris and Fiona haven't been walked yet today! Time to hit the trail.",
+          "message_type": "walk_reminder",
+          "delivery_method": "whatsapp_freeform"
+        },
+        {
+          "timestamp": "2026-03-04T09:43:36.990949",
+          "date": "2026-03-04",
+          "message": "\ud83e\udde0 Mecris Update: The sun is up and the weather is 65\u00b0F. Boris and Fiona are ready for their walk! Your Accountability goal is also due today.",
+          "message_type": "walk_reminder",
+          "delivery_method": "whatsapp_freeform"
+        },
+        {
+          "timestamp": "2026-03-04T10:00:52.107063",
+          "date": "2026-03-04",
+          "message": "Mecris System Alert: This is your daily activity update.\nBoris and Fiona's walk: Pending.\nClozemaster Arabic: Due today.\nCurrent local temperature: 65F.\nPlease log your activity to maintain your account standing.",
+          "message_type": "walk_reminder",
+          "delivery_method": "whatsapp_freeform"
+        },
+        {
+          "timestamp": "2026-03-05T10:16:06.885942",
+          "date": "2026-03-05",
+          "message": "Mecris System Alert: This is your daily activity update.\nActivity log: Pending.\nClozemaster Arabic: Due today.\nCurrent local temperature: 65F.\nPlease log your activity to maintain your account standing.",
+          "message_type": "walk_reminder",
+          "delivery_method": "whatsapp_template"
         }
       ],
       "last_updated": "2025-08-05T00:07:17.100634"

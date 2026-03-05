@@ -97,18 +97,61 @@ def smart_send_message(message: str, to_number: Optional[str] = None) -> dict:
     delivery_method = os.getenv('REMINDER_DELIVERY_METHOD', 'console').lower()
     content_sid = os.getenv('TWILIO_WHATSAPP_TEMPLATE_SID')
     
+    # Check vacation_mode to determine generic vs doggie labels
+    from sms_consent_manager import consent_manager
+    vacation_mode = False
+    target_phone = to_number or os.getenv('TWILIO_TO_NUMBER')
+    if target_phone:
+        user_prefs = consent_manager.get_user_preferences(target_phone)
+        if user_prefs:
+            vacation_mode = user_prefs.get("preferences", {}).get("vacation_mode", False)
+
     result = {"sent": False, "method": None, "attempts": []}
     
     # Logic: If we have a template SID and we are doing WhatsApp, try that first
     if delivery_method in ['whatsapp', 'both'] and content_sid:
-        # Example variables mapping for your new template
-        # 1=temp, 2=goal, 3=doggies
-        # For generic messages, we might just put the whole message in variable 1
-        # but for now we'll just try to send it simply.
-        variables = {"1": "??", "2": "Accountability", "3": "Doggies"} 
-        if "weather" in message.lower():
-             # Crude extraction for testing - in production we'd pass structured data
-             variables["1"] = "65" 
+        # Variables mapping for mecris_daily_alert_v1:
+        # {{1}}: {{2}}
+        # {{3}}: {{4}}
+        # Current local temperature: {{5}}F
+        
+        import re
+        
+        # Default fallback values
+        v1, v2, v3, v4, v5 = "Activity", "Pending", "Commitment", "Due", "???"
+        
+        # Try to extract values from the message string
+        # Look for lines that look like "Label: Value"
+        pairs = []
+        for line in message.split('\n'):
+            line = line.strip()
+            if not line or 'System Alert' in line or 'Please log' in line or 'temperature' in line:
+                continue
+            if ':' in line:
+                parts = line.split(':', 1)
+                pairs.append((parts[0].strip(), parts[1].strip().rstrip('.')))
+        
+        if len(pairs) >= 1:
+            v1, v2 = pairs[0][0], pairs[0][1]
+        if len(pairs) >= 2:
+            v3, v4 = pairs[1][0], pairs[1][1]
+            
+        # Pattern 2: Temperature
+        temp_match = re.search(r"(\d+)F", message)
+        if temp_match:
+            v5 = temp_match.group(1)
+        elif vacation_mode:
+            v5 = "Vacation"
+        else:
+            v5 = "Active"
+
+        variables = {
+            "1": v1,
+            "2": v2,
+            "3": v3,
+            "4": v4,
+            "5": v5
+        }
         
         success = send_whatsapp_template(content_sid, variables, to_number)
         if success:

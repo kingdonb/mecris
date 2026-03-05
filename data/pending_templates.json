@@ -1,0 +1,14 @@
+[
+  {
+    "name": "mecris_status_v1",
+    "sid": "HX02b9d35142a71466f7227d1692f8418d"
+  },
+  {
+    "name": "mecris_goal_reminder_v1",
+    "sid": "HX442a861ca56a6b3891de9daa04dfbc4f"
+  },
+  {
+    "name": "mecris_activity_check_v1",
+    "sid": "HX57e358c00fe1f249a634dc42d7906799"
+  }
+]

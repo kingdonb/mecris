@@ -49,41 +49,27 @@ By saving audio to disk *before* transcription, we fundamentally change the reli
 *   **Client Crash:** On restart, the client can detect an orphaned audio file and re-submit it for transcription. **No data loss.**
 *   **Server Crash / Network Error:** The client can detect the failure and re-submit the saved audio file. With a simple retry loop, it can wait for the server to come back online. **No data loss.**
 
-## D. Priority Roadmap
+## ✅ Completed Milestones
 
-This roadmap prioritizes stability and recoverability over new features. Each phase builds a foundation for the next.
+### Phase 0 – Hardening & Resilience (Completed Mar 2026)
+- [x] **Incremental Audio Buffering to Disk**: `talktype.py` now saves audio to `~/.cache/talktype/pending.wav` before transcription.
+- [x] **Transcription History**: Implemented `~/.cache/talktype/history.jsonl` to persist last 100 transcriptions.
+- [x] **Recovery Hotkeys**:
+    - **F8 (Recovery)**: Re-paste last successful transcription from history.
+    - **F7 (Retry)**: Re-transcribe from `pending.wav` if API failed/timed out.
+- [x] **Server-Side Resilience**: `whisper_server.py` v2 features structured logging, stats tracking, and VAD by default.
+- [x] **Hallucination Filtering**: Improved filtering for common Whisper "silence" hallucinations (e.g., "Thanks for watching").
 
-### Phase 0 – Hardening (The most critical phase)
+### Phase 1 – UX & Configuration (Completed Mar 2026)
+- [x] **First-Run Setup Wizard**: Interactive CLI configuration for hotkeys, models, and API vs. local mode.
+- [x] **Optional VAD**: Integrated Silero VAD into the server for better speech detection.
+- [x] **GPU Acceleration Support**: Automated CUDA path configuration if libraries are present.
 
-*Goal: Eliminate data loss and make the system robust against common failures.*
+---
 
-1.  **Incremental Audio Buffering to Disk:**
-    *   Modify `talktype.py` to, upon `start_recording`, create a temporary WAV file.
-    *   As audio chunks are received by `audio_callback`, append them directly to this file instead of an in-memory list.
-    *   `stop_recording` will now just finalize the WAV file.
-2.  **Transactional Transcription:**
-    *   The `transcribe_and_paste` thread will now work with a file path instead of an in-memory audio array.
-    *   **On successful transcription and pasting, delete the temporary audio file.**
-    *   **If transcription fails for any reason (server crash, network error), the audio file is kept.**
-3.  **Crash Recovery:**
-    *   On startup, `talktype.py` should check a designated temporary directory for any orphaned audio files.
-    *   If found, it should prompt the user to transcribe them. This handles the case where the client itself crashes.
-4.  **Robust Focus Handling:**
-    *   Improve the `paste_text` function to be more resilient to focus changes. Before pasting, re-verify that the target window is still the active one. If not, log an error and preserve the transcribed text in the clipboard.
+## D. Priority Roadmap (Updated)
 
-### Phase 1 – Resilience & UX
-
-*Goal: Build on the hardened foundation to improve the user experience and add more robust recovery.*
-
-1.  **Server-Side Resilience:**
-    *   Modify `whisper_server.py` to also save the received audio to a temporary file before processing. This provides a second layer of defense and helps in debugging. The server should have its own cleanup logic.
-2.  **Client-Side Retry Mechanism:**
-    *   Implement a simple retry loop in `talktype.py`'s `transcribe_api` function. If a request to the server fails, it should wait (e.g., with exponential backoff) and retry a few times before giving up.
-3.  **Explicit State Management & UI:**
-    *   Improve the terminal title/UI to show more explicit states: `SAVING AUDIO`, `RETRYING...`, `TRANSCRIPTION FAILED (audio saved)`. This gives the user confidence that their data is safe even if something goes wrong.
-4.  **Introduce Optional VAD:**
-    *   Integrate a local VAD library (like `py-silero-vad-lite`) into `talktype.py`.
-    *   Add a `--vad` flag to enable it. In this mode, the client listens continuously, automatically starting/stopping the disk-based recording based on speech activity.
+This roadmap now focuses on further refining the user experience and expanding platform support.
 
 ### Phase 2 – Advanced Features (Optional)
 

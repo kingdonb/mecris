@@ -7,7 +7,7 @@
 - [ ] **Base Mode Implementation** - Walk reminders that work without Claude credits
 - [ ] **Three-Tier Messaging System** - Enhanced → Smart Templates → Base Mode  
 - [ ] **MCP Context Integration** - Use narrator context without consuming Claude credits
-- [ ] **WhatsApp/SMS Delivery** - Twilio integration with WhatsApp sandbox
+- [ ] **WhatsApp/SMS Delivery** - Twilio integration with WhatsApp sandbox (Prioritizing WhatsApp to avoid A2P 10DLC $2/mo fees until full two-way compliance engine is built)
 - [ ] **Cron Job Setup** - Reliable afternoon walk reminders (2-5 PM)
 - [ ] **No-Spam Logic** - Max 1 walk reminder per day
 - [ ] **Work/Personal Time Filtering** - Appropriate scheduling
