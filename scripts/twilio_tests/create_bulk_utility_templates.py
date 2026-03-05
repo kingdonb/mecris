@@ -1,7 +1,6 @@
 import os
 import json
 from twilio.rest import Client
-from twilio.rest.content.v1.content import ContentList
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -33,8 +32,15 @@ created_templates = []
 for t in templates:
     try:
         print(f"Creating Template: {t['friendly_name']}...")
-        # Explicitly wrap the payload in ContentCreateRequest
-        payload = {
+        # Use the raw REST API via requests or use the client with a Dict if it supports it correctly
+        # The Twilio 9.x SDK seems to have a bug in how it handles nested objects in the Content API
+        # Let's try passing the objects explicitly if they exist
+        from twilio.rest.content.v1.content import ContentList
+        
+        text_obj = ContentList.TwilioText({"body": t['body']})
+        types_obj = ContentList.Types({"twilio_text": text_obj})
+        
+        request_obj = ContentList.ContentCreateRequest({
             "friendly_name": t['friendly_name'],
             "language": "en",
             "variables": {
@@ -44,14 +50,9 @@ for t in templates:
                 "4": "Due",
                 "5": "Now"
             },
-            "types": {
-                "twilio/text": {
-                    "body": t['body']
-                }
-            }
-        }
+            "types": types_obj
+        })
         
-        request_obj = ContentList.ContentCreateRequest(payload)
         content = client.content.v1.contents.create(request_obj)
         
         print(f"✅ Created {t['friendly_name']}: {content.sid}")
