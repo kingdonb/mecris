@@ -125,22 +125,21 @@ def smart_send_message(message: str, to_number: Optional[str] = None) -> dict:
     
     # Logic: If we have a template SID and we are doing WhatsApp, try that first
     if delivery_method in ['whatsapp', 'both'] and content_sid:
-        # Variables mapping for mecris_daily_alert_v1:
-        # {{1}}: {{4}}
-        # {{2}}: {{5}}
-        # Current local temperature: {{3}}F
-        
-        # Note: If we use a DIFFERENT template from the pool, the mapping might need to change.
-        # For now, we assume all approved templates in the pool follow the same variable structure.
-        # This is Issue #54's next evolution: per-template mapping.
-        
+        # Load template pool to identify mapping
+        template_name = "unknown"
+        if os.path.exists(approved_pool_path):
+            try:
+                with open(approved_pool_path, 'r') as f:
+                    pool_data = json.load(f)
+                    template_name = pool_data.get("approved_templates", {}).get(content_sid, "unknown")
+            except: pass
+
         import re
         
         # Default fallback values
         v1, v2, v3, v4, v5 = "Activity", "Pending", "Commitment", "Due", "???"
         
         # Try to extract values from the message string
-        # Look for lines that look like "Label: Value"
         pairs = []
         for line in message.split('\n'):
             line = line.strip()
@@ -155,7 +154,6 @@ def smart_send_message(message: str, to_number: Optional[str] = None) -> dict:
         if len(pairs) >= 2:
             v3, v4 = pairs[1][0], pairs[1][1]
             
-        # Pattern 2: Temperature
         temp_match = re.search(r"(\d+)F", message)
         if temp_match:
             v5 = temp_match.group(1)
@@ -164,13 +162,20 @@ def smart_send_message(message: str, to_number: Optional[str] = None) -> dict:
         else:
             v5 = "Active"
 
-        variables = {
-            "1": v1,
-            "2": v3,
-            "3": v5,
-            "4": v2,
-            "5": v4
-        }
+        # DYNAMIC MAPPING PER TEMPLATE
+        if template_name == "mecris_daily_alert_v1":
+            # {{1}}: {{4}}, {{2}}: {{5}}, {{3}}F
+            variables = {"1": v1, "2": v3, "3": v5, "4": v2, "5": v4}
+        elif template_name in ["mecris_status_v2", "mecris_activity_report_v1", "mecris_simple_alert_v1"]:
+            # Sequential 1-5 mapping
+            # v1=Goal1, v2=Status1, v3=Goal2, v4=Status2, v5=Extra
+            mapping_v5 = "daily" if not vacation_mode else "vacation"
+            if v5 != "???":
+                mapping_v5 = f"{v5}F"
+            variables = {"1": v1, "2": v2, "3": v3, "4": v4, "5": mapping_v5}
+        else:
+            # Fallback to standard 1-5 mapping
+            variables = {"1": v1, "2": v2, "3": v3, "4": v4, "5": v5}
         
         success = send_whatsapp_template(content_sid, variables, to_number)
         if success:

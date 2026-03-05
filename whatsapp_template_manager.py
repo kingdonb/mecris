@@ -52,10 +52,14 @@ class WhatsAppTemplateManager:
 
     def sync_approved_templates(self) -> int:
         """Sync approved templates to local storage."""
-        approved_sids = self.get_approved_pool()
+        all_templates = self.fetch_all_statuses()
+        approved = {t['sid']: t['name'] for t in all_templates if t['status'] == 'approved'}
         with open(self.data_path, 'w') as f:
-            json.dump({"approved_sids": approved_sids, "last_updated": os.getenv('CURRENT_DATE', 'unknown')}, f, indent=2)
-        return len(approved_sids)
+            json.dump({
+                "approved_templates": approved,
+                "last_updated": os.getenv('CURRENT_DATE', 'unknown')
+            }, f, indent=2)
+        return len(approved)
 
 if __name__ == "__main__":
     manager = WhatsAppTemplateManager()
