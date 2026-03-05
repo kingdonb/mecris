@@ -27,6 +27,7 @@ dependencies = [
     "faster-whisper>=0.10.0",
     "python-multipart>=0.0.6",
     "pyautogui>=0.9.53 ; sys_platform != 'linux'",
+    "apscheduler>=3.11.0",
 ]
 
 [tool.pytest.ini_options]
