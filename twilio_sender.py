@@ -110,29 +110,48 @@ def smart_send_message(message: str, to_number: Optional[str] = None) -> dict:
     
     # Logic: If we have a template SID and we are doing WhatsApp, try that first
     if delivery_method in ['whatsapp', 'both'] and content_sid:
-        # Variables mapping:
-        # 1: Physical Activity label
-        # 2: Status (Pending/Done)
-        # 3: Commitment label
-        # 4: Status (Due/Complete)
-        # 5: Extra info (Timestamp or similar)
+        # Variables mapping for mecris_daily_alert_v1:
+        # {{1}}: {{2}}
+        # {{3}}: {{4}}
+        # Current local temperature: {{5}}F
         
-        if vacation_mode:
-            variables = {
-                "1": "Activity log",
-                "2": "Pending",
-                "3": "Daily commitment",
-                "4": "Review needed",
-                "5": "Vacation Mode"
-            }
+        import re
+        
+        # Default fallback values
+        v1, v2, v3, v4, v5 = "Activity", "Pending", "Commitment", "Due", "???"
+        
+        # Try to extract values from the message string
+        # Look for lines that look like "Label: Value"
+        pairs = []
+        for line in message.split('\n'):
+            line = line.strip()
+            if not line or 'System Alert' in line or 'Please log' in line or 'temperature' in line:
+                continue
+            if ':' in line:
+                parts = line.split(':', 1)
+                pairs.append((parts[0].strip(), parts[1].strip().rstrip('.')))
+        
+        if len(pairs) >= 1:
+            v1, v2 = pairs[0][0], pairs[0][1]
+        if len(pairs) >= 2:
+            v3, v4 = pairs[1][0], pairs[1][1]
+            
+        # Pattern 2: Temperature
+        temp_match = re.search(r"(\d+)F", message)
+        if temp_match:
+            v5 = temp_match.group(1)
+        elif vacation_mode:
+            v5 = "Vacation"
         else:
-            variables = {
-                "1": "Boris & Fiona walk",
-                "2": "Pending",
-                "3": "Clozemaster Arabic",
-                "4": "Due today",
-                "5": "Active"
-            }
+            v5 = "Active"
+
+        variables = {
+            "1": v1,
+            "2": v2,
+            "3": v3,
+            "4": v4,
+            "5": v5
+        }
         
         success = send_whatsapp_template(content_sid, variables, to_number)
         if success:

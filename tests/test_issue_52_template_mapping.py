@@ -25,7 +25,7 @@ class TestIssue52TemplateMapping(unittest.TestCase):
         mock_get_prefs.return_value = {"preferences": {"vacation_mode": False}}
         mock_send_template.return_value = True
         
-        message = "Mecris System Alert: ... Physical activity: Pending ..."
+        message = "Mecris System Alert: This is your daily activity update.\nBoris & Fiona walk: Pending.\nClozemaster Arabic: Due today.\nCurrent local temperature: 65F.\nPlease log your activity to maintain your account standing."
         smart_send_message(message)
         
         # Verify the variables sent to Twilio
@@ -50,7 +50,7 @@ class TestIssue52TemplateMapping(unittest.TestCase):
         mock_get_prefs.return_value = {"preferences": {"vacation_mode": True}}
         mock_send_template.return_value = True
         
-        message = "Mecris System Alert: ... Activity log: Pending ... Daily commitment: Review needed ... 65F"
+        message = "Mecris System Alert: This is your daily activity update.\nActivity log: Pending.\nDaily commitment: Review needed.\nCurrent local temperature: 65F.\nPlease log your activity to maintain your account standing."
         smart_send_message(message)
         
         # Verify the variables sent to Twilio
