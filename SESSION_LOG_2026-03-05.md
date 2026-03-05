@@ -27,3 +27,10 @@
 - Monitor the remaining 12 templates for approval.
 - Add "Vacation Mode" toggle to the Android App Dashboard (Design updated).
 - Evolve templates into a "Headless Coaching Interface" (Issue #55).
+
+## 🌙 Evening Addendum: The "Sidekiq" Multi-Agent Engine
+- **Feature**: Implemented an APScheduler-based persistent background job engine (`scheduler.py`).
+- **Multi-Agent Safe**: Built a SQLite-backed "Leader Election" system (`scheduler_election` table) so multiple AI instances (CLI, SSE Server) can coordinate. Only one active leader sends reminders.
+- **Shared Job Store**: Implemented `SQLAlchemyJobStore` allowing follower agents to seamlessly `enqueue_message` tasks for the leader to execute.
+- **Resilience**: Added WAL mode and retry logic to gracefully handle SQLite contention when multiple brains try to schedule tasks at the exact same time.
+- **Result**: Mecris now has a true heartbeat, capable of running background tasks and delayed queues as long as the server is loaded!
