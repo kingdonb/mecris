@@ -371,6 +371,16 @@ async def trigger_reminder_check() -> Dict[str, Any]:
         logger.error(f"Reminder trigger failed: {e}")
         return {"error": f"Reminder trigger failed: {e}"}
 
+from scheduler import MecrisScheduler
+
+# Initialize Scheduler
+scheduler = MecrisScheduler(trigger_reminder_func=trigger_reminder_check)
+
+@mcp.tool(description="Sidekiq-like: Enqueue a message to be sent after a delay (in minutes).")
+def enqueue_message(message: str, delay_minutes: int, to_number: Optional[str] = None) -> Dict[str, Any]:
+    """Sidekiq-like: Enqueue a message to be sent after a delay."""
+    return scheduler.enqueue_delayed_message(message, delay_minutes, to_number)
+
 from services.coaching_service import CoachingService
 
 @mcp.tool(description="Get a personalized coaching insight based on momentum and current needs.")
@@ -435,4 +445,5 @@ async def send_reminder_message(message_data: Dict[str, Any]) -> Dict[str, Any]:
 
 
 if __name__ == "__main__":
+    scheduler.start()
     mcp.run()
