@@ -97,18 +97,42 @@ def smart_send_message(message: str, to_number: Optional[str] = None) -> dict:
     delivery_method = os.getenv('REMINDER_DELIVERY_METHOD', 'console').lower()
     content_sid = os.getenv('TWILIO_WHATSAPP_TEMPLATE_SID')
     
+    # Check vacation_mode to determine generic vs doggie labels
+    from sms_consent_manager import consent_manager
+    vacation_mode = False
+    target_phone = to_number or os.getenv('TWILIO_TO_NUMBER')
+    if target_phone:
+        user_prefs = consent_manager.get_user_preferences(target_phone)
+        if user_prefs:
+            vacation_mode = user_prefs.get("preferences", {}).get("vacation_mode", False)
+
     result = {"sent": False, "method": None, "attempts": []}
     
     # Logic: If we have a template SID and we are doing WhatsApp, try that first
     if delivery_method in ['whatsapp', 'both'] and content_sid:
-        # Example variables mapping for your new template
-        # 1=temp, 2=goal, 3=doggies
-        # For generic messages, we might just put the whole message in variable 1
-        # but for now we'll just try to send it simply.
-        variables = {"1": "??", "2": "Accountability", "3": "Doggies"} 
-        if "weather" in message.lower():
-             # Crude extraction for testing - in production we'd pass structured data
-             variables["1"] = "65" 
+        # Variables mapping:
+        # 1: Physical Activity label
+        # 2: Status (Pending/Done)
+        # 3: Commitment label
+        # 4: Status (Due/Complete)
+        # 5: Extra info (Timestamp or similar)
+        
+        if vacation_mode:
+            variables = {
+                "1": "Activity log",
+                "2": "Pending",
+                "3": "Daily commitment",
+                "4": "Review needed",
+                "5": "Vacation Mode"
+            }
+        else:
+            variables = {
+                "1": "Boris & Fiona walk",
+                "2": "Pending",
+                "3": "Clozemaster Arabic",
+                "4": "Due today",
+                "5": "Active"
+            }
         
         success = send_whatsapp_template(content_sid, variables, to_number)
         if success:
