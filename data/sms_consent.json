@@ -89,6 +89,13 @@
           "message": "Mecris System Alert: This is your daily activity update.\nBoris and Fiona's walk: Pending.\nClozemaster Arabic: Due today.\nCurrent local temperature: 65F.\nPlease log your activity to maintain your account standing.",
           "message_type": "walk_reminder",
           "delivery_method": "whatsapp_freeform"
+        },
+        {
+          "timestamp": "2026-03-05T10:16:06.885942",
+          "date": "2026-03-05",
+          "message": "Mecris System Alert: This is your daily activity update.\nActivity log: Pending.\nClozemaster Arabic: Due today.\nCurrent local temperature: 65F.\nPlease log your activity to maintain your account standing.",
+          "message_type": "walk_reminder",
+          "delivery_method": "whatsapp_template"
         }
       ],
       "last_updated": "2025-08-05T00:07:17.100634"
