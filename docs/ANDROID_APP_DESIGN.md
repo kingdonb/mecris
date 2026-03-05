@@ -43,7 +43,8 @@ Mecris Mobile serves as the "pulse" of the personal accountability system. While
 ### E. Goal Status Dashboard
 - **Goal**: Real-time visibility into the system state.
 - **UI Elements**:
-    - **Dog Walk Progress**: "Boris & Fiona: ❌ Needed" or "✅ Logged".
+    - **Dog Walk Progress**: "Boris & Fiona: ❌ Needed" or "✅ Logged" (Source: **Auto-Fit** or Manual).
+    - **Daily Steps**: Live progress bar against the 10k goal or 0.5mi threshold.
     - **Budget Health**: Progress bar showing remaining Claude/Groq funds.
     - **Beeminder Risk**: List of goals with runway colors (Green/Yellow/Red).
 
@@ -51,8 +52,12 @@ Mecris Mobile serves as the "pulse" of the personal accountability system. While
 
 1. **Rich Push Notifications**: Unlike SMS, Android push can include images, action buttons, and progress bars.
 2. **Foreground Service/Live Activity**: Keep the "Dog Walk" status visible on the lock screen until it's completed.
-3. **Location-Aware Reminders (Future)**: Detect when the user is at the park or out for a walk and automatically update the "Bike" goal status.
-4. **Offline Mode**: Cache the last known status so you can check your goals even without a data connection.
+3. **Fit Integration (Automatic Detection)**: 
+    - Connect to **Google Fit / Health Connect** to read daily step counts and logged activities.
+    - If a walk >0.5 miles is detected, automatically update the "Bike" goal in Beeminder.
+    - **Smart Reminders**: Automatically suppress "Dog Walk" prompts if the system sees you've already hit the activity threshold for the day.
+4. **Location-Aware Reminders (Future)**: Detect when the user is at the park or out for a walk and automatically update the "Bike" goal status.
+5. **Offline Mode**: Cache the last known status so you can check your goals even without a data connection.
 
 ## 4. Technical Architecture (Android + Spin)
 
