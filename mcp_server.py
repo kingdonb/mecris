@@ -467,5 +467,16 @@ async def send_reminder_message(message_data: Dict[str, Any]) -> Dict[str, Any]:
 
 
 if __name__ == "__main__":
-    scheduler.start()
-    mcp.run()
+    import sys
+    import asyncio
+    
+    if len(sys.argv) > 1 and sys.argv[1] == "--stdio":
+        async def run_stdio():
+            scheduler.start()
+            await mcp.run_stdio_async()
+            scheduler.shutdown()
+            
+        asyncio.run(run_stdio())
+    else:
+        # In other modes, mcp.run() might be used, but generally we run via start_server.py for SSE
+        mcp.run()
