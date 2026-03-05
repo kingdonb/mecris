@@ -97,9 +97,14 @@ async def lifespan(app):
     logger.info("🧠 Mecris MCP Server starting up...")
     await check_dependencies()
     
+    # Start background scheduler
+    from mcp_server import scheduler
+    scheduler.start()
+    
     yield
     
     logger.info("🧠 Mecris MCP Server shutting down...")
+    scheduler.shutdown()
 
 def main():
     """Main entry point"""
