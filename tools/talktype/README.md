@@ -73,5 +73,14 @@ make server WHISPER_PORT=9000
 make client WHISPER_PORT=9000
 ```
 
----
-*Sources derived from [kingdonb/talktype](https://github.com/kingdonb/talktype)*
+## ✅ Verification & Testing
+
+To verify the installation and the recent sync (Mar 2026), you can use the following multi-lingual sample to test transcription accuracy and race condition fixes:
+
+**Sample Text**:
+> "J'ai amplifié mes souffrances, j'ai emballé mes douleurs, est-ce que ma tante me..."
+
+**What to check**:
+1. **Accuracy**: Ensure French accents and phrasing are captured correctly.
+2. **Race Conditions**: Verify the text is pasted fully without being cut off by clipboard restoration (a fix for long strings was included in the latest sync).
+3. **History**: Check `~/.cache/talktype/history.jsonl` to ensure it was recorded.
