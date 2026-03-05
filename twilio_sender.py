@@ -147,10 +147,10 @@ def smart_send_message(message: str, to_number: Optional[str] = None) -> dict:
 
         variables = {
             "1": v1,
-            "2": v2,
-            "3": v3,
-            "4": v4,
-            "5": v5
+            "2": v3,
+            "3": v5,
+            "4": v2,
+            "5": v4
         }
         
         success = send_whatsapp_template(content_sid, variables, to_number)
