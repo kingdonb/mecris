@@ -1,6 +1,7 @@
 import os
 import json
 from twilio.rest import Client
+from twilio.rest.content.v1.content import ContentList
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -32,25 +33,27 @@ created_templates = []
 for t in templates:
     try:
         print(f"Creating Template: {t['friendly_name']}...")
-        # The twilio library 9.x+ expects a single payload dict for Content API
-        content = client.content.v1.contents.create(
-            {
-                "friendly_name": t['friendly_name'],
-                "language": "en",
-                "variables": {
-                    "1": "Activity",
-                    "2": "Pending",
-                    "3": "Commitment",
-                    "4": "Due",
-                    "5": "Now"
-                },
-                "types": {
-                    "twilio/text": {
-                        "body": t['body']
-                    }
+        # Explicitly wrap the payload in ContentCreateRequest
+        payload = {
+            "friendly_name": t['friendly_name'],
+            "language": "en",
+            "variables": {
+                "1": "Activity",
+                "2": "Pending",
+                "3": "Commitment",
+                "4": "Due",
+                "5": "Now"
+            },
+            "types": {
+                "twilio/text": {
+                    "body": t['body']
                 }
             }
-        )
+        }
+        
+        request_obj = ContentList.ContentCreateRequest(payload)
+        content = client.content.v1.contents.create(request_obj)
+        
         print(f"✅ Created {t['friendly_name']}: {content.sid}")
         created_templates.append({"name": t['friendly_name'], "sid": content.sid})
     except Exception as e:
