@@ -33,7 +33,8 @@ for t in templates:
     try:
         print(f"Creating Template: {t['friendly_name']}...")
         content = client.content.v1.contents.create(
-            friendly_name=t['friendly_name'],
+            # friendly_name is NOT supported here, use 'friendly_name' inside 'types' if needed, or just skip it
+            # The name used for approval is separate.
             variables={
                 "1": "Activity",
                 "2": "Pending",
