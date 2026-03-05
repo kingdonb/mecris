@@ -32,16 +32,16 @@ class TestIssue52TemplateMapping(unittest.TestCase):
         args, kwargs = mock_send_template.call_args
         variables = args[1]
         
-        # mecris_daily_alert_v1 template structure:
-        # {{1}}: {{2}}
-        # {{3}}: {{4}}
-        # Current local temperature: {{5}}F
+        # REAL APPROVED TEMPLATE ORDER for mecris_daily_alert_v1:
+        # {{1}}: {{4}}
+        # {{2}}: {{5}}
+        # Current local temperature: {{3}}F
         
-        self.assertEqual(variables["1"], "Boris & Fiona walk")
-        self.assertEqual(variables["2"], "Pending")
-        self.assertEqual(variables["3"], "Clozemaster Arabic")
-        self.assertEqual(variables["4"], "Due today")
-        self.assertEqual(variables["5"], "65") # Mocked message has 65F
+        self.assertEqual(variables["1"], "Boris & Fiona walk") # v1
+        self.assertEqual(variables["4"], "Pending")            # v2
+        self.assertEqual(variables["2"], "Clozemaster Arabic") # v3
+        self.assertEqual(variables["5"], "Due today")          # v4
+        self.assertEqual(variables["3"], "65")                 # v5
 
     @patch('twilio_sender.send_whatsapp_template')
     @patch('sms_consent_manager.consent_manager.get_user_preferences')
@@ -57,11 +57,11 @@ class TestIssue52TemplateMapping(unittest.TestCase):
         args, kwargs = mock_send_template.call_args
         variables = args[1]
         
-        self.assertEqual(variables["1"], "Activity log")
-        self.assertEqual(variables["2"], "Pending")
-        self.assertEqual(variables["3"], "Daily commitment")
-        self.assertEqual(variables["4"], "Review needed")
-        self.assertEqual(variables["5"], "65")
+        self.assertEqual(variables["1"], "Activity log")      # v1
+        self.assertEqual(variables["4"], "Pending")           # v2
+        self.assertEqual(variables["2"], "Daily commitment")  # v3
+        self.assertEqual(variables["5"], "Review needed")     # v4
+        self.assertEqual(variables["3"], "65")                # v5
 
 if __name__ == '__main__':
     unittest.main()
