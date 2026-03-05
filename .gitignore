@@ -65,6 +65,16 @@ mecris.log
 # Stakpak local files
 .stakpak/session*
 
+# Test artifacts
+.coverage
+:memory:
+htmlcov/
+.pytest_cache/
+
+# Local data state
+/data/*.json
+!/data/.gitkeep
+
 # Clone of claude-code-tamagotchi
 /claude-code-tamagotchi
 /claude-code-tamagotchi/**
