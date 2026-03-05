@@ -142,6 +142,15 @@ async def get_narrator_context() -> Dict[str, Any]:
         daily_walk_status = await get_cached_daily_activity("bike")
         groq_context = get_groq_context_for_narrator()
         
+        # Fetch user preferences for vacation_mode
+        target_phone = os.getenv('TWILIO_TO_NUMBER')
+        vacation_mode = False
+        if target_phone:
+            from sms_consent_manager import consent_manager
+            user_prefs = consent_manager.get_user_preferences(target_phone)
+            if user_prefs:
+                vacation_mode = user_prefs.get("preferences", {}).get("vacation_mode", False)
+
         # Weather-aware logic
         weather = weather_service.get_weather()
         is_appropriate, weather_msg = weather_service.is_walk_appropriate(weather)
@@ -163,9 +172,11 @@ async def get_narrator_context() -> Dict[str, Any]:
         
         # Enhanced walk logic: Only recommend if walk needed AND weather/sun is appropriate
         if daily_walk_status.get("status") == "needed":
-            if is_appropriate:
-                recommendations.append(f"🐾 Priority: {weather_msg} - Walk Boris & Fiona!")
-                urgent_items.append("WALK NEEDED: Boris & Fiona")
+            if vacation_mode:
+                recommendations.append("🏃 Personal activity: Recommended (Vacation mode active)")
+            elif is_appropriate:
+                recommendations.append(f"🐾 Priority: {weather_msg} - Physical Activity Needed!")
+                urgent_items.append("WALK NEEDED: Activity Log")
             else:
                 recommendations.append(f"🐕 Walk status: Needed, but {weather_msg}")
         
@@ -182,7 +193,7 @@ async def get_narrator_context() -> Dict[str, Any]:
             "summary": summary, "goals_status": {"total": len(active_goals)},
             "urgent_items": urgent_items, "beeminder_alerts": [e.get("message", "") for e in emergencies[:5]],
             "goal_runway": goal_runway, "budget_status": budget_status, "recommendations": recommendations,
-            "daily_walk_status": daily_walk_status, "last_updated": datetime.now().isoformat()
+            "daily_walk_status": daily_walk_status, "vacation_mode": vacation_mode, "last_updated": datetime.now().isoformat()
         }
     except Exception as e:
         logger.error(f"Failed to build narrator context: {e}")

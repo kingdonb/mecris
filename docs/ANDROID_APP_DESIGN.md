@@ -24,6 +24,7 @@ Mecris Mobile serves as the "pulse" of the personal accountability system. While
 - **UI Elements**:
     - **Phone Number Field**: Register the device for SMS fallback.
     - **A2P Consent Toggle**: Clear, explicit opt-in for SMS reminders (required for Twilio compliance).
+    - **Doggies Status Toggle**: "Doggies are away" (Boarding/Vacation mode). Suppresses dog-specific reminders while maintaining personal activity goals.
     - **Message Preferences**: Checkboxes for "Walk Reminders", "Budget Alerts", "Beeminder Emergencies".
     - **Delete Account**: "Nuclear option" for user data rights.
 

@@ -39,38 +39,41 @@ class CoachingService:
             context = await self.context_provider()
             walk_status = context.get("daily_walk_status", {})
             has_walked = walk_status.get("has_activity_today", False)
+            vacation_mode = context.get("vacation_mode", False)
             
             beeminder_goals = await self.goal_provider()
             warning_goals = [g for g in beeminder_goals if g.get("derail_risk") in ["WARNING", "CAUTION"]]
             critical_goals = [g for g in beeminder_goals if g.get("derail_risk") == "CRITICAL"]
             
-            # Priority 1: High Momentum (Already walked)
+            # Priority 1: High Momentum (Already walked/active)
             if has_walked:
-                return await self._handle_high_momentum(critical_goals, warning_goals)
+                return await self._handle_high_momentum(critical_goals, warning_goals, vacation_mode)
             
-            # Priority 2: Low Momentum (Needs walk)
-            return self._handle_low_momentum(critical_goals)
+            # Priority 2: Low Momentum (Needs activity)
+            return self._handle_low_momentum(critical_goals, vacation_mode)
             
         except Exception as e:
             logger.error(f"Error generating coaching insight: {e}")
             raise
 
-    async def _handle_high_momentum(self, critical: List[Dict], warning: List[Dict]) -> CoachingInsight:
+    async def _handle_high_momentum(self, critical: List[Dict], warning: List[Dict], vacation_mode: bool) -> CoachingInsight:
         if critical:
             target = critical[0]
+            success_msg = "Great job on the walk!" if not vacation_mode else "Nice work staying active!"
             return CoachingInsight(
                 type=InsightType.MOMENTUM_PIVOT,
                 momentum="high",
-                message=f"🌟 Great job on the walk! Since you're on a roll, let's tackle the critical '{target['title']}' goal next. 🚀",
+                message=f"🌟 {success_msg} Since you're on a roll, let's tackle the critical '{target['title']}' goal next. 🚀",
                 target_slug=target["slug"]
             )
         
         if warning:
             target = warning[0]
+            success_msg = "the walk" if not vacation_mode else "hitting your activity goal"
             return CoachingInsight(
                 type=InsightType.MOMENTUM_PIVOT,
                 momentum="high",
-                message=f"🔥 Solid work walking Boris and Fiona! Ready to keep the streak going with some progress on '{target['title']}'? 📚",
+                message=f"🔥 Solid work {success_msg}! Ready to keep the streak going with some progress on '{target['title']}'? 📚",
                 target_slug=target["slug"]
             )
             
@@ -81,7 +84,7 @@ class CoachingService:
                 return CoachingInsight(
                     type=InsightType.OBSIDIAN_PIVOT,
                     momentum="high",
-                    message="🏗️ You've been crushing it on the Mecris architecture today and you've already walked. Keep that momentum! 🚀"
+                    message="🏗️ You've been crushing it on the Mecris architecture today and you've already logged activity. Keep that momentum! 🚀"
                 )
         except Exception as e:
             logger.warning(f"Failed to fetch obsidian context: {e}")
@@ -89,19 +92,27 @@ class CoachingService:
         return CoachingInsight(
             type=InsightType.CELEBRATION,
             momentum="high",
-            message="🌈 You're all caught up and you've already walked! Enjoy the headspace for some creative work. ✨"
+            message="🌈 You're all caught up and you've already logged activity! Enjoy the headspace for some creative work. ✨"
         )
 
-    def _handle_low_momentum(self, critical: List[Dict]) -> CoachingInsight:
+    def _handle_low_momentum(self, critical: List[Dict], vacation_mode: bool) -> CoachingInsight:
         if critical:
             target = critical[0]
+            walk_msg = "A quick walk" if not vacation_mode else "A quick personal activity"
             return CoachingInsight(
                 type=InsightType.URGENCY_ALERT,
                 momentum="low",
-                message=f"⚠️ Heads up! '{target['title']}' is critical. A quick walk with Boris and Fiona might be the reset you need to dive in. 🐕",
+                message=f"⚠️ Heads up! '{target['title']}' is critical. {walk_msg} might be the reset you need to dive in. 🐕",
                 target_slug=target["slug"]
             )
         
+        if vacation_mode:
+            return CoachingInsight(
+                type=InsightType.WALK_PROMPT,
+                momentum="neutral",
+                message="🏃 Time for a quick activity! A few minutes of movement will set a great tone for the day. 🌳"
+            )
+
         return CoachingInsight(
             type=InsightType.WALK_PROMPT,
             momentum="neutral",

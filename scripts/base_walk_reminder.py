@@ -67,11 +67,13 @@ def run_base_reminder():
     user_prefs = consent_manager.get_user_preferences(target_phone)
     if not user_prefs:
         logger.info("User not found in consent DB. Auto-enrolling for personal alerts...")
-        consent_manager.opt_in_user(
+        user_prefs = consent_manager.opt_in_user(
             phone_number=target_phone,
             consent_method="system_init",
             message_types=["walk_reminder", "budget_alert", "beeminder_emergency"]
         )
+    
+    vacation_mode = user_prefs.get("preferences", {}).get("vacation_mode", False)
     
     compliance_check = consent_manager.can_send_message(target_phone, "walk_reminder")
     
@@ -86,7 +88,13 @@ def run_base_reminder():
     # {{2}}: {{5}}.
     # Current local temperature: {{3}}F.
     # Please log your activity to maintain your account standing.
-    message = "Mecris System Alert: This is your daily activity update.\nBoris and Fiona's walk: Pending.\nClozemaster Arabic: Due today.\nCurrent local temperature: 65F.\nPlease log your activity to maintain your account standing."
+    
+    if vacation_mode:
+        walk_line = "Activity log: Pending"
+    else:
+        walk_line = "Physical activity: Pending"
+        
+    message = f"Mecris System Alert: This is your daily activity update.\n{walk_line}.\nClozemaster Arabic: Due today.\nCurrent local temperature: 65F.\nPlease log your activity to maintain your account standing."
     
     logger.info(f"Sending reminder: {message}")
     result = smart_send_message(message, target_phone)

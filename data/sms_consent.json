@@ -47,6 +47,7 @@
         "test"
       ],
       "preferences": {
+        "vacation_mode": true,
         "time_window_start": 0,
         "time_window_end": 23,
         "max_messages_per_day": 10,
