@@ -32,9 +32,16 @@ created_templates = []
 for t in templates:
     try:
         print(f"Creating Template: {t['friendly_name']}...")
+        # Use exact arguments from create_content_template.py
         content = client.content.v1.contents.create(
             friendly_name=t['friendly_name'],
-            language='en',
+            variables={
+                "1": "Activity",
+                "2": "Pending",
+                "3": "Commitment",
+                "4": "Due",
+                "5": "Now"
+            },
             types={
                 "twilio/text": {
                     "body": t['body']
