@@ -13,7 +13,7 @@ from datetime import datetime
 # Add project root to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from twilio_sender import send_sms, send_message, smart_send_message, budget_alert
+from twilio_sender import send_sms, send_message, smart_send_message
 
 
 class TestSMSMocked(unittest.TestCase):
