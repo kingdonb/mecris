@@ -97,6 +97,21 @@ def smart_send_message(message: str, to_number: Optional[str] = None) -> dict:
     delivery_method = os.getenv('REMINDER_DELIVERY_METHOD', 'console').lower()
     content_sid = os.getenv('TWILIO_WHATSAPP_TEMPLATE_SID')
     
+    # Check for approved template pool
+    approved_pool_path = "data/approved_templates.json"
+    if os.path.exists(approved_pool_path):
+        try:
+            with open(approved_pool_path, 'r') as f:
+                pool_data = json.load(f)
+                approved_sids = pool_data.get("approved_sids", [])
+                if approved_sids:
+                    # If current SID not in pool, or no SID set, use first approved
+                    if not content_sid or content_sid not in approved_sids:
+                        content_sid = approved_sids[0]
+                        logger.info(f"Using fallback approved template: {content_sid}")
+        except Exception as e:
+            logger.warning(f"Failed to load approved template pool: {e}")
+
     # Check vacation_mode to determine generic vs doggie labels
     from sms_consent_manager import consent_manager
     vacation_mode = False
@@ -111,9 +126,13 @@ def smart_send_message(message: str, to_number: Optional[str] = None) -> dict:
     # Logic: If we have a template SID and we are doing WhatsApp, try that first
     if delivery_method in ['whatsapp', 'both'] and content_sid:
         # Variables mapping for mecris_daily_alert_v1:
-        # {{1}}: {{2}}
-        # {{3}}: {{4}}
-        # Current local temperature: {{5}}F
+        # {{1}}: {{4}}
+        # {{2}}: {{5}}
+        # Current local temperature: {{3}}F
+        
+        # Note: If we use a DIFFERENT template from the pool, the mapping might need to change.
+        # For now, we assume all approved templates in the pool follow the same variable structure.
+        # This is Issue #54's next evolution: per-template mapping.
         
         import re
         
@@ -155,7 +174,7 @@ def smart_send_message(message: str, to_number: Optional[str] = None) -> dict:
         
         success = send_whatsapp_template(content_sid, variables, to_number)
         if success:
-            result.update({"sent": True, "method": "whatsapp_template"})
+            result.update({"sent": True, "method": "whatsapp_template", "template_sid": content_sid})
             return result
 
     # Fallback to freeform (works if window is open)

@@ -23,15 +23,22 @@ class WhatsAppTemplateManager:
             templates = self.client.content.v1.content_and_approvals.stream()
             results = []
             for record in templates:
-                # record.approval_requests is usually a dict or object containing status
-                approval = record.approval_requests or {}
+                # record.approval_requests is often a list or dict
+                approval = record.approval_requests
+                if isinstance(approval, list) and len(approval) > 0:
+                    approval = approval[0] # Usually the first one is WhatsApp
+                
+                if not approval:
+                    approval = {}
+                    
                 status = approval.get('status', 'unknown') if isinstance(approval, dict) else getattr(approval, 'status', 'unknown')
+                category = approval.get('category', 'unknown') if isinstance(approval, dict) else getattr(approval, 'category', 'unknown')
                 
                 results.append({
                     "sid": record.sid,
                     "name": record.friendly_name,
                     "status": status,
-                    "category": approval.get('category', 'unknown') if isinstance(approval, dict) else getattr(approval, 'category', 'unknown')
+                    "category": category
                 })
             return results
         except Exception as e:
