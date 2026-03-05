@@ -381,6 +381,15 @@ def enqueue_message(message: str, delay_minutes: int, to_number: Optional[str] =
     """Sidekiq-like: Enqueue a message to be sent after a delay."""
     return scheduler.enqueue_delayed_message(message, delay_minutes, to_number)
 
+@mcp.tool(description="View the current background job queue and leader status.")
+def get_scheduler_queue() -> Dict[str, Any]:
+    """View the shared job queue and coordination status."""
+    return {
+        "process_id": scheduler.process_id,
+        "is_leader": scheduler.is_leader,
+        "queue": scheduler.get_queue()
+    }
+
 from services.coaching_service import CoachingService
 
 @mcp.tool(description="Get a personalized coaching insight based on momentum and current needs.")
@@ -429,18 +438,31 @@ async def send_reminder_message(message_data: Dict[str, Any]) -> Dict[str, Any]:
     message = message_data.get("message")
     msg_type = message_data.get("type")
     
-    spam_file = "/tmp/mecris_daily_reminders.log"
+    db_path = os.getenv("MECRIS_DB_PATH", "mecris_usage.db")
     today = str(datetime.now().date())
-    if os.path.exists(spam_file):
-        with open(spam_file, 'r') as f:
-            if f.read().strip() == f"{today}:{msg_type}":
-                return {"sent": False, "reason": "Already sent today"}
+    
+    conn = sqlite3.connect(db_path)
+    try:
+        with conn:
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS message_log (
+                    date TEXT,
+                    type TEXT,
+                    sent_at TIMESTAMP,
+                    PRIMARY KEY (date, type)
+                )
+            """)
+            # Check if already sent
+            cursor = conn.execute("SELECT 1 FROM message_log WHERE date = ? AND type = ?", (today, msg_type))
+            if cursor.fetchone():
+                return {"sent": False, "reason": "Already sent today (coordinated)"}
 
-    delivery_result = smart_send_message(message)
-    if delivery_result["sent"]:
-        with open(spam_file, 'w') as f:
-            f.write(f"{today}:{msg_type}")
-    return delivery_result
+            delivery_result = smart_send_message(message)
+            if delivery_result["sent"]:
+                conn.execute("INSERT INTO message_log VALUES (?, ?, ?)", (today, msg_type, datetime.now().isoformat()))
+            return delivery_result
+    finally:
+        conn.close()
 
 
 

@@ -27,13 +27,18 @@ def main():
     """Main entry point for the stdio server."""
     logger.info("Starting Mecris MCP Server in stdio mode...")
     try:
-        from mcp_server import mcp
-        # mcp.run() by default uses stdio transport when no arguments are provided
-        # and it's called in a way that it can detect the environment.
+        from mcp_server import mcp, scheduler
+        
+        # Start background coordination engine
+        scheduler.start()
+        
+        # mcp.run() by default uses stdio transport
         mcp.run()
 
     except (KeyboardInterrupt, SystemExit):
         logger.info("Mecris MCP stdio server shutting down.")
+        if 'scheduler' in locals():
+            scheduler.shutdown()
     except Exception as e:
         logger.error(f"Mcp Stdio Server failed: {e}", exc_info=True)
         sys.exit(1)
