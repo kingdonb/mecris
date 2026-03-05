@@ -1,13 +1,12 @@
 import os
 import json
-from twilio.rest import Client
+import requests
+from requests.auth import HTTPBasicAuth
 from dotenv import load_dotenv
 
 load_dotenv()
 account_sid = os.getenv('TWILIO_ACCOUNT_SID')
 auth_token = os.getenv('TWILIO_AUTH_TOKEN')
-
-client = Client(account_sid, auth_token)
 
 # BULK TEMPLATE PLANNING (UTILITY CATEGORY)
 # These follow strict transactional patterns for "Account Alerts"
@@ -28,19 +27,12 @@ templates = [
 ]
 
 created_templates = []
+url = "https://content.twilio.com/v1/Content"
 
 for t in templates:
     try:
         print(f"Creating Template: {t['friendly_name']}...")
-        # Use the raw REST API via requests or use the client with a Dict if it supports it correctly
-        # The Twilio 9.x SDK seems to have a bug in how it handles nested objects in the Content API
-        # Let's try passing the objects explicitly if they exist
-        from twilio.rest.content.v1.content import ContentList
-        
-        text_obj = ContentList.TwilioText({"body": t['body']})
-        types_obj = ContentList.Types({"twilio_text": text_obj})
-        
-        request_obj = ContentList.ContentCreateRequest({
+        payload = {
             "friendly_name": t['friendly_name'],
             "language": "en",
             "variables": {
@@ -50,13 +42,24 @@ for t in templates:
                 "4": "Due",
                 "5": "Now"
             },
-            "types": types_obj
-        })
+            "types": {
+                "twilio/text": {
+                    "body": t['body']
+                }
+            }
+        }
         
-        content = client.content.v1.contents.create(request_obj)
+        response = requests.post(url, json=payload, auth=HTTPBasicAuth(account_sid, auth_token))
         
-        print(f"✅ Created {t['friendly_name']}: {content.sid}")
-        created_templates.append({"name": t['friendly_name'], "sid": content.sid})
+        if response.status_code == 201 or response.status_code == 200:
+            content = response.json()
+            sid = content.get("sid")
+            print(f"✅ Created {t['friendly_name']}: {sid}")
+            created_templates.append({"name": t['friendly_name'], "sid": sid})
+        else:
+            print(f"❌ Failed to create {t['friendly_name']}: {response.status_code}")
+            print(f"Response: {response.text}")
+            
     except Exception as e:
         print(f"Error creating {t['friendly_name']}: {e}")
 
