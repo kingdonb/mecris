@@ -20,6 +20,11 @@ make client
 
 **Usage**: Place your cursor in any text field, press **F9** to start recording, speak, and press **F9** again to transcribe.
 
+### ⌨️ Hotkeys
+- **F9**: Start/Stop recording.
+- **F8**: **Recovery** - Re-paste the last successful transcription.
+- **F7**: **Retry** - Re-transcribe the last audio recording (useful if API timed out).
+
 ## 📋 Prerequisites
 
 - **`uv`**: Fast Python package manager.
@@ -31,10 +36,11 @@ make client
 
 - `make setup`: Initializes the virtual environment and installs requirements.
 - `make server`: Starts the background Whisper server.
-- `make client`: Runs the interactive hotkey client.
+- `make client`: Runs the interactive hotkey client (use `make client ARGS="--setup"` for first-time config).
 - `make status`: Checks if the server is healthy and responding.
 - `make logs`: Tails the server output logs.
 - `make stop-server`: Gracefully kills the background server.
+- `make sync-upstream`: Syncs the `talktype-repo` with the latest upstream changes.
 - `make clean`: Removes PID files and log files.
 
 ## ⚙️ Configuration
@@ -42,12 +48,13 @@ make client
 You can override the default Whisper settings by passing variables to `make server`:
 
 ```bash
-# Use a larger model and the Mac GPU (MPS)
-make server WHISPER_MODEL=medium WHISPER_DEVICE=mps
+# Use a larger model and auto-detect best device (CUDA or CPU)
+make server WHISPER_MODEL=large-v3 WHISPER_DEVICE=auto
 ```
 
-- **Models**: `tiny`, `base`, `small` (default), `medium`, `large-v3`, `turbo`.
-- **Devices**: `cpu` (default), `mps` (macOS GPU), `cuda` (NVIDIA GPU).
+- **Models**: `tiny`, `base`, `small`, `medium` (default), `large-v3`, `turbo`.
+- **Devices**: `auto` (recommended), `cpu`, `cuda`.
+- **Note on macOS**: `mps` (Metal Performance Shaders) is not currently supported by the underlying `faster-whisper` implementation. Use `cpu` or `auto`.
 
 ## 🛠️ Troubleshooting
 

@@ -1,7 +1,7 @@
 # Makefile for TalkType
 # Located in mecris/tools/talktype/
 
-.PHONY: all server client stop-server status help setup logs clean check-deps
+.PHONY: all server client stop-server status help setup logs clean check-deps sync-upstream
 
 # Variables
 TALKTYPE_REPO := talktype-repo
@@ -12,8 +12,8 @@ WHISPER_SERVER_PY := whisper_server.py
 TALKTYPE_PY := talktype.py
 
 # Default configuration
-WHISPER_MODEL ?= small
-WHISPER_DEVICE ?= cpu
+WHISPER_MODEL ?= medium
+WHISPER_DEVICE ?= auto
 WHISPER_PORT ?= 8002
 WHISPER_COMPUTE ?= auto
 
@@ -32,13 +32,15 @@ help:
 	@echo ""
 	@echo "  $(GREEN)setup$(RESET)         - Initialize venv and install dependencies"
 	@echo "  $(GREEN)server$(RESET)        - Start the Whisper API server in the background"
-	@echo "                   Set WHISPER_MODEL=medium/large-v3, WHISPER_DEVICE=mps/cpu/cuda to override."
-	@echo "                   Example: make server WHISPER_MODEL=medium WHISPER_DEVICE=mps"
+	@echo "                   Set WHISPER_MODEL=medium/large-v3, WHISPER_DEVICE=cpu/cuda to override."
+	@echo "                   Example: make server WHISPER_MODEL=medium WHISPER_DEVICE=auto"
 	@echo "  $(GREEN)client$(RESET)        - Run the TalkType client (connects to local server)"
+	@echo "                   Use --setup flag for interactive configuration."
 	@echo "  $(GREEN)stop-server$(RESET)   - Stop the Whisper API server"
 	@echo "  $(GREEN)status$(RESET)        - Check if the Whisper API server is running"
 	@echo "  $(GREEN)logs$(RESET)          - Tail the whisper server logs"
 	@echo "  $(GREEN)clean$(RESET)         - Remove PID files and logs"
+	@echo "  $(GREEN)sync-upstream$(RESET) - Sync talktype-repo with upstream main"
 	@echo "  $(GREEN)help$(RESET)          - Show this help message"
 	@echo ""
 	@echo "$(YELLOW)Note: For macOS, ensure Accessibility permissions are granted to your terminal. $(RESET)"
@@ -70,6 +72,11 @@ client:
 	@echo "$(GREEN)Running TalkType client, connecting to server on port $(WHISPER_PORT)...$(RESET)"
 	@cd $(TALKTYPE_REPO) && \
 	../$(VENV_PYTHON) $(TALKTYPE_PY) --api http://localhost:$(WHISPER_PORT)/transcribe --minimal
+
+sync-upstream:
+	@echo "$(YELLOW)Syncing talktype-repo with upstream...$(RESET)"
+	@cd $(TALKTYPE_REPO) && git fetch upstream && git checkout main && git reset --hard upstream/main
+	@echo "$(GREEN)Sync complete. New HEAD: $$(cd $(TALKTYPE_REPO) && git rev-parse HEAD)$(RESET)"
 
 logs:
 	@tail -f talktype_whisper_server.log
@@ -116,7 +123,8 @@ status:
 		fi; \
 	fi; \
 	if curl -s http://localhost:$(WHISPER_PORT)/health > /dev/null; then \
-		echo "$(GREEN)Whisper API server health endpoint is responsive.$(RESET)"; \
+		echo "$(GREEN)Whisper API server health endpoint is responsive.$(RESET)" && \
+		curl -s http://localhost:$(WHISPER_PORT)/health | grep -o '\"device\":\"[^\"]*\"'; \
 	else \
 		echo "$(RED)Whisper API server health endpoint is NOT responsive.$(RESET)"; \
 	fi
