@@ -27,10 +27,12 @@ As an agent interacting with Mecris, these are your core operational directives.
 - 30-minute cap per task segment.
 - Use `Skill(tdg:atomic)` after coding sessions.
 
-### 🐕 THE HIGHEST PRIORITY: BORIS & FIONA
-**Every session: Prioritize physical activity for the doggies, then technical work.**
-1. Check walk status: `get_daily_activity(goal_slug='bike')`.
-2. If needed, remind the user: "🐾 Priority: Walk Boris & Fiona first".
+### 🐕 THE HIGHEST PRIORITY: PHYSICAL ACTIVITY
+**Every session: Prioritize physical activity, then technical work.**
+1. Check the `daily_walk_status` and `recommendations` array in `get_narrator_context`.
+2. If activity is needed, it is your job to ensure it happens. You are the accountability coach.
+3. Use your own voice and agency to deliver the reminder. Feel free to drop it in the conversation somewhere—beginning, middle, or end—where it seems appropriate and isn't likely to be missed.
+4. Adapt to the context provided. If the context explicitly mentions Boris and Fiona, use them as motivation! If the context is strictly focused on personal activity (e.g., they are away), keep the focus on the user hitting their physical goals. Keep it natural, and avoid mentioning the dogs multiple times in a single exchange if there are many other things to focus on.
 
 ### 🧠 Your Key Operational Directives
 

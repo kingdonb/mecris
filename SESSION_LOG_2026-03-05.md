@@ -34,3 +34,8 @@
 - **Shared Job Store**: Implemented `SQLAlchemyJobStore` allowing follower agents to seamlessly `enqueue_message` tasks for the leader to execute.
 - **Resilience**: Added WAL mode and retry logic to gracefully handle SQLite contention when multiple brains try to schedule tasks at the exact same time.
 - **Result**: Mecris now has a true heartbeat, capable of running background tasks and delayed queues as long as the server is loaded!
+
+## 🤖 Nightcap: Restoring Agency & The Engagement Paradox
+- **Issue**: Hardcoded prompt instructions forced the AI to sound robotic when `vacation_mode` was toggled, stripping away conversational agency.
+- **Fix**: Updated `GEMINI.md` and `CLAUDE.md` to empower the AI to act as an intelligent accountability coach. It now reads the MCP context and decides *how* and *when* to weave activity reminders into the conversation naturally, rather than parroting boilerplate text.
+- **Strategic Note - Autonomous Reach & The Engagement Paradox**: With the background scheduler active, the system is practically an autonomous agent ("OpenClaw"-style) capable of queueing jobs and reaching out without immediate user prompting. The challenge now is WhatsApp's ban on "engagement farming" (marketing). Our next goal (Issue #55) is to engineer "Utility" templates that *initiate necessary workflows* purely through transactional, informational alerts, inviting interaction without violating Meta's strict definition of a utility message.
