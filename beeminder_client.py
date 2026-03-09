@@ -258,7 +258,11 @@ class BeeminderClient:
     
     def _parse_goal(self, goal_data: Dict[str, Any]) -> BeeminderGoal:
         """Parse raw API response into structured BeeminderGoal"""
-        safebuf = goal_data.get("safebuf", 0)
+        # Ensure safebuf is an integer
+        try:
+            safebuf = int(goal_data.get("safebuf", 0))
+        except (ValueError, TypeError):
+            safebuf = 0
         
         return BeeminderGoal(
             slug=goal_data.get("slug", ""),
