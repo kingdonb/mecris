@@ -219,6 +219,14 @@ curl -s http://localhost:8000/narrator/context | jq '.budget_status.days_remaini
 2. Slack integration
 3. Advanced goal correlation analysis
 
+## External Integrations
+
+### Noclod (Claude Code Proxy)
+Enable cost-effective use of Claude Code CLI by proxying requests to OpenAI-compatible backends like Groq.
+- **Repository**: [kingdon-ci/noclod](https://github.com/kingdon-ci/noclod)
+- **Technical Brief**: [CLAUDE_CODE_NOCLOD_INTEGRATION.md](./CLAUDE_CODE_NOCLOD_INTEGRATION.md)
+- **Local Port**: `8082` (to avoid collision with Mecris)
+
 ---
 
 **Status**: Operational with degraded features (1.1 days budget remaining)  
