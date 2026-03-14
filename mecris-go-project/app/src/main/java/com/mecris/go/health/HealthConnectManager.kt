@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.health.connect.client.HealthConnectClient
 import androidx.health.connect.client.permission.HealthPermission
 import androidx.health.connect.client.records.DistanceRecord
+import androidx.health.connect.client.records.ExerciseRouteResult
 import androidx.health.connect.client.records.ExerciseSessionRecord
 import androidx.health.connect.client.records.StepsRecord
 import androidx.health.connect.client.request.ReadRecordsRequest
@@ -90,7 +91,7 @@ class HealthConnectManager(private val context: Context) {
 
         // 4. Check for Routes
         // Note: READ_EXERCISE_ROUTES is a separate permission check
-        val hasRoutes = sessions.any { it.hasRoute }
+        val hasRoutes = sessions.any { it.exerciseRouteResult is ExerciseRouteResult.Data }
 
         return FullActivityReport(
             steps = totalSteps,
