@@ -1,71 +1,67 @@
-# Android App Design Scaffold: Mecris Mobile
+# Mecris-Go: Android App Design & Architecture
 
-> **Mecris Mobile Extension**  
-> *Low-friction accountability, push notifications, and consent management*
+> **Mecris-Go**  
+> *Automated fitness inference, low-friction accountability, and proactive verification*
 
 ## 1. Narrative & Strategic Goal
 
-Mecris Mobile serves as the "pulse" of the personal accountability system. While the backend (Spin/Serverless) handles the logic, the Android app provides:
-- **Zero-Cost Notifications**: Push notifications via FCM (Firebase Cloud Messaging) as a primary alternative to SMS/WhatsApp.
-- **Compliance Hub**: A central place to manage A2P SMS consent, opt-in/opt-out, and preference tuning.
-- **Low-Friction Updates**: Quick buttons for common actions (e.g., "Walking Boris now") to update the system state without needing a terminal or voice-to-text.
+Mecris-Go (formerly Mecris Mobile) serves as the "pulse" and "sensory input" of the personal accountability system. The primary goal has shifted from a simple notification hub to a **proactive inference engine** using local health data. 
 
-## 2. Core UI Interface Panels
+Instead of relying on the user to manually log Beeminder points or inform the system that a walk occurred, Mecris-Go automatically pulls activity data from the phone, infers whether a walk happened, proactively reaches out to confirm or encourage, and directly creates the Beeminder data points.
 
-### A. Onboarding & Authentication
-- **Goal**: Establish identity and connect to the Mecris backend.
+## 2. Core Technical Flow: Health Connect & Inference
+
+*Note: The Google Fit API is deprecated and shutting down. Mecris-Go will rely on the modern **Android Health Connect API** to read step, distance, and exercise route (GPS) data.*
+
+### The Inference Pipeline
+1. **Authorization**: User logs in (Google OAuth) and grants Mecris-Go read-access to Health Connect (Steps, Distance, Exercise Routes).
+2. **Data Sync**: The app periodically polls Health Connect for new "Walking" sessions, distance covered, and GPS breadcrumbs.
+3. **Inference Engine**: 
+    - The backend (or on-device worker) analyzes the aggregated data.
+    - *Example*: A cluster of 3,000 steps over 30 minutes with GPS data showing a path around the neighborhood.
+    - *Conclusion*: "Dog Walk Detected."
+4. **Proactive Communication**:
+    - Mecris reaches out via Push Notification or SMS: *"I see you covered 1.5 miles this morning! Logged as a dog walk. Great job!"*
+    - Alternatively, if the inference is ambiguous (e.g., lots of steps but strictly indoors): *"Lots of steps today! Did you take Boris and Fiona out, or were you just pacing?"*
+5. **Beeminder Automation**: Once inferred (and/or confirmed via quick reply), Mecris-Go automatically dispatches the datapoint to Beeminder, eliminating manual data entry friction.
+6. **Anti-Cheat & Verification (Future)**: 
+    - Using the GPS Exercise Route data from Health Connect, Mecris-Go can verify that the walk actually happened outdoors, acting as a potential verification layer for Beeminder. 
+    - It can also reconcile days where the phone was left behind if the user has a connected wearable, since Health Connect serves as a central hub for smartwatch data.
+
+## 3. UI Interface Panels
+
+### A. Onboarding & Health Connect Authorization
+- **Goal**: Establish identity and secure local health data permissions.
 - **UI Elements**:
-    - Splash screen with the Mecris "Robot" branding.
-    - Login via **Magic Link** (email) or **OAuth** (Google/GitHub).
-    - "Welcome back" screen showing current goal summary (Narrator context snippet).
+    - Google OAuth Login.
+    - Prominent permission prompt: "Connect to Health Connect" to read Steps, Distance, and Exercise Routes.
 
-### B. Identity & Consent Dashboard (Compliance)
-- **Goal**: Manage legal/compliance requirements for SMS and data.
+### B. The "Pulse" (Inference & Notification Hub)
+- **Goal**: A chronological feed of Mecris inferences and communications.
 - **UI Elements**:
-    - **Phone Number Field**: Register the device for SMS fallback.
-    - **A2P Consent Toggle**: Clear, explicit opt-in for SMS reminders (required for Twilio compliance).
-    - **Doggies Status Toggle**: "Doggies are away" (Boarding/Vacation mode). Suppresses dog-specific reminders while maintaining personal activity goals.
-    - **Message Preferences**: Checkboxes for "Walk Reminders", "Budget Alerts", "Beeminder Emergencies".
-    - **Delete Account**: "Nuclear option" for user data rights.
+    - Recent automated inferences (e.g., 📍 *Walk inferred at 10:30 AM*).
+    - Quick-action buttons on inferences (e.g., "Confirm Dog Walk", "Not a dog walk", "Snooze").
 
-### C. The "Pulse" (Notification Hub)
-- **Goal**: A chronological feed of all Mecris communications.
+### C. Compliance & Settings
+- **Goal**: Manage A2P SMS consent, push notifications, and system toggles.
 - **UI Elements**:
-    - List of recent alerts with icons (🚶‍♂️, 💰, 🚨).
-    - "Read" vs. "Unread" states.
-    - Quick-action buttons attached to notifications (e.g., "Snooze 1hr", "Done").
+    - **A2P Consent Toggle**: Explicit opt-in for SMS fallback.
+    - **Doggies Status Toggle**: "Doggies are away" (Boarding/Vacation mode) - changes the inference logic from "Dog Walk" to "Personal Activity".
 
-### D. Quiet Hours & Schedule
-- **Goal**: Define when Mecris is allowed to be "sassy".
-- **UI Elements**:
-    - Time-range picker (e.g., "Don't bug me before 8 AM or after 9 PM").
-    - Weekend toggle (Different schedule for Saturdays/Sundays).
-
-### E. Goal Status Dashboard
+### D. Goal Status Dashboard
 - **Goal**: Real-time visibility into the system state.
 - **UI Elements**:
-    - **Dog Walk Progress**: "Boris & Fiona: ❌ Needed" or "✅ Logged" (Source: **Auto-Fit** or Manual).
-    - **Daily Steps**: Live progress bar against the 10k goal or 0.5mi threshold.
-    - **Budget Health**: Progress bar showing remaining Claude/Groq funds.
-    - **Beeminder Risk**: List of goals with runway colors (Green/Yellow/Red).
+    - **Daily Inferred Activity**: Live progress bar against step/distance thresholds.
+    - **Beeminder Sync Status**: Shows when the last automated sync occurred based on health data.
+    - **Budget & System Health**: Progress bars for Claude/Groq funds.
 
-## 3. New Functionality Enabled
-
-1. **Rich Push Notifications**: Unlike SMS, Android push can include images, action buttons, and progress bars.
-2. **Foreground Service/Live Activity**: Keep the "Dog Walk" status visible on the lock screen until it's completed.
-3. **Fit Integration (Automatic Detection)**: 
-    - Connect to **Google Fit / Health Connect** to read daily step counts and logged activities.
-    - If a walk >0.5 miles is detected, automatically update the "Bike" goal in Beeminder.
-    - **Smart Reminders**: Automatically suppress "Dog Walk" prompts if the system sees you've already hit the activity threshold for the day.
-4. **Location-Aware Reminders (Future)**: Detect when the user is at the park or out for a walk and automatically update the "Bike" goal status.
-5. **Offline Mode**: Cache the last known status so you can check your goals even without a data connection.
-
-## 4. Technical Architecture (Android + Spin)
+## 4. Technical Architecture
 
 - **Frontend**: Jetpack Compose (Modern Android UI).
-- **Backend**: Spin app (Rust/Go) running on a serverless platform (e.g., Fermyon Cloud or self-hosted).
-- **Communication**: REST API + FCM (Push).
-- **Storage**: Mecris SQLite (via the Spin backend API).
+- **Health Data**: Android Health Connect SDK (requires Android 14+ natively, or available on Android 9-13 via app install).
+- **Backend**: Spin app (Rust/Go) running on Fermyon Cloud or self-hosted, handling the heavy inference logic and Beeminder/SMS dispatch.
+- **Communication**: REST API + FCM (Firebase Cloud Messaging).
+- **Authentication**: Firebase Auth / Google Identity Services.
 
 ---
-*This document serves as the design scaffold for the Mecris Android application implementation.*
+*Mecris-Go represents the transition from a passive dashboard to an active, sensory-aware accountability partner.*
