@@ -39,24 +39,24 @@ The backend is decomposed into focused WebAssembly modules (Rust or Go):
 1.  **Auth Service**: Middleware that intercepts requests, validates Pocket ID JWTs, and injects user context.
 2.  **Sync Service**: Ingests "Walk Events" from the Android app. Handles deduplication/idempotency (e.g., ignoring duplicate syncs of the same time window).
 3.  **Cron Trigger (The Operator)**: Runs periodically. It orchestrates the flow below.
-4.  **Mecris Bridge**: A client that calls the existing Mecris MCP `/narrator/context` to fetch current budget, Beeminder runways, and system state.
-5.  **Intelligence Service**: Evaluates Mecris context. If action is needed, invokes Anthropic (Claude API) to draft personalized, context-aware, and budget-conscious reminders.
-6.  **Notification Router**: Dispatches drafted messages. Evaluates user preference hierarchy (e.g., Try Telegram -> Fallback to Android FCM Push -> Fallback to SMS).
+4.  **Mecris Bridge / Edge Agent**: A client that fetches current budget, Beeminder runways, and system state. *Long-term vision:* Mecris itself will not be a centralized server, but rather a decentralized, serverless entity. It will likely run as an independent Spin module per user, or even directly on the user's Android device (Edge AI). This ensures that when a user decrypts their data, the API calls originate from them directly.
+5.  **Intelligence Service**: Evaluates Mecris context. If action is needed, invokes an LLM to draft personalized, context-aware reminders. To maintain aggressive cost-consciousness, this relies on **Groq via Noclod** (e.g., using models like Llama 3 or Mixtral), completely bypassing expensive APIs like Anthropic.
+6.  **Notification Router**: Dispatches drafted messages. Evaluates user preference hierarchy. **WhatsApp Business API (via Twilio)** is the primary, production-ready channel utilizing pre-approved marketing/utility templates. (Telegram is relegated to a future nice-to-have, and FCM Push remains the fallback).
 
 ## 6. The Autonomous Intelligence Loop
 This is the core value proposition of Mecris-Go.
 
 1.  **Trigger**: Spin Cron task activates (e.g., 4:00 PM local time).
-2.  **Context Assembly**: Spin pulls Beeminder status + Mecris budget status (`$21.00 left`).
+2.  **Context Assembly**: Spin pulls Beeminder status + Mecris budget status (`$1.34` Groq usage this month).
 3.  **Decision & Budget Check**: 
-    - *Scenario*: User hasn't walked, Beeminder derails in 4 hours, Budget is healthy.
+    - *Scenario*: User hasn't walked, Beeminder derails in 4 hours.
     - *Conflict Resolution Check*: If Beeminder already shows "completed" manually today, abort.
-    - *Action*: Prompt Claude (Sonnet 3.5) for a "Sassy Saturday" reminder. If budget was low (<$2.00), downgrade to Haiku.
-4.  **Dispatch**: Send "Walk the dogs!" notification.
+    - *Action*: Prompt Groq (via Noclod) for a "Sassy Saturday" reminder using pre-approved Twilio WhatsApp templates.
+4.  **Dispatch**: Send "Walk the dogs!" notification via WhatsApp.
 5.  **Auto-Log Closure**: Once the user actually walks, Android `WorkManager` syncs the walk to Spin. Spin updates the database, calls the Beeminder API to insert the datapoint, and sends a final congratulatory ping: *"Walk detected and logged. Buffer extended."*
 
 ## 7. Implementation Roadmap
-- **Phase 1 (MVP)**: Android app with Health Connect OAuth, local WorkManager heuristics, manual confirmation button, and direct Beeminder API sync (no LLM, no Spin).
+- **Phase 1 (MVP)**: Android app with Health Connect OAuth, local WorkManager heuristics, manual confirmation button, and direct Beeminder API sync.
 - **Phase 2 (Cloud State)**: Introduce Pocket ID, Fermyon Spin sync service, and Neon DB to securely store inferences.
-- **Phase 3 (Autonomous Loop)**: Introduce the Spin Cron Trigger, Mecris MCP Bridge, Anthropic LLM integration, and Telegram notifications.
-- **Phase 4 (Advanced Platforms)**: Add WhatsApp Business API support and Android FCM Push Notifications.
+- **Phase 3 (WhatsApp & Noclod)**: Introduce the Spin Cron Trigger, Twilio WhatsApp integration (using existing approved templates), and Groq/Noclod LLM integration.
+- **Phase 4 (Decentralized Mecris)**: Port the core `/narrator/context` Mecris logic into individual user-owned Spin modules or directly onto the Android edge device.
