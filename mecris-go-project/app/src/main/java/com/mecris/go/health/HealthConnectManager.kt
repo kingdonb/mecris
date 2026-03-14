@@ -124,8 +124,8 @@ class HealthConnectManager(private val context: Context) {
             val routeResult = session.exerciseRouteResult
             if (routeResult is ExerciseRouteResult.Data) {
                 hasRoutes = true
-                totalRoutePoints += routeResult.exerciseRoute.locations.size
-                Log.d("HealthConnectManager", "Session ${session.metadata.id} has route with ${routeResult.exerciseRoute.locations.size} points")
+                totalRoutePoints += routeResult.exerciseRoute.routeLocations.size
+                Log.d("HealthConnectManager", "Session ${session.metadata.id} has route with ${routeResult.exerciseRoute.routeLocations.size} points")
             } else if (routeResult is ExerciseRouteResult.ConsentRequired) {
                 Log.w("HealthConnectManager", "Route consent required for session ${session.metadata.id}")
             }
