@@ -1,67 +1,57 @@
-# Mecris-Go: Android App Design & Architecture
+# Mecris-Go: Technical Architecture & Design
 
 > **Mecris-Go**  
-> *Automated fitness inference, low-friction accountability, and proactive verification*
+> *Autonomous Intelligence Loop: Health Connect -> Spin -> Mecris -> Multi-Platform Notifications*
 
-## 1. Narrative & Strategic Goal
+## 1. Executive Summary
+Mecris-Go is a serverless extension of the Mecris accountability system. It transforms the system from a passive observer into an autonomous agent that proactively detects activity via **Android Health Connect**, manages identity via **Pocket ID (Passkeys)**, and orchestrates reminders via **Fermyon Spin** and **Neon PostgreSQL**.
 
-Mecris-Go (formerly Mecris Mobile) serves as the "pulse" and "sensory input" of the personal accountability system. The primary goal has shifted from a simple notification hub to a **proactive inference engine** using local health data. 
+## 2. Authentication & Security (Pocket ID)
+Mecris-Go eliminates passwords in favor of a secure, OIDC-compliant passkey system.
 
-Instead of relying on the user to manually log Beeminder points or inform the system that a walk occurred, Mecris-Go automatically pulls activity data from the phone, infers whether a walk happened, proactively reaches out to confirm or encourage, and directly creates the Beeminder data points.
+- **Identity Provider**: Pocket ID (Self-hosted/Cloud).
+- **Android Integration**: Uses the **Credential Manager API** (Android 14+) for FIDO2/WebAuthn passkey authentication.
+- **JWT Validation**: The Spin backend validates incoming JWTs using the Pocket ID JWKS endpoint.
+- **Privacy**: Raw GPS traces are processed **on-device** to determine "Walk Events." Only summarized walk metadata (distance, duration, confidence) is sent to the Spin backend.
 
-## 2. Core Technical Flow: Health Connect & Inference
+## 3. Data Architecture (Neon PostgreSQL)
+User state and inference history are persisted in a serverless Neon database.
 
-*Note: The Google Fit API is deprecated and shutting down. Mecris-Go will rely on the modern **Android Health Connect API** to read step, distance, and exercise route (GPS) data.*
+### Schema Overview:
+- `users`: `pocket_id_sub`, `beeminder_token_encrypted`, `notification_prefs`, `budget_limit`.
+- `walk_inferences`: `user_id`, `start_time`, `end_time`, `confidence_score`, `status` (pending|confirmed|auto-logged).
+- `notification_log`: `user_id`, `channel` (Push|Telegram|WhatsApp), `cost_usd`, `sent_at`.
 
-### The Inference Pipeline
-1. **Authorization**: User logs in (Google OAuth) and grants Mecris-Go read-access to Health Connect (Steps, Distance, Exercise Routes).
-2. **Data Sync**: The app periodically polls Health Connect for new "Walking" sessions, distance covered, and GPS breadcrumbs.
-3. **Inference Engine**: 
-    - The backend (or on-device worker) analyzes the aggregated data.
-    - *Example*: A cluster of 3,000 steps over 30 minutes with GPS data showing a path around the neighborhood.
-    - *Conclusion*: "Dog Walk Detected."
-4. **Proactive Communication**:
-    - Mecris reaches out via Push Notification or SMS: *"I see you covered 1.5 miles this morning! Logged as a dog walk. Great job!"*
-    - Alternatively, if the inference is ambiguous (e.g., lots of steps but strictly indoors): *"Lots of steps today! Did you take Boris and Fiona out, or were you just pacing?"*
-5. **Beeminder Automation**: Once inferred (and/or confirmed via quick reply), Mecris-Go automatically dispatches the datapoint to Beeminder, eliminating manual data entry friction.
-6. **Anti-Cheat & Verification (Future)**: 
-    - Using the GPS Exercise Route data from Health Connect, Mecris-Go can verify that the walk actually happened outdoors, acting as a potential verification layer for Beeminder. 
-    - It can also reconcile days where the phone was left behind if the user has a connected wearable, since Health Connect serves as a central hub for smartwatch data.
+## 4. Spin Module Design (The WASM Backend)
+The backend is decomposed into focused WebAssembly modules:
 
-## 3. UI Interface Panels
+1.  **Auth Service**: Handles Pocket ID JWT validation and session management.
+2.  **Sync Service**: Ingests "Walk Events" from the Android app and stores them in Neon.
+3.  **Inference Engine (Cron Trigger)**: Runs every 15-30 mins. Reconciles recent Fit data against Beeminder goals.
+4.  **Narrator Bridge**: Calls the Mecris MCP `/narrator/context` to fetch current budget and goal urgency.
+5.  **Intelligence Service**: Calls LLM (Claude) to draft personalized, budget-conscious reminders.
+6.  **Notification Router**: Dispatches messages to FCM (Push), Telegram Bot API, or WhatsApp Business API.
 
-### A. Onboarding & Health Connect Authorization
-- **Goal**: Establish identity and secure local health data permissions.
-- **UI Elements**:
-    - Google OAuth Login.
-    - Prominent permission prompt: "Connect to Health Connect" to read Steps, Distance, and Exercise Routes.
+## 5. The Autonomous Intelligence Loop
+1.  **Trigger**: Spin Cron task activates.
+2.  **Context Assembly**: Spin pulls user data from Neon + Beeminder status + Mecris budget status.
+3.  **Decision**: 
+    - *Scenario*: User hasn't walked, Beeminder derails in 4 hours, Budget has $10. 
+    - *Action*: Prompt Claude for a "Sassy Saturday" reminder.
+4.  **Dispatch**: Send "Walk the dogs!" notification via the user's preferred channel.
+5.  **Auto-Log**: If Health Connect data confirms a walk later, the **Beeminder Bridge** automatically logs the data point.
 
-### B. The "Pulse" (Inference & Notification Hub)
-- **Goal**: A chronological feed of Mecris inferences and communications.
-- **UI Elements**:
-    - Recent automated inferences (e.g., 📍 *Walk inferred at 10:30 AM*).
-    - Quick-action buttons on inferences (e.g., "Confirm Dog Walk", "Not a dog walk", "Snooze").
+## 6. Android App Architecture
+- **Framework**: Jetpack Compose.
+- **Health Integration**: Health Connect SDK.
+- **Background Work**: `WorkManager` for periodic Health Connect polling and local GPS processing.
+- **Auth**: Credential Manager for Passkey support.
 
-### C. Compliance & Settings
-- **Goal**: Manage A2P SMS consent, push notifications, and system toggles.
-- **UI Elements**:
-    - **A2P Consent Toggle**: Explicit opt-in for SMS fallback.
-    - **Doggies Status Toggle**: "Doggies are away" (Boarding/Vacation mode) - changes the inference logic from "Dog Walk" to "Personal Activity".
-
-### D. Goal Status Dashboard
-- **Goal**: Real-time visibility into the system state.
-- **UI Elements**:
-    - **Daily Inferred Activity**: Live progress bar against step/distance thresholds.
-    - **Beeminder Sync Status**: Shows when the last automated sync occurred based on health data.
-    - **Budget & System Health**: Progress bars for Claude/Groq funds.
-
-## 4. Technical Architecture
-
-- **Frontend**: Jetpack Compose (Modern Android UI).
-- **Health Data**: Android Health Connect SDK (requires Android 14+ natively, or available on Android 9-13 via app install).
-- **Backend**: Spin app (Rust/Go) running on Fermyon Cloud or self-hosted, handling the heavy inference logic and Beeminder/SMS dispatch.
-- **Communication**: REST API + FCM (Firebase Cloud Messaging).
-- **Authentication**: Firebase Auth / Google Identity Services.
+## 7. Mecris Integration Strategy (Hybrid)
+Mecris remains the **Source of Truth** for:
+- **Unified Context**: The `/narrator/context` endpoint.
+- **Budget Tracking**: Managing the Claude/Groq usage limits.
+- **Spin Interface**: Spin acts as the autonomous "operator" that queries the Mecris MCP to drive real-world actions.
 
 ---
-*Mecris-Go represents the transition from a passive dashboard to an active, sensory-aware accountability partner.*
+*This architecture ensures that Mecris-Go is secure, privacy-preserving, and truly autonomous.*
