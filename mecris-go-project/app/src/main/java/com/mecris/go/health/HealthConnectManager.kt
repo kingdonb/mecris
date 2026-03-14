@@ -49,12 +49,15 @@ class HealthConnectManager(private val context: Context) {
         return WalkDataSummary(
             totalSteps = report.steps,
             totalDistanceMeters = report.distanceMeters,
+            distanceSource = report.distanceSource,
+            walkingSessionsCount = report.walkingSessionsCount,
+            hasExerciseRoutes = report.hasExerciseRoutes,
             isWalkInferred = likelyWalked
         )
     }
 
     suspend fun fetchFullActivityReport(): FullActivityReport {
-        if (!hasAllPermissions()) return FullActivityReport(0, 0.0, 0, false)
+        if (!hasAllPermissions()) return FullActivityReport(0, 0.0, "None", 0, false)
 
         val endTime = Instant.now()
         val startTime = endTime.minus(23, ChronoUnit.HOURS)
@@ -72,11 +75,16 @@ class HealthConnectManager(private val context: Context) {
             recordType = DistanceRecord::class,
             timeRangeFilter = timeRangeFilter
         )
-        var totalDistanceMeters = healthConnectClient.readRecords(distanceRequest).records.sumOf { it.distance.inMeters }
+        val distanceRecords = healthConnectClient.readRecords(distanceRequest).records
+        var totalDistanceMeters = distanceRecords.sumOf { it.distance.inMeters }
+        var source = "Health Connect"
 
         // Fallback estimate
         if (totalDistanceMeters == 0.0 && totalSteps > 0) {
             totalDistanceMeters = totalSteps * 0.66 // Refined stride: 0.66m per step
+            source = "Estimated from Steps"
+        } else if (totalDistanceMeters == 0.0) {
+            source = "No Data"
         }
 
         // 3. Read Exercise Sessions
@@ -90,12 +98,12 @@ class HealthConnectManager(private val context: Context) {
         }
 
         // 4. Check for Routes
-        // Note: READ_EXERCISE_ROUTES is a separate permission check
         val hasRoutes = sessions.any { it.exerciseRouteResult is ExerciseRouteResult.Data }
 
         return FullActivityReport(
             steps = totalSteps,
             distanceMeters = totalDistanceMeters,
+            distanceSource = source,
             walkingSessionsCount = walkingSessions.size,
             hasExerciseRoutes = hasRoutes
         )
@@ -105,12 +113,16 @@ class HealthConnectManager(private val context: Context) {
 data class WalkDataSummary(
     val totalSteps: Long,
     val totalDistanceMeters: Double,
+    val distanceSource: String,
+    val walkingSessionsCount: Int,
+    val hasExerciseRoutes: Boolean,
     val isWalkInferred: Boolean
 )
 
 data class FullActivityReport(
     val steps: Long,
     val distanceMeters: Double,
+    val distanceSource: String,
     val walkingSessionsCount: Int,
     val hasExerciseRoutes: Boolean
 )
