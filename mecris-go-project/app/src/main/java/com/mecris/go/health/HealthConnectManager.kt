@@ -76,7 +76,7 @@ class HealthConnectManager(private val context: Context) {
 
         // Fallback estimate
         if (totalDistanceMeters == 0.0 && totalSteps > 0) {
-            totalDistanceMeters = totalSteps * 0.8
+            totalDistanceMeters = totalSteps * 0.66 // Refined stride: 0.66m per step
         }
 
         // 3. Read Exercise Sessions
