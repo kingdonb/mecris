@@ -4,7 +4,6 @@ import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -60,6 +59,10 @@ class MainActivity : ComponentActivity() {
         val requestForegroundPermissions = registerForActivityResult(requestPermissionActivityContract) { granted ->
             if (granted.containsAll(healthConnectManager.foregroundPermissions)) {
                 Toast.makeText(this, "Foreground permissions granted", Toast.LENGTH_SHORT).show()
+                recreate()
+            } else {
+                // Some might be granted, some not. 
+                // We recreate anyway to let the UI reassess the state.
                 recreate()
             }
         }
@@ -163,7 +166,7 @@ fun MecrisGoApp(
         } else if (!hasForeground) {
             PermissionCard(
                 title = "Foreground Permissions Missing",
-                description = "Mecris-Go needs access to your steps and distance to track your dog walks while the app is open.",
+                description = "Mecris-Go needs access to your steps, distance, and exercise sessions to track your walks.",
                 buttonText = "Grant Foreground Access",
                 onGrant = onRequestForegroundPermissions
             )
@@ -192,17 +195,17 @@ fun MecrisGoApp(
                         Text("Detailed Activity Report", style = MaterialTheme.typography.titleLarge)
                         Divider(modifier = Modifier.padding(vertical = 8.dp))
                         
-                        InfoRow("Steps (23h)", "${walkData!!.totalSteps}")
+                        InfoRow("Steps (24h)", "${walkData!!.totalSteps}")
                         
                         InfoRow("Distance", "${String.format("%.2f", walkData!!.totalDistanceMeters / 1609.34)} miles")
                         Text("Source: ${walkData!!.distanceSource}", 
                              style = MaterialTheme.typography.labelSmall,
-                             color = if (walkData!!.distanceSource == "Health Connect") 
+                             color = if (walkData!!.distanceSource.startsWith("Health Connect")) 
                                  MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.secondary)
                         
                         Spacer(modifier = Modifier.height(8.dp))
                         InfoRow("Walking Sessions", "${walkData!!.walkingSessionsCount}")
-                        InfoRow("GPS Route Found", if(walkData!!.hasExerciseRoutes) "YES 📍" else "NO")
+                        InfoRow("GPS Route Found", if(walkData!!.hasExerciseRoutes) "YES 📍 (${walkData!!.routePointCount} pts)" else "NO")
                         
                         Divider(modifier = Modifier.padding(vertical = 8.dp))
                         
