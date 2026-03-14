@@ -19,11 +19,14 @@ class HealthConnectManager(private val context: Context) {
 
     val healthConnectClient by lazy { HealthConnectClient.getOrCreate(context) }
 
-    val permissions = setOf(
+    val foregroundPermissions = setOf(
         HealthPermission.getReadPermission(StepsRecord::class),
         HealthPermission.getReadPermission(DistanceRecord::class),
         HealthPermission.getReadPermission(ExerciseSessionRecord::class)
     )
+
+    // Special background permission
+    val backgroundPermission = "android.permission.health.READ_HEALTH_DATA_IN_BACKGROUND"
 
     private val _isSupported = MutableStateFlow(false)
     val isSupported: StateFlow<Boolean> = _isSupported
@@ -37,10 +40,16 @@ class HealthConnectManager(private val context: Context) {
         _isSupported.value = availability == HealthConnectClient.SDK_AVAILABLE
     }
 
-    suspend fun hasAllPermissions(): Boolean {
+    suspend fun hasForegroundPermissions(): Boolean {
         if (!_isSupported.value) return false
         val granted = healthConnectClient.permissionController.getGrantedPermissions()
-        return granted.containsAll(permissions)
+        return granted.containsAll(foregroundPermissions)
+    }
+
+    suspend fun hasBackgroundPermission(): Boolean {
+        if (!_isSupported.value) return false
+        val granted = healthConnectClient.permissionController.getGrantedPermissions()
+        return granted.contains(backgroundPermission)
     }
 
     suspend fun fetchRecentWalkData(): WalkDataSummary {
@@ -57,7 +66,7 @@ class HealthConnectManager(private val context: Context) {
     }
 
     suspend fun fetchFullActivityReport(): FullActivityReport {
-        if (!hasAllPermissions()) return FullActivityReport(0, 0.0, "None", 0, false)
+        if (!hasForegroundPermissions()) return FullActivityReport(0, 0.0, "None", 0, false)
 
         val endTime = Instant.now()
         val startTime = endTime.minus(23, ChronoUnit.HOURS)

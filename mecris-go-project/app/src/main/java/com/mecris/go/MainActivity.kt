@@ -4,6 +4,7 @@ import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -46,12 +47,20 @@ class MainActivity : ComponentActivity() {
         setupWorkManager()
 
         val requestPermissionActivityContract = PermissionController.createRequestPermissionResultContract()
-        val requestPermissions = registerForActivityResult(requestPermissionActivityContract) { granted ->
-            if (granted.containsAll(healthConnectManager.permissions)) {
-                Toast.makeText(this, "Health Connect permissions granted", Toast.LENGTH_SHORT).show()
+        
+        // Launcher for Background permission
+        val requestBackgroundPermission = registerForActivityResult(requestPermissionActivityContract) { granted ->
+            if (granted.contains(healthConnectManager.backgroundPermission)) {
+                Toast.makeText(this, "Background access granted!", Toast.LENGTH_SHORT).show()
                 recreate()
-            } else {
-                Toast.makeText(this, "Some permissions were denied", Toast.LENGTH_LONG).show()
+            }
+        }
+
+        // Launcher for Foreground permissions
+        val requestForegroundPermissions = registerForActivityResult(requestPermissionActivityContract) { granted ->
+            if (granted.containsAll(healthConnectManager.foregroundPermissions)) {
+                Toast.makeText(this, "Foreground permissions granted", Toast.LENGTH_SHORT).show()
+                recreate()
             }
         }
 
@@ -64,8 +73,11 @@ class MainActivity : ComponentActivity() {
                     MecrisGoApp(
                         auth = pocketIdAuth,
                         healthManager = healthConnectManager,
-                        onRequestPermissions = {
-                            requestPermissions.launch(healthConnectManager.permissions)
+                        onRequestForegroundPermissions = {
+                            requestForegroundPermissions.launch(healthConnectManager.foregroundPermissions)
+                        },
+                        onRequestBackgroundPermission = {
+                            requestBackgroundPermission.launch(setOf(healthConnectManager.backgroundPermission))
                         },
                         onLogWalk = { value ->
                             logWalkToBeeminder(value)
@@ -108,19 +120,22 @@ class MainActivity : ComponentActivity() {
 fun MecrisGoApp(
     auth: PocketIdAuth,
     healthManager: HealthConnectManager,
-    onRequestPermissions: () -> Unit,
+    onRequestForegroundPermissions: () -> Unit,
+    onRequestBackgroundPermission: () -> Unit,
     onLogWalk: (Double) -> Unit
 ) {
     val scope = rememberCoroutineScope()
     var walkData by remember { mutableStateOf<WalkDataSummary?>(null) }
-    var hasPermissions by remember { mutableStateOf(false) }
+    var hasForeground by remember { mutableStateOf(false) }
+    var hasBackground by remember { mutableStateOf(false) }
     var isLoading by remember { mutableStateOf(true) }
 
     // Check permissions and fetch data on load
     LaunchedEffect(Unit) {
         isLoading = true
-        hasPermissions = healthManager.hasAllPermissions()
-        if (hasPermissions) {
+        hasForeground = healthManager.hasForegroundPermissions()
+        hasBackground = healthManager.hasBackgroundPermission()
+        if (hasForeground) {
             walkData = healthManager.fetchRecentWalkData()
         }
         isLoading = false
@@ -145,25 +160,26 @@ fun MecrisGoApp(
 
         if (isLoading) {
             CircularProgressIndicator()
-        } else if (!hasPermissions) {
-            Card(
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
-                modifier = Modifier.fillMaxWidth().padding(16.dp)
-            ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Text("Permissions Missing", style = MaterialTheme.typography.titleMedium)
-                    Text("Mecris-Go needs access to your steps and distance to track your dog walks.",
-                         style = MaterialTheme.typography.bodyMedium)
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Button(
-                        onClick = onRequestPermissions,
-                        modifier = Modifier.align(Alignment.End)
-                    ) {
-                        Text("Grant Permissions")
-                    }
-                }
-            }
+        } else if (!hasForeground) {
+            PermissionCard(
+                title = "Foreground Permissions Missing",
+                description = "Mecris-Go needs access to your steps and distance to track your dog walks while the app is open.",
+                buttonText = "Grant Foreground Access",
+                onGrant = onRequestForegroundPermissions
+            )
         } else {
+            // Foreground granted, check background
+            if (!hasBackground) {
+                PermissionCard(
+                    title = "Background Access Missing",
+                    description = "To automatically detect walks while your phone is in your pocket, Mecris-Go needs background health access.",
+                    buttonText = "Grant Background Access",
+                    onGrant = onRequestBackgroundPermission,
+                    isWarning = true
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+            }
+
             Text("✅ Health Connect Connected", color = MaterialTheme.colorScheme.primary)
             Spacer(modifier = Modifier.height(16.dp))
 
@@ -219,6 +235,35 @@ fun MecrisGoApp(
                 }
             }) {
                 Text("Refresh Data")
+            }
+        }
+    }
+}
+
+@Composable
+fun PermissionCard(
+    title: String,
+    description: String,
+    buttonText: String,
+    onGrant: () -> Unit,
+    isWarning: Boolean = false
+) {
+    Card(
+        colors = CardDefaults.cardColors(
+            containerColor = if (isWarning) MaterialTheme.colorScheme.tertiaryContainer 
+                             else MaterialTheme.colorScheme.errorContainer
+        ),
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text(title, style = MaterialTheme.typography.titleMedium)
+            Text(description, style = MaterialTheme.typography.bodyMedium)
+            Spacer(modifier = Modifier.height(16.dp))
+            Button(
+                onClick = onGrant,
+                modifier = Modifier.align(Alignment.End)
+            ) {
+                Text(buttonText)
             }
         }
     }
