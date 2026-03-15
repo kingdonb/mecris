@@ -52,16 +52,10 @@
 
             <!-- 5. CRITICAL: Permission Usage screen (required by Android 16) -->
             <intent-filter>
-                <action android:name="android.intent.action.VIEW_PERMISSION_USAGE" />
+                <action android:name="androidx.health.ACTION_SHOW_PERMISSIONS_RATIONALE" />
                 <category android:name="android.intent.category.HEALTH_PERMISSIONS" />
             </intent-filter>
-        </activity>
+            </activity>
 
-        <activity
-            android:name="com.mecris.go.ui.IntegrationsActivity"
-            android:label="Neural Link"
-            android:exported="false"
-            android:theme="@style/Theme.MecrisGo" />
-
-    </application>
+            </application>
 </manifest>
