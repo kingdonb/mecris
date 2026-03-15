@@ -77,7 +77,28 @@ class HealthConnectManager(private val context: Context) {
             hasExerciseRoutes = report.hasExerciseRoutes,
             routePointCount = report.routePointCount,
             isWalkInferred = likelyWalked,
-            startTime = report.startTime
+            startTime = report.startTime,
+            qualityReport = fetchDataQualityReport(report)
+        )
+    }
+
+    private fun fetchDataQualityReport(report: FullActivityReport): DataQualityReport {
+        val issues = mutableListOf<String>()
+        
+        // Check 1: Steps but no native distance (Fit "Track activity" might be off)
+        if (report.steps > 500 && report.distanceSource.contains("Estimated")) {
+            issues.add("Distance is estimated. Native distance recording might be disabled in source app.")
+        }
+        
+        // Check 2: Sessions but no routes (Location might be off in source app)
+        if (report.walkingSessionsCount > 0 && !report.hasExerciseRoutes) {
+            issues.add("Exercise sessions found, but GPS routes are missing. Check location settings in source app.")
+        }
+
+        return DataQualityReport(
+            isExcellent = issues.isEmpty() && report.hasExerciseRoutes && !report.distanceSource.contains("Estimated"),
+            issues = issues,
+            lastChecked = Instant.now()
         )
     }
 
@@ -188,7 +209,14 @@ data class WalkDataSummary(
     val hasExerciseRoutes: Boolean,
     val routePointCount: Int,
     val isWalkInferred: Boolean,
-    val startTime: Instant
+    val startTime: Instant,
+    val qualityReport: DataQualityReport = DataQualityReport(true, emptyList(), Instant.now())
+)
+
+data class DataQualityReport(
+    val isExcellent: Boolean,
+    val issues: List<String>,
+    val lastChecked: Instant
 )
 
 private data class FullActivityReport(

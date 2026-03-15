@@ -20,6 +20,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.mecris.go.auth.PocketIdAuth
 import com.mecris.go.auth.AuthState
+import com.mecris.go.health.DataQualityReport
 import com.mecris.go.health.HealthConnectManager
 import com.mecris.go.health.WalkDataSummary
 import com.mecris.go.sync.SyncServiceApi
@@ -81,6 +82,11 @@ fun IntegrationsScreen(
     var lastSyncTime by remember { mutableStateOf("") }
     var syncStatus by remember { mutableStateOf("Ready") }
     var isLoading by remember { mutableStateOf(false) }
+    
+    // Opt-out preferences
+    var collectDistance by remember { mutableStateOf(true) }
+    var collectGpsRoutes by remember { mutableStateOf(true) }
+    
     val scope = rememberCoroutineScope()
     
     val spinBaseUrl = "https://mecris-go-api-xupkwcis.fermyon.app/"
@@ -102,10 +108,10 @@ fun IntegrationsScreen(
                                 start_time = currentWalk.startTime.toString(),
                                 end_time = Instant.now().toString(),
                                 step_count = currentWalk.totalSteps.toInt(),
-                                distance_meters = currentWalk.totalDistanceMeters,
-                                distance_source = currentWalk.distanceSource,
+                                distance_meters = if (collectDistance) currentWalk.totalDistanceMeters else 0.0,
+                                distance_source = if (collectDistance) currentWalk.distanceSource else "Opt-out",
                                 confidence_score = 0.9,
-                                gps_route_points = currentWalk.routePointCount,
+                                gps_route_points = if (collectGpsRoutes) currentWalk.routePointCount else 0,
                                 timezone = ZoneId.systemDefault().id
                             )
                             syncApi.uploadWalk("Bearer $token", dto)
@@ -228,6 +234,17 @@ fun IntegrationsScreen(
                 }
             }
             
+            // Diagnostics & Data Quality Section
+            walkData?.let { data ->
+                DiagnosticsSection(
+                    report = data.qualityReport,
+                    collectDistance = collectDistance,
+                    onCollectDistanceChange = { collectDistance = it },
+                    collectGpsRoutes = collectGpsRoutes,
+                    onCollectGpsRoutesChange = { collectGpsRoutes = it }
+                )
+            }
+            
             Spacer(modifier = Modifier.height(16.dp))
             
             OdometerView(
@@ -346,6 +363,95 @@ fun IntegrationCard(name: String, status: String, description: String) {
                 text = description,
                 style = MaterialTheme.typography.bodySmall,
                 color = Color.LightGray
+            )
+        }
+    }
+}
+
+@Composable
+fun DiagnosticsSection(
+    report: DataQualityReport,
+    collectDistance: Boolean,
+    onCollectDistanceChange: (Boolean) -> Unit,
+    collectGpsRoutes: Boolean,
+    onCollectGpsRoutesChange: (Boolean) -> Unit
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        color = if (report.isExcellent) Color(0xFF1E1E1E) else Color(0xFF2D1616),
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
+        border = if (report.isExcellent) null else androidx.compose.foundation.BorderStroke(1.dp, Color.Red)
+    ) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "DATA QUALITY DIAGNOSTICS",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (report.isExcellent) Color(0xFF00C853) else Color.Red,
+                    fontWeight = FontWeight.Bold
+                )
+                if (report.isExcellent) {
+                    Text("EXCELLENT", style = MaterialTheme.typography.labelSmall, color = Color(0xFF00C853))
+                }
+            }
+
+            if (report.issues.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(8.dp))
+                report.issues.forEach { issue ->
+                    Row(verticalAlignment = Alignment.Top) {
+                        Text("⚠️", style = MaterialTheme.typography.bodySmall)
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = issue,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Color.White
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+            Divider(color = Color.Gray.copy(alpha = 0.2f))
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Text("DATA COLLECTION PREFERENCES", style = MaterialTheme.typography.labelSmall, color = Color.Gray)
+            
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text("Collect Native Distance", style = MaterialTheme.typography.bodySmall, color = Color.White)
+                Switch(
+                    checked = collectDistance,
+                    onCheckedChange = onCollectDistanceChange,
+                    colors = SwitchDefaults.colors(checkedThumbColor = Color(0xFF00E5FF))
+                )
+            }
+            
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text("Collect GPS Routes", style = MaterialTheme.typography.bodySmall, color = Color.White)
+                Switch(
+                    checked = collectGpsRoutes,
+                    onCheckedChange = onCollectGpsRoutesChange,
+                    colors = SwitchDefaults.colors(checkedThumbColor = Color(0xFF00E5FF))
+                )
+            }
+            
+            Text(
+                text = "Note: Disabling these will only affect MECRIS cloud sync. Source apps (like Google Fit) may still collect this data.",
+                style = MaterialTheme.typography.labelSmall,
+                color = Color.Gray,
+                fontSize = 10.sp,
+                lineHeight = 12.sp
             )
         }
     }
