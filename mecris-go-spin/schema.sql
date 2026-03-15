@@ -20,9 +20,9 @@ CREATE TABLE IF NOT EXISTS walk_inferences (
     start_time TEXT NOT NULL,
     end_time TEXT NOT NULL,
     step_count INTEGER NOT NULL,
-    distance_meters NUMERIC(10, 2) NOT NULL,
+    distance_meters DOUBLE PRECISION NOT NULL,
     distance_source VARCHAR(50) NOT NULL, -- e.g., 'estimated', 'gps'
-    confidence_score NUMERIC(3, 2) NOT NULL, -- e.g., 0.85
+    confidence_score DOUBLE PRECISION NOT NULL, -- e.g., 0.85
     gps_route_points INTEGER DEFAULT 0,
     status VARCHAR(50) DEFAULT 'pending', -- 'pending', 'logged'
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
