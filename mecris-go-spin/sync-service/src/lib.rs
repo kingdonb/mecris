@@ -140,8 +140,8 @@ async fn handle_sync_service(req: Request) -> anyhow::Result<impl IntoResponse> 
             .build());
     }
 
-    // 2. Fetch the Beeminder Token
-    let token_query = "SELECT beeminder_token_encrypted FROM users WHERE pocket_id_sub = $1 LIMIT 1";
+    // 2. Fetch the Beeminder Token and Goal
+    let token_query = "SELECT beeminder_token_encrypted, beeminder_goal FROM users WHERE pocket_id_sub = $1 LIMIT 1";
     let token_params = vec![ParameterValue::Str(user_id.clone())];
     let row_set = match connection.query(token_query, &token_params) {
         Ok(rs) => rs,
@@ -175,13 +175,17 @@ async fn handle_sync_service(req: Request) -> anyhow::Result<impl IntoResponse> 
             .build()),
     };
 
+    let beeminder_goal = match &row_set.rows[0][1] {
+        DbValue::Str(s) => s.clone(),
+        _ => "bike".to_string(), // Fallback to bike if not set
+    };
+
     // 3. Dispatch to Beeminder API
     // We use the start_time + user_id as an idempotency key (request_id)
-    // We assume the user's goal is named "bike" based on previous Phase 1 setup
     let request_id = format!("{}_{}", user_id, walk.start_time);
     let beeminder_url = format!(
-        "https://www.beeminder.com/api/v1/users/me/goals/bike/datapoints.json?auth_token={}",
-        beeminder_token
+        "https://www.beeminder.com/api/v1/users/me/goals/{}/datapoints.json?auth_token={}",
+        beeminder_goal, beeminder_token
     );
     let beeminder_body = format!(
         "value=1.0&comment=Logged via Mecris-Go Spin Backend (Steps: {}, Source: {})&request_id={}",
