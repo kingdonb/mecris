@@ -68,6 +68,14 @@ def migrate():
             sent_at TIMESTAMPTZ NOT NULL,
             context TEXT DEFAULT ''
         );
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS message_log (
+            date DATE NOT NULL,
+            type TEXT NOT NULL,
+            sent_at TIMESTAMPTZ NOT NULL,
+            PRIMARY KEY (date, type)
+        );
         """
     ]
 
@@ -81,15 +89,20 @@ def migrate():
         ("usage_sessions", ["id", "timestamp", "model", "input_tokens", "output_tokens", "estimated_cost", "session_type", "notes"]),
         ("budget_tracking", ["id", "total_budget", "remaining_budget", "budget_period_start", "budget_period_end", "last_updated"]),
         ("goals", ["id", "title", "description", "priority", "status", "created_at", "completed_at", "due_date"]),
-        ("alert_log", ["id", "alert_type", "alert_level", "message", "sent_at", "context"])
+        ("alert_log", ["id", "alert_type", "alert_level", "message", "sent_at", "context"]),
+        ("message_log", ["date", "type", "sent_at"])
     ]
 
     for table_name, columns in tables:
         print(f"Migrating table: {table_name}...")
         
         # Get data from SQLite
-        sqlite_cur.execute(f"SELECT {', '.join(columns)} FROM {table_name}")
-        rows = sqlite_cur.fetchall()
+        try:
+            sqlite_cur.execute(f"SELECT {', '.join(columns)} FROM {table_name}")
+            rows = sqlite_cur.fetchall()
+        except sqlite3.OperationalError:
+            print(f"  Table {table_name} not found in SQLite, skipping data migration.")
+            continue
         
         if not rows:
             print(f"  No data found for {table_name}")
@@ -99,14 +112,19 @@ def migrate():
         col_str = ", ".join(columns)
         placeholders = ", ".join(["%s"] * len(columns))
         
-        # We use ON CONFLICT (id) DO UPDATE for tables with ID
-        conflict_col = "id"
-        update_set = ", ".join([f"{col} = EXCLUDED.{col}" for col in columns if col != conflict_col])
+        conflict_clause = ""
+        if "id" in columns:
+            conflict_col = "id"
+            update_set = ", ".join([f"{col} = EXCLUDED.{col}" for col in columns if col != conflict_col])
+            conflict_clause = f"ON CONFLICT ({conflict_col}) DO UPDATE SET {update_set}"
+        elif table_name == "message_log":
+            update_set = ", ".join([f"{col} = EXCLUDED.{col}" for col in columns if col not in ["date", "type"]])
+            conflict_clause = f"ON CONFLICT (date, type) DO UPDATE SET {update_set}"
         
         upsert_query = f"""
             INSERT INTO {table_name} ({col_str})
             VALUES ({placeholders})
-            ON CONFLICT ({conflict_col}) DO UPDATE SET {update_set}
+            {conflict_clause}
         """
 
         for row in rows:

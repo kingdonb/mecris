@@ -476,9 +476,24 @@ async def send_reminder_message(message_data: Dict[str, Any]) -> Dict[str, Any]:
     msg_type = message_data.get("type")
     use_template = message_data.get("template_sid") is not None
     
+    neon_url = os.getenv("NEON_DB_URL")
     db_path = os.getenv("MECRIS_DB_PATH", "mecris_usage.db")
-    today = str(datetime.now().date())
+    today = date.today()
+    now = datetime.now()
     
+    # Check if already sent today
+    if neon_url:
+        try:
+            import psycopg2
+            from psycopg2.extras import RealDictCursor
+            with psycopg2.connect(neon_url) as conn:
+                with conn.cursor() as cur:
+                    cur.execute("SELECT 1 FROM message_log WHERE date = %s AND type = %s", (today, msg_type))
+                    if cur.fetchone():
+                        return {"sent": False, "reason": f"Already sent {msg_type} today (Neon coordinated)"}
+        except Exception as e:
+            logger.error(f"Neon message_log check failed: {e}")
+
     import sqlite3
     conn = sqlite3.connect(db_path)
     try:
@@ -491,10 +506,10 @@ async def send_reminder_message(message_data: Dict[str, Any]) -> Dict[str, Any]:
                     PRIMARY KEY (date, type)
                 )
             """)
-            # Check if already sent
-            cursor = conn.execute("SELECT 1 FROM message_log WHERE date = ? AND type = ?", (today, msg_type))
+            # Check if already sent in SQLite
+            cursor = conn.execute("SELECT 1 FROM message_log WHERE date = ? AND type = ?", (str(today), msg_type))
             if cursor.fetchone():
-                return {"sent": False, "reason": f"Already sent {msg_type} today (coordinated)"}
+                return {"sent": False, "reason": f"Already sent {msg_type} today (SQLite coordinated)"}
 
             if use_template:
                 from twilio_sender import send_whatsapp_template
@@ -511,7 +526,17 @@ async def send_reminder_message(message_data: Dict[str, Any]) -> Dict[str, Any]:
                 delivery_result = smart_send_message(message)
 
             if delivery_result["sent"]:
-                conn.execute("INSERT INTO message_log VALUES (?, ?, ?)", (today, msg_type, datetime.now().isoformat()))
+                # Log to Neon if available
+                if neon_url:
+                    try:
+                        with psycopg2.connect(neon_url) as conn_neon:
+                            with conn_neon.cursor() as cur:
+                                cur.execute("INSERT INTO message_log (date, type, sent_at) VALUES (%s, %s, %s)", (today, msg_type, now))
+                    except Exception as e:
+                        logger.error(f"Failed to log message to Neon: {e}")
+                
+                # Log to SQLite
+                conn.execute("INSERT INTO message_log VALUES (?, ?, ?)", (str(today), msg_type, now.isoformat()))
             return delivery_result
     finally:
         conn.close()

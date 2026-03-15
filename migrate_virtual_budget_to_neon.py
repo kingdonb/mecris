@@ -73,6 +73,41 @@ def migrate():
             expires_at TIMESTAMPTZ NOT NULL,
             UNIQUE(provider, cache_key)
         );
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS groq_odometer_readings (
+            id SERIAL PRIMARY KEY,
+            timestamp TIMESTAMPTZ NOT NULL,
+            month TEXT NOT NULL,
+            cumulative_value DOUBLE PRECISION NOT NULL,
+            is_final_reading BOOLEAN DEFAULT FALSE,
+            is_reset BOOLEAN DEFAULT FALSE,
+            notes TEXT DEFAULT '',
+            created_at TIMESTAMPTZ NOT NULL
+        );
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS groq_monthly_summaries (
+            month TEXT PRIMARY KEY,
+            total_cost DOUBLE PRECISION NOT NULL,
+            first_reading_date DATE,
+            last_reading_date DATE,
+            reading_count INTEGER,
+            finalized BOOLEAN DEFAULT FALSE,
+            created_at TIMESTAMPTZ NOT NULL,
+            updated_at TIMESTAMPTZ NOT NULL
+        );
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS groq_reminders (
+            id SERIAL PRIMARY KEY,
+            reminder_type TEXT NOT NULL,
+            scheduled_for DATE NOT NULL,
+            sent BOOLEAN DEFAULT FALSE,
+            sent_at TIMESTAMPTZ,
+            response TEXT,
+            created_at TIMESTAMPTZ NOT NULL
+        );
         """
     ]
 
@@ -86,7 +121,10 @@ def migrate():
         ("budget_allocations", ["id", "period_type", "budget_amount", "remaining_amount", "period_start", "period_end", "created_at", "updated_at"]),
         ("provider_usage", ["id", "provider", "model", "input_tokens", "output_tokens", "estimated_cost", "actual_cost", "timestamp", "session_type", "notes", "reconciled"]),
         ("reconciliation_jobs", ["id", "provider", "job_date", "estimated_total", "actual_total", "drift_percentage", "records_reconciled", "reconciled_at"]),
-        ("provider_cache", ["id", "provider", "cache_key", "cache_data", "cached_at", "expires_at"])
+        ("provider_cache", ["id", "provider", "cache_key", "cache_data", "cached_at", "expires_at"]),
+        ("groq_odometer_readings", ["id", "timestamp", "month", "cumulative_value", "is_final_reading", "is_reset", "notes", "created_at"]),
+        ("groq_monthly_summaries", ["month", "total_cost", "first_reading_date", "last_reading_date", "reading_count", "finalized", "created_at", "updated_at"]),
+        ("groq_reminders", ["id", "reminder_type", "scheduled_for", "sent", "sent_at", "response", "created_at"])
     ]
 
     for table_name, columns in tables:
@@ -106,11 +144,21 @@ def migrate():
 
         # Prepare insertion query
         col_str = ", ".join(columns)
-        placeholders = ", ".join(["%s"] * len(columns))
+        
+        # Cast boolean columns from integer to boolean for PostgreSQL
+        placeholders_list = []
+        for col in columns:
+            if col in ["reconciled", "is_final_reading", "is_reset", "finalized", "sent"]:
+                placeholders_list.append("%s::boolean")
+            else:
+                placeholders_list.append("%s")
+        placeholders = ", ".join(placeholders_list)
         
         conflict_clause = ""
         if table_name == "provider_cache":
             conflict_clause = "ON CONFLICT (provider, cache_key) DO UPDATE SET " + ", ".join([f"{col} = EXCLUDED.{col}" for col in columns if col not in ["id", "provider", "cache_key"]])
+        elif table_name == "groq_monthly_summaries":
+            conflict_clause = "ON CONFLICT (month) DO UPDATE SET " + ", ".join([f"{col} = EXCLUDED.{col}" for col in columns if col != "month"])
         else:
             conflict_clause = "ON CONFLICT (id) DO UPDATE SET " + ", ".join([f"{col} = EXCLUDED.{col}" for col in columns if col != "id"])
         
