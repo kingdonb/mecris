@@ -36,8 +36,21 @@
 - **Scraper Orchestration:** Plan a "Smart Polling" strategy for the scraper that checks more frequently as the deadline approaches or data remains stagnant.
 - **Neon Finalization:** Remove all remaining SQLite fallback code to become purely cloud-native.
 
+## 🔍 Reality Audit (Kimi Mode)
+| Area | Status | Grade | The "Real" | The "Vapor" |
+| :--- | :--- | :--- | :--- | :--- |
+| **Cloud Unification** | **Solid** | **90%** | Usage/Budget managers are physically talking to Neon. | SQLite fallback is largely untested in production failover. |
+| **Midnight Reset** | **Proven** | **95%** | Deleting record 134 confirmed Eastern boundary logic. | Fixed to US/Eastern; not yet adaptive to physical travel. |
+| **Clozemaster Scraper** | **Functional**| **70%** | Arabic/Greek counts are real and extracted from React props. | Forecast API (Tomorrow's debt) is 400ing; only "Today" is real. |
+| **Android Sync** | **Optimized** | **85%** | Ghost workers purged; Logcat confirms single sync events. | UI lacks "Sync Status" feedback; fails silently in background. |
+
+## 🚀 High-Value Evolution (Next Priorities)
+1.  **"Review Pump" Engine:** Calculate the velocity required to hit 0 reviews based on current debt + forecasted liabilities.
+2.  **Adaptive Polling:** Implement "Priority Lore" in Android—increase polling frequency as deadlines approach; back off when "STABLE."
+3.  **Migration Engine:** Automate Neon schema updates on startup to prevent "no such table" errors during rapid development.
+
 ## 🤖 System Momentum
 - **Daily Walk:** ✅ COMPLETED & SYNCED (Auto-heuristic confirmed).
 - **Budget Health:** ✅ STABLE (Neon synced).
 - **Language Study:** ✅ Arabic/Greek counts automated.
-- **Status:** READY for main branch merge.
+- **Status:** EXECUTING on high-value trajectory improvements.

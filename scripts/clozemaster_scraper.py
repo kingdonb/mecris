@@ -33,11 +33,12 @@ class ClozemasterScraper:
         self.password = os.getenv("CLOZEMASTER_PASSWORD")
         self.base_url = "https://www.clozemaster.com"
         self.csrf_token = ""
-        # Real-looking User-Agent to avoid scraping blocks
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+        self.cookies = {}
+        # Real-looking User-Agent from a browser
+        self.headers = {
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36"
         }
-        self.client = httpx.AsyncClient(timeout=30.0, follow_redirects=True, headers=headers)
+        self.client = httpx.AsyncClient(timeout=30.0, follow_redirects=True, headers=self.headers)
         
     async def login(self) -> bool:
         """Simulate login to Clozemaster and establish a session."""
@@ -54,7 +55,6 @@ class ClozemasterScraper:
             # Diagnostic: List all input fields
             inputs = soup.find_all('input')
             input_names = [i.get('name') for i in inputs if i.get('name')]
-            logger.info(f"Found input fields: {input_names}")
             
             csrf_elem = soup.find('input', {'name': 'authenticity_token'})
             if csrf_elem:
@@ -81,6 +81,8 @@ class ClozemasterScraper:
             
             if success:
                 logger.info("Login successful!")
+                # Extract cookies for subsequent API calls
+                self.cookies = {k: v for k, v in resp.cookies.items()}
                 return True
             else:
                 logger.error(f"Login failed (Status: {resp.status_code}, URL: {resp.url})")
@@ -96,12 +98,19 @@ class ClozemasterScraper:
         
         try:
             # The dashboard contains all the data in a React prop
-            resp = await self.client.get(f"{self.base_url}/dashboard")
+            resp = await self.client.get(f"{self.base_url}/dashboard", cookies=self.cookies)
             if resp.status_code != 200:
                 logger.error(f"Could not load dashboard (Status: {resp.status_code})")
                 return forecast
                 
             soup = BeautifulSoup(resp.text, 'html.parser')
+            
+            # Extract fresh CSRF token from the meta tag
+            csrf_meta = soup.find('meta', {'name': 'csrf-token'})
+            if csrf_meta:
+                self.csrf_token = csrf_meta['content']
+                logger.info("Extracted fresh CSRF token from dashboard meta")
+
             dashboard_div = soup.find('div', {'data-react-class': 'DashboardV5'})
             if not dashboard_div:
                 logger.error("Could not find DashboardV5 React component")
@@ -119,51 +128,55 @@ class ClozemasterScraper:
                     # LP ID for future API calls
                     lp_id = pair.get("id")
                     if lp_id:
-                        # Attempt to enrich with forecast, but don't fail if it doesn't work
-                        await self._enrich_with_api_forecast(lp_id, forecast)
+                        await self._enrich_with_api_forecast(lp_id, forecast, lang_slug)
                     
                     return forecast
+            
+            return forecast
         except Exception as e:
             logger.warning(f"Could not retrieve forecast for {lang_slug}: {e}")
             return forecast
 
-    async def _enrich_with_api_forecast(self, lp_id: int, forecast: Dict[str, int]):
+    async def _enrich_with_api_forecast(self, lp_id: int, forecast: Dict[str, int], lang_slug: str):
         """Call the private API to get the tomorrow/7day forecast with proper headers."""
         try:
+            # Precise headers from successful browser curl
             headers = {
-                "Accept": "application/json, text/javascript, */*; q=0.01",
+                "Accept": "*/*",
                 "X-Requested-With": "XMLHttpRequest",
-                "Referer": f"{self.base_url}/dashboard",
-                "X-CSRF-Token": self.csrf_token
+                "Referer": f"{self.base_url}/l/{lang_slug}",
+                "X-CSRF-Token": self.csrf_token,
+                "Time-Zone-Offset-Hours": "-4",
+                "sec-ch-ua-platform": '"macOS"',
+                "sec-ch-ua": '"Chromium";v="146", "Not-A.Brand";v="24", "Google Chrome";v="146"',
+                "sec-ch-ua-mobile": "?0"
             }
 
             api_url = f"{self.base_url}/api/v1/lp/{lp_id}/more-stats"
-            resp = await self.client.get(api_url, headers=headers)
-            
+            resp = await self.client.get(api_url, headers=headers, cookies=self.cookies)
             if resp.status_code == 200:
                 data = resp.json()
                 logger.info(f"Successfully retrieved more-stats for LP {lp_id}")
                 
-                # Try to extract forecast data
-                reviews_by_day = data.get("reviews_by_day", []) or data.get("forecast", [])
+                # Use the identified key
+                forecast_data = data.get("reviewForecast", [])
                 
-                if reviews_by_day and len(reviews_by_day) > 1:
-                    # tomorrow is index 1 if index 0 is today
-                    tomorrow_data = reviews_by_day[1]
-                    if isinstance(tomorrow_data, dict):
-                        forecast["tomorrow"] = tomorrow_data.get("count", 0)
-                    else:
-                        forecast["tomorrow"] = tomorrow_data
-                    
-                    # Next 7 days
+                if forecast_data:
+                    # Clozemaster reviewForecast starts with Tomorrow at index 0
                     try:
-                        forecast["next_7_days"] = sum(
-                            d.get("count", 0) if isinstance(d, dict) else d 
-                            for d in reviews_by_day[:7]
-                        )
-                    except: pass
-                    
-                    logger.info(f"Forecast for LP {lp_id}: Tomorrow={forecast['tomorrow']}, 7-day={forecast['next_7_days']}")
+                        if len(forecast_data) > 0:
+                            # Index 0 is Tomorrow
+                            tomorrow_data = forecast_data[0]
+                            forecast["tomorrow"] = tomorrow_data.get("count", 0) if isinstance(tomorrow_data, dict) else tomorrow_data
+                            
+                            # Next 7 days liability (Tomorrow through +7 days)
+                            forecast["next_7_days"] = sum(
+                                d.get("count", 0) if isinstance(d, dict) else d 
+                                for d in forecast_data[:7]
+                            )
+                            logger.info(f"Forecast for {lang_slug}: Tomorrow={forecast['tomorrow']}, 7-day={forecast['next_7_days']}")
+                    except Exception as e:
+                        logger.warning(f"Error parsing reviewForecast for {lang_slug}: {e}")
             else:
                 logger.warning(f"API call for LP {lp_id} failed (Status: {resp.status_code})")
         except Exception as e:
@@ -212,6 +225,8 @@ async def sync_clozemaster_to_beeminder(dry_run: bool = False):
                 comment = f"Auto-synced from Clozemaster ({datetime.now().strftime('%Y-%m-%d %H:%M')})"
                 if forecast.get("tomorrow", 0) > 0:
                     comment += f" | Tomorrow liability: {forecast['tomorrow']}"
+                if forecast.get("next_7_days", 0) > 0:
+                    comment += f" | 7-day liability: {forecast['next_7_days']}"
 
                 success = await beeminder.add_datapoint(
                     goal_slug, 
