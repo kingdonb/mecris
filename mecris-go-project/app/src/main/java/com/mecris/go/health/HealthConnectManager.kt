@@ -118,17 +118,29 @@ class HealthConnectManager(private val context: Context) {
         // Use the earliest walking session start time if available, otherwise fallback
         val effectiveStartTime = walkingSessions.minByOrNull { it.startTime }?.startTime ?: fallbackStart
 
-        // 1. Read Steps
+        // 1. Read Steps - Try broader query if 0 sessions, otherwise combine
         val stepsRequest = ReadRecordsRequest(recordType = StepsRecord::class, timeRangeFilter = timeRangeFilter)
         val stepsRecords = healthConnectClient.readRecords(stepsRequest).records
-        val totalSteps = stepsRecords.sumOf { it.count }
+        var totalSteps = stepsRecords.sumOf { it.count }
+        Log.d("HealthConnectManager", "Steps from generic query: $totalSteps")
 
         // 2. Read Distance
         val distanceRequest = ReadRecordsRequest(recordType = DistanceRecord::class, timeRangeFilter = timeRangeFilter)
-        // Wait, I should use the same timeRangeFilter as above for consistency
         val distanceRecords = healthConnectClient.readRecords(distanceRequest).records
         var totalDistanceMeters = distanceRecords.sumOf { it.distance.inMeters }
+        Log.d("HealthConnectManager", "Distance from generic query: $totalDistanceMeters")
+        
         var source = if (totalDistanceMeters > 0) "Health Connect (Distance)" else "Health Connect (Passive)"
+
+        // If generic query found nothing but we have sessions, query sessions specifically
+        if (totalSteps == 0L && walkingSessions.isNotEmpty()) {
+            Log.d("HealthConnectManager", "Falling back to session-specific step query")
+            walkingSessions.forEach { session ->
+                val sessionFilter = TimeRangeFilter.between(session.startTime, session.endTime)
+                val sessionSteps = healthConnectClient.readRecords(ReadRecordsRequest(StepsRecord::class, sessionFilter)).records
+                totalSteps += sessionSteps.sumOf { it.count }
+            }
+        }
 
         // 4. Check for Routes
         var hasRoutes = false
