@@ -6,6 +6,7 @@ import androidx.health.connect.client.HealthConnectClient
 import androidx.health.connect.client.permission.HealthPermission
 import androidx.health.connect.client.records.*
 import androidx.health.connect.client.request.ReadRecordsRequest
+import androidx.health.connect.client.request.AggregateRequest
 import androidx.health.connect.client.time.TimeRangeFilter
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -111,42 +112,30 @@ class HealthConnectManager(private val context: Context) {
         val timeRangeFilter = TimeRangeFilter.between(queryStart, now)
         val fallbackStart = now.truncatedTo(ChronoUnit.HOURS)
 
-        // 1. Baseline: Generic daily counts
-        val genericSteps = healthConnectClient.readRecords(ReadRecordsRequest(StepsRecord::class, timeRangeFilter)).records.sumOf { it.count }
-        val genericDistance = healthConnectClient.readRecords(ReadRecordsRequest(DistanceRecord::class, timeRangeFilter)).records.sumOf { it.distance.inMeters }
+        Log.d("HealthConnectManager", "Querying Health Connect from $queryStart to $now")
+
+        // 1. Use Aggregate API for Steps and Distance (Native Deduplication)
+        val aggregateRequest = AggregateRequest(
+            metrics = setOf(StepsRecord.COUNT_TOTAL, DistanceRecord.DISTANCE_TOTAL),
+            timeRangeFilter = timeRangeFilter
+        )
+        val aggregateResponse = healthConnectClient.aggregate(aggregateRequest)
+        val totalSteps = aggregateResponse[StepsRecord.COUNT_TOTAL] ?: 0L
+        val totalDistanceMeters = aggregateResponse[DistanceRecord.DISTANCE_TOTAL]?.inMeters ?: 0.0
         
-        // 2. Specialized: Explicit sessions
+        Log.d("HealthConnectManager", "Aggregate result: Steps=$totalSteps, Dist=$totalDistanceMeters")
+
+        // 2. Read Sessions for metadata and routes
         val sessions = healthConnectClient.readRecords(ReadRecordsRequest(ExerciseSessionRecord::class, timeRangeFilter)).records
         val walkingSessions = sessions.filter {
             it.exerciseType == ExerciseSessionRecord.EXERCISE_TYPE_WALKING ||
             it.exerciseType == ExerciseSessionRecord.EXERCISE_TYPE_OTHER_WORKOUT
         }
         
-        var totalSteps = genericSteps
-        var totalDistanceMeters = genericDistance
-        var source = if (totalDistanceMeters > 0) "Health Connect (Distance)" else "Health Connect (Passive)"
+        var source = if (totalDistanceMeters > 0) "Health Connect (Deduplicated)" else "Health Connect (Passive)"
+        if (walkingSessions.isNotEmpty()) { source = "Health Connect (Workouts)" }
 
-        // Comparison Logic: Don't sum, choose the better data source
-        if (walkingSessions.isNotEmpty()) {
-            val sessionSteps = walkingSessions.sumOf { s ->
-                healthConnectClient.readRecords(ReadRecordsRequest(StepsRecord::class, TimeRangeFilter.between(s.startTime, s.endTime))).records.sumOf { it.count }
-            }
-            val sessionDist = walkingSessions.sumOf { s ->
-                healthConnectClient.readRecords(ReadRecordsRequest(DistanceRecord::class, TimeRangeFilter.between(s.startTime, s.endTime))).records.sumOf { it.distance.inMeters }
-            }
-
-            // If sessions provide MORE or EQUAL data, prioritize them as higher quality
-            if (sessionSteps >= totalSteps) {
-                totalSteps = sessionSteps
-                source = "Health Connect (Walking Session)"
-            }
-            if (sessionDist >= totalDistanceMeters) {
-                totalDistanceMeters = sessionDist
-                source = "Health Connect (Walking Session)"
-            }
-        }
-
-        // 3. Route Points
+        // 3. Route Points and specific session diagnostics
         var hasRoutes = false
         var totalRoutePoints = 0
         walkingSessions.forEach { session ->
@@ -154,14 +143,16 @@ class HealthConnectManager(private val context: Context) {
                 is ExerciseRouteResult.Data -> {
                     hasRoutes = true
                     totalRoutePoints += routeResult.exerciseRoute.route.size
+                    Log.d("HealthConnectManager", "Found route with ${routeResult.exerciseRoute.route.size} pts")
                 }
                 else -> {}
             }
         }
 
-        // 4. Final Fallback for missing distance
-        if (totalDistanceMeters == 0.0 && totalSteps > 0) {
-            totalDistanceMeters = totalSteps * 0.66
+        // 4. Final Fallback for missing distance (only if aggregate distance is truly zero)
+        var finalDistance = totalDistanceMeters
+        if (finalDistance == 0.0 && totalSteps > 0) {
+            finalDistance = totalSteps * 0.66
             source = "Estimated from Steps (0.66m)"
         }
 
@@ -169,7 +160,7 @@ class HealthConnectManager(private val context: Context) {
 
         return FullActivityReport(
             steps = totalSteps,
-            distanceMeters = totalDistanceMeters,
+            distanceMeters = finalDistance,
             distanceSource = source,
             walkingSessionsCount = walkingSessions.size,
             hasExerciseRoutes = hasRoutes,
