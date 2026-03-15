@@ -13,7 +13,7 @@ class PocketIdAuth(private val context: Context) {
     private val authService: AuthorizationService = AuthorizationService(context)
     
     // Replace with your actual Pocket ID domain
-    private val authEndpoint = Uri.parse("https://metnoom.urmanac.com/api/oidc/authorize")
+    private val authEndpoint = Uri.parse("https://metnoom.urmanac.com/authorize")
     private val tokenEndpoint = Uri.parse("https://metnoom.urmanac.com/api/oidc/token")
     
     // Replace with your actual Client ID from the Pocket ID admin panel
