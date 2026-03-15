@@ -120,98 +120,9 @@ async fn handle_sync_service(req: Request) -> anyhow::Result<impl IntoResponse> 
         ON CONFLICT (pocket_id_sub) DO NOTHING
     "#;
     let user_params = vec![ParameterValue::Str(user_id.clone())];
-    if let Err(e) = connection.execute(user_upsert_query, &user_params) {
-        eprintln!("User upsert error: {:?}", e);
-        // We continue anyway, the walk insert will fail if this was a hard error
-    }
+    let _ = connection.execute(user_upsert_query, &user_params);
 
-    // 2. Write the telemetry to Neon DB
-    let query = r#"
-        INSERT INTO walk_inferences (
-            user_id, start_time, end_time, step_count, distance_meters, distance_source, confidence_score, gps_route_points
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-        ON CONFLICT (user_id, start_time) DO NOTHING
-    "#;
-
-    let params = vec![
-        ParameterValue::Str(user_id.clone()),
-        ParameterValue::Str(walk.start_time.clone()),
-        ParameterValue::Str(walk.end_time.clone()),
-        ParameterValue::Str(walk.step_count.to_string()),
-        ParameterValue::Str(walk.distance_meters.to_string()),
-        ParameterValue::Str(walk.distance_source.clone()),
-        ParameterValue::Str(walk.confidence_score.to_string()),
-        ParameterValue::Str(walk.gps_route_points.to_string()),
-    ];
-
-    let res = connection.execute(query, &params);
-    println!("Database write result: {:?}", res);
-    
-    if let Err(e) = res {
-        eprintln!("Database error: {:?}", e);
-        return Ok(Response::builder()
-            .status(500)
-            .body("Internal Server Error")
-            .build());
-    } else {
-        println!("Successfully inserted/updated walk for user {}", user_id);
-    }
-
-    // 3. Fetch the Beeminder Token, Goal, and User
-    let token_query = "SELECT beeminder_token_encrypted, beeminder_goal, beeminder_user FROM users WHERE pocket_id_sub = $1 LIMIT 1";
-    let token_params = vec![ParameterValue::Str(user_id.clone())];
-    let row_set = match connection.query(token_query, &token_params) {
-        Ok(rs) => rs,
-        Err(e) => {
-            eprintln!("Error fetching token: {:?}", e);
-            return Ok(Response::builder()
-                .status(500)
-                .body("Internal Server Error")
-                .build());
-        }
-    };
-
-    if row_set.rows.is_empty() {
-        // We logged the walk, but the user hasn't set up Beeminder integration yet.
-        let resp = StatusResponse {
-            status: "success".to_string(),
-            message: "Walk saved. (No Beeminder token found)".to_string(),
-        };
-        return Ok(Response::builder()
-            .status(201)
-            .header("content-type", "application/json")
-            .body(serde_json::to_string(&resp).unwrap())
-            .build());
-    }
-
-    // 3. Fetch the Beeminder Token, Goal, and User
-    let token_query = "SELECT beeminder_token_encrypted, beeminder_goal, beeminder_user FROM users WHERE pocket_id_sub = $1 LIMIT 1";
-    let token_params = vec![ParameterValue::Str(user_id.clone())];
-    let row_set = match connection.query(token_query, &token_params) {
-        Ok(rs) => rs,
-        Err(e) => {
-            eprintln!("Error fetching token: {:?}", e);
-            return Ok(Response::builder()
-                .status(500)
-                .body("Internal Server Error")
-                .build());
-        }
-    };
-
-    if row_set.rows.is_empty() {
-        let resp = StatusResponse {
-            status: "success".to_string(),
-            message: "Walk saved. (No Beeminder token found)".to_string(),
-        };
-        return Ok(Response::builder()
-            .status(201)
-            .header("content-type", "application/json")
-            .body(serde_json::to_string(&resp).unwrap())
-            .build());
-    }
-
-    // --- IDEMPOTENCY CHECK (Server Side) ---
-    // Check if we've already synced a walk for this user in the last 4 hours
+    // 2. Check Cooldown BEFORE anything else
     let cooldown_query = r#"
         SELECT id FROM walk_inferences 
         WHERE user_id = $1 
@@ -229,44 +140,57 @@ async fn handle_sync_service(req: Request) -> anyhow::Result<impl IntoResponse> 
             message: "Walk ingested (Duplicate suppressed via cooldown)".to_string(),
         };
         return Ok(Response::builder()
-            .status(200) // Return 200 OK so phone stops retrying
+            .status(200)
             .header("content-type", "application/json")
             .body(serde_json::to_string(&resp).unwrap())
             .build());
     }
-    // --- END IDEMPOTENCY CHECK ---
 
-    let beeminder_token = match &row_set.rows[0][0] {
-        DbValue::Str(s) => s.clone(),
-        _ => return Ok(Response::builder()
-            .status(500)
-            .body("Invalid token format in DB")
-            .build()),
-    };
+    // 3. Insert walk record (or update if start_time matches)
+    let query = r#"
+        INSERT INTO walk_inferences (
+            user_id, start_time, end_time, step_count, distance_meters, distance_source, confidence_score, gps_route_points, status
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'logging')
+        ON CONFLICT (user_id, start_time) DO UPDATE SET status = 'logging'
+    "#;
 
-    let beeminder_goal = match &row_set.rows[0][1] {
-        DbValue::Str(s) if !s.is_empty() => s.clone(),
-        _ => "bike".to_string(), // Fallback to bike if not set
-    };
+    let params = vec![
+        ParameterValue::Str(user_id.clone()),
+        ParameterValue::Str(walk.start_time.clone()),
+        ParameterValue::Str(walk.end_time.clone()),
+        ParameterValue::Str(walk.step_count.to_string()),
+        ParameterValue::Str(walk.distance_meters.to_string()),
+        ParameterValue::Str(walk.distance_source.clone()),
+        ParameterValue::Str(walk.confidence_score.to_string()),
+        ParameterValue::Str(walk.gps_route_points.to_string()),
+    ];
 
-    let beeminder_user = match &row_set.rows[0][2] {
-        DbValue::Str(s) if !s.is_empty() => s.clone(),
-        _ => "me".to_string(), // Fallback to 'me' if not set
-    };
+    if let Err(e) = connection.execute(query, &params) {
+        eprintln!("Database error: {:?}", e);
+        return Ok(Response::builder().status(500).body("Internal Server Error").build());
+    }
 
-    // 4. Dispatch to Beeminder API
-    // Calculate miles from meters (1 mile = 1609.34 meters)
+    // 4. Fetch Beeminder config
+    let token_query = "SELECT beeminder_token_encrypted, beeminder_goal, beeminder_user FROM users WHERE pocket_id_sub = $1 LIMIT 1";
+    let token_params = vec![ParameterValue::Str(user_id.clone())];
+    let row_set = connection.query(token_query, &token_params)?;
+
+    if row_set.rows.is_empty() {
+        let resp = StatusResponse { status: "success".to_string(), message: "Walk saved. (No Beeminder token found)".to_string() };
+        return Ok(Response::builder().status(201).header("content-type", "application/json").body(serde_json::to_string(&resp).unwrap()).build());
+    }
+
+    let beeminder_token = match &row_set.rows[0][0] { DbValue::Str(s) => s.clone(), _ => return Ok(Response::builder().status(500).body("Invalid token").build()) };
+    let beeminder_goal = match &row_set.rows[0][1] { DbValue::Str(s) if !s.is_empty() => s.clone(), _ => "bike".to_string() };
+    let beeminder_user = match &row_set.rows[0][2] { DbValue::Str(s) if !s.is_empty() => s.clone(), _ => "me".to_string() };
+
+    // 5. Beeminder API Call with correct requestid (no underscore) in URL
     let miles = walk.distance_meters / 1609.34;
-    
-    // We use the start_time + user_id as an idempotency key (request_id)
     let request_id = format!("{}_{}", user_id, walk.start_time);
-    let beeminder_url = format!(
-        "https://www.beeminder.com/api/v1/users/{}/goals/{}/datapoints.json?auth_token={}",
-        beeminder_user, beeminder_goal, beeminder_token
-    );
+    let beeminder_url = format!("https://www.beeminder.com/api/v1/users/{}/goals/{}/datapoints.json?requestid={}", beeminder_user, beeminder_goal, request_id);
     let beeminder_body = format!(
-        "value={:.2}&comment=Logged via Mecris-Go Spin Backend (Steps: {}, Source: {})&request_id={}",
-        miles, walk.step_count, walk.distance_source, request_id
+        "auth_token={}&value={:.2}&comment=Logged via Mecris-Go Spin Backend (Steps: {}, Source: {})",
+        beeminder_token, miles, walk.step_count, walk.distance_source
     );
 
     let beeminder_req = Request::post(&beeminder_url, beeminder_body)
@@ -277,33 +201,20 @@ async fn handle_sync_service(req: Request) -> anyhow::Result<impl IntoResponse> 
     let status = *beeminder_res.status();
     
     if (200..=299).contains(&status) {
-        // Mark walk as logged to trigger cooldown
+        // Success: Mark as logged
         let update_query = "UPDATE walk_inferences SET status = 'logged' WHERE user_id = $1 AND start_time = $2";
-        let update_params = vec![
-            ParameterValue::Str(user_id.clone()),
-            ParameterValue::Str(walk.start_time.clone()),
-        ];
+        let update_params = vec![ParameterValue::Str(user_id.clone()), ParameterValue::Str(walk.start_time.clone())];
         let _ = connection.execute(update_query, &update_params);
+        
+        let resp = StatusResponse { status: "success".to_string(), message: format!("Walk synced: {:.2} miles", miles) };
+        Ok(Response::builder().status(201).header("content-type", "application/json").body(serde_json::to_string(&resp).unwrap()).build())
     } else {
-        eprintln!("Failed to log to Beeminder: {:?}", beeminder_res.status());
-        let resp = StatusResponse {
-            status: "partial_success".to_string(),
-            message: "Walk saved locally, but failed to sync to Beeminder.".to_string(),
-        };
-        return Ok(Response::builder()
-            .status(201)
-            .header("content-type", "application/json")
-            .body(serde_json::to_string(&resp).unwrap())
-            .build());
+        // Failure: Rollback to pending
+        let rollback_query = "UPDATE walk_inferences SET status = 'pending' WHERE user_id = $1 AND start_time = $2";
+        let rollback_params = vec![ParameterValue::Str(user_id.clone()), ParameterValue::Str(walk.start_time.clone())];
+        let _ = connection.execute(rollback_query, &rollback_params);
+        
+        let resp = StatusResponse { status: "partial_success".to_string(), message: "Saved locally, Beeminder sync failed.".to_string() };
+        Ok(Response::builder().status(201).header("content-type", "application/json").body(serde_json::to_string(&resp).unwrap()).build())
     }
-
-    let resp = StatusResponse {
-        status: "success".to_string(),
-        message: format!("Walk ingested and synced to Beeminder for user {}", user_id),
-    };
-    Ok(Response::builder()
-        .status(201)
-        .header("content-type", "application/json")
-        .body(serde_json::to_string(&resp).unwrap())
-        .build())
 }
