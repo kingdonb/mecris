@@ -24,9 +24,13 @@ import com.mecris.go.beeminder.BeeminderApi
 import com.mecris.go.health.HealthConnectManager
 import com.mecris.go.health.WalkDataSummary
 import com.mecris.go.health.WalkHeuristicsWorker
+import com.mecris.go.sync.SyncServiceApi
+import com.mecris.go.sync.WalkDataSummaryDto
 import kotlinx.coroutines.launch
 import java.util.UUID
 import java.util.concurrent.TimeUnit
+import java.time.Instant
+import java.time.ZoneId
 
 
 class MainActivity : ComponentActivity() {
@@ -34,6 +38,11 @@ class MainActivity : ComponentActivity() {
     private lateinit var pocketIdAuth: PocketIdAuth
     private lateinit var healthConnectManager: HealthConnectManager
     private val beeminderApi = BeeminderApi.create()
+
+    // Spin Backend Configuration
+    // Replace with your Spin URL (e.g., http://192.168.x.x:3000/ or Fermyon Cloud URL)
+    private val spinBaseUrl = "https://metnoom-spin.urmanac.com/" 
+    private val syncApi = SyncServiceApi.create(spinBaseUrl)
 
     // Temporary Beeminder config for Phase 1
     private val beeminderUser = "YOUR_USERNAME"
@@ -107,6 +116,9 @@ class MainActivity : ComponentActivity() {
                         },
                         onLogWalk = { value ->
                             logWalkToBeeminder(value)
+                        },
+                        onSyncToCloud = { data ->
+                            syncWalkToSpin(data)
                         }
                     )
                 }
@@ -125,6 +137,37 @@ class MainActivity : ComponentActivity() {
         ).build()
 
         WorkManager.getInstance(this).enqueue(walkCheckRequest)
+    }
+
+    private fun syncWalkToSpin(walkData: WalkDataSummary) {
+        lifecycleScope.launch {
+            pocketIdAuth.getValidAccessToken { token ->
+                if (token == null) {
+                    Toast.makeText(this@MainActivity, "Login required for cloud sync", Toast.LENGTH_SHORT).show()
+                    return@getValidAccessToken
+                }
+
+                lifecycleScope.launch {
+                    try {
+                        val dto = WalkDataSummaryDto(
+                            start_time = Instant.now().minusSeconds(3600).toString(), // Example: 1 hour ago
+                            end_time = Instant.now().toString(),
+                            step_count = walkData.totalSteps.toInt(),
+                            distance_meters = walkData.totalDistanceMeters,
+                            distance_source = walkData.distanceSource,
+                            confidence_score = if (walkData.isWalkInferred) 0.9 else 0.1,
+                            gps_route_points = walkData.routePointCount,
+                            timezone = ZoneId.systemDefault().id
+                        )
+
+                        val response = syncApi.uploadWalk("Bearer $token", dto)
+                        Toast.makeText(this@MainActivity, "Cloud Sync Success: ${response.message}", Toast.LENGTH_LONG).show()
+                    } catch (e: Exception) {
+                        Toast.makeText(this@MainActivity, "Cloud Sync Failed: ${e.message}", Toast.LENGTH_LONG).show()
+                    }
+                }
+            }
+        }
     }
 
     private fun logWalkToBeeminder(value: Double) {
@@ -156,7 +199,8 @@ fun MecrisGoApp(
     onRequestRoutePermission: () -> Unit,
     onRequestBackgroundPermission: () -> Unit,
     onOpenSettings: () -> Unit,
-    onLogWalk: (Double) -> Unit
+    onLogWalk: (Double) -> Unit,
+    onSyncToCloud: (WalkDataSummary) -> Unit
 ) {
     val authState by auth.authState.collectAsState()
     val scope = rememberCoroutineScope()
@@ -288,10 +332,21 @@ fun MecrisGoApp(
 
                     Spacer(modifier = Modifier.height(32.dp))
 
+                    // Cloud Sync UI (Primary for Phase 2)
                     Button(
-                        onClick = { onLogWalk(1.0) },
+                        onClick = { walkData?.let { onSyncToCloud(it) } },
                         modifier = Modifier.fillMaxWidth(),
-                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                    ) {
+                        Text("Sync Walk to Cloud (Spin)")
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // Legacy Direct Beeminder UI
+                    OutlinedButton(
+                        onClick = { onLogWalk(1.0) },
+                        modifier = Modifier.fillMaxWidth()
                     ) {
                         Text("Log Walk to Beeminder (Direct)")
                     }
