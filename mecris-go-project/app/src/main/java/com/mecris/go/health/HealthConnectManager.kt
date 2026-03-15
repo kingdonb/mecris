@@ -5,8 +5,8 @@ import android.util.Log
 import androidx.health.connect.client.HealthConnectClient
 import androidx.health.connect.client.permission.HealthPermission
 import androidx.health.connect.client.records.DistanceRecord
-import androidx.health.connect.client.records.ExerciseRouteResult
 import androidx.health.connect.client.records.ExerciseSessionRecord
+import androidx.health.connect.client.records.ExerciseRouteResult
 import androidx.health.connect.client.records.StepsRecord
 import androidx.health.connect.client.request.ReadRecordsRequest
 import androidx.health.connect.client.time.TimeRangeFilter
@@ -49,11 +49,7 @@ class HealthConnectManager(private val context: Context) {
     suspend fun hasForegroundPermissions(): Boolean {
         if (!_isSupported.value) return false
         val granted = healthConnectClient.permissionController.getGrantedPermissions()
-        // Allow the app to proceed if at least Steps and Distance are granted.
-        // We will just have degraded functionality (no sessions/routes) if Exercise is missing.
-        val coreGranted = granted.contains(HealthPermission.getReadPermission(StepsRecord::class)) &&
-                          granted.contains(HealthPermission.getReadPermission(DistanceRecord::class))
-        return coreGranted
+        return granted.containsAll(foregroundPermissions)
     }
 
     suspend fun hasRoutePermission(): Boolean {
@@ -83,25 +79,35 @@ class HealthConnectManager(private val context: Context) {
         )
     }
 
-    suspend fun fetchFullActivityReport(): FullActivityReport {
-        if (!hasForegroundPermissions()) {
-            Log.w("HealthConnectManager", "Missing foreground permissions for full report")
-            return FullActivityReport(0, 0.0, "None", 0, false, 0, Instant.now())
+    private suspend fun fetchFullActivityReport(): FullActivityReport {
+        val now = Instant.now()
+        
+        // 0. Diagnostic: Scan last 7 days for ANY exercise sessions
+        try {
+            val weekAgo = now.minus(7, ChronoUnit.DAYS)
+            val weekRequest = ReadRecordsRequest(ExerciseSessionRecord::class, TimeRangeFilter.between(weekAgo, now))
+            val weekSessions = healthConnectClient.readRecords(weekRequest).records
+            Log.d("HealthConnectManager", "DIAGNOSTIC: Found ${weekSessions.size} sessions in last 7d")
+            weekSessions.forEach { 
+                Log.d("HealthConnectManager", "DIAGNOSTIC SESSION: ID=${it.metadata.id}, Type=${it.exerciseType}, Start=${it.startTime}")
+            }
+        } catch (e: Exception) {
+            Log.e("HealthConnectManager", "DIAGNOSTIC FAILED: ${e.message}")
         }
 
-        val now = Instant.now()
-        // Stabilize start time to the beginning of the current hour for idempotency fallback
-        val fallbackStart = now.truncatedTo(ChronoUnit.HOURS)
+        if (!hasForegroundPermissions()) {
+            Log.w("HealthConnectManager", "Missing core permissions")
+            return FullActivityReport(0, 0.0, "Permission Denied", 0, false, 0, now)
+        }
+
         val localDateTime = LocalDateTime.ofInstant(now, ZoneId.systemDefault())
         val startOfToday = localDateTime.toLocalDate().atStartOfDay(ZoneId.systemDefault()).toInstant()
         val queryStart = startOfToday
         val timeRangeFilter = TimeRangeFilter.between(queryStart, now)
+        val fallbackStart = now.truncatedTo(ChronoUnit.HOURS)
 
         Log.d("HealthConnectManager", "Querying Health Connect from $queryStart to $now")
 
-        // ... existing record reading logic ...
-        // (I will keep the existing logic but ensure startTime is captured from sessions if available)
-        
         // 3. Read Exercise Sessions
         val sessionRequest = ReadRecordsRequest(
             recordType = ExerciseSessionRecord::class,
@@ -115,10 +121,9 @@ class HealthConnectManager(private val context: Context) {
         }
         Log.d("HealthConnectManager", "Walking sessions found: ${walkingSessions.size}")
         
-        // Use the earliest walking session start time if available, otherwise fallback
         val effectiveStartTime = walkingSessions.minByOrNull { it.startTime }?.startTime ?: fallbackStart
 
-        // 1. Read Steps - Try broader query if 0 sessions, otherwise combine
+        // 1. Read Steps
         val stepsRequest = ReadRecordsRequest(recordType = StepsRecord::class, timeRangeFilter = timeRangeFilter)
         val stepsRecords = healthConnectClient.readRecords(stepsRequest).records
         var totalSteps = stepsRecords.sumOf { it.count }
@@ -132,7 +137,6 @@ class HealthConnectManager(private val context: Context) {
         
         var source = if (totalDistanceMeters > 0) "Health Connect (Distance)" else "Health Connect (Passive)"
 
-        // If generic query found nothing but we have sessions, query sessions specifically
         if (totalSteps == 0L && walkingSessions.isNotEmpty()) {
             Log.d("HealthConnectManager", "Falling back to session-specific step query")
             walkingSessions.forEach { session ->
@@ -150,7 +154,7 @@ class HealthConnectManager(private val context: Context) {
                 is ExerciseRouteResult.Data -> {
                     hasRoutes = true
                     totalRoutePoints += routeResult.exerciseRoute.route.size
-                    Log.d("HealthConnectManager", "Found route with ${routeResult.exerciseRoute.route.size} points")
+                    Log.d("HealthConnectManager", "Found route with ${routeResult.exerciseRoute.route.size} pts")
                 }
                 is ExerciseRouteResult.NoData -> {
                     Log.d("HealthConnectManager", "No route data for session ${session.metadata.id}")
@@ -190,7 +194,7 @@ data class WalkDataSummary(
     val startTime: Instant
 )
 
-data class FullActivityReport(
+private data class FullActivityReport(
     val steps: Long,
     val distanceMeters: Double,
     val distanceSource: String,
