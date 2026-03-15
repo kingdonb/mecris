@@ -28,8 +28,11 @@ class NeonSyncChecker:
             conn = psycopg2.connect(self.db_url)
             cur = conn.cursor()
 
-            # Define 'today' in UTC (since Spin stores as UTC)
-            today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+            # Define 'today' in Eastern Time midnight
+            import zoneinfo
+            eastern = zoneinfo.ZoneInfo("US/Eastern")
+            local_now = datetime.now(eastern)
+            today_start = local_now.replace(hour=0, minute=0, second=0, microsecond=0)
 
             # Cast TEXT to TIMESTAMPTZ for comparison
             query = "SELECT COUNT(*) FROM walk_inferences WHERE start_time::TIMESTAMPTZ >= %s"

@@ -92,7 +92,9 @@ class HealthConnectManager(private val context: Context) {
         val now = Instant.now()
         // Stabilize start time to the beginning of the current hour for idempotency fallback
         val fallbackStart = now.truncatedTo(ChronoUnit.HOURS)
-        val queryStart = now.minus(24, ChronoUnit.HOURS)
+        val localDateTime = LocalDateTime.ofInstant(now, ZoneId.systemDefault())
+        val startOfToday = localDateTime.toLocalDate().atStartOfDay(ZoneId.systemDefault()).toInstant()
+        val queryStart = startOfToday
         val timeRangeFilter = TimeRangeFilter.between(queryStart, now)
 
         Log.d("HealthConnectManager", "Querying Health Connect from $queryStart to $now")
@@ -113,15 +115,16 @@ class HealthConnectManager(private val context: Context) {
         // Use the earliest walking session start time if available, otherwise fallback
         val effectiveStartTime = walkingSessions.minByOrNull { it.startTime }?.startTime ?: fallbackStart
 
-        // 1. Read Steps (re-using the logic from above but in the full function context)
+        // 1. Read Steps
         val stepsRequest = ReadRecordsRequest(recordType = StepsRecord::class, timeRangeFilter = timeRangeFilter)
-        val totalSteps = healthConnectClient.readRecords(stepsRequest).records.sumOf { it.count }
+        val stepsRecords = healthConnectClient.readRecords(stepsRequest).records
+        val totalSteps = stepsRecords.sumOf { it.count }
 
         // 2. Read Distance
         val distanceRequest = ReadRecordsRequest(recordType = DistanceRecord::class, timeRangeFilter = timeRangeFilter)
         val distanceRecords = healthConnectClient.readRecords(distanceRequest).records
         var totalDistanceMeters = distanceRecords.sumOf { it.distance.inMeters }
-        var source = "Health Connect (Passive)"
+        var source = if (totalDistanceMeters > 0) "Health Connect (Distance)" else "Health Connect (Passive)"
 
         // 4. Check for Routes
         var hasRoutes = false

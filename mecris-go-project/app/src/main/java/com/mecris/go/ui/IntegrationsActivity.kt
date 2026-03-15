@@ -16,9 +16,16 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
+import com.mecris.go.health.HealthConnectManager
+import com.mecris.go.health.WalkDataSummary
+
 class IntegrationsActivity : ComponentActivity() {
+    private lateinit var healthConnectManager: HealthConnectManager
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        healthConnectManager = HealthConnectManager(this)
+        
         setContent {
             MaterialTheme(
                 colorScheme = darkColorScheme(
@@ -33,6 +40,7 @@ class IntegrationsActivity : ComponentActivity() {
                     color = MaterialTheme.colorScheme.background
                 ) {
                     IntegrationsScreen(
+                        healthManager = healthConnectManager,
                         onBack = { finish() }
                     )
                 }
@@ -43,7 +51,15 @@ class IntegrationsActivity : ComponentActivity() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun IntegrationsScreen(onBack: () -> Unit) {
+fun IntegrationsScreen(healthManager: HealthConnectManager, onBack: () -> Unit) {
+    var walkData by remember { mutableStateOf<WalkDataSummary?>(null) }
+    
+    LaunchedEffect(Unit) {
+        if (healthManager.hasForegroundPermissions()) {
+            walkData = healthManager.fetchRecentWalkData()
+        }
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -75,15 +91,31 @@ fun IntegrationsScreen(onBack: () -> Unit) {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(200.dp)
+                    .height(180.dp)
             ) {
-                // High momentum (safe) for now
-                MomentumVisualizer(momentum = 0.8f)
+                // Determine momentum based on walk status
+                val momentumValue = if (walkData?.isWalkInferred == true) 0.9f else 0.3f
+                MomentumVisualizer(momentum = momentumValue)
             }
             
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(16.dp))
             
-            OdometerView(value = 21.00)
+            OdometerView(
+                value = 21.00,
+                label = "VIRTUAL BUDGET"
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            val miles = (walkData?.totalDistanceMeters ?: 0.0) / 1609.34
+            OdometerView(
+                value = miles,
+                label = "TODAY'S DISTANCE",
+                symbol = "MI",
+                symbolColor = Color(0xFF00E5FF),
+                digits = 4,
+                decimalPlaces = 2
+            )
             
             Spacer(modifier = Modifier.height(24.dp))
             

@@ -322,7 +322,7 @@ fun MecrisGoApp(
                                 Text("Detailed Activity Report", style = MaterialTheme.typography.titleLarge)
                                 Divider(modifier = Modifier.padding(vertical = 8.dp))
                                 
-                                InfoRow("Steps (24h)", "${walkData!!.totalSteps}")
+                                InfoRow("Steps (Today)", "${walkData!!.totalSteps}")
                                 
                                 InfoRow("Distance", "${String.format("%.2f", walkData!!.totalDistanceMeters / 1609.34)} miles")
                                 Text("Source: ${walkData!!.distanceSource}", 
