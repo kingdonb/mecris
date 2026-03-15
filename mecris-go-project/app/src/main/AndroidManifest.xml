@@ -57,5 +57,11 @@
             </intent-filter>
         </activity>
 
+        <activity
+            android:name="com.mecris.go.ui.IntegrationsActivity"
+            android:label="Neural Link"
+            android:exported="false"
+            android:theme="@style/Theme.MecrisGo" />
+
     </application>
 </manifest>

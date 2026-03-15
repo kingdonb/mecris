@@ -31,6 +31,10 @@ import java.util.UUID
 import java.util.concurrent.TimeUnit
 import java.time.Instant
 import java.time.ZoneId
+import com.mecris.go.ui.IntegrationsActivity
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.graphics.Color
 
 
 class MainActivity : ComponentActivity() {
@@ -112,6 +116,10 @@ class MainActivity : ComponentActivity() {
                         },
                         onOpenSettings = {
                             val intent = Intent(HealthConnectClient.ACTION_HEALTH_CONNECT_SETTINGS)
+                            startActivity(intent)
+                        },
+                        onOpenNeuralLink = {
+                            val intent = Intent(this@MainActivity, IntegrationsActivity::class.java)
                             startActivity(intent)
                         },
                         onLogWalk = { value ->
@@ -199,6 +207,7 @@ fun MecrisGoApp(
     onRequestRoutePermission: () -> Unit,
     onRequestBackgroundPermission: () -> Unit,
     onOpenSettings: () -> Unit,
+    onOpenNeuralLink: () -> Unit,
     onLogWalk: (Double) -> Unit,
     onSyncToCloud: (WalkDataSummary) -> Unit
 ) {
@@ -229,8 +238,18 @@ fun MecrisGoApp(
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Text("Mecris-Go", style = MaterialTheme.typography.headlineLarge)
+        Text("MECRIS GO", style = MaterialTheme.typography.headlineLarge, fontWeight = androidx.compose.ui.text.font.FontWeight.Black)
         Spacer(modifier = Modifier.height(16.dp))
+
+        Button(
+            onClick = onOpenNeuralLink,
+            modifier = Modifier.fillMaxWidth(),
+            colors = ButtonDefaults.buttonColors(containerColor = androidx.compose.ui.graphics.Color.Black)
+        ) {
+            Text("OPEN NEURAL LINK")
+        }
+
+        Spacer(modifier = Modifier.height(24.dp))
 
         when (val state = authState) {
             is AuthState.Idle, is AuthState.Error -> {
