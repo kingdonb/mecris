@@ -24,6 +24,7 @@ from twilio_sender import smart_send_message, send_sms
 from scripts.anthropic_cost_tracker import AnthropicCostTracker
 from services.weather_service import WeatherService
 from services.neon_sync_checker import NeonSyncChecker
+from services.reminder_service import ReminderService
 
 # Load environment variables
 load_dotenv()
@@ -72,6 +73,7 @@ obsidian_client = ObsidianMCPClient()
 beeminder_client = BeeminderClient()
 neon_checker = NeonSyncChecker()
 usage_tracker = UsageTracker()
+reminder_service = ReminderService(get_narrator_context, get_coaching_insight)
 virtual_budget_manager = VirtualBudgetManager()
 billing_reconciler = BillingReconciliation()
 weather_service = WeatherService()
@@ -459,32 +461,16 @@ async def get_coaching_insight() -> Dict[str, Any]:
         return {"error": str(e)}
 
 async def check_reminder_needed() -> Dict[str, Any]:
-    context = await get_narrator_context()
-    current_hour = datetime.now().hour
-    budget_status = context.get("budget_status", {})
-    remaining_budget = budget_status.get("remaining_budget", 0)
-    
-    insight = await get_coaching_insight()
-    
-    walk_needed = context.get("daily_walk_status", {}).get("status") == "needed"
-    
-    # Logic: Only send walk reminders in the afternoon window
-    if 14 <= current_hour <= 17:
-        if walk_needed:
-             return {"should_send": True, "message": insight.get("message"), "type": "walk_reminder"}
-        elif insight.get("momentum") == "high" and current_hour >= 16:
-             # Even if walked, if it's late and momentum is high, send a coaching pivot
-             return {"should_send": True, "message": insight.get("message"), "type": "momentum_coaching"}
-        
-    return {"should_send": False, "reason": "Conditions not met or already handled"}
+    return await reminder_service.check_reminder_needed()
 
 async def send_reminder_message(message_data: Dict[str, Any]) -> Dict[str, Any]:
-    message = message_data.get("message")
     msg_type = message_data.get("type")
+    use_template = message_data.get("template_sid") is not None
     
     db_path = os.getenv("MECRIS_DB_PATH", "mecris_usage.db")
     today = str(datetime.now().date())
     
+    import sqlite3
     conn = sqlite3.connect(db_path)
     try:
         with conn:
@@ -499,9 +485,22 @@ async def send_reminder_message(message_data: Dict[str, Any]) -> Dict[str, Any]:
             # Check if already sent
             cursor = conn.execute("SELECT 1 FROM message_log WHERE date = ? AND type = ?", (today, msg_type))
             if cursor.fetchone():
-                return {"sent": False, "reason": "Already sent today (coordinated)"}
+                return {"sent": False, "reason": f"Already sent {msg_type} today (coordinated)"}
 
-            delivery_result = smart_send_message(message)
+            if use_template:
+                from twilio_sender import send_whatsapp_template
+                template_sid = message_data.get("template_sid")
+                variables = message_data.get("variables", {})
+                success = send_whatsapp_template(template_sid, variables)
+                delivery_result = {
+                    "sent": success, 
+                    "method": "whatsapp_template", 
+                    "template_sid": template_sid
+                }
+            else:
+                message = message_data.get("message") or message_data.get("fallback_message")
+                delivery_result = smart_send_message(message)
+
             if delivery_result["sent"]:
                 conn.execute("INSERT INTO message_log VALUES (?, ?, ?)", (today, msg_type, datetime.now().isoformat()))
             return delivery_result
