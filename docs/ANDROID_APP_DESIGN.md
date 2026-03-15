@@ -1,71 +1,73 @@
-# Android App Design Scaffold: Mecris Mobile
+# Mecris-Go: Technical Architecture & Design
 
-> **Mecris Mobile Extension**  
-> *Low-friction accountability, push notifications, and consent management*
+> **Mecris-Go**  
+> *Autonomous Intelligence Loop: Health Connect -> Spin -> Mecris -> Multi-Platform Notifications*
 
-## 1. Narrative & Strategic Goal
+## 1. Executive Summary
+Mecris-Go is a serverless extension of the Mecris accountability system. It transforms the system from a passive observer into an autonomous agent that proactively detects activity via **Android Health Connect**, manages identity via **Pocket ID (Passkeys)**, and orchestrates reminders via **Fermyon Spin** and **Neon PostgreSQL**. 
 
-Mecris Mobile serves as the "pulse" of the personal accountability system. While the backend (Spin/Serverless) handles the logic, the Android app provides:
-- **Zero-Cost Notifications**: Push notifications via FCM (Firebase Cloud Messaging) as a primary alternative to SMS/WhatsApp.
-- **Compliance Hub**: A central place to manage A2P SMS consent, opt-in/opt-out, and preference tuning.
-- **Low-Friction Updates**: Quick buttons for common actions (e.g., "Walking Boris now") to update the system state without needing a terminal or voice-to-text.
+It prioritizes privacy (on-device processing) and cost-consciousness (budget-aware LLM execution).
 
-## 2. Core UI Interface Panels
+## 2. Authentication & Security (Pocket ID)
+Mecris-Go eliminates passwords in favor of a secure, OIDC-compliant passkey system.
 
-### A. Onboarding & Authentication
-- **Goal**: Establish identity and connect to the Mecris backend.
-- **UI Elements**:
-    - Splash screen with the Mecris "Robot" branding.
-    - Login via **Magic Link** (email) or **OAuth** (Google/GitHub).
-    - "Welcome back" screen showing current goal summary (Narrator context snippet).
+- **Identity Provider**: Pocket ID (Self-hosted or Cloud).
+- **Android Integration**: Uses the **Credential Manager API** (Android 14+) for FIDO2/WebAuthn passkey authentication.
+- **JWT Validation**: The Spin backend validates incoming JWTs using the Pocket ID JWKS endpoint.
+- **Privacy by Design**: Raw GPS traces (Exercise Routes) are processed **strictly on-device**. Only summarized walk metadata (distance, duration, confidence score) is sent to the Spin backend. Location data never leaves the phone.
 
-### B. Identity & Consent Dashboard (Compliance)
-- **Goal**: Manage legal/compliance requirements for SMS and data.
-- **UI Elements**:
-    - **Phone Number Field**: Register the device for SMS fallback.
-    - **A2P Consent Toggle**: Clear, explicit opt-in for SMS reminders (required for Twilio compliance).
-    - **Doggies Status Toggle**: "Doggies are away" (Boarding/Vacation mode). Suppresses dog-specific reminders while maintaining personal activity goals.
-    - **Message Preferences**: Checkboxes for "Walk Reminders", "Budget Alerts", "Beeminder Emergencies".
-    - **Delete Account**: "Nuclear option" for user data rights.
+## 3. Data Architecture (Neon PostgreSQL)
+User state, preferences, and inference history are persisted in a serverless Neon database. 
 
-### C. The "Pulse" (Notification Hub)
-- **Goal**: A chronological feed of all Mecris communications.
-- **UI Elements**:
-    - List of recent alerts with icons (🚶‍♂️, 💰, 🚨).
-    - "Read" vs. "Unread" states.
-    - Quick-action buttons attached to notifications (e.g., "Snooze 1hr", "Done").
+- **Connection Management**: Because Spin modules scale down to zero and instantiate rapidly, we must use a connection pooler (like **pgBouncer** or Neon's built-in pooler) to prevent connection exhaustion.
+- **Schema Overview**:
+  - `users`: `pocket_id_sub` (PK), `beeminder_token_encrypted`, `notification_prefs`, `timezone`, `budget_limit`, `budget_spent_groq` (Source of truth for LLM spend), `mcp_server_url`.
+  - `walk_inferences`: `id`, `user_id`, `start_time`, `end_time`, `distance_meters`, `confidence_score`, `status` (pending | confirmed | rejected | auto-logged), `created_at`.
+    - *Idempotency Constraint*: `UNIQUE INDEX idx_walk_user_start ON walk_inferences(user_id, start_time);` (prevents double-logging if Android syncs twice).
+  - `notification_log`: `id`, `user_id`, `channel` (Push | Telegram | WhatsApp), `cost_usd`, `prompt_tokens`, `completion_tokens`, `sent_at`.
+    - *Spam Prevention Constraint*: `CHECK (sent_at > NOW() - INTERVAL '4 hours')` logic in Spin to prevent duplicate reminders in the same window.
 
-### D. Quiet Hours & Schedule
-- **Goal**: Define when Mecris is allowed to be "sassy".
-- **UI Elements**:
-    - Time-range picker (e.g., "Don't bug me before 8 AM or after 9 PM").
-    - Weekend toggle (Different schedule for Saturdays/Sundays).
+## 4. Android App Architecture & Health Connect
+- **Framework**: Jetpack Compose with modern Material 3 design.
+- **Health Integration**: Android Health Connect SDK.
+- **Background Work & Limits**: Health Connect restricts background reads. We use `WorkManager` (runs every ~15-30 mins when constraints like battery/network are met) to fetch newly aggregated Step, Distance, and Exercise Route records. 
+- **Local Heuristics Engine**: The app evaluates the raw data:
+    - *Rule MVP*: If `Steps > 2000` AND `Time > 20 min` AND `GPS variance implies outdoor movement` -> Confidence 90%.
+    - If confidence > 70%, it queues an HTTP POST to the Spin Sync Service. (If sync fails, WorkManager applies exponential backoff).
 
-### E. Goal Status Dashboard
-- **Goal**: Real-time visibility into the system state.
-- **UI Elements**:
-    - **Dog Walk Progress**: "Boris & Fiona: ❌ Needed" or "✅ Logged" (Source: **Auto-Fit** or Manual).
-    - **Daily Steps**: Live progress bar against the 10k goal or 0.5mi threshold.
-    - **Budget Health**: Progress bar showing remaining Claude/Groq funds.
-    - **Beeminder Risk**: List of goals with runway colors (Green/Yellow/Red).
+## 5. Spin Module Design (The WASM Backend)
+The backend is decomposed into focused WebAssembly modules (Rust or Go):
 
-## 3. New Functionality Enabled
+1.  **Auth Service**: Middleware that intercepts requests, validates Pocket ID JWTs, and injects user context.
+2.  **Sync Service**: Ingests "Walk Events" from the Android app. Handles deduplication using the `idx_walk_user_start` unique constraint.
+3.  **Cron Trigger (The Operator)**: 
+    - Fermyon Spin uses a global cron, not per-user. 
+    - Implementation: Runs every 15 minutes globally (`0 */15 * * * *`). It queries Neon for users in specific timezones whose `next_check_at <= NOW()`, and dispatches internal jobs/events for those users.
+4.  **Mecris Bridge / Edge Agent**: A client that fetches current budget, Beeminder runways, and system state. 
+    - *Phase 1-3 Implementation*: Spin acts as an HTTP client calling the existing centralized/home-hosted Mecris API via a secure tunnel.
+    - *Phase 4 Long-term vision*: Mecris logic ports to user-owned Spin modules or an Android Edge AI, allowing the device itself to make API calls using its decrypted data.
+5.  **Intelligence Service**: Evaluates Mecris context. If action is needed, invokes an LLM to draft personalized, context-aware reminders. To maintain aggressive cost-consciousness, this relies on **Groq via Noclod** (e.g., using Llama 3 or Mixtral). After the call, Spin increments `users.budget_spent_groq` in Neon.
+6.  **Notification Router**: Dispatches drafted messages. Evaluates user preference hierarchy. **WhatsApp Business API (via Twilio)** is the primary, production-ready channel utilizing pre-approved marketing/utility templates. 
 
-1. **Rich Push Notifications**: Unlike SMS, Android push can include images, action buttons, and progress bars.
-2. **Foreground Service/Live Activity**: Keep the "Dog Walk" status visible on the lock screen until it's completed.
-3. **Fit Integration (Automatic Detection)**: 
-    - Connect to **Google Fit / Health Connect** to read daily step counts and logged activities.
-    - If a walk >0.5 miles is detected, automatically update the "Bike" goal in Beeminder.
-    - **Smart Reminders**: Automatically suppress "Dog Walk" prompts if the system sees you've already hit the activity threshold for the day.
-4. **Location-Aware Reminders (Future)**: Detect when the user is at the park or out for a walk and automatically update the "Bike" goal status.
-5. **Offline Mode**: Cache the last known status so you can check your goals even without a data connection.
+## 6. The Autonomous Intelligence Loop
+This is the core value proposition of Mecris-Go.
 
-## 4. Technical Architecture (Android + Spin)
+1.  **Trigger**: Spin Global Cron task activates, identifies that it's 4:00 PM for User A based on `users.timezone`.
+2.  **Context Assembly**: Spin pulls Beeminder status + Mecris budget status (`budget_spent_groq` vs `budget_limit`).
+3.  **Decision & Budget Check**: 
+    - *Scenario*: User hasn't walked, Beeminder derails in 4 hours.
+    - *Conflict Resolution Check*: If Beeminder already shows "completed" manually today, abort.
+    - *Action*: Prompt Groq (via Noclod) to fill in the variables for a "Sassy Saturday" reminder.
+4.  **Dispatch (WhatsApp Templates)**: 
+    - Spin uses a pre-approved Twilio template, for example:
+      - *Template*: `mecris_reminder_v1`
+      - *Body*: `👋 {{1}}\n\n{{2}}\n\nReply YES to confirm.`
+      - *Groq Provides*: `1="Walk time!"`, `2="Your 'dog walk' goal derails in 4 hours. Last walk: yesterday."`
+    - Spin sends the formatted payload via Twilio API.
+5.  **Auto-Log Closure**: Once the user actually walks, Android `WorkManager` syncs the walk to Spin. Spin inserts it into Neon, calls the Beeminder API to log the datapoint, and sends a final congratulatory ping. Beeminder API calls rely on the unique request ID/timestamp to handle idempotency.
 
-- **Frontend**: Jetpack Compose (Modern Android UI).
-- **Backend**: Spin app (Rust/Go) running on a serverless platform (e.g., Fermyon Cloud or self-hosted).
-- **Communication**: REST API + FCM (Push).
-- **Storage**: Mecris SQLite (via the Spin backend API).
-
----
-*This document serves as the design scaffold for the Mecris Android application implementation.*
+## 7. Implementation Roadmap
+- **Phase 1 (MVP)**: Android app with Health Connect OAuth, local WorkManager heuristics, manual confirmation button, and direct Beeminder API sync.
+- **Phase 2 (Cloud State)**: Introduce Pocket ID, Fermyon Spin sync service, and Neon DB to securely store inferences. Spin connects via HTTP to external Mecris MCP.
+- **Phase 3 (WhatsApp & Noclod)**: Introduce the Spin Global Cron Trigger (with timezone handling), Twilio WhatsApp integration (using existing approved templates), and Groq/Noclod LLM integration with Neon-backed budget tracking.
+- **Phase 4 (Decentralized Mecris)**: Port the core `/narrator/context` Mecris logic into individual user-owned Spin modules or directly onto the Android edge device.

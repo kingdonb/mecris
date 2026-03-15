@@ -23,6 +23,8 @@ from groq_odometer_tracker import get_groq_context_for_narrator, get_groq_remind
 from twilio_sender import smart_send_message, send_sms
 from scripts.anthropic_cost_tracker import AnthropicCostTracker
 from services.weather_service import WeatherService
+from services.neon_sync_checker import NeonSyncChecker
+from services.reminder_service import ReminderService
 
 # Load environment variables
 load_dotenv()
@@ -69,6 +71,7 @@ app.mount("/mcp", mcp.sse_app())
 # Initialize clients
 obsidian_client = ObsidianMCPClient()
 beeminder_client = BeeminderClient()
+neon_checker = NeonSyncChecker()
 usage_tracker = UsageTracker()
 virtual_budget_manager = VirtualBudgetManager()
 billing_reconciler = BillingReconciliation()
@@ -78,6 +81,8 @@ try:
 except Exception as e:
     logger.warning(f"Failed to initialize AnthropicCostTracker: {e}")
     anthropic_cost_tracker = None
+
+reminder_service = None # Will be initialized later
 
 # --- Cache Implementation ---
 daily_activity_cache = {}
@@ -104,17 +109,52 @@ async def get_cached_beeminder_goals() -> List[Dict[str, Any]]:
         return []
 
 async def get_cached_daily_activity(goal_slug: str = "bike") -> Dict[str, Any]:
-    """Get daily activity status with 1-hour cache."""
+    """Get daily activity status with 15-minute cache (refreshed for Cloud sync)."""
     now = datetime.now()
     if goal_slug in daily_activity_cache:
         cache_entry = daily_activity_cache[goal_slug]
         if now < cache_entry["cache_expires"]:
-            return {"goal_slug": goal_slug, "has_activity_today": cache_entry["has_activity_today"], "status": "completed" if cache_entry["has_activity_today"] else "needed", "cached": True}
+            return {
+                "goal_slug": goal_slug, 
+                "has_activity_today": cache_entry["has_activity_today"], 
+                "status": "completed" if cache_entry["has_activity_today"] else "needed", 
+                "source": cache_entry.get("source", "cache"),
+                "cached": True
+            }
 
     try:
+        # Phase 2: Check Neon Cloud DB first for 'bike' (walks)
+        if goal_slug == "bike":
+            if neon_checker.has_walk_today():
+                latest = neon_checker.get_latest_walk()
+                walk_info = f" (Steps: {latest['step_count']})" if latest else ""
+                activity_status = {
+                    "goal_slug": goal_slug,
+                    "has_activity_today": True,
+                    "status": "completed",
+                    "check_time": now.isoformat(),
+                    "message": f"✅ Walk detected in Cloud Sync (Neon){walk_info}",
+                    "source": "neon_cloud"
+                }
+                daily_activity_cache[goal_slug] = {
+                    "last_check": now, 
+                    "has_activity_today": True, 
+                    "cache_expires": now + timedelta(minutes=15),
+                    "source": "neon_cloud"
+                }
+                activity_status["cached"] = False
+                return activity_status
+
+        # Fallback to Beeminder (Legacy or non-walk goals)
         activity_status = await beeminder_client.get_daily_activity_status(goal_slug)
-        daily_activity_cache[goal_slug] = {"last_check": now, "has_activity_today": activity_status["has_activity_today"], "cache_expires": now + timedelta(hours=1)}
+        daily_activity_cache[goal_slug] = {
+            "last_check": now, 
+            "has_activity_today": activity_status["has_activity_today"], 
+            "cache_expires": now + timedelta(minutes=15 if goal_slug == "bike" else 60),
+            "source": "beeminder"
+        }
         activity_status["cached"] = False
+        activity_status["source"] = "beeminder"
         return activity_status
     except Exception as e:
         logger.error(f"Failed to fetch daily activity for {goal_slug}: {e}")
@@ -141,6 +181,13 @@ async def get_narrator_context() -> Dict[str, Any]:
         budget_status = get_budget_status_from_tracker()
         daily_walk_status = await get_cached_daily_activity("bike")
         groq_context = get_groq_context_for_narrator()
+
+        # Add latest cloud walk info if available
+        latest_cloud_walk = neon_checker.get_latest_walk()
+        if latest_cloud_walk:
+            # Convert datetime to ISO string for JSON serialization
+            if isinstance(latest_cloud_walk.get("start_time"), datetime):
+                latest_cloud_walk["start_time"] = latest_cloud_walk["start_time"].isoformat()
         
         # Fetch user preferences for vacation_mode
         target_phone = os.getenv('TWILIO_TO_NUMBER')
@@ -193,7 +240,9 @@ async def get_narrator_context() -> Dict[str, Any]:
             "summary": summary, "goals_status": {"total": len(active_goals)},
             "urgent_items": urgent_items, "beeminder_alerts": [e.get("message", "") for e in emergencies[:5]],
             "goal_runway": goal_runway, "budget_status": budget_status, "recommendations": recommendations,
-            "daily_walk_status": daily_walk_status, "vacation_mode": vacation_mode, "last_updated": datetime.now().isoformat()
+            "daily_walk_status": daily_walk_status, 
+            "latest_cloud_walk": latest_cloud_walk,
+            "vacation_mode": vacation_mode, "last_updated": datetime.now().isoformat()
         }
     except Exception as e:
         logger.error(f"Failed to build narrator context: {e}")
@@ -415,32 +464,16 @@ async def get_coaching_insight() -> Dict[str, Any]:
         return {"error": str(e)}
 
 async def check_reminder_needed() -> Dict[str, Any]:
-    context = await get_narrator_context()
-    current_hour = datetime.now().hour
-    budget_status = context.get("budget_status", {})
-    remaining_budget = budget_status.get("remaining_budget", 0)
-    
-    insight = await get_coaching_insight()
-    
-    walk_needed = context.get("daily_walk_status", {}).get("status") == "needed"
-    
-    # Logic: Only send walk reminders in the afternoon window
-    if 14 <= current_hour <= 17:
-        if walk_needed:
-             return {"should_send": True, "message": insight.get("message"), "type": "walk_reminder"}
-        elif insight.get("momentum") == "high" and current_hour >= 16:
-             # Even if walked, if it's late and momentum is high, send a coaching pivot
-             return {"should_send": True, "message": insight.get("message"), "type": "momentum_coaching"}
-        
-    return {"should_send": False, "reason": "Conditions not met or already handled"}
+    return await reminder_service.check_reminder_needed()
 
 async def send_reminder_message(message_data: Dict[str, Any]) -> Dict[str, Any]:
-    message = message_data.get("message")
     msg_type = message_data.get("type")
+    use_template = message_data.get("template_sid") is not None
     
     db_path = os.getenv("MECRIS_DB_PATH", "mecris_usage.db")
     today = str(datetime.now().date())
     
+    import sqlite3
     conn = sqlite3.connect(db_path)
     try:
         with conn:
@@ -455,9 +488,22 @@ async def send_reminder_message(message_data: Dict[str, Any]) -> Dict[str, Any]:
             # Check if already sent
             cursor = conn.execute("SELECT 1 FROM message_log WHERE date = ? AND type = ?", (today, msg_type))
             if cursor.fetchone():
-                return {"sent": False, "reason": "Already sent today (coordinated)"}
+                return {"sent": False, "reason": f"Already sent {msg_type} today (coordinated)"}
 
-            delivery_result = smart_send_message(message)
+            if use_template:
+                from twilio_sender import send_whatsapp_template
+                template_sid = message_data.get("template_sid")
+                variables = message_data.get("variables", {})
+                success = send_whatsapp_template(template_sid, variables)
+                delivery_result = {
+                    "sent": success, 
+                    "method": "whatsapp_template", 
+                    "template_sid": template_sid
+                }
+            else:
+                message = message_data.get("message") or message_data.get("fallback_message")
+                delivery_result = smart_send_message(message)
+
             if delivery_result["sent"]:
                 conn.execute("INSERT INTO message_log VALUES (?, ?, ?)", (today, msg_type, datetime.now().isoformat()))
             return delivery_result
@@ -465,6 +511,8 @@ async def send_reminder_message(message_data: Dict[str, Any]) -> Dict[str, Any]:
         conn.close()
 
 
+
+reminder_service = ReminderService(get_narrator_context, get_coaching_insight)
 
 if __name__ == "__main__":
     import sys

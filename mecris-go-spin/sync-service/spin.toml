@@ -1,0 +1,28 @@
+#:schema https://schemas.spinframework.dev/spin/manifest-v2/latest.json
+
+spin_manifest_version = 2
+
+[application]
+name = "mecris-go-api"
+version = "0.1.0"
+authors = ["Kingdon B <kingdon@urmanac.com>"]
+description = ""
+
+[variables]
+db_url = { required = false, default = "" }
+auth_bypass = { required = false, default = "false" }
+
+[[trigger.http]]
+route = "/walks"
+component = "sync-service"
+
+[component.sync-service]
+source = "target/wasm32-wasip1/release/sync_service.wasm"
+allowed_outbound_hosts = ["postgres://*:*", "https://www.beeminder.com"]
+key_value_stores = ["default"]
+[component.sync-service.variables]
+db_url = "{{ db_url }}"
+auth_bypass = "{{ auth_bypass }}"
+[component.sync-service.build]
+command = "cargo build --target wasm32-wasip1 --release"
+watch = ["src/**/*.rs", "Cargo.toml"]
