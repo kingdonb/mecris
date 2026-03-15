@@ -162,14 +162,14 @@ class ClozemasterScraper:
                 forecast_data = data.get("reviewForecast", [])
                 
                 if forecast_data:
-                    # reviewForecast is usually a list of counts, where index 0 is today, 1 is tomorrow
-                    # Or it might be a list of dicts. Let's handle both.
+                    # Clozemaster reviewForecast starts with Tomorrow at index 0
                     try:
-                        if len(forecast_data) > 1:
-                            tomorrow_data = forecast_data[1]
+                        if len(forecast_data) > 0:
+                            # Index 0 is Tomorrow
+                            tomorrow_data = forecast_data[0]
                             forecast["tomorrow"] = tomorrow_data.get("count", 0) if isinstance(tomorrow_data, dict) else tomorrow_data
                             
-                            # Next 7 days
+                            # Next 7 days liability (Tomorrow through +7 days)
                             forecast["next_7_days"] = sum(
                                 d.get("count", 0) if isinstance(d, dict) else d 
                                 for d in forecast_data[:7]
