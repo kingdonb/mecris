@@ -28,6 +28,9 @@ dependencies = [
     "python-multipart>=0.0.6",
     "pyautogui>=0.9.53 ; sys_platform != 'linux'",
     "apscheduler>=3.11.0",
+    "mcp[cli]>=1.26.0",
+    "psycopg2-binary>=2.9.11",
+    "sqlalchemy>=2.0.48",
 ]
 
 [tool.pytest.ini_options]
