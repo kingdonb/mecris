@@ -3,7 +3,7 @@
 spin_manifest_version = 2
 
 [application]
-name = "sync-service"
+name = "mecris-go-api"
 version = "0.1.0"
 authors = ["Kingdon B <kingdon@urmanac.com>"]
 description = ""
@@ -17,7 +17,7 @@ route = "/walks"
 component = "sync-service"
 
 [component.sync-service]
-source = "target/wasm32-wasi/release/sync_service.wasm"
+source = "target/wasm32-wasip1/release/sync_service.wasm"
 allowed_outbound_hosts = ["postgres://*:*", "https://www.beeminder.com"]
 key_value_stores = ["default"]
 [component.sync-service.variables]
