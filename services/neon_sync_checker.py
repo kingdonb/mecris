@@ -18,7 +18,7 @@ class NeonSyncChecker:
     def has_walk_today(self, user_id: str = None) -> bool:
         """
         Queries the Neon walk_inferences table for any walk starting today.
-        If user_id is None, it checks for any user (default for single-user phase).
+        Aligns 'today' to US/Eastern midnight.
         """
         if not self.db_url:
             return False
@@ -32,9 +32,11 @@ class NeonSyncChecker:
             import zoneinfo
             eastern = zoneinfo.ZoneInfo("US/Eastern")
             local_now = datetime.now(eastern)
+            # Today at 00:00:00 Eastern
             today_start = local_now.replace(hour=0, minute=0, second=0, microsecond=0)
 
             # Cast TEXT to TIMESTAMPTZ for comparison
+            # We use >= today_start which is an aware datetime
             query = "SELECT COUNT(*) FROM walk_inferences WHERE start_time::TIMESTAMPTZ >= %s"
             params = [today_start]
 
@@ -48,6 +50,7 @@ class NeonSyncChecker:
             cur.close()
             conn.close()
 
+            logger.info(f"Neon walk check for {today_start}: found {count} walks")
             return count > 0
 
         except Exception as e:

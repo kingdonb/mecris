@@ -7,9 +7,11 @@ we maintain local estimates and allow manual budget updates.
 import sqlite3
 import json
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Any
 from dataclasses import dataclass
 import os
+import psycopg2
+from psycopg2.extras import RealDictCursor
 
 @dataclass
 class UsageSession:
@@ -24,7 +26,9 @@ class UsageSession:
 class UsageTracker:
     def __init__(self, db_path: str = "mecris_usage.db"):
         self.db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), db_path)
+        self.neon_url = os.getenv("NEON_DB_URL")
         self.init_database()
+
         
         # Current pricing (as of 2025) - Claude 3.5 Sonnet
         # Input: $3/million tokens, Output: $15/million tokens
@@ -40,6 +44,76 @@ class UsageTracker:
         }
     
     def init_database(self):
+        """Initialize database for usage tracking."""
+        if self.neon_url:
+            self._init_neon()
+        else:
+            self._init_sqlite()
+
+    def _init_neon(self):
+        """Initialize Neon PostgreSQL database."""
+        try:
+            with psycopg2.connect(self.neon_url) as conn:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        CREATE TABLE IF NOT EXISTS usage_sessions (
+                            id SERIAL PRIMARY KEY,
+                            timestamp TIMESTAMPTZ NOT NULL,
+                            model TEXT NOT NULL,
+                            input_tokens INTEGER NOT NULL,
+                            output_tokens INTEGER NOT NULL,
+                            estimated_cost DOUBLE PRECISION NOT NULL,
+                            session_type TEXT NOT NULL,
+                            notes TEXT DEFAULT ""
+                        )
+                    """)
+                    cur.execute("""
+                        CREATE TABLE IF NOT EXISTS budget_tracking (
+                            id INTEGER PRIMARY KEY,
+                            total_budget DOUBLE PRECISION NOT NULL,
+                            remaining_budget DOUBLE PRECISION NOT NULL,
+                            budget_period_start TEXT NOT NULL,
+                            budget_period_end TEXT NOT NULL,
+                            last_updated TIMESTAMPTZ NOT NULL
+                        )
+                    """)
+                    cur.execute("""
+                        CREATE TABLE IF NOT EXISTS goals (
+                            id SERIAL PRIMARY KEY,
+                            title TEXT NOT NULL,
+                            description TEXT DEFAULT "",
+                            priority TEXT DEFAULT "medium",
+                            status TEXT DEFAULT "active",
+                            created_at TIMESTAMPTZ NOT NULL,
+                            completed_at TIMESTAMPTZ DEFAULT NULL,
+                            due_date TEXT DEFAULT NULL
+                        )
+                    """)
+                    cur.execute("""
+                        CREATE TABLE IF NOT EXISTS alert_log (
+                            id SERIAL PRIMARY KEY,
+                            alert_type TEXT NOT NULL,
+                            alert_level TEXT NOT NULL,
+                            message TEXT NOT NULL,
+                            sent_at TIMESTAMPTZ NOT NULL,
+                            context TEXT DEFAULT ""
+                        )
+                    """)
+                    
+                    # Initialize budget if not exists
+                    cur.execute("SELECT COUNT(*) FROM budget_tracking")
+                    if cur.fetchone()[0] == 0:
+                        cur.execute("""
+                            INSERT INTO budget_tracking 
+                            (id, total_budget, remaining_budget, budget_period_start, budget_period_end, last_updated)
+                            VALUES (1, 24.96, 24.95, "2025-08-06", "2025-09-30", %s)
+                        """, (datetime.now(),))
+        except Exception as e:
+            # print(f"Failed to initialize Neon: {e}. Falling back to SQLite.")
+            self.neon_url = None
+            self._init_sqlite()
+
+    def _init_sqlite(self):
         """Initialize SQLite database for usage tracking."""
         with sqlite3.connect(self.db_path) as conn:
             conn.execute("""
@@ -133,8 +207,29 @@ class UsageTracker:
                       session_type: str = "interactive", notes: str = "") -> float:
         """Record a usage session and return estimated cost."""
         cost = self.calculate_cost(model, input_tokens, output_tokens)
-        timestamp = datetime.now().isoformat()
+        now = datetime.now()
         
+        if self.neon_url:
+            try:
+                with psycopg2.connect(self.neon_url) as conn:
+                    with conn.cursor() as cur:
+                        cur.execute("""
+                            INSERT INTO usage_sessions 
+                            (timestamp, model, input_tokens, output_tokens, estimated_cost, session_type, notes)
+                            VALUES (%s, %s, %s, %s, %s, %s, %s)
+                        """, (now, model, input_tokens, output_tokens, cost, session_type, notes))
+                        
+                        # Update remaining budget
+                        cur.execute("""
+                            UPDATE budget_tracking 
+                            SET remaining_budget = remaining_budget - %s, last_updated = %s
+                            WHERE id = 1
+                        """, (cost, now))
+                return cost
+            except Exception as e:
+                pass # Fallback to SQLite
+
+        timestamp = now.isoformat()
         with sqlite3.connect(self.db_path) as conn:
             conn.execute("""
                 INSERT INTO usage_sessions 
@@ -150,7 +245,7 @@ class UsageTracker:
             """, (cost, timestamp))
         
         return cost
-    
+
     def get_usage_summary(self, days: int = 7) -> Dict:
         """Get usage summary for the last N days."""
         cutoff_date = (datetime.now() - timedelta(days=days)).isoformat()
@@ -226,25 +321,52 @@ class UsageTracker:
     def update_budget(self, remaining_budget: float, total_budget: Optional[float] = None, 
                      period_end: Optional[str] = None) -> Dict:
         """Manually update budget information."""
-        timestamp = datetime.now().isoformat()
+        now = datetime.now()
+        timestamp = now.isoformat()
         
+        if self.neon_url:
+            try:
+                with psycopg2.connect(self.neon_url) as conn:
+                    with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                        if total_budget and period_end:
+                            cur.execute("""
+                                UPDATE budget_tracking 
+                                SET total_budget = %s, remaining_budget = %s, budget_period_end = %s, last_updated = %s
+                                WHERE id = 1
+                            """, (total_budget, remaining_budget, period_end, now))
+                        else:
+                            cur.execute("""
+                                UPDATE budget_tracking 
+                                SET remaining_budget = %s, last_updated = %s
+                                WHERE id = 1
+                            """, (remaining_budget, now))
+                        
+                        cur.execute("SELECT * FROM budget_tracking WHERE id = 1")
+                        budget_info = cur.fetchone()
+                        return {
+                            "total": budget_info["""total_budget"""],
+                            "remaining": budget_info["""remaining_budget"""],
+                            "period_start": budget_info["""budget_period_start"""],
+                            "period_end": budget_info["""budget_period_end"""],
+                            "last_updated": str(budget_info["""last_updated"""])
+                        }
+            except Exception as e:
+                pass # Fallback to SQLite
+
         with sqlite3.connect(self.db_path) as conn:
             if total_budget and period_end:
-                # Full budget update
                 conn.execute("""
                     UPDATE budget_tracking 
                     SET total_budget = ?, remaining_budget = ?, budget_period_end = ?, last_updated = ?
                     WHERE id = 1
                 """, (total_budget, remaining_budget, period_end, timestamp))
             else:
-                # Just update remaining budget
                 conn.execute("""
                     UPDATE budget_tracking 
                     SET remaining_budget = ?, last_updated = ?
                     WHERE id = 1
                 """, (remaining_budget, timestamp))
             
-            # Get updated budget info
             cursor = conn.execute("SELECT * FROM budget_tracking WHERE id = 1")
             budget_info = cursor.fetchone()
         
@@ -255,9 +377,55 @@ class UsageTracker:
             "period_end": budget_info[4],
             "last_updated": budget_info[5]
         }
-    
+
     def get_budget_status(self) -> Dict:
         """Get current budget status with alerts."""
+        if self.neon_url:
+            try:
+                with psycopg2.connect(self.neon_url) as conn:
+                    with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                        cur.execute("SELECT * FROM budget_tracking WHERE id = 1")
+                        budget_info = cur.fetchone()
+                        
+                        if not budget_info:
+                            return {"error": "No budget information found in Neon"}
+                        
+                        total, remaining = budget_info["total_budget"], budget_info["remaining_budget"]
+                        period_end = datetime.fromisoformat(budget_info["budget_period_end"].replace("Z", "+00:00")) if isinstance(budget_info["budget_period_end"], str) else budget_info["budget_period_end"]
+                        days_remaining = (period_end - datetime.now(period_end.tzinfo)).days if period_end.tzinfo else (period_end - datetime.now()).days
+                        
+                        # today spend
+                        cur.execute("SELECT SUM(estimated_cost) FROM usage_sessions WHERE timestamp::date = CURRENT_DATE")
+                        today_spend = cur.fetchone()["sum"] or 0
+                        
+                        cur.execute("SELECT SUM(estimated_cost) FROM usage_sessions WHERE timestamp > NOW() - INTERVAL '7 days'")
+                        week_spend = cur.fetchone()["sum"] or 0
+                        
+                        daily_burn_rate = week_spend / 7 if week_spend > 0 else 0
+                        projected_spend = daily_burn_rate * days_remaining
+                        
+                        # Generate alerts
+                        alerts = []
+                        if remaining < 5: alerts.append("LOW_BUDGET")
+                        if projected_spend > remaining: alerts.append("BURN_RATE_HIGH")
+                        if days_remaining <= 1: alerts.append("PERIOD_ENDING")
+                        if today_spend > 2: alerts.append("DAILY_LIMIT_EXCEEDED")
+                        
+                        return {
+                            "total_budget": total,
+                            "remaining_budget": remaining,
+                            "used_budget": round(total - remaining, 2),
+                            "days_remaining": days_remaining,
+                            "today_spend": round(today_spend, 4),
+                            "daily_burn_rate": round(daily_burn_rate, 4),
+                            "projected_spend": round(projected_spend, 4),
+                            "period_end": str(budget_info["budget_period_end"]),
+                            "alerts": alerts,
+                            "budget_health": "GOOD" if not alerts else "WARNING" if len(alerts) < 3 else "CRITICAL"
+                        }
+            except Exception as e:
+                pass # Fallback to SQLite
+
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.execute("SELECT * FROM budget_tracking WHERE id = 1")
             budget_info = cursor.fetchone()
@@ -308,7 +476,7 @@ class UsageTracker:
             "alerts": alerts,
             "budget_health": "GOOD" if not alerts else "WARNING" if len(alerts) < 3 else "CRITICAL"
         }
-    
+
     def get_recent_sessions(self, limit: int = 10) -> List[Dict]:
         """Get recent usage sessions."""
         with sqlite3.connect(self.db_path) as conn:
@@ -334,6 +502,29 @@ class UsageTracker:
     
     def get_goals(self) -> List[Dict]:
         """Get all goals with their status."""
+        if self.neon_url:
+            try:
+                with psycopg2.connect(self.neon_url) as conn:
+                    with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                        cur.execute("""
+                            SELECT id, title, description, priority, status, created_at, completed_at, due_date
+                            FROM goals 
+                            ORDER BY 
+                                CASE priority 
+                                    WHEN 'high' THEN 1 
+                                    WHEN 'medium' THEN 2 
+                                    WHEN 'low' THEN 3 
+                                END,
+                                CASE status
+                                    WHEN 'active' THEN 1
+                                    WHEN 'completed' THEN 2
+                                END,
+                                created_at
+                        """)
+                        return [dict(row) for row in cur.fetchall()]
+            except Exception as e:
+                pass # Fallback to SQLite
+
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.execute("""
                 SELECT id, title, description, priority, status, created_at, completed_at, due_date
@@ -360,61 +551,74 @@ class UsageTracker:
                     "status": row[4],
                     "created_at": row[5],
                     "completed_at": row[6],
-                    "due_date": row[7],
-                    "completed": row[4] == "completed"
+                    "did_date": row[7],
+                    "completed": row[4] == 'completed'
                 }
                 for row in cursor.fetchall()
             ]
-    
+
     def complete_goal(self, goal_id: int) -> Dict:
         """Mark a goal as completed."""
-        timestamp = datetime.now().isoformat()
+        now = datetime.now()
+        timestamp = now.isoformat()
         
+        if self.neon_url:
+            try:
+                with psycopg2.connect(self.neon_url) as conn:
+                    with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                        cur.execute("SELECT title FROM goals WHERE id = %s", (goal_id,))
+                        goal = cur.fetchone()
+                        if goal:
+                            cur.execute("""
+                                UPDATE goals 
+                                SET status = 'completed', completed_at = %s 
+                                WHERE id = %s
+                            """, (now, goal_id))
+                            return {"completed": True, "goal_id": goal_id, "title": goal['title'], "completed_at": timestamp}
+            except Exception as e:
+                pass # Fallback to SQLite
+
         with sqlite3.connect(self.db_path) as conn:
-            # Check if goal exists
             cursor = conn.execute("SELECT title FROM goals WHERE id = ?", (goal_id,))
             goal = cursor.fetchone()
-            
-            if not goal:
-                return {"error": f"Goal {goal_id} not found"}
-            
-            # Mark as completed
+            if not goal: return {"error": f"Goal {goal_id} not found"}
             conn.execute("""
                 UPDATE goals 
                 SET status = 'completed', completed_at = ? 
                 WHERE id = ?
             """, (timestamp, goal_id))
-            
-            return {
-                "completed": True,
-                "goal_id": goal_id,
-                "title": goal[0],
-                "completed_at": timestamp
-            }
-    
-    def add_goal(self, title: str, description: str = "", priority: str = "medium", due_date: Optional[str] = None) -> Dict:
+            return {"completed": True, "goal_id": goal_id, "title": goal[0], "completed_at": timestamp}
+
+    def add_goal(self, title: str, description: str = "", priority: str = 'medium', due_date: Optional[str] = None) -> Dict:
         """Add a new goal."""
-        timestamp = datetime.now().isoformat()
+        now = datetime.now()
+        timestamp = now.isoformat()
         
-        if priority not in ["high", "medium", "low"]:
-            priority = "medium"
+        if priority not in ['high', 'medium', 'low']:
+            priority = 'medium'
         
+        if self.neon_url:
+            try:
+                with psycopg2.connect(self.neon_url) as conn:
+                    with conn.cursor() as cur:
+                        cur.execute("""
+                            INSERT INTO goals (title, description, priority, status, created_at, due_date)
+                            VALUES (%s, %s, %s, 'active', %s, %s)
+                            RETURNING id
+                        """, (title, description, priority, now, due_date))
+                        goal_id = cur.fetchone()[0]
+                        return {"added": True, "goal_id": goal_id, "title": title, "priority": priority, "created_at": timestamp}
+            except Exception as e:
+                pass # Fallback to SQLite
+
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.execute("""
                 INSERT INTO goals (title, description, priority, status, created_at, due_date)
                 VALUES (?, ?, ?, 'active', ?, ?)
             """, (title, description, priority, timestamp, due_date))
-            
             goal_id = cursor.lastrowid
-            
-            return {
-                "added": True,
-                "goal_id": goal_id,
-                "title": title,
-                "priority": priority,
-                "created_at": timestamp
-            }
-    
+            return {"added": True, "goal_id": goal_id, "title": title, "priority": priority, "created_at": timestamp}
+
     def should_send_alert(self, alert_type: str, alert_level: str, cooldown_minutes: int = 60) -> bool:
         """Check if an alert should be sent based on cooldown period."""
         cutoff_time = (datetime.now() - timedelta(minutes=cooldown_minutes)).isoformat()

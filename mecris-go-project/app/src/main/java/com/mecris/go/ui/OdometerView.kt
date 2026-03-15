@@ -20,6 +20,7 @@ fun OdometerView(
     label: String = "BUDGET REMAINING", 
     symbol: String = "$",
     symbolColor: Color = Color.White,
+    digitColor: Color = Color(0xFFFFD600), // Default yellow
     digits: Int = 7,
     decimalPlaces: Int = 2
 ) {
@@ -69,7 +70,7 @@ fun OdometerView(
                 ) {
                     Text(
                         text = char.toString(),
-                        color = if (char == '.') Color.White else Color(0xFFFFD600),
+                        color = if (char == '.') Color.White else digitColor,
                         fontFamily = FontFamily.Monospace,
                         fontSize = 24.sp,
                         fontWeight = FontWeight.ExtraBold

@@ -110,10 +110,16 @@ async def get_cached_beeminder_goals() -> List[Dict[str, Any]]:
 
 async def get_cached_daily_activity(goal_slug: str = "bike") -> Dict[str, Any]:
     """Get daily activity status with 15-minute cache (refreshed for Cloud sync)."""
-    now = datetime.now()
-    if goal_slug in daily_activity_cache:
-        cache_entry = daily_activity_cache[goal_slug]
-        if now < cache_entry["cache_expires"]:
+    import zoneinfo
+    eastern = zoneinfo.ZoneInfo("US/Eastern")
+    local_now = datetime.now(eastern)
+    today_str = local_now.strftime("%Y-%m-%d")
+    
+    cache_key = f"{goal_slug}:{today_str}"
+    
+    if cache_key in daily_activity_cache:
+        cache_entry = daily_activity_cache[cache_key]
+        if local_now < cache_entry["cache_expires"]:
             return {
                 "goal_slug": goal_slug, 
                 "has_activity_today": cache_entry["has_activity_today"], 
@@ -132,14 +138,14 @@ async def get_cached_daily_activity(goal_slug: str = "bike") -> Dict[str, Any]:
                     "goal_slug": goal_slug,
                     "has_activity_today": True,
                     "status": "completed",
-                    "check_time": now.isoformat(),
+                    "check_time": local_now.isoformat(),
                     "message": f"✅ Walk detected in Cloud Sync (Neon){walk_info}",
                     "source": "neon_cloud"
                 }
-                daily_activity_cache[goal_slug] = {
-                    "last_check": now, 
+                daily_activity_cache[cache_key] = {
+                    "last_check": local_now, 
                     "has_activity_today": True, 
-                    "cache_expires": now + timedelta(minutes=15),
+                    "cache_expires": local_now + timedelta(minutes=15),
                     "source": "neon_cloud"
                 }
                 activity_status["cached"] = False
@@ -147,10 +153,10 @@ async def get_cached_daily_activity(goal_slug: str = "bike") -> Dict[str, Any]:
 
         # Fallback to Beeminder (Legacy or non-walk goals)
         activity_status = await beeminder_client.get_daily_activity_status(goal_slug)
-        daily_activity_cache[goal_slug] = {
-            "last_check": now, 
+        daily_activity_cache[cache_key] = {
+            "last_check": local_now, 
             "has_activity_today": activity_status["has_activity_today"], 
-            "cache_expires": now + timedelta(minutes=15 if goal_slug == "bike" else 60),
+            "cache_expires": local_now + timedelta(minutes=15 if goal_slug == "bike" else 60),
             "source": "beeminder"
         }
         activity_status["cached"] = False
@@ -158,8 +164,8 @@ async def get_cached_daily_activity(goal_slug: str = "bike") -> Dict[str, Any]:
         return activity_status
     except Exception as e:
         logger.error(f"Failed to fetch daily activity for {goal_slug}: {e}")
-        if goal_slug in daily_activity_cache:
-            return {"goal_slug": goal_slug, "has_activity_today": daily_activity_cache[goal_slug]["has_activity_today"], "status": "stale", "error": str(e)}
+        if cache_key in daily_activity_cache:
+            return {"goal_slug": goal_slug, "has_activity_today": daily_activity_cache[cache_key]["has_activity_today"], "status": "stale", "error": str(e)}
         return {"goal_slug": goal_slug, "has_activity_today": False, "status": "unknown", "error": str(e)}
 
 # --- Tool Implementations ---

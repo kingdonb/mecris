@@ -116,7 +116,8 @@ fun IntegrationsScreen(healthManager: HealthConnectManager, onBack: () -> Unit) 
                 value = 21.00,
                 label = "VIRTUAL BUDGET",
                 symbol = "$",
-                symbolColor = Color(0xFFFFD600) // Gold for money
+                symbolColor = Color(0xFFFFD600), // Gold
+                digitColor = Color(0xFFFFD600)  // Gold
             )
 
             Spacer(modifier = Modifier.height(8.dp))
@@ -126,7 +127,8 @@ fun IntegrationsScreen(healthManager: HealthConnectManager, onBack: () -> Unit) 
                 value = miles,
                 label = "TODAY'S DISTANCE",
                 symbol = "MI",
-                symbolColor = Color(0xFF00E5FF), // Cyan for activity
+                symbolColor = Color(0xFF00E5FF), // Cyan
+                digitColor = Color(0xFF00E5FF),  // Cyan
                 digits = 4,
                 decimalPlaces = 2
             )
