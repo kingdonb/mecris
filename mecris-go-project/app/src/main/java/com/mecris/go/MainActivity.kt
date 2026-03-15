@@ -41,7 +41,7 @@ class MainActivity : ComponentActivity() {
 
     // Spin Backend Configuration
     // Replace with your Spin URL (e.g., http://192.168.x.x:3000/ or Fermyon Cloud URL)
-    private val spinBaseUrl = "https://metnoom-spin.urmanac.com/" 
+    private val spinBaseUrl = "https://mecris-go-api-xupkwcis.fermyon.app/" 
     private val syncApi = SyncServiceApi.create(spinBaseUrl)
 
     // Temporary Beeminder config for Phase 1
