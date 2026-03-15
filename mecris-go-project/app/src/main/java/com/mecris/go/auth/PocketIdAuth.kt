@@ -11,13 +11,14 @@ import net.openid.appauth.*
 class PocketIdAuth(private val context: Context) {
 
     private val authService: AuthorizationService = AuthorizationService(context)
+    private val prefs = context.getSharedPreferences("auth_prefs", Context.MODE_PRIVATE)
     
     // Replace with your actual Pocket ID domain
     private val authEndpoint = Uri.parse("https://metnoom.urmanac.com/authorize")
     private val tokenEndpoint = Uri.parse("https://metnoom.urmanac.com/api/oidc/token")
     
     // Replace with your actual Client ID from the Pocket ID admin panel
-    private val clientId = "REPLACE_WITH_YOUR_CLIENT_ID"
+    private val clientId = "21f65a91-c4df-468d-a256-3b66a54c6d5f"
     
     private val redirectUri = Uri.parse("com.mecris.go:/oauth2redirect")
 
@@ -26,6 +27,31 @@ class PocketIdAuth(private val context: Context) {
 
     // The persistent AuthState object from AppAuth
     private var internalAuthState: net.openid.appauth.AuthState = net.openid.appauth.AuthState()
+
+    init {
+        loadAuthState()
+    }
+
+    private fun loadAuthState() {
+        val json = prefs.getString("auth_state_json", null)
+        if (json != null) {
+            try {
+                internalAuthState = net.openid.appauth.AuthState.jsonDeserialize(json)
+                if (internalAuthState.isAuthorized) {
+                    val jwt = internalAuthState.accessToken ?: internalAuthState.idToken
+                    if (jwt != null) {
+                        _authState.value = AuthState.Authenticated(jwt)
+                    }
+                }
+            } catch (e: Exception) {
+                // Ignore corrupted state
+            }
+        }
+    }
+
+    private fun saveAuthState() {
+        prefs.edit().putString("auth_state_json", internalAuthState.jsonSerializeString()).apply()
+    }
 
     fun authenticateWithPasskey(launcher: ActivityResultLauncher<Intent>) {
         _authState.value = AuthState.Loading
@@ -55,11 +81,13 @@ class PocketIdAuth(private val context: Context) {
         val ex = AuthorizationException.fromIntent(intent)
 
         internalAuthState.update(resp, ex)
+        saveAuthState()
 
         if (resp != null) {
             // Exchange the authorization code for tokens
             authService.performTokenRequest(resp.createTokenExchangeRequest()) { tokenResponse, tokenException ->
                 internalAuthState.update(tokenResponse, tokenException)
+                saveAuthState()
                 
                 if (tokenResponse != null) {
                     val jwt = tokenResponse.accessToken ?: tokenResponse.idToken
@@ -83,6 +111,9 @@ class PocketIdAuth(private val context: Context) {
                 _authState.value = AuthState.Error("Token refresh failed: ${ex.message}")
                 callback(null)
             } else {
+                if (accessToken != null) {
+                    saveAuthState()
+                }
                 callback(accessToken)
             }
         }
