@@ -94,15 +94,28 @@ fun IntegrationsScreen(healthManager: HealthConnectManager, onBack: () -> Unit) 
                     .height(180.dp)
             ) {
                 // Determine momentum based on walk status
-                val momentumValue = if (walkData?.isWalkInferred == true) 0.9f else 0.3f
+                val hasWalked = walkData?.isWalkInferred == true
+                val momentumValue = if (hasWalked) 0.9f else 0.3f
                 MomentumVisualizer(momentum = momentumValue)
+                
+                // Add a small status label inside the orb area
+                Text(
+                    text = if (hasWalked) "STABLE" else "CRITICAL",
+                    modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 8.dp),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = if (hasWalked) Color(0xFF00C853) else Color(0xFFFF1744),
+                    fontWeight = FontWeight.ExtraBold,
+                    letterSpacing = 2.sp
+                )
             }
             
             Spacer(modifier = Modifier.height(16.dp))
             
             OdometerView(
                 value = 21.00,
-                label = "VIRTUAL BUDGET"
+                label = "VIRTUAL BUDGET",
+                symbol = "$",
+                symbolColor = Color(0xFFFFD600) // Gold for money
             )
 
             Spacer(modifier = Modifier.height(8.dp))
@@ -112,7 +125,7 @@ fun IntegrationsScreen(healthManager: HealthConnectManager, onBack: () -> Unit) 
                 value = miles,
                 label = "TODAY'S DISTANCE",
                 symbol = "MI",
-                symbolColor = Color(0xFF00E5FF),
+                symbolColor = Color(0xFF00E5FF), // Cyan for activity
                 digits = 4,
                 decimalPlaces = 2
             )
