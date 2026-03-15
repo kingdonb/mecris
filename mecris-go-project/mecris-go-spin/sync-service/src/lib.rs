@@ -184,13 +184,16 @@ async fn handle_sync_service(req: Request) -> anyhow::Result<impl IntoResponse> 
     let beeminder_goal = match &row_set.rows[0][1] { DbValue::Str(s) if !s.is_empty() => s.clone(), _ => "bike".to_string() };
     let beeminder_user = match &row_set.rows[0][2] { DbValue::Str(s) if !s.is_empty() => s.clone(), _ => "me".to_string() };
 
-    // 5. Beeminder API Call with correct requestid (no underscore)
+    // 5. Beeminder API Call with correct requestid (no underscore) in URL
     let miles = walk.distance_meters / 1609.34;
     let request_id = format!("{}_{}", user_id, walk.start_time);
-    let beeminder_url = format!("https://www.beeminder.com/api/v1/users/{}/goals/{}/datapoints.json", beeminder_user, beeminder_goal);
+    let beeminder_url = format!(
+        "https://www.beeminder.com/api/v1/users/{}/goals/{}/datapoints.json?requestid={}",
+        beeminder_user, beeminder_goal, request_id
+    );
     let beeminder_body = format!(
-        "auth_token={}&value={:.2}&comment=Logged via Mecris-Go Spin Backend (Steps: {}, Source: {})&requestid={}",
-        beeminder_token, miles, walk.step_count, walk.distance_source, request_id
+        "auth_token={}&value={:.2}&comment=Logged via Mecris-Go Spin Backend (Steps: {}, Source: {})",
+        beeminder_token, miles, walk.step_count, walk.distance_source
     );
 
     let beeminder_req = Request::post(&beeminder_url, beeminder_body)
