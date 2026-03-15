@@ -7,6 +7,9 @@ import androidx.work.WorkerParameters
 import com.mecris.go.auth.PocketIdAuth
 import com.mecris.go.sync.SyncServiceApi
 import com.mecris.go.sync.WalkDataSummaryDto
+import kotlinx.coroutines.DelicateCoroutinesApi
+import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.launch
 import java.time.Instant
 import java.time.ZoneId
 
@@ -18,9 +21,10 @@ class WalkHeuristicsWorker(
     // Note: In a real production app, we would use Dependency Injection (Dagger/Hilt)
     // For this Phase 2 vertical slice, we instantiate manually.
     private val pocketIdAuth = PocketIdAuth(applicationContext)
-    private val spinBaseUrl = "https://metnoom-spin.urmanac.com/" 
+    private val spinBaseUrl = "https://mecris-go-api-xupkwcis.fermyon.app/" 
     private val syncApi = SyncServiceApi.create(spinBaseUrl)
 
+    @OptIn(DelicateCoroutinesApi::class)
     override suspend fun doWork(): Result {
         Log.d("WalkHeuristicsWorker", "Running background walk check...")
         
@@ -40,7 +44,8 @@ class WalkHeuristicsWorker(
                 pocketIdAuth.getValidAccessToken { token ->
                     if (token != null) {
                         // We have a token, perform sync
-                        kotlinx.coroutines.GlobalScope.launch { // Using GlobalScope for the callback fire-and-forget
+                        // Using GlobalScope for the callback fire-and-forget in background worker
+                        GlobalScope.launch { 
                             try {
                                 val dto = WalkDataSummaryDto(
                                     start_time = Instant.now().minusSeconds(3600).toString(),
