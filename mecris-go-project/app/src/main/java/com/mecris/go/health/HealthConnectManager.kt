@@ -18,12 +18,11 @@ class HealthConnectManager(private val context: Context) {
 
     val healthConnectClient by lazy { HealthConnectClient.getOrCreate(context) }
 
-    // Level 1: Core permissions
+    // Level 1: Core permissions required for basic dashboard
     val foregroundPermissions = setOf(
         HealthPermission.getReadPermission(StepsRecord::class),
         HealthPermission.getReadPermission(DistanceRecord::class),
-        HealthPermission.getReadPermission(ExerciseSessionRecord::class),
-        HealthPermission.getReadPermission(TotalCaloriesBurnedRecord::class)
+        HealthPermission.getReadPermission(ExerciseSessionRecord::class)
     )
 
     // Level 2: High-sensitivity route permission
@@ -47,23 +46,30 @@ class HealthConnectManager(private val context: Context) {
     suspend fun hasForegroundPermissions(): Boolean {
         if (!_isSupported.value) return false
         val granted = healthConnectClient.permissionController.getGrantedPermissions()
+        
         val stepsGranted = granted.contains(HealthPermission.getReadPermission(StepsRecord::class))
         val distGranted = granted.contains(HealthPermission.getReadPermission(DistanceRecord::class))
         val exerciseGranted = granted.contains(HealthPermission.getReadPermission(ExerciseSessionRecord::class))
+        
         Log.d("HealthConnectManager", "PERM DIAG: Steps=$stepsGranted, Distance=$distGranted, Exercise=$exerciseGranted")
+        
         return stepsGranted && distGranted && exerciseGranted
     }
 
     suspend fun hasRoutePermission(): Boolean {
         if (!_isSupported.value) return false
         val granted = healthConnectClient.permissionController.getGrantedPermissions()
-        return granted.contains(routePermission)
+        val routeGranted = granted.contains(routePermission)
+        Log.d("HealthConnectManager", "PERM DIAG: Route=$routeGranted")
+        return routeGranted
     }
 
     suspend fun hasBackgroundPermission(): Boolean {
         if (!_isSupported.value) return false
         val granted = healthConnectClient.permissionController.getGrantedPermissions()
-        return granted.contains(backgroundPermission)
+        val bgGranted = granted.contains(backgroundPermission)
+        Log.d("HealthConnectManager", "PERM DIAG: Background=$bgGranted")
+        return bgGranted
     }
 
     suspend fun fetchRecentWalkData(): WalkDataSummary {
@@ -83,29 +89,32 @@ class HealthConnectManager(private val context: Context) {
 
     private suspend fun fetchFullActivityReport(): FullActivityReport {
         val now = Instant.now()
+        val monthAgo = now.minus(30, ChronoUnit.DAYS)
+        val monthFilter = TimeRangeFilter.between(monthAgo, now)
         
-        // 0. Extreme Diagnostic: Scan last 30 days for ANYTHING
+        // 0. Refined Diagnostics with per-type try-catch
         try {
-            val monthAgo = now.minus(30, ChronoUnit.DAYS)
-            val monthFilter = TimeRangeFilter.between(monthAgo, now)
-            
             val sessions = healthConnectClient.readRecords(ReadRecordsRequest(ExerciseSessionRecord::class, monthFilter)).records
             Log.d("HealthConnectManager", "EXTREME DIAG: Found ${sessions.size} sessions in last 30d")
-            
-            val distances = healthConnectClient.readRecords(ReadRecordsRequest(DistanceRecord::class, monthFilter)).records
-            Log.d("HealthConnectManager", "EXTREME DIAG: Found ${distances.size} distance records in last 30d")
-            
-            val calories = healthConnectClient.readRecords(ReadRecordsRequest(TotalCaloriesBurnedRecord::class, monthFilter)).records
-            Log.d("HealthConnectManager", "EXTREME DIAG: Found ${calories.size} calorie records in last 30d")
-            
             if (sessions.isNotEmpty()) {
                 val types = sessions.map { it.exerciseType }.distinct()
                 val sources = sessions.map { it.metadata.dataOrigin.packageName }.distinct()
                 Log.d("HealthConnectManager", "EXTREME DIAG: Session types=$types, sources=$sources")
             }
-        } catch (e: Exception) {
-            Log.e("HealthConnectManager", "EXTREME DIAG FAILED: ${e.message}")
-        }
+        } catch (e: Exception) { Log.e("HealthConnectManager", "Session Diag Failed: ${e.message}") }
+
+        try {
+            val stepsRecords = healthConnectClient.readRecords(ReadRecordsRequest(StepsRecord::class, monthFilter)).records
+            if (stepsRecords.isNotEmpty()) {
+                val sources = stepsRecords.map { it.metadata.dataOrigin.packageName }.distinct()
+                Log.d("HealthConnectManager", "EXTREME DIAG: Steps sources found: $sources")
+            }
+        } catch (e: Exception) { Log.e("HealthConnectManager", "Steps Diag Failed: ${e.message}") }
+
+        try {
+            val distRecords = healthConnectClient.readRecords(ReadRecordsRequest(DistanceRecord::class, monthFilter)).records
+            Log.d("HealthConnectManager", "EXTREME DIAG: Found ${distRecords.size} distance records in last 30d")
+        } catch (e: Exception) { Log.e("HealthConnectManager", "Distance Diag Failed: ${e.message}") }
 
         if (!hasForegroundPermissions()) {
             return FullActivityReport(0, 0.0, "Permission Denied", 0, false, 0, now)
@@ -126,12 +135,10 @@ class HealthConnectManager(private val context: Context) {
         val effectiveStartTime = walkingSessions.minByOrNull { it.startTime }?.startTime ?: fallbackStart
 
         // 1. Read Steps
-        val stepsRecords = healthConnectClient.readRecords(ReadRecordsRequest(StepsRecord::class, timeRangeFilter)).records
-        val totalSteps = stepsRecords.sumOf { it.count }
-        
+        val totalSteps = healthConnectClient.readRecords(ReadRecordsRequest(StepsRecord::class, timeRangeFilter)).records.sumOf { it.count }
+
         // 2. Read Distance
-        val distanceRecords = healthConnectClient.readRecords(ReadRecordsRequest(DistanceRecord::class, timeRangeFilter)).records
-        var totalDistanceMeters = distanceRecords.sumOf { it.distance.inMeters }
+        var totalDistanceMeters = healthConnectClient.readRecords(ReadRecordsRequest(DistanceRecord::class, timeRangeFilter)).records.sumOf { it.distance.inMeters }
         
         var source = if (totalDistanceMeters > 0) "Health Connect (Distance)" else "Health Connect (Passive)"
 
