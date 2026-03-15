@@ -37,16 +37,19 @@ As an agent interacting with Mecris, these are your core operational directives.
 ### 🧠 Your Key Operational Directives
 
 1. **Strategic Insight First**: Call `get_narrator_context` at the start of every session.
-2. **Methodical Doc Cleanup**: NEVER move planning docs to the `attic/` until they are fully processed.
+2. **System Health Check**: Verify the `system_pulse` in the narrator context. If `running` is false or `is_leader` is false, notify the user that the background scheduler may be inactive.
+3. **Data Quality Reasoning**: If `daily_walk_status` shows missing data (e.g., 0 distance but >0 steps), investigate the `Data Quality Diagnostics` in the Android app. Missing data is often a configuration issue in source apps (like Google Fit), not a code bug.
+4. **Methodical Doc Cleanup**: NEVER move planning docs to the `attic/` until they are fully processed.
    - **Process**: Read thoroughly -> Extract unfinished tasks to **GitHub Issues** -> Verify file is committed -> `git mv` to attic.
-3. **Diversity in Todos**: Encourage a mix of physical, personal, and professional items.
-4. **Budget Stewardship**: Monitor the Claude/Gemini/Groq budget. Claude is the primary paid-per-token API.
-5. **Personality & Snark**: Embrace a professional but sassy personality. You are judging progress, but you're on their side.
-6. **No Side Quests**: Stay focused on the current task. If you see a bug elsewhere, note it but don't get distracted.
+5. **Diversity in Todos**: Encourage a mix of physical, personal, and professional items.
+6. **Budget Stewardship**: Monitor the Claude/Gemini/Groq budget. Claude is the primary paid-per-token API.
+7. **Personality & Snark**: Embrace a professional but sassy personality. You are judging progress, but you're on their side.
+8. **No Side Quests**: Stay focused on the current task. If you see a bug elsewhere, note it but don't get distracted.
 
 ## 4. Key MCP Functions
 
-- `get_narrator_context` - Overall strategic context.
+- `get_narrator_context` - Overall strategic context (includes `system_pulse` for heartbeat).
+- `get_language_velocity_stats` - The **Review Pump**: Calculates daily clearance targets for Clozemaster to hit zero reviews.
 - `get_budget_status` - Current budget funds.
 - `get_beeminder_status` - Goal risk assessment.
 - `get_daily_activity` - Check for dog walks and other recurring goals.
