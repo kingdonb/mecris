@@ -32,6 +32,25 @@ class GroqUsageScraper:
     
     def get_cached_usage(self) -> Optional[Dict]:
         """Get cached usage data if still valid."""
+        neon_url = os.getenv("NEON_DB_URL")
+        if neon_url:
+            try:
+                import psycopg2
+                from psycopg2.extras import RealDictCursor
+                with psycopg2.connect(neon_url) as conn:
+                    with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                        cur.execute("""
+                            SELECT cache_data, expires_at FROM provider_cache 
+                            WHERE provider = %s AND cache_key = %s
+                            AND expires_at > %s
+                        """, ("groq", "usage_data", datetime.now()))
+                        row = cur.fetchone()
+                        if row:
+                            logger.info("Using cached Groq usage data (Neon)")
+                            return json.loads(row['cache_data'])
+            except Exception as e:
+                logger.error(f"Neon cache read failed: {e}")
+
         try:
             import sqlite3
             with sqlite3.connect(self.budget_manager.db_path) as conn:
@@ -43,7 +62,7 @@ class GroqUsageScraper:
                 
                 result = cursor.fetchone()
                 if result:
-                    logger.info("Using cached Groq usage data")
+                    logger.info("Using cached Groq usage data (SQLite)")
                     return json.loads(result[0])
         except Exception as e:
             logger.warning(f"Cache read error: {e}")
@@ -53,7 +72,26 @@ class GroqUsageScraper:
     def cache_usage_data(self, data: Dict) -> None:
         """Cache usage data with expiration."""
         expires_at = datetime.now() + timedelta(minutes=self.cache_minutes)
+        neon_url = os.getenv("NEON_DB_URL")
         
+        if neon_url:
+            try:
+                import psycopg2
+                with psycopg2.connect(neon_url) as conn:
+                    with conn.cursor() as cur:
+                        cur.execute("""
+                            INSERT INTO provider_cache (provider, cache_key, cache_data, cached_at, expires_at)
+                            VALUES (%s, %s, %s, %s, %s)
+                            ON CONFLICT (provider, cache_key) DO UPDATE SET
+                                cache_data = EXCLUDED.cache_data,
+                                cached_at = EXCLUDED.cached_at,
+                                expires_at = EXCLUDED.expires_at
+                        """, ("groq", "usage_data", json.dumps(data), datetime.now(), expires_at))
+                logger.info(f"Cached Groq usage data until {expires_at} (Neon)")
+                return
+            except Exception as e:
+                logger.error(f"Neon cache write failed: {e}")
+
         try:
             import sqlite3
             with sqlite3.connect(self.budget_manager.db_path) as conn:
@@ -63,7 +101,7 @@ class GroqUsageScraper:
                     VALUES ('groq', 'usage_data', ?, ?, ?)
                 """, (json.dumps(data), datetime.now().isoformat(), expires_at.isoformat()))
                 
-                logger.info(f"Cached Groq usage data until {expires_at}")
+                logger.info(f"Cached Groq usage data until {expires_at} (SQLite)")
         except Exception as e:
             logger.error(f"Cache write error: {e}")
     

@@ -10,15 +10,23 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
+import com.mecris.go.health.HealthConnectManager
+import com.mecris.go.health.WalkDataSummary
+
 class IntegrationsActivity : ComponentActivity() {
+    private lateinit var healthConnectManager: HealthConnectManager
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        healthConnectManager = HealthConnectManager(this)
+        
         setContent {
             MaterialTheme(
                 colorScheme = darkColorScheme(
@@ -33,6 +41,7 @@ class IntegrationsActivity : ComponentActivity() {
                     color = MaterialTheme.colorScheme.background
                 ) {
                     IntegrationsScreen(
+                        healthManager = healthConnectManager,
                         onBack = { finish() }
                     )
                 }
@@ -43,7 +52,15 @@ class IntegrationsActivity : ComponentActivity() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun IntegrationsScreen(onBack: () -> Unit) {
+fun IntegrationsScreen(healthManager: HealthConnectManager, onBack: () -> Unit) {
+    var walkData by remember { mutableStateOf<WalkDataSummary?>(null) }
+    
+    LaunchedEffect(Unit) {
+        if (healthManager.hasForegroundPermissions()) {
+            walkData = healthManager.fetchRecentWalkData()
+        }
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -75,15 +92,46 @@ fun IntegrationsScreen(onBack: () -> Unit) {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(200.dp)
+                    .height(180.dp)
             ) {
-                // High momentum (safe) for now
-                MomentumVisualizer(momentum = 0.8f)
+                // Determine momentum based on walk status
+                val hasWalked = walkData?.isWalkInferred == true
+                val momentumValue = if (hasWalked) 0.9f else 0.3f
+                MomentumVisualizer(momentum = momentumValue)
+                
+                // Add a small status label inside the orb area
+                Text(
+                    text = if (hasWalked) "STABLE" else "CRITICAL",
+                    modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 8.dp),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = if (hasWalked) Color(0xFF00C853) else Color(0xFFFF1744),
+                    fontWeight = FontWeight.ExtraBold,
+                    letterSpacing = 2.sp
+                )
             }
             
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(16.dp))
             
-            OdometerView(value = 21.00)
+            OdometerView(
+                value = 21.00,
+                label = "VIRTUAL BUDGET",
+                symbol = "$",
+                symbolColor = Color(0xFFFFD600), // Gold
+                digitColor = Color(0xFFFFD600)  // Gold
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            val miles = (walkData?.totalDistanceMeters ?: 0.0) / 1609.34
+            OdometerView(
+                value = miles,
+                label = "TODAY'S DISTANCE",
+                symbol = "MI",
+                symbolColor = Color(0xFF00E5FF), // Cyan
+                digitColor = Color(0xFF00E5FF),  // Cyan
+                digits = 4,
+                decimalPlaces = 2
+            )
             
             Spacer(modifier = Modifier.height(24.dp))
             

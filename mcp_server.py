@@ -110,10 +110,16 @@ async def get_cached_beeminder_goals() -> List[Dict[str, Any]]:
 
 async def get_cached_daily_activity(goal_slug: str = "bike") -> Dict[str, Any]:
     """Get daily activity status with 15-minute cache (refreshed for Cloud sync)."""
-    now = datetime.now()
-    if goal_slug in daily_activity_cache:
-        cache_entry = daily_activity_cache[goal_slug]
-        if now < cache_entry["cache_expires"]:
+    import zoneinfo
+    eastern = zoneinfo.ZoneInfo("US/Eastern")
+    local_now = datetime.now(eastern)
+    today_str = local_now.strftime("%Y-%m-%d")
+    
+    cache_key = f"{goal_slug}:{today_str}"
+    
+    if cache_key in daily_activity_cache:
+        cache_entry = daily_activity_cache[cache_key]
+        if local_now < cache_entry["cache_expires"]:
             return {
                 "goal_slug": goal_slug, 
                 "has_activity_today": cache_entry["has_activity_today"], 
@@ -132,14 +138,14 @@ async def get_cached_daily_activity(goal_slug: str = "bike") -> Dict[str, Any]:
                     "goal_slug": goal_slug,
                     "has_activity_today": True,
                     "status": "completed",
-                    "check_time": now.isoformat(),
+                    "check_time": local_now.isoformat(),
                     "message": f"✅ Walk detected in Cloud Sync (Neon){walk_info}",
                     "source": "neon_cloud"
                 }
-                daily_activity_cache[goal_slug] = {
-                    "last_check": now, 
+                daily_activity_cache[cache_key] = {
+                    "last_check": local_now, 
                     "has_activity_today": True, 
-                    "cache_expires": now + timedelta(minutes=15),
+                    "cache_expires": local_now + timedelta(minutes=15),
                     "source": "neon_cloud"
                 }
                 activity_status["cached"] = False
@@ -147,10 +153,10 @@ async def get_cached_daily_activity(goal_slug: str = "bike") -> Dict[str, Any]:
 
         # Fallback to Beeminder (Legacy or non-walk goals)
         activity_status = await beeminder_client.get_daily_activity_status(goal_slug)
-        daily_activity_cache[goal_slug] = {
-            "last_check": now, 
+        daily_activity_cache[cache_key] = {
+            "last_check": local_now, 
             "has_activity_today": activity_status["has_activity_today"], 
-            "cache_expires": now + timedelta(minutes=15 if goal_slug == "bike" else 60),
+            "cache_expires": local_now + timedelta(minutes=15 if goal_slug == "bike" else 60),
             "source": "beeminder"
         }
         activity_status["cached"] = False
@@ -158,8 +164,8 @@ async def get_cached_daily_activity(goal_slug: str = "bike") -> Dict[str, Any]:
         return activity_status
     except Exception as e:
         logger.error(f"Failed to fetch daily activity for {goal_slug}: {e}")
-        if goal_slug in daily_activity_cache:
-            return {"goal_slug": goal_slug, "has_activity_today": daily_activity_cache[goal_slug]["has_activity_today"], "status": "stale", "error": str(e)}
+        if cache_key in daily_activity_cache:
+            return {"goal_slug": goal_slug, "has_activity_today": daily_activity_cache[cache_key]["has_activity_today"], "status": "stale", "error": str(e)}
         return {"goal_slug": goal_slug, "has_activity_today": False, "status": "unknown", "error": str(e)}
 
 # --- Tool Implementations ---
@@ -470,9 +476,24 @@ async def send_reminder_message(message_data: Dict[str, Any]) -> Dict[str, Any]:
     msg_type = message_data.get("type")
     use_template = message_data.get("template_sid") is not None
     
+    neon_url = os.getenv("NEON_DB_URL")
     db_path = os.getenv("MECRIS_DB_PATH", "mecris_usage.db")
-    today = str(datetime.now().date())
+    today = date.today()
+    now = datetime.now()
     
+    # Check if already sent today
+    if neon_url:
+        try:
+            import psycopg2
+            from psycopg2.extras import RealDictCursor
+            with psycopg2.connect(neon_url) as conn:
+                with conn.cursor() as cur:
+                    cur.execute("SELECT 1 FROM message_log WHERE date = %s AND type = %s", (today, msg_type))
+                    if cur.fetchone():
+                        return {"sent": False, "reason": f"Already sent {msg_type} today (Neon coordinated)"}
+        except Exception as e:
+            logger.error(f"Neon message_log check failed: {e}")
+
     import sqlite3
     conn = sqlite3.connect(db_path)
     try:
@@ -485,10 +506,10 @@ async def send_reminder_message(message_data: Dict[str, Any]) -> Dict[str, Any]:
                     PRIMARY KEY (date, type)
                 )
             """)
-            # Check if already sent
-            cursor = conn.execute("SELECT 1 FROM message_log WHERE date = ? AND type = ?", (today, msg_type))
+            # Check if already sent in SQLite
+            cursor = conn.execute("SELECT 1 FROM message_log WHERE date = ? AND type = ?", (str(today), msg_type))
             if cursor.fetchone():
-                return {"sent": False, "reason": f"Already sent {msg_type} today (coordinated)"}
+                return {"sent": False, "reason": f"Already sent {msg_type} today (SQLite coordinated)"}
 
             if use_template:
                 from twilio_sender import send_whatsapp_template
@@ -505,7 +526,17 @@ async def send_reminder_message(message_data: Dict[str, Any]) -> Dict[str, Any]:
                 delivery_result = smart_send_message(message)
 
             if delivery_result["sent"]:
-                conn.execute("INSERT INTO message_log VALUES (?, ?, ?)", (today, msg_type, datetime.now().isoformat()))
+                # Log to Neon if available
+                if neon_url:
+                    try:
+                        with psycopg2.connect(neon_url) as conn_neon:
+                            with conn_neon.cursor() as cur:
+                                cur.execute("INSERT INTO message_log (date, type, sent_at) VALUES (%s, %s, %s)", (today, msg_type, now))
+                    except Exception as e:
+                        logger.error(f"Failed to log message to Neon: {e}")
+                
+                # Log to SQLite
+                conn.execute("INSERT INTO message_log VALUES (?, ?, ?)", (str(today), msg_type, now.isoformat()))
             return delivery_result
     finally:
         conn.close()

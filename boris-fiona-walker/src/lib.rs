@@ -482,7 +482,7 @@ fn get_walk_message(hour: u8) -> String {
 
 /// Check if we already sent a reminder today (simple date-based check)
 fn already_reminded_today() -> Result<bool> {
-    let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
+    let today = time::get_current_date_eastern()?;
     let key = format!("last_reminder_date");
     
     match spin_sdk::key_value::Store::open_default()?.get(&key) {
@@ -497,7 +497,7 @@ fn already_reminded_today() -> Result<bool> {
 
 /// Mark that we sent a reminder today
 fn mark_reminder_sent() -> Result<()> {
-    let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
+    let today = time::get_current_date_eastern()?;
     let key = format!("last_reminder_date");
     
     let store = spin_sdk::key_value::Store::open_default()?;

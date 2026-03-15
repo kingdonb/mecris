@@ -18,7 +18,8 @@ class NeonSyncChecker:
     def has_walk_today(self, user_id: str = None) -> bool:
         """
         Queries the Neon walk_inferences table for any walk starting today.
-        If user_id is None, it checks for any user (default for single-user phase).
+        Aligns 'today' to US/Eastern midnight.
+        Correctly handles UTC-to-Eastern conversion for stored timestamps.
         """
         if not self.db_url:
             return False
@@ -28,12 +29,19 @@ class NeonSyncChecker:
             conn = psycopg2.connect(self.db_url)
             cur = conn.cursor()
 
-            # Define 'today' in UTC (since Spin stores as UTC)
-            today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+            # Define 'today' in Eastern Time midnight
+            import zoneinfo
+            eastern = zoneinfo.ZoneInfo("US/Eastern")
+            local_now = datetime.now(eastern)
+            today_start = local_now.replace(hour=0, minute=0, second=0, microsecond=0)
 
-            # Cast TEXT to TIMESTAMPTZ for comparison
-            query = "SELECT COUNT(*) FROM walk_inferences WHERE start_time::TIMESTAMPTZ >= %s"
-            params = [today_start]
+            # Convert stored UTC strings to TIMESTAMPTZ, then at time zone 'US/Eastern'
+            # and compare with today_start at 00:00:00
+            query = """
+                SELECT COUNT(*) FROM walk_inferences 
+                WHERE (start_time::TIMESTAMPTZ AT TIME ZONE 'US/Eastern') >= %s
+            """
+            params = [today_start.replace(tzinfo=None)] # AT TIME ZONE returns a naive timestamp in that zone
 
             if user_id:
                 query += " AND user_id = %s"
@@ -45,6 +53,7 @@ class NeonSyncChecker:
             cur.close()
             conn.close()
 
+            logger.info(f"Neon walk check for {today_start}: found {count} walks")
             return count > 0
 
         except Exception as e:

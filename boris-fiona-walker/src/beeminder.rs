@@ -1,6 +1,8 @@
 use serde::Deserialize;
 use anyhow::{anyhow, Result};
 use spin_sdk::variables;
+use chrono::TimeZone;
+use chrono_tz::US::Eastern;
 
 #[derive(Debug, Deserialize, Clone, PartialEq)]
 pub struct Goal {
@@ -36,7 +38,11 @@ pub async fn has_walked_today(goal_slug: &str) -> Result<bool> {
 
     if *response.status() == 200 {
         let datapoints: Vec<Datapoint> = serde_json::from_slice(response.body())?;
-        let today = chrono::Utc::now().format("%Y%m%d").to_string();
+        
+        let utc_now = chrono::Utc::now();
+        let eastern_now = Eastern.from_utc_datetime(&utc_now.naive_utc());
+        let today = eastern_now.format("%Y%m%d").to_string();
+        
         Ok(datapoints.iter().any(|d| d.daystamp == today))
     } else {
         let error_body = String::from_utf8_lossy(response.body());

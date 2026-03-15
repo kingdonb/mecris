@@ -11,6 +11,10 @@ import json
 from datetime import datetime, timedelta, date
 from typing import Dict, List, Tuple, Optional
 from dataclasses import dataclass
+import psycopg2
+from psycopg2.extras import RealDictCursor
+import os
+
 from virtual_budget_manager import VirtualBudgetManager, Provider
 from fetch_groq_usage import fetch_groq_usage
 
@@ -32,6 +36,7 @@ class ReconciliationResult:
 class BillingReconciliation:
     def __init__(self):
         self.budget_manager = VirtualBudgetManager()
+        self.neon_url = os.getenv("NEON_DB_URL")
     
     def reconcile_anthropic(self, target_date: date) -> ReconciliationResult:
         """Reconcile Anthropic usage for a specific date."""
@@ -202,8 +207,22 @@ class BillingReconciliation:
     
     def _get_estimated_costs(self, provider: Provider, target_date: date) -> Tuple[float, List[Dict]]:
         """Get estimated costs for a provider on a specific date."""
+        if self.neon_url:
+            try:
+                with psycopg2.connect(self.neon_url) as conn:
+                    with conn.cursor() as cur:
+                        cur.execute("""
+                            SELECT id, estimated_cost FROM provider_usage 
+                            WHERE provider = %s AND timestamp::date = %s AND reconciled = FALSE
+                        """, (provider.value, target_date))
+                        records = cur.fetchall()
+                        total_estimated = sum(row[1] for row in records)
+                        usage_records = [{"id": row[0], "estimated_cost": row[1]} for row in records]
+                        return total_estimated, usage_records
+            except Exception as e:
+                logger.error(f"Neon _get_estimated_costs failed: {e}")
+
         import sqlite3
-        
         with sqlite3.connect(self.budget_manager.db_path) as conn:
             cursor = conn.execute("""
                 SELECT id, estimated_cost FROM provider_usage 
@@ -253,17 +272,12 @@ class BillingReconciliation:
                 return None
             
             # Extract cost data from scraped results
-            # This is rough since Groq typically shows monthly totals
             data = usage_data.get("data", {})
-            
-            # Try to parse monthly usage and estimate daily
             monthly_cost = 0.0
             
-            # Look for dollar amounts in the scraped data
             for key, value in data.items():
                 if isinstance(value, str) and '$' in value:
                     try:
-                        # Extract dollar amount from string like "$1.06" or "$1.06 this month"
                         import re
                         amounts = re.findall(r'\$(\d+\.?\d*)', value)
                         if amounts:
@@ -272,14 +286,12 @@ class BillingReconciliation:
                         continue
             
             if monthly_cost > 0:
-                # Rough daily estimate (monthly cost / days in month)
-                days_in_month = target_date.replace(day=28).day
-                if target_date.month == 2:
-                    days_in_month = 28
-                elif target_date.month in [1, 3, 5, 7, 8, 10, 12]:
-                    days_in_month = 31
-                else:
-                    days_in_month = 30
+                # Rough daily estimate
+                days_in_month = 30 # Default
+                try:
+                    import calendar
+                    days_in_month = calendar.monthrange(target_date.year, target_date.month)[1]
+                except: pass
                 
                 daily_estimate = monthly_cost / days_in_month
                 logger.info(f"Groq daily cost estimate: ${daily_estimate:.4f} (from monthly ${monthly_cost:.2f})")
@@ -304,26 +316,38 @@ class BillingReconciliation:
         if not usage_records or total_actual <= 0:
             return 0
         
-        # Calculate scaling factor to distribute actual cost across records
         total_estimated = sum(record["estimated_cost"] for record in usage_records)
         if total_estimated <= 0:
             return 0
         
         scale_factor = total_actual / total_estimated
-        
-        import sqlite3
         records_updated = 0
         
+        if self.neon_url:
+            try:
+                with psycopg2.connect(self.neon_url) as conn:
+                    with conn.cursor() as cur:
+                        for record in usage_records:
+                            actual_cost = record["estimated_cost"] * scale_factor
+                            cur.execute("""
+                                UPDATE provider_usage 
+                                SET actual_cost = %s, reconciled = TRUE 
+                                WHERE id = %s
+                            """, (actual_cost, record["id"]))
+                            records_updated += 1
+                return records_updated
+            except Exception as e:
+                logger.error(f"Neon _update_usage_records_with_actual_costs failed: {e}")
+
+        import sqlite3
         with sqlite3.connect(self.budget_manager.db_path) as conn:
             for record in usage_records:
                 actual_cost = record["estimated_cost"] * scale_factor
-                
                 conn.execute("""
                     UPDATE provider_usage 
                     SET actual_cost = ?, reconciled = TRUE 
                     WHERE id = ?
                 """, (actual_cost, record["id"]))
-                
                 records_updated += 1
         
         return records_updated
@@ -331,8 +355,22 @@ class BillingReconciliation:
     def _log_reconciliation_job(self, provider: str, target_date: date, estimated_total: float,
                                actual_total: float, drift_percentage: float, records_reconciled: int):
         """Log a reconciliation job for tracking accuracy over time."""
-        import sqlite3
+        now = datetime.now()
         
+        if self.neon_url:
+            try:
+                with psycopg2.connect(self.neon_url) as conn:
+                    with conn.cursor() as cur:
+                        cur.execute("""
+                            INSERT INTO reconciliation_jobs 
+                            (provider, job_date, estimated_total, actual_total, drift_percentage, records_reconciled, reconciled_at)
+                            VALUES (%s, %s, %s, %s, %s, %s, %s)
+                        """, (provider, target_date, estimated_total, actual_total, drift_percentage, records_reconciled, now))
+                return
+            except Exception as e:
+                logger.error(f"Neon _log_reconciliation_job failed: {e}")
+
+        import sqlite3
         with sqlite3.connect(self.budget_manager.db_path) as conn:
             conn.execute("""
                 INSERT INTO reconciliation_jobs 
@@ -345,13 +383,65 @@ class BillingReconciliation:
                 actual_total,
                 drift_percentage,
                 records_reconciled,
-                datetime.now().isoformat()
+                now.isoformat()
             ))
     
     def get_reconciliation_summary(self, days: int = 7) -> Dict:
         """Get reconciliation accuracy summary for recent days."""
+        if self.neon_url:
+            try:
+                with psycopg2.connect(self.neon_url) as conn:
+                    with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                        # Summary by provider
+                        cur.execute("""
+                            SELECT 
+                                provider,
+                                COUNT(*) as jobs_count,
+                                AVG(ABS(drift_percentage)) as avg_abs_drift,
+                                AVG(drift_percentage) as avg_drift,
+                                SUM(estimated_total) as total_estimated,
+                                SUM(actual_total) as total_actual
+                            FROM reconciliation_jobs 
+                            WHERE job_date > CURRENT_DATE - INTERVAL %s
+                            GROUP BY provider
+                        """, (f"{days} days",))
+                        
+                        provider_summary = {}
+                        for row in cur.fetchall():
+                            provider_summary[row["provider"]] = {
+                                "jobs_count": row["jobs_count"],
+                                "avg_abs_drift_pct": round(row["avg_abs_drift"] or 0, 2),
+                                "avg_drift_pct": round(row["avg_drift"] or 0, 2),
+                                "total_estimated": round(row["total_estimated"] or 0, 4),
+                                "total_actual": round(row["total_actual"] or 0, 4)
+                            }
+                        
+                        # Recent jobs
+                        cur.execute("""
+                            SELECT provider, job_date, drift_percentage, records_reconciled, reconciled_at
+                            FROM reconciliation_jobs 
+                            WHERE job_date > CURRENT_DATE - INTERVAL %s
+                            ORDER BY reconciled_at DESC
+                            LIMIT 20
+                        """, (f"{days} days",))
+                        
+                        recent_jobs = [dict(row) for row in cur.fetchall()]
+                        for job in recent_jobs:
+                            job["job_date"] = str(job["job_date"])
+                            job["reconciled_at"] = str(job["reconciled_at"])
+                            
+                        return {
+                            "period_days": days,
+                            "provider_summary": provider_summary,
+                            "recent_jobs": recent_jobs,
+                            "overall_accuracy": {
+                                "avg_abs_drift": sum(p["avg_abs_drift_pct"] for p in provider_summary.values()) / len(provider_summary) if provider_summary else 0
+                            }
+                        }
+            except Exception as e:
+                logger.error(f"Neon get_reconciliation_summary failed: {e}")
+
         cutoff_date = (date.today() - timedelta(days=days)).isoformat()
-        
         import sqlite3
         with sqlite3.connect(self.budget_manager.db_path) as conn:
             # Summary by provider

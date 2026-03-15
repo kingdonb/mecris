@@ -152,23 +152,30 @@ class BeeminderClient:
         """Check if any datapoints were added today to the specified goal
         
         This is the core method for detecting daily activity without parallel tracking.
-        Returns True if any datapoint was created today (after midnight local time).
+        Returns True if any datapoint was created today (after midnight US/Eastern).
         """
-        today_start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
-        datapoints = await self.get_goal_datapoints(goal_slug, since=today_start, count=5)
+        import zoneinfo
+        eastern = zoneinfo.ZoneInfo("US/Eastern")
+        now_eastern = datetime.now(eastern)
+        today_start_eastern = now_eastern.replace(hour=0, minute=0, second=0, microsecond=0)
         
-        # Check if any datapoints have today's timestamp
-        today_date = today_start.date()
+        # Beeminder 'since' parameter expects a Unix timestamp
+        # We want everything since local midnight
+        datapoints = await self.get_goal_datapoints(goal_slug, since=today_start_eastern, count=10)
+        
+        # Check if any datapoints have today's timestamp in Eastern time
+        today_date = today_start_eastern.date()
         for datapoint in datapoints:
-            # Beeminder timestamps are Unix timestamps
+            # Beeminder timestamps are Unix timestamps (seconds since epoch)
             dp_timestamp = datapoint.get("timestamp", 0)
             if dp_timestamp:
-                dp_date = datetime.fromtimestamp(dp_timestamp).date()
-                if dp_date == today_date:
-                    logger.info(f"Activity detected for {goal_slug}: datapoint at {datetime.fromtimestamp(dp_timestamp)}")
+                # Convert Unix timestamp to Eastern time for comparison
+                dp_dt_eastern = datetime.fromtimestamp(dp_timestamp, tz=zoneinfo.ZoneInfo("UTC")).astimezone(eastern)
+                if dp_dt_eastern.date() == today_date:
+                    logger.info(f"Activity detected for {goal_slug}: datapoint at {dp_dt_eastern}")
                     return True
         
-        logger.info(f"No activity today for {goal_slug}")
+        logger.info(f"No activity today for {goal_slug} (Local day: {today_date})")
         return False
     
     async def get_daily_activity_status(self, goal_slug: str = "bike") -> Dict[str, Any]:

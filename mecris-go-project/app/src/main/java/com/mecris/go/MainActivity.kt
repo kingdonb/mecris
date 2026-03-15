@@ -140,11 +140,20 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun setupWorkManager() {
+        val workManager = WorkManager.getInstance(this)
+        
+        // Purge any legacy/ghost workers from previous builds
+        workManager.cancelAllWork()
+
         val walkCheckRequest = PeriodicWorkRequestBuilder<WalkHeuristicsWorker>(
             15, TimeUnit.MINUTES
         ).build()
 
-        WorkManager.getInstance(this).enqueue(walkCheckRequest)
+        workManager.enqueueUniquePeriodicWork(
+            "WalkHeuristicsSync",
+            androidx.work.ExistingPeriodicWorkPolicy.UPDATE, // Update to current config
+            walkCheckRequest
+        )
     }
 
     private fun syncWalkToSpin(walkData: WalkDataSummary) {
@@ -219,6 +228,8 @@ fun MecrisGoApp(
     var hasBackground by remember { mutableStateOf(false) }
     var isLoading by remember { mutableStateOf(true) }
 
+    var lastSyncTime by remember { mutableStateOf(0L) }
+
     // Check permissions and fetch data on load
     LaunchedEffect(Unit) {
         isLoading = true
@@ -229,6 +240,20 @@ fun MecrisGoApp(
             walkData = healthManager.fetchRecentWalkData()
         }
         isLoading = false
+    }
+
+    // Auto-sync heuristic: if walk is inferred and authenticated, sync to cloud
+    LaunchedEffect(walkData, authState) {
+        val currentTime = System.currentTimeMillis()
+        val fifteenMinutesInMillis = 15 * 60 * 1000L
+        
+        if (walkData?.isWalkInferred == true && 
+            authState is AuthState.Authenticated && 
+            (currentTime - lastSyncTime > fifteenMinutesInMillis)) {
+            
+            onSyncToCloud(walkData!!)
+            lastSyncTime = currentTime
+        }
     }
 
     Column(
@@ -322,7 +347,7 @@ fun MecrisGoApp(
                                 Text("Detailed Activity Report", style = MaterialTheme.typography.titleLarge)
                                 Divider(modifier = Modifier.padding(vertical = 8.dp))
                                 
-                                InfoRow("Steps (24h)", "${walkData!!.totalSteps}")
+                                InfoRow("Steps (Today)", "${walkData!!.totalSteps}")
                                 
                                 InfoRow("Distance", "${String.format("%.2f", walkData!!.totalDistanceMeters / 1609.34)} miles")
                                 Text("Source: ${walkData!!.distanceSource}", 

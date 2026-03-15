@@ -92,7 +92,9 @@ class HealthConnectManager(private val context: Context) {
         val now = Instant.now()
         // Stabilize start time to the beginning of the current hour for idempotency fallback
         val fallbackStart = now.truncatedTo(ChronoUnit.HOURS)
-        val queryStart = now.minus(24, ChronoUnit.HOURS)
+        val localDateTime = LocalDateTime.ofInstant(now, ZoneId.systemDefault())
+        val startOfToday = localDateTime.toLocalDate().atStartOfDay(ZoneId.systemDefault()).toInstant()
+        val queryStart = startOfToday
         val timeRangeFilter = TimeRangeFilter.between(queryStart, now)
 
         Log.d("HealthConnectManager", "Querying Health Connect from $queryStart to $now")
@@ -106,30 +108,56 @@ class HealthConnectManager(private val context: Context) {
             timeRangeFilter = timeRangeFilter
         )
         val sessions = healthConnectClient.readRecords(sessionRequest).records
+        Log.d("HealthConnectManager", "Total exercise sessions found: ${sessions.size}")
+        
         val walkingSessions = sessions.filter {
             it.exerciseType == ExerciseSessionRecord.EXERCISE_TYPE_WALKING
         }
+        Log.d("HealthConnectManager", "Walking sessions found: ${walkingSessions.size}")
         
         // Use the earliest walking session start time if available, otherwise fallback
         val effectiveStartTime = walkingSessions.minByOrNull { it.startTime }?.startTime ?: fallbackStart
 
-        // 1. Read Steps (re-using the logic from above but in the full function context)
+        // 1. Read Steps - Try broader query if 0 sessions, otherwise combine
         val stepsRequest = ReadRecordsRequest(recordType = StepsRecord::class, timeRangeFilter = timeRangeFilter)
-        val totalSteps = healthConnectClient.readRecords(stepsRequest).records.sumOf { it.count }
+        val stepsRecords = healthConnectClient.readRecords(stepsRequest).records
+        var totalSteps = stepsRecords.sumOf { it.count }
+        Log.d("HealthConnectManager", "Steps from generic query: $totalSteps")
 
         // 2. Read Distance
         val distanceRequest = ReadRecordsRequest(recordType = DistanceRecord::class, timeRangeFilter = timeRangeFilter)
         val distanceRecords = healthConnectClient.readRecords(distanceRequest).records
         var totalDistanceMeters = distanceRecords.sumOf { it.distance.inMeters }
-        var source = "Health Connect (Passive)"
+        Log.d("HealthConnectManager", "Distance from generic query: $totalDistanceMeters")
+        
+        var source = if (totalDistanceMeters > 0) "Health Connect (Distance)" else "Health Connect (Passive)"
+
+        // If generic query found nothing but we have sessions, query sessions specifically
+        if (totalSteps == 0L && walkingSessions.isNotEmpty()) {
+            Log.d("HealthConnectManager", "Falling back to session-specific step query")
+            walkingSessions.forEach { session ->
+                val sessionFilter = TimeRangeFilter.between(session.startTime, session.endTime)
+                val sessionSteps = healthConnectClient.readRecords(ReadRecordsRequest(StepsRecord::class, sessionFilter)).records
+                totalSteps += sessionSteps.sumOf { it.count }
+            }
+        }
 
         // 4. Check for Routes
         var hasRoutes = false
         var totalRoutePoints = 0
         walkingSessions.forEach { session ->
-            if (session.exerciseRouteResult is ExerciseRouteResult.Data) {
-                hasRoutes = true
-                totalRoutePoints += (session.exerciseRouteResult as ExerciseRouteResult.Data).exerciseRoute.route.size
+            when (val routeResult = session.exerciseRouteResult) {
+                is ExerciseRouteResult.Data -> {
+                    hasRoutes = true
+                    totalRoutePoints += routeResult.exerciseRoute.route.size
+                    Log.d("HealthConnectManager", "Found route with ${routeResult.exerciseRoute.route.size} points")
+                }
+                is ExerciseRouteResult.NoData -> {
+                    Log.d("HealthConnectManager", "No route data for session ${session.metadata.id}")
+                }
+                is ExerciseRouteResult.ConsentRequired -> {
+                    Log.w("HealthConnectManager", "Route consent required for session ${session.metadata.id}")
+                }
             }
         }
 

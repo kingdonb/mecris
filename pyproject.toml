@@ -31,6 +31,7 @@ dependencies = [
     "mcp[cli]>=1.26.0",
     "psycopg2-binary>=2.9.11",
     "sqlalchemy>=2.0.48",
+    "beautifulsoup4>=4.12.3",
 ]
 
 [tool.pytest.ini_options]
