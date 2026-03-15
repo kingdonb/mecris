@@ -4,10 +4,7 @@ import android.content.Context
 import android.util.Log
 import androidx.health.connect.client.HealthConnectClient
 import androidx.health.connect.client.permission.HealthPermission
-import androidx.health.connect.client.records.DistanceRecord
-import androidx.health.connect.client.records.ExerciseSessionRecord
-import androidx.health.connect.client.records.ExerciseRouteResult
-import androidx.health.connect.client.records.StepsRecord
+import androidx.health.connect.client.records.*
 import androidx.health.connect.client.request.ReadRecordsRequest
 import androidx.health.connect.client.time.TimeRangeFilter
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -21,11 +18,12 @@ class HealthConnectManager(private val context: Context) {
 
     val healthConnectClient by lazy { HealthConnectClient.getOrCreate(context) }
 
-    // Level 1: Core permissions required for basic dashboard
+    // Level 1: Core permissions
     val foregroundPermissions = setOf(
         HealthPermission.getReadPermission(StepsRecord::class),
         HealthPermission.getReadPermission(DistanceRecord::class),
-        HealthPermission.getReadPermission(ExerciseSessionRecord::class)
+        HealthPermission.getReadPermission(ExerciseSessionRecord::class),
+        HealthPermission.getReadPermission(TotalCaloriesBurnedRecord::class)
     )
 
     // Level 2: High-sensitivity route permission
@@ -49,14 +47,10 @@ class HealthConnectManager(private val context: Context) {
     suspend fun hasForegroundPermissions(): Boolean {
         if (!_isSupported.value) return false
         val granted = healthConnectClient.permissionController.getGrantedPermissions()
-        
-        // Detailed logging of permissions for diagnostics
         val stepsGranted = granted.contains(HealthPermission.getReadPermission(StepsRecord::class))
         val distGranted = granted.contains(HealthPermission.getReadPermission(DistanceRecord::class))
         val exerciseGranted = granted.contains(HealthPermission.getReadPermission(ExerciseSessionRecord::class))
-        
         Log.d("HealthConnectManager", "PERM DIAG: Steps=$stepsGranted, Distance=$distGranted, Exercise=$exerciseGranted")
-        
         return stepsGranted && distGranted && exerciseGranted
     }
 
@@ -90,30 +84,30 @@ class HealthConnectManager(private val context: Context) {
     private suspend fun fetchFullActivityReport(): FullActivityReport {
         val now = Instant.now()
         
-        // 0. Deep Diagnostic: Scan last 7 days for ANY exercise sessions
+        // 0. Extreme Diagnostic: Scan last 30 days for ANYTHING
         try {
-            val weekAgo = now.minus(7, ChronoUnit.DAYS)
-            val weekFilter = TimeRangeFilter.between(weekAgo, now)
+            val monthAgo = now.minus(30, ChronoUnit.DAYS)
+            val monthFilter = TimeRangeFilter.between(monthAgo, now)
             
-            val weekSessions = healthConnectClient.readRecords(ReadRecordsRequest(ExerciseSessionRecord::class, weekFilter)).records
-            Log.d("HealthConnectManager", "DIAGNOSTIC: Found ${weekSessions.size} sessions in last 7d")
-            weekSessions.forEach { 
-                Log.d("HealthConnectManager", "DIAGNOSTIC SESSION: ID=${it.metadata.id}, Type=${it.exerciseType}, Start=${it.startTime}, Source=${it.metadata.dataOrigin.packageName}")
-            }
-
-            // Diagnostic: Broad Distance Scan
-            val weekDistRecords = healthConnectClient.readRecords(ReadRecordsRequest(DistanceRecord::class, weekFilter)).records
-            Log.d("HealthConnectManager", "DIAGNOSTIC: Found ${weekDistRecords.size} distance records in last 7d")
-            if (weekDistRecords.isNotEmpty()) {
-                val totalDist = weekDistRecords.sumOf { it.distance.inMeters }
-                Log.d("HealthConnectManager", "DIAGNOSTIC: Total distance in last 7d: $totalDist meters")
+            val sessions = healthConnectClient.readRecords(ReadRecordsRequest(ExerciseSessionRecord::class, monthFilter)).records
+            Log.d("HealthConnectManager", "EXTREME DIAG: Found ${sessions.size} sessions in last 30d")
+            
+            val distances = healthConnectClient.readRecords(ReadRecordsRequest(DistanceRecord::class, monthFilter)).records
+            Log.d("HealthConnectManager", "EXTREME DIAG: Found ${distances.size} distance records in last 30d")
+            
+            val calories = healthConnectClient.readRecords(ReadRecordsRequest(TotalCaloriesBurnedRecord::class, monthFilter)).records
+            Log.d("HealthConnectManager", "EXTREME DIAG: Found ${calories.size} calorie records in last 30d")
+            
+            if (sessions.isNotEmpty()) {
+                val types = sessions.map { it.exerciseType }.distinct()
+                val sources = sessions.map { it.metadata.dataOrigin.packageName }.distinct()
+                Log.d("HealthConnectManager", "EXTREME DIAG: Session types=$types, sources=$sources")
             }
         } catch (e: Exception) {
-            Log.e("HealthConnectManager", "DIAGNOSTIC FAILED: ${e.message}")
+            Log.e("HealthConnectManager", "EXTREME DIAG FAILED: ${e.message}")
         }
 
         if (!hasForegroundPermissions()) {
-            Log.w("HealthConnectManager", "Missing core permissions")
             return FullActivityReport(0, 0.0, "Permission Denied", 0, false, 0, now)
         }
 
@@ -123,35 +117,25 @@ class HealthConnectManager(private val context: Context) {
         val timeRangeFilter = TimeRangeFilter.between(queryStart, now)
         val fallbackStart = now.truncatedTo(ChronoUnit.HOURS)
 
-        Log.d("HealthConnectManager", "Querying Health Connect from $queryStart to $now")
-
         // 3. Read Exercise Sessions
         val sessions = healthConnectClient.readRecords(ReadRecordsRequest(ExerciseSessionRecord::class, timeRangeFilter)).records
         val walkingSessions = sessions.filter {
             it.exerciseType == ExerciseSessionRecord.EXERCISE_TYPE_WALKING
         }
-        Log.d("HealthConnectManager", "Walking sessions found today: ${walkingSessions.size}")
         
         val effectiveStartTime = walkingSessions.minByOrNull { it.startTime }?.startTime ?: fallbackStart
 
         // 1. Read Steps
         val stepsRecords = healthConnectClient.readRecords(ReadRecordsRequest(StepsRecord::class, timeRangeFilter)).records
         val totalSteps = stepsRecords.sumOf { it.count }
-        Log.d("HealthConnectManager", "Steps from generic query: $totalSteps")
-        if (stepsRecords.isNotEmpty()) {
-            val sources = stepsRecords.map { it.metadata.dataOrigin.packageName }.distinct()
-            Log.d("HealthConnectManager", "Steps source apps: $sources")
-        }
-
+        
         // 2. Read Distance
         val distanceRecords = healthConnectClient.readRecords(ReadRecordsRequest(DistanceRecord::class, timeRangeFilter)).records
         var totalDistanceMeters = distanceRecords.sumOf { it.distance.inMeters }
-        Log.d("HealthConnectManager", "Distance from generic query: $totalDistanceMeters")
         
         var source = if (totalDistanceMeters > 0) "Health Connect (Distance)" else "Health Connect (Passive)"
 
         if (totalSteps > 0 && totalDistanceMeters == 0.0) {
-            Log.d("HealthConnectManager", "Attempting session-specific distance fallback")
             walkingSessions.forEach { session ->
                 val sessionFilter = TimeRangeFilter.between(session.startTime, session.endTime)
                 val sessionDist = healthConnectClient.readRecords(ReadRecordsRequest(DistanceRecord::class, sessionFilter)).records
@@ -167,14 +151,8 @@ class HealthConnectManager(private val context: Context) {
                 is ExerciseRouteResult.Data -> {
                     hasRoutes = true
                     totalRoutePoints += routeResult.exerciseRoute.route.size
-                    Log.d("HealthConnectManager", "Found route with ${routeResult.exerciseRoute.route.size} pts")
                 }
-                is ExerciseRouteResult.NoData -> {
-                    Log.d("HealthConnectManager", "No route data for session ${session.metadata.id}")
-                }
-                is ExerciseRouteResult.ConsentRequired -> {
-                    Log.w("HealthConnectManager", "Route consent required for session ${session.metadata.id}")
-                }
+                else -> {}
             }
         }
 
