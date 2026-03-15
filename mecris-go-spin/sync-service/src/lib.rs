@@ -184,6 +184,58 @@ async fn handle_sync_service(req: Request) -> anyhow::Result<impl IntoResponse> 
             .build());
     }
 
+    // 3. Fetch the Beeminder Token, Goal, and User
+    let token_query = "SELECT beeminder_token_encrypted, beeminder_goal, beeminder_user FROM users WHERE pocket_id_sub = $1 LIMIT 1";
+    let token_params = vec![ParameterValue::Str(user_id.clone())];
+    let row_set = match connection.query(token_query, &token_params) {
+        Ok(rs) => rs,
+        Err(e) => {
+            eprintln!("Error fetching token: {:?}", e);
+            return Ok(Response::builder()
+                .status(500)
+                .body("Internal Server Error")
+                .build());
+        }
+    };
+
+    if row_set.rows.is_empty() {
+        let resp = StatusResponse {
+            status: "success".to_string(),
+            message: "Walk saved. (No Beeminder token found)".to_string(),
+        };
+        return Ok(Response::builder()
+            .status(201)
+            .header("content-type", "application/json")
+            .body(serde_json::to_string(&resp).unwrap())
+            .build());
+    }
+
+    // --- IDEMPOTENCY CHECK (Server Side) ---
+    // Check if we've already synced a walk for this user in the last 4 hours
+    let cooldown_query = r#"
+        SELECT id FROM walk_inferences 
+        WHERE user_id = $1 
+        AND status = 'logged' 
+        AND created_at > NOW() - INTERVAL '4 hours'
+        LIMIT 1
+    "#;
+    let cooldown_params = vec![ParameterValue::Str(user_id.clone())];
+    let cooldown_rs = connection.query(cooldown_query, &cooldown_params)?;
+    
+    if !cooldown_rs.rows.is_empty() {
+        println!("Sync suppressed for user {}: cooldown active (4h)", user_id);
+        let resp = StatusResponse {
+            status: "success".to_string(),
+            message: "Walk ingested (Duplicate suppressed via cooldown)".to_string(),
+        };
+        return Ok(Response::builder()
+            .status(200) // Return 200 OK so phone stops retrying
+            .header("content-type", "application/json")
+            .body(serde_json::to_string(&resp).unwrap())
+            .build());
+    }
+    // --- END IDEMPOTENCY CHECK ---
+
     let beeminder_token = match &row_set.rows[0][0] {
         DbValue::Str(s) => s.clone(),
         _ => return Ok(Response::builder()
@@ -223,7 +275,16 @@ async fn handle_sync_service(req: Request) -> anyhow::Result<impl IntoResponse> 
 
     let beeminder_res: Response = spin_sdk::http::send(beeminder_req).await?;
     let status = *beeminder_res.status();
-    if !(200..=299).contains(&status) {
+    
+    if (200..=299).contains(&status) {
+        // Mark walk as logged to trigger cooldown
+        let update_query = "UPDATE walk_inferences SET status = 'logged' WHERE user_id = $1 AND start_time = $2";
+        let update_params = vec![
+            ParameterValue::Str(user_id.clone()),
+            ParameterValue::Str(walk.start_time.clone()),
+        ];
+        let _ = connection.execute(update_query, &update_params);
+    } else {
         eprintln!("Failed to log to Beeminder: {:?}", beeminder_res.status());
         let resp = StatusResponse {
             status: "partial_success".to_string(),
