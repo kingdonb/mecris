@@ -19,6 +19,8 @@ android {
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        
+        manifestPlaceholders["appAuthRedirectScheme"] = "com.mecris.go"
     }
 
     buildTypes {
@@ -55,6 +57,9 @@ dependencies {
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
     debugImplementation(libs.androidx.compose.ui.tooling)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
+
+    // AppAuth for OIDC (Pocket ID)
+    implementation("net.openid:appauth:0.11.1")
 
     // Health Connect
     implementation("androidx.health.connect:connect-client:1.1.0-alpha06")

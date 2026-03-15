@@ -5,6 +5,7 @@ import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
@@ -34,10 +35,15 @@ class MainActivity : ComponentActivity() {
     private lateinit var healthConnectManager: HealthConnectManager
     private val beeminderApi = BeeminderApi.create()
 
-    // Temporary Beeminder config for Phase 1 (Ideally from Pocket ID JWT or preferences)
+    // Temporary Beeminder config for Phase 1
     private val beeminderUser = "YOUR_USERNAME"
     private val beeminderGoal = "bike"
     private val beeminderToken = "YOUR_AUTH_TOKEN" // DANGER: Keep secure in reality
+
+    // AppAuth result launcher
+    private val authResultLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        pocketIdAuth.handleAuthorizationResponse(result.data)
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -85,6 +91,7 @@ class MainActivity : ComponentActivity() {
                     MecrisGoApp(
                         auth = pocketIdAuth,
                         healthManager = healthConnectManager,
+                        authResultLauncher = authResultLauncher,
                         onRequestForegroundPermissions = {
                             requestForegroundPermissions.launch(healthConnectManager.foregroundPermissions)
                         },
@@ -105,6 +112,11 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        pocketIdAuth.dispose()
     }
 
     private fun setupWorkManager() {
@@ -139,12 +151,14 @@ class MainActivity : ComponentActivity() {
 fun MecrisGoApp(
     auth: PocketIdAuth,
     healthManager: HealthConnectManager,
+    authResultLauncher: ActivityResultLauncher<Intent>,
     onRequestForegroundPermissions: () -> Unit,
     onRequestRoutePermission: () -> Unit,
     onRequestBackgroundPermission: () -> Unit,
     onOpenSettings: () -> Unit,
     onLogWalk: (Double) -> Unit
 ) {
+    val authState by auth.authState.collectAsState()
     val scope = rememberCoroutineScope()
     var walkData by remember { mutableStateOf<WalkDataSummary?>(null) }
     var hasForeground by remember { mutableStateOf(false) }
@@ -174,106 +188,122 @@ fun MecrisGoApp(
         Text("Mecris-Go", style = MaterialTheme.typography.headlineLarge)
         Spacer(modifier = Modifier.height(16.dp))
 
-        // FORCED AUTH FOR PHASE 1 TESTING
-        Text("✅ Authenticated (Local Mode)", 
-             color = MaterialTheme.colorScheme.primary,
-             style = MaterialTheme.typography.labelLarge)
-        
-        Spacer(modifier = Modifier.height(32.dp))
-
-        if (isLoading) {
-            CircularProgressIndicator()
-        } else if (!hasForeground) {
-            PermissionCard(
-                title = "Foreground Permissions Missing",
-                description = "Mecris-Go needs access to your steps, distance, and exercise sessions to track your walks. If the grant button does nothing, use the settings button.",
-                buttonText = "Grant Foreground Access",
-                onGrant = onRequestForegroundPermissions,
-                onOpenSettings = onOpenSettings
-            )
-        } else {
-            // Foreground granted, check route and background
-            Column {
-                if (!hasRoute) {
-                    PermissionCard(
-                        title = "Route Access Missing",
-                        description = "To verify outdoor walks, Mecris-Go needs exercise route access.",
-                        buttonText = "Grant Route Access",
-                        onGrant = onRequestRoutePermission,
-                        onOpenSettings = onOpenSettings,
-                        isWarning = true
-                    )
+        when (val state = authState) {
+            is AuthState.Idle, is AuthState.Error -> {
+                if (state is AuthState.Error) {
+                    Text("Auth Error: ${state.message}", color = MaterialTheme.colorScheme.error)
                     Spacer(modifier = Modifier.height(8.dp))
                 }
-                
-                if (!hasBackground) {
-                    PermissionCard(
-                        title = "Background Access Missing",
-                        description = "To automatically detect walks while your phone is in your pocket, Mecris-Go needs background health access.",
-                        buttonText = "Grant Background Access",
-                        onGrant = onRequestBackgroundPermission,
-                        onOpenSettings = onOpenSettings,
-                        isWarning = true
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
+                Button(onClick = { auth.authenticateWithPasskey(authResultLauncher) }) {
+                    Text("Sign In with Pocket ID")
                 }
             }
+            AuthState.Loading -> CircularProgressIndicator()
+            is AuthState.Authenticated -> {
+                Text("✅ Authenticated via OIDC", 
+                     color = MaterialTheme.colorScheme.primary,
+                     style = MaterialTheme.typography.labelLarge)
+                Spacer(modifier = Modifier.height(8.dp))
+                // Hide token in UI for security, just show connection status
+                Text("JWT Token Length: ${state.jwt.length}", style = MaterialTheme.typography.bodySmall)
+                
+                Spacer(modifier = Modifier.height(32.dp))
 
-            Text("✅ Health Connect Connected", color = MaterialTheme.colorScheme.primary)
-            Spacer(modifier = Modifier.height(16.dp))
-
-            if (walkData != null) {
-                Card(
-                    elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Text("Detailed Activity Report", style = MaterialTheme.typography.titleLarge)
-                        Divider(modifier = Modifier.padding(vertical = 8.dp))
-                        
-                        InfoRow("Steps (24h)", "${walkData!!.totalSteps}")
-                        
-                        InfoRow("Distance", "${String.format("%.2f", walkData!!.totalDistanceMeters / 1609.34)} miles")
-                        Text("Source: ${walkData!!.distanceSource}", 
-                             style = MaterialTheme.typography.labelSmall,
-                             color = if (walkData!!.distanceSource.startsWith("Health Connect")) 
-                                 MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.secondary)
-                        
-                        Spacer(modifier = Modifier.height(8.dp))
-                        InfoRow("Walking Sessions", "${walkData!!.walkingSessionsCount}")
-                        InfoRow("GPS Route Found", if(walkData!!.hasExerciseRoutes) "YES 📍 (${walkData!!.routePointCount} pts)" else "NO")
-                        
-                        Divider(modifier = Modifier.padding(vertical = 8.dp))
-                        
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text("Walk Inferred: ", style = MaterialTheme.typography.titleMedium)
-                            Text(
-                                if(walkData!!.isWalkInferred) "YES 🐕" else "NO",
-                                style = MaterialTheme.typography.titleLarge,
-                                color = if(walkData!!.isWalkInferred) MaterialTheme.colorScheme.primary 
-                                        else MaterialTheme.colorScheme.error
+                if (isLoading) {
+                    CircularProgressIndicator()
+                } else if (!hasForeground) {
+                    PermissionCard(
+                        title = "Foreground Permissions Missing",
+                        description = "Mecris-Go needs access to your steps, distance, and exercise sessions to track your walks. If the grant button does nothing, use the settings button.",
+                        buttonText = "Grant Foreground Access",
+                        onGrant = onRequestForegroundPermissions,
+                        onOpenSettings = onOpenSettings
+                    )
+                } else {
+                    // Foreground granted, check route and background
+                    Column {
+                        if (!hasRoute) {
+                            PermissionCard(
+                                title = "Route Access Missing",
+                                description = "To verify outdoor walks, Mecris-Go needs exercise route access.",
+                                buttonText = "Grant Route Access",
+                                onGrant = onRequestRoutePermission,
+                                onOpenSettings = onOpenSettings,
+                                isWarning = true
                             )
+                            Spacer(modifier = Modifier.height(8.dp))
+                        }
+                        
+                        if (!hasBackground) {
+                            PermissionCard(
+                                title = "Background Access Missing",
+                                description = "To automatically detect walks while your phone is in your pocket, Mecris-Go needs background health access.",
+                                buttonText = "Grant Background Access",
+                                onGrant = onRequestBackgroundPermission,
+                                onOpenSettings = onOpenSettings,
+                                isWarning = true
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
                         }
                     }
-                }
-            }
 
-            Spacer(modifier = Modifier.height(32.dp))
+                    Text("✅ Health Connect Connected", color = MaterialTheme.colorScheme.primary)
+                    Spacer(modifier = Modifier.height(16.dp))
 
-            Button(
-                onClick = { onLogWalk(1.0) },
-                modifier = Modifier.fillMaxWidth(),
-                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
-            ) {
-                Text("Log Walk to Beeminder (Direct)")
-            }
-            
-            TextButton(onClick = { 
-                scope.launch { 
-                    walkData = healthManager.fetchRecentWalkData() 
+                    if (walkData != null) {
+                        Card(
+                            elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(modifier = Modifier.padding(16.dp)) {
+                                Text("Detailed Activity Report", style = MaterialTheme.typography.titleLarge)
+                                Divider(modifier = Modifier.padding(vertical = 8.dp))
+                                
+                                InfoRow("Steps (24h)", "${walkData!!.totalSteps}")
+                                
+                                InfoRow("Distance", "${String.format("%.2f", walkData!!.totalDistanceMeters / 1609.34)} miles")
+                                Text("Source: ${walkData!!.distanceSource}", 
+                                     style = MaterialTheme.typography.labelSmall,
+                                     color = if (walkData!!.distanceSource.startsWith("Health Connect")) 
+                                         MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.secondary)
+                                
+                                Spacer(modifier = Modifier.height(8.dp))
+                                InfoRow("Walking Sessions", "${walkData!!.walkingSessionsCount}")
+                                InfoRow("GPS Route Found", if(walkData!!.hasExerciseRoutes) "YES 📍 (${walkData!!.routePointCount} pts)" else "NO")
+                                
+                                Divider(modifier = Modifier.padding(vertical = 8.dp))
+                                
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text("Walk Inferred: ", style = MaterialTheme.typography.titleMedium)
+                                    Text(
+                                        if(walkData!!.isWalkInferred) "YES 🐕" else "NO",
+                                        style = MaterialTheme.typography.titleLarge,
+                                        color = if(walkData!!.isWalkInferred) MaterialTheme.colorScheme.primary 
+                                                else MaterialTheme.colorScheme.error
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(32.dp))
+
+                    Button(
+                        onClick = { onLogWalk(1.0) },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
+                    ) {
+                        Text("Log Walk to Beeminder (Direct)")
+                    }
+                    
+                    TextButton(onClick = { 
+                        scope.launch { 
+                            walkData = healthManager.fetchRecentWalkData() 
+                        }
+                    }) {
+                        Text("Refresh Data")
+                    }
                 }
-            }) {
-                Text("Refresh Data")
             }
         }
     }
