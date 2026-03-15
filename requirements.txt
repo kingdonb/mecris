@@ -9,3 +9,4 @@ dataclasses-json>=0.6.0
 requests>=2.32.4
 playwright>=1.55.0
 flask>=3.0.3
+beautifulsoup4>=4.12.3
