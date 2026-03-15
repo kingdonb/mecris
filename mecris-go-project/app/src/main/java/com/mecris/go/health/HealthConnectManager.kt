@@ -49,7 +49,11 @@ class HealthConnectManager(private val context: Context) {
     suspend fun hasForegroundPermissions(): Boolean {
         if (!_isSupported.value) return false
         val granted = healthConnectClient.permissionController.getGrantedPermissions()
-        return granted.containsAll(foregroundPermissions)
+        // Allow the app to proceed if at least Steps and Distance are granted.
+        // We will just have degraded functionality (no sessions/routes) if Exercise is missing.
+        val coreGranted = granted.contains(HealthPermission.getReadPermission(StepsRecord::class)) &&
+                          granted.contains(HealthPermission.getReadPermission(DistanceRecord::class))
+        return coreGranted
     }
 
     suspend fun hasRoutePermission(): Boolean {

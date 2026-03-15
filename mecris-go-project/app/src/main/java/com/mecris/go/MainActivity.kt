@@ -1,5 +1,6 @@
 package com.mecris.go
 
+import android.content.Intent
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
@@ -11,6 +12,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.health.connect.client.HealthConnectClient
 import androidx.health.connect.client.PermissionController
 import androidx.lifecycle.lifecycleScope
 import androidx.work.PeriodicWorkRequestBuilder
@@ -92,6 +94,10 @@ class MainActivity : ComponentActivity() {
                         onRequestBackgroundPermission = {
                             requestBackgroundPermission.launch(setOf(healthConnectManager.backgroundPermission))
                         },
+                        onOpenSettings = {
+                            val intent = Intent(HealthConnectClient.ACTION_HEALTH_CONNECT_SETTINGS)
+                            startActivity(intent)
+                        },
                         onLogWalk = { value ->
                             logWalkToBeeminder(value)
                         }
@@ -136,6 +142,7 @@ fun MecrisGoApp(
     onRequestForegroundPermissions: () -> Unit,
     onRequestRoutePermission: () -> Unit,
     onRequestBackgroundPermission: () -> Unit,
+    onOpenSettings: () -> Unit,
     onLogWalk: (Double) -> Unit
 ) {
     val scope = rememberCoroutineScope()
@@ -179,9 +186,10 @@ fun MecrisGoApp(
         } else if (!hasForeground) {
             PermissionCard(
                 title = "Foreground Permissions Missing",
-                description = "Mecris-Go needs access to your steps, distance, and exercise sessions to track your walks.",
+                description = "Mecris-Go needs access to your steps, distance, and exercise sessions to track your walks. If the grant button does nothing, use the settings button.",
                 buttonText = "Grant Foreground Access",
-                onGrant = onRequestForegroundPermissions
+                onGrant = onRequestForegroundPermissions,
+                onOpenSettings = onOpenSettings
             )
         } else {
             // Foreground granted, check route and background
@@ -192,6 +200,7 @@ fun MecrisGoApp(
                         description = "To verify outdoor walks, Mecris-Go needs exercise route access.",
                         buttonText = "Grant Route Access",
                         onGrant = onRequestRoutePermission,
+                        onOpenSettings = onOpenSettings,
                         isWarning = true
                     )
                     Spacer(modifier = Modifier.height(8.dp))
@@ -203,6 +212,7 @@ fun MecrisGoApp(
                         description = "To automatically detect walks while your phone is in your pocket, Mecris-Go needs background health access.",
                         buttonText = "Grant Background Access",
                         onGrant = onRequestBackgroundPermission,
+                        onOpenSettings = onOpenSettings,
                         isWarning = true
                     )
                     Spacer(modifier = Modifier.height(8.dp))
@@ -275,6 +285,7 @@ fun PermissionCard(
     description: String,
     buttonText: String,
     onGrant: () -> Unit,
+    onOpenSettings: (() -> Unit)? = null,
     isWarning: Boolean = false
 ) {
     Card(
@@ -288,11 +299,16 @@ fun PermissionCard(
             Text(title, style = MaterialTheme.typography.titleMedium)
             Text(description, style = MaterialTheme.typography.bodyMedium)
             Spacer(modifier = Modifier.height(16.dp))
-            Button(
-                onClick = onGrant,
-                modifier = Modifier.align(Alignment.End)
-            ) {
-                Text(buttonText)
+            Row(modifier = Modifier.align(Alignment.End)) {
+                if (onOpenSettings != null) {
+                    TextButton(onClick = onOpenSettings) {
+                        Text("Open Settings")
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                }
+                Button(onClick = onGrant) {
+                    Text(buttonText)
+                }
             }
         }
     }
