@@ -5,7 +5,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.runtime.*
+import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -19,6 +19,7 @@ fun OdometerView(
     value: Double, 
     label: String = "BUDGET REMAINING", 
     symbol: String = "$",
+    suffix: String = "",
     symbolColor: Color = Color.White,
     digitColor: Color = Color(0xFFFFD600), // Default yellow
     digits: Int = 7,
@@ -55,9 +56,11 @@ fun OdometerView(
                 Spacer(modifier = Modifier.width(4.dp))
             }
             
-            val formatStr = "%0${digits + (if (decimalPlaces > 0) 1 else 0)}.${decimalPlaces}f"
+            val totalLength = digits + (if (decimalPlaces > 0) 1 else 0)
+            val formatStr = "%0${totalLength}.${decimalPlaces}f"
             val formattedValue = String.format(formatStr, value)
-            formattedValue.forEach { char ->
+            
+            formattedValue.take(totalLength).forEach { char ->
                 Box(
                     modifier = Modifier
                         .padding(horizontal = 1.dp)
@@ -76,6 +79,17 @@ fun OdometerView(
                         fontWeight = FontWeight.ExtraBold
                     )
                 }
+            }
+
+            if (suffix.isNotEmpty()) {
+                Spacer(modifier = Modifier.width(4.dp))
+                Text(
+                    text = suffix,
+                    color = symbolColor,
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold
+                )
             }
         }
     }

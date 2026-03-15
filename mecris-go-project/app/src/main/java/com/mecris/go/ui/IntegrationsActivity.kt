@@ -100,14 +100,24 @@ fun IntegrationsScreen(healthManager: HealthConnectManager, onBack: () -> Unit) 
                 MomentumVisualizer(momentum = momentumValue)
                 
                 // Add a small status label inside the orb area
-                Text(
-                    text = if (hasWalked) "STABLE" else "CRITICAL",
-                    modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 8.dp),
-                    style = MaterialTheme.typography.labelLarge,
-                    color = if (hasWalked) Color(0xFF00C853) else Color(0xFFFF1744),
-                    fontWeight = FontWeight.ExtraBold,
-                    letterSpacing = 2.sp
-                )
+                Column(modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 8.dp),
+                       horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(
+                        text = if (hasWalked) "STABLE" else "CRITICAL",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = if (hasWalked) Color(0xFF00C853) else Color(0xFFFF1744),
+                        fontWeight = FontWeight.ExtraBold,
+                        letterSpacing = 2.sp
+                    )
+                    if ((walkData?.walkingSessionsCount ?: 0) > 0) {
+                        Text(
+                            text = "${walkData?.walkingSessionsCount} SESSIONS DETECTED",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Color(0xFF00E5FF),
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
             }
             
             Spacer(modifier = Modifier.height(16.dp))
@@ -126,7 +136,8 @@ fun IntegrationsScreen(healthManager: HealthConnectManager, onBack: () -> Unit) 
             OdometerView(
                 value = miles,
                 label = "TODAY'S DISTANCE",
-                symbol = "MI",
+                symbol = "",
+                suffix = "MI",
                 symbolColor = Color(0xFF00E5FF), // Cyan
                 digitColor = Color(0xFF00E5FF),  // Cyan
                 digits = 4,
