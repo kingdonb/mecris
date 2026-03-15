@@ -48,7 +48,7 @@ class WalkHeuristicsWorker(
                         GlobalScope.launch { 
                             try {
                                 val dto = WalkDataSummaryDto(
-                                    start_time = Instant.now().minusSeconds(3600).toString(),
+                                    start_time = summary.startTime.toString(),
                                     end_time = Instant.now().toString(),
                                     step_count = summary.totalSteps.toInt(),
                                     distance_meters = summary.totalDistanceMeters,

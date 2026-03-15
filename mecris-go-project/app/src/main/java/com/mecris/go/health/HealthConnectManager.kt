@@ -78,38 +78,28 @@ class HealthConnectManager(private val context: Context) {
             walkingSessionsCount = report.walkingSessionsCount,
             hasExerciseRoutes = report.hasExerciseRoutes,
             routePointCount = report.routePointCount,
-            isWalkInferred = likelyWalked
+            isWalkInferred = likelyWalked,
+            startTime = report.startTime
         )
     }
 
     suspend fun fetchFullActivityReport(): FullActivityReport {
         if (!hasForegroundPermissions()) {
             Log.w("HealthConnectManager", "Missing foreground permissions for full report")
-            return FullActivityReport(0, 0.0, "None", 0, false, 0)
+            return FullActivityReport(0, 0.0, "None", 0, false, 0, Instant.now())
         }
 
         val now = Instant.now()
-        val startTime = now.minus(24, ChronoUnit.HOURS)
-        val timeRangeFilter = TimeRangeFilter.between(startTime, now)
+        // Stabilize start time to the beginning of the current hour for idempotency fallback
+        val fallbackStart = now.truncatedTo(ChronoUnit.HOURS)
+        val queryStart = now.minus(24, ChronoUnit.HOURS)
+        val timeRangeFilter = TimeRangeFilter.between(queryStart, now)
 
-        Log.d("HealthConnectManager", "Querying Health Connect from $startTime to $now")
+        Log.d("HealthConnectManager", "Querying Health Connect from $queryStart to $now")
 
-        // 1. Read Steps
-        val stepsRequest = ReadRecordsRequest(
-            recordType = StepsRecord::class,
-            timeRangeFilter = timeRangeFilter
-        )
-        val totalSteps = healthConnectClient.readRecords(stepsRequest).records.sumOf { it.count }
-
-        // 2. Read Distance
-        val distanceRequest = ReadRecordsRequest(
-            recordType = DistanceRecord::class,
-            timeRangeFilter = timeRangeFilter
-        )
-        val distanceRecords = healthConnectClient.readRecords(distanceRequest).records
-        var totalDistanceMeters = distanceRecords.sumOf { it.distance.inMeters }
-        var source = "Health Connect (Passive)"
-
+        // ... existing record reading logic ...
+        // (I will keep the existing logic but ensure startTime is captured from sessions if available)
+        
         // 3. Read Exercise Sessions
         val sessionRequest = ReadRecordsRequest(
             recordType = ExerciseSessionRecord::class,
@@ -119,23 +109,31 @@ class HealthConnectManager(private val context: Context) {
         val walkingSessions = sessions.filter {
             it.exerciseType == ExerciseSessionRecord.EXERCISE_TYPE_WALKING
         }
+        
+        // Use the earliest walking session start time if available, otherwise fallback
+        val effectiveStartTime = walkingSessions.minByOrNull { it.startTime }?.startTime ?: fallbackStart
+
+        // 1. Read Steps (re-using the logic from above but in the full function context)
+        val stepsRequest = ReadRecordsRequest(recordType = StepsRecord::class, timeRangeFilter = timeRangeFilter)
+        val totalSteps = healthConnectClient.readRecords(stepsRequest).records.sumOf { it.count }
+
+        // 2. Read Distance
+        val distanceRequest = ReadRecordsRequest(recordType = DistanceRecord::class, timeRangeFilter = timeRangeFilter)
+        val distanceRecords = healthConnectClient.readRecords(distanceRequest).records
+        var totalDistanceMeters = distanceRecords.sumOf { it.distance.inMeters }
+        var source = "Health Connect (Passive)"
 
         // 4. Check for Routes
         var hasRoutes = false
         var totalRoutePoints = 0
-        
         walkingSessions.forEach { session ->
-            val routeResult = session.exerciseRouteResult
-            if (routeResult is ExerciseRouteResult.Data) {
+            if (session.exerciseRouteResult is ExerciseRouteResult.Data) {
                 hasRoutes = true
-                totalRoutePoints += routeResult.exerciseRoute.route.size
+                totalRoutePoints += (session.exerciseRouteResult as ExerciseRouteResult.Data).exerciseRoute.route.size
             }
         }
 
-        if (walkingSessions.isNotEmpty()) {
-            source = "Health Connect (Walking Session)"
-        }
-
+        if (walkingSessions.isNotEmpty()) { source = "Health Connect (Walking Session)" }
         if (totalDistanceMeters == 0.0 && totalSteps > 0) {
             totalDistanceMeters = totalSteps * 0.66
             source = "Estimated from Steps (0.66m)"
@@ -147,7 +145,8 @@ class HealthConnectManager(private val context: Context) {
             distanceSource = source,
             walkingSessionsCount = walkingSessions.size,
             hasExerciseRoutes = hasRoutes,
-            routePointCount = totalRoutePoints
+            routePointCount = totalRoutePoints,
+            startTime = effectiveStartTime
         )
     }
 }
@@ -159,7 +158,8 @@ data class WalkDataSummary(
     val walkingSessionsCount: Int,
     val hasExerciseRoutes: Boolean,
     val routePointCount: Int,
-    val isWalkInferred: Boolean
+    val isWalkInferred: Boolean,
+    val startTime: Instant
 )
 
 data class FullActivityReport(
@@ -168,5 +168,6 @@ data class FullActivityReport(
     val distanceSource: String,
     val walkingSessionsCount: Int,
     val hasExerciseRoutes: Boolean,
-    val routePointCount: Int
+    val routePointCount: Int,
+    val startTime: Instant
 )

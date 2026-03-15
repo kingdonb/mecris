@@ -158,7 +158,7 @@ class MainActivity : ComponentActivity() {
                 lifecycleScope.launch {
                     try {
                         val dto = WalkDataSummaryDto(
-                            start_time = Instant.now().minusSeconds(3600).toString(), // Example: 1 hour ago
+                            start_time = walkData.startTime.toString(),
                             end_time = Instant.now().toString(),
                             step_count = walkData.totalSteps.toInt(),
                             distance_meters = walkData.totalDistanceMeters,
