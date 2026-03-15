@@ -113,7 +113,19 @@ async fn handle_sync_service(req: Request) -> anyhow::Result<impl IntoResponse> 
 
     let connection = Connection::open(&db_url)?;
 
-    // 1. Write the telemetry to Neon DB
+    // 1. Ensure the user exists (Upsert)
+    let user_upsert_query = r#"
+        INSERT INTO users (pocket_id_sub, beeminder_token_encrypted, beeminder_goal)
+        VALUES ($1, '', 'bike')
+        ON CONFLICT (pocket_id_sub) DO NOTHING
+    "#;
+    let user_params = vec![ParameterValue::Str(user_id.clone())];
+    if let Err(e) = connection.execute(user_upsert_query, &user_params) {
+        eprintln!("User upsert error: {:?}", e);
+        // We continue anyway, the walk insert will fail if this was a hard error
+    }
+
+    // 2. Write the telemetry to Neon DB
     let query = r#"
         INSERT INTO walk_inferences (
             user_id, start_time, end_time, step_count, distance_meters, distance_source, confidence_score, gps_route_points
@@ -140,7 +152,7 @@ async fn handle_sync_service(req: Request) -> anyhow::Result<impl IntoResponse> 
             .build());
     }
 
-    // 2. Fetch the Beeminder Token and Goal
+    // 3. Fetch the Beeminder Token and Goal
     let token_query = "SELECT beeminder_token_encrypted, beeminder_goal FROM users WHERE pocket_id_sub = $1 LIMIT 1";
     let token_params = vec![ParameterValue::Str(user_id.clone())];
     let row_set = match connection.query(token_query, &token_params) {
@@ -180,7 +192,7 @@ async fn handle_sync_service(req: Request) -> anyhow::Result<impl IntoResponse> 
         _ => "bike".to_string(), // Fallback to bike if not set
     };
 
-    // 3. Dispatch to Beeminder API
+    // 4. Dispatch to Beeminder API
     // We use the start_time + user_id as an idempotency key (request_id)
     let request_id = format!("{}_{}", user_id, walk.start_time);
     let beeminder_url = format!(
