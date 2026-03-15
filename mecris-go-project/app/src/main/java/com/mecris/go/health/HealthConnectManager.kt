@@ -108,9 +108,12 @@ class HealthConnectManager(private val context: Context) {
             timeRangeFilter = timeRangeFilter
         )
         val sessions = healthConnectClient.readRecords(sessionRequest).records
+        Log.d("HealthConnectManager", "Total exercise sessions found: ${sessions.size}")
+        
         val walkingSessions = sessions.filter {
             it.exerciseType == ExerciseSessionRecord.EXERCISE_TYPE_WALKING
         }
+        Log.d("HealthConnectManager", "Walking sessions found: ${walkingSessions.size}")
         
         // Use the earliest walking session start time if available, otherwise fallback
         val effectiveStartTime = walkingSessions.minByOrNull { it.startTime }?.startTime ?: fallbackStart
@@ -122,6 +125,7 @@ class HealthConnectManager(private val context: Context) {
 
         // 2. Read Distance
         val distanceRequest = ReadRecordsRequest(recordType = DistanceRecord::class, timeRangeFilter = timeRangeFilter)
+        // Wait, I should use the same timeRangeFilter as above for consistency
         val distanceRecords = healthConnectClient.readRecords(distanceRequest).records
         var totalDistanceMeters = distanceRecords.sumOf { it.distance.inMeters }
         var source = if (totalDistanceMeters > 0) "Health Connect (Distance)" else "Health Connect (Passive)"
@@ -130,9 +134,18 @@ class HealthConnectManager(private val context: Context) {
         var hasRoutes = false
         var totalRoutePoints = 0
         walkingSessions.forEach { session ->
-            if (session.exerciseRouteResult is ExerciseRouteResult.Data) {
-                hasRoutes = true
-                totalRoutePoints += (session.exerciseRouteResult as ExerciseRouteResult.Data).exerciseRoute.route.size
+            when (val routeResult = session.exerciseRouteResult) {
+                is ExerciseRouteResult.Data -> {
+                    hasRoutes = true
+                    totalRoutePoints += routeResult.exerciseRoute.route.size
+                    Log.d("HealthConnectManager", "Found route with ${routeResult.exerciseRoute.route.size} points")
+                }
+                is ExerciseRouteResult.NoData -> {
+                    Log.d("HealthConnectManager", "No route data for session ${session.metadata.id}")
+                }
+                is ExerciseRouteResult.ConsentRequired -> {
+                    Log.w("HealthConnectManager", "Route consent required for session ${session.metadata.id}")
+                }
             }
         }
 
