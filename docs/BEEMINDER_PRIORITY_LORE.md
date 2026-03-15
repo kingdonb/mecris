@@ -1,34 +1,19 @@
-# Beeminder Priority Lore: Background Worker Queues
+# Beeminder Priority Lore: Architectural Impressions
 
-This document summarizes Beeminder's system for managing background tasks, drawing from their internal documentation on worker queues. Understanding these priorities can help in setting and managing Beeminder goals effectively within the Mecris system.
+## Core Philosophy: The Multi-Tiered Priority Queue
+Beeminder's background worker system (documented at `doc.beeminder.com/priority`) is a masterclass in balancing **snappiness** (user-facing responsiveness) with **throughput** (massive background data processing). It uses a 5-tier hierarchical queue system:
 
-## Worker Queue Overview
+1.  **SNAPPY:** Immediate, user-waiting tasks (e.g., clicking "Sync" in the app).
+2.  **LOCKSY:** Critical but background-safe (e.g., goal state updates).
+3.  **BATCHY:** Regular maintenance (e.g., fetching 100 auto-sync goals).
+4.  **WHALEY:** Resource-heavy, slow processing (e.g., historical re-imports).
+5.  **UNDULY:** Low-priority "whenever" tasks.
 
-Beeminder utilizes a Resque-based system for queuing various jobs, such as sending reminders, regenerating graphs, and processing data. These jobs are categorized into five distinct queues, each with a different priority level:
+## 🧠 Algorithmic Lessons for Mecris
+- **Worker Fallback:** A worker doesn't just "do one job." It checks the queues in order. It only works on BATCHY if SNAPPY and LOCKSY are empty. This prevents low-priority "whales" from starving high-priority "snaps."
+- **Adaptive Frequency:** We should apply this to our walk and budget checks. If a walk is "Required" or "Critical," we should check Health Connect more frequently (SNAPPY/LOCKSY). If it's "Completed," we back off to a lower tier (BATCHY/UNDULY) to save battery and compute.
+- **Explicit Serialization:** Using LOCKSY for database writes ensures that even if we scale horizontally (multiple MCP server instances or multiple phone syncs), we maintain data integrity without blocking the user interface.
 
-1.  **`SNAPPY`**:
-    *   **Urgency**: Urgent tasks.
-    *   **Description**: High-priority jobs that require immediate processing to ensure a responsive user experience.
-2.  **`LOCKSY`**:
-    *   **Urgency**: Moderately urgent tasks.
-    *   **Description**: Tasks that are important but do not require the instantaneous response of `SNAPPY` tasks.
-3.  **`BATCHY`**:
-    *   **Urgency**: Scheduled batch tasks.
-    *   **Description**: Jobs that can be processed in batches on a schedule, such as nightly data aggregations or periodic reports.
-4.  **`WHALEY`**:
-    *   **Urgency**: Rare, long-running tasks.
-    *   **Description**: Tasks that are infrequent but may consume significant resources or take a long time to complete. These are often complex data operations.
-5.  **`UNDULY`**:
-    *   **Urgency**: Ultra-low priority jobs.
-    *   **Description**: Tasks that are non-critical and can be processed when system resources are otherwise idle.
-
-Workers are assigned to these queues to optimize CPU usage and minimize waiting times, ensuring that critical tasks are handled promptly while less urgent tasks are processed efficiently in the background.
-
-## Current Beeminder Goal Status (as of 2026-02-16)
-
-As an important note on goal management, the following Beeminder goals are currently in a **CAUTION** state and will derail in **3 days**:
-
-*   **`ellinika`**: Ελληνικά - Greek language Clozemaster
-*   **`reviewstack`**: Cards in Review stack (Clozemaster Arabic)
-
-These goals may require immediate attention to prevent derailing.
+## 🐾 Mecris Implementation Status
+- **Current Sync:** Our 15-minute cooldown implementation is a step toward this. It moves from "Aggressive Spamming" to a "Scheduled Batch" model.
+- **Future Goal:** Implement a `PriorityScanner` that increases polling frequency as the Beeminder deadline approaches, mirroring the Beeminder Android app's behavior.
