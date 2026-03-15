@@ -22,17 +22,22 @@
 ### 3. Mecris-Go Android Enhancements
 - **Neural Link UI:** Added thematic colors (Gold for Budget, Cyan for Activity) and a "STABLE/CRITICAL" status label.
 - **Auto-Sync:** Implemented a heuristic that automatically triggers a cloud sync when a walk is inferred (1500+ steps) and the user is authenticated.
+- **Sync Spam Fix:** Eliminated "Ghost Worker" spam by programmatically cancelling old workers and enforcing a single unique worker with a 15-minute rate limit.
 - **Idempotency:** Stabilized walk identifiers by truncating `start_time` to the hour, preventing duplicate records.
 
-### 4. Data Cleanup
-- **Purge:** Removed 127 duplicate/aberrant walk records from Neon that were created during the UTC-to-Eastern transition window.
+### 4. Clozemaster Automation (Predictable Liabilities)
+- **Scraper:** Developed a resilient Python scraper (`scripts/clozemaster_scraper.py`) using the "React Prop" method to extract Arabic and Greek review counts.
+- **Forecast:** Initial support for capturing "Review Forecasts" to visualize upcoming review debt (Predictable Liabilities).
+- **Beeminder Integration:** Configured to push real-time Arabic (2,532 cards) and Greek (0 cards) data to Beeminder automatically.
 
 ## 🛠 Remaining Issues & Next Steps
+- **Spin Alignment:** The `mecris-go-spin` module needs to be updated to match the more robust timezone logic now present in the Python MCP server.
 - **Walking Sessions/GPS Routes:** Investigating why `ExerciseSessionRecord` and `ExerciseRoute` are not being retrieved despite permissions.
-- **Reviewstack Goal:** The user is currently focusing on studying Arabic cards.
-- **Neon-Only Transition:** Finalize the removal of all remaining SQLite fallbacks to become fully cloud-native.
+- **Scraper Orchestration:** Plan a "Smart Polling" strategy for the scraper that checks more frequently as the deadline approaches or data remains stagnant.
+- **Neon Finalization:** Remove all remaining SQLite fallback code to become purely cloud-native.
 
 ## 🤖 System Momentum
 - **Daily Walk:** ✅ COMPLETED & SYNCED (Auto-heuristic confirmed).
 - **Budget Health:** ✅ STABLE (Neon synced).
-- **Status:** READY for further feature development.
+- **Language Study:** ✅ Arabic/Greek counts automated.
+- **Status:** READY for main branch merge.
