@@ -23,16 +23,14 @@ class WalkHeuristicsWorker(
     private val prefs = applicationContext.getSharedPreferences("mecris_worker_state", Context.MODE_PRIVATE)
 
     override suspend fun doWork(): Result {
-        val today = DateTimeFormatter.ISO_LOCAL_DATE.withZone(ZoneId.systemDefault()).format(Instant.now())
+        val easternZone = ZoneId.of("America/New_York")
+        val today = DateTimeFormatter.ISO_LOCAL_DATE.withZone(easternZone).format(Instant.now())
         
-        // 1. Priority Lore: Backoff if already successful today
+        // 1. Inertia Logic: Check if we already hit the "COMPLETED" state today
         val lastSyncedDay = prefs.getString("last_synced_day", "")
-        if (lastSyncedDay == today) {
-            Log.d("WalkHeuristicsWorker", "Priority Backoff: Walk already synced for $today. Skipping.")
-            return Result.success()
-        }
-
-        Log.d("WalkHeuristicsWorker", "Executing background walk check for $today...")
+        val lastStepCount = prefs.getLong("last_step_count", 0L)
+        
+        Log.d("WalkHeuristicsWorker", "Executing background check for $today (Last steps: $lastStepCount)")
         
         val healthManager = HealthConnectManager(applicationContext)
         
@@ -46,8 +44,12 @@ class WalkHeuristicsWorker(
             val summary = healthManager.fetchRecentWalkData()
             Log.d("WalkHeuristicsWorker", "Health Data: Inferred=${summary.isWalkInferred}, Steps=${summary.totalSteps}")
             
-            if (summary.isWalkInferred) {
-                // 3. Reliable Token Retrieval
+            // 3. Inertia Check: Only sync if status changed to 'inferred' or steps increased significantly
+            val statusChanged = (lastSyncedDay != today && summary.isWalkInferred)
+            val significantIncrease = (summary.totalSteps > lastStepCount + 500)
+            
+            if (statusChanged || significantIncrease) {
+                // 4. Reliable Token Retrieval
                 val token = pocketIdAuth.getAccessTokenSuspend()
                 if (token != null) {
                     val dto = WalkDataSummaryDto(
@@ -56,21 +58,26 @@ class WalkHeuristicsWorker(
                         step_count = summary.totalSteps.toInt(),
                         distance_meters = summary.totalDistanceMeters,
                         distance_source = summary.distanceSource,
-                        confidence_score = 0.9,
+                        confidence_score = if (summary.isWalkInferred) 0.9 else 0.1,
                         gps_route_points = summary.routePointCount,
-                        timezone = ZoneId.systemDefault().id
+                        timezone = ZoneId.of("America/New_York").id
                     )
 
-                    // 4. Awaitable Cloud Sync
+                    // 5. Awaitable Cloud Sync
                     val response = syncApi.uploadWalk("Bearer $token", dto)
                     Log.i("WalkHeuristicsWorker", "Cloud Sync SUCCESS: ${response.message}")
                     
-                    // 5. Update Local State
-                    prefs.edit().putString("last_synced_day", today).apply()
+                    // 6. Update Local State
+                    prefs.edit()
+                        .putString("last_synced_day", if (summary.isWalkInferred) today else lastSyncedDay)
+                        .putLong("last_step_count", summary.totalSteps)
+                        .apply()
                 } else {
                     Log.w("WalkHeuristicsWorker", "Auth required: Token retrieval failed.")
-                    return Result.retry() // Retry later if auth was just a glitch
+                    return Result.retry() 
                 }
+            } else {
+                Log.d("WalkHeuristicsWorker", "Inertia Backoff: No significant change since last sync.")
             }
             
             return Result.success()
