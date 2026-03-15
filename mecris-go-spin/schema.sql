@@ -19,11 +19,11 @@ CREATE TABLE IF NOT EXISTS walk_inferences (
     user_id VARCHAR(255) REFERENCES users(pocket_id_sub) ON DELETE CASCADE,
     start_time TEXT NOT NULL,
     end_time TEXT NOT NULL,
-    step_count INTEGER NOT NULL,
-    distance_meters DOUBLE PRECISION NOT NULL,
-    distance_source VARCHAR(50) NOT NULL, -- e.g., 'estimated', 'gps'
-    confidence_score DOUBLE PRECISION NOT NULL, -- e.g., 0.85
-    gps_route_points INTEGER DEFAULT 0,
+    step_count TEXT NOT NULL,
+    distance_meters TEXT NOT NULL,
+    distance_source TEXT NOT NULL, -- e.g., 'estimated', 'gps'
+    confidence_score TEXT NOT NULL, -- e.g., 0.85
+    gps_route_points TEXT DEFAULT '0',
     status VARCHAR(50) DEFAULT 'pending', -- 'pending', 'logged'
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     

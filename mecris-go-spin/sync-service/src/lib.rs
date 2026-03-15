@@ -137,11 +137,11 @@ async fn handle_sync_service(req: Request) -> anyhow::Result<impl IntoResponse> 
         ParameterValue::Str(user_id.clone()),
         ParameterValue::Str(walk.start_time.clone()),
         ParameterValue::Str(walk.end_time.clone()),
-        ParameterValue::Int32(walk.step_count),
-        ParameterValue::Floating64(walk.distance_meters),
+        ParameterValue::Str(walk.step_count.to_string()),
+        ParameterValue::Str(walk.distance_meters.to_string()),
         ParameterValue::Str(walk.distance_source.clone()),
-        ParameterValue::Floating64(walk.confidence_score),
-        ParameterValue::Int32(walk.gps_route_points),
+        ParameterValue::Str(walk.confidence_score.to_string()),
+        ParameterValue::Str(walk.gps_route_points.to_string()),
     ];
 
     if let Err(e) = connection.execute(query, &params) {
