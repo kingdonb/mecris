@@ -144,16 +144,21 @@ async fn handle_sync_service(req: Request) -> anyhow::Result<impl IntoResponse> 
         ParameterValue::Str(walk.gps_route_points.to_string()),
     ];
 
-    if let Err(e) = connection.execute(query, &params) {
+    let res = connection.execute(query, &params);
+    println!("Database write result: {:?}", res);
+    
+    if let Err(e) = res {
         eprintln!("Database error: {:?}", e);
         return Ok(Response::builder()
             .status(500)
             .body("Internal Server Error")
             .build());
+    } else {
+        println!("Successfully inserted/updated walk for user {}", user_id);
     }
 
-    // 3. Fetch the Beeminder Token and Goal
-    let token_query = "SELECT beeminder_token_encrypted, beeminder_goal FROM users WHERE pocket_id_sub = $1 LIMIT 1";
+    // 3. Fetch the Beeminder Token, Goal, and User
+    let token_query = "SELECT beeminder_token_encrypted, beeminder_goal, beeminder_user FROM users WHERE pocket_id_sub = $1 LIMIT 1";
     let token_params = vec![ParameterValue::Str(user_id.clone())];
     let row_set = match connection.query(token_query, &token_params) {
         Ok(rs) => rs,
@@ -188,16 +193,21 @@ async fn handle_sync_service(req: Request) -> anyhow::Result<impl IntoResponse> 
     };
 
     let beeminder_goal = match &row_set.rows[0][1] {
-        DbValue::Str(s) => s.clone(),
+        DbValue::Str(s) if !s.is_empty() => s.clone(),
         _ => "bike".to_string(), // Fallback to bike if not set
+    };
+
+    let beeminder_user = match &row_set.rows[0][2] {
+        DbValue::Str(s) if !s.is_empty() => s.clone(),
+        _ => "me".to_string(), // Fallback to 'me' if not set
     };
 
     // 4. Dispatch to Beeminder API
     // We use the start_time + user_id as an idempotency key (request_id)
     let request_id = format!("{}_{}", user_id, walk.start_time);
     let beeminder_url = format!(
-        "https://www.beeminder.com/api/v1/users/me/goals/{}/datapoints.json?auth_token={}",
-        beeminder_goal, beeminder_token
+        "https://www.beeminder.com/api/v1/users/{}/goals/{}/datapoints.json?auth_token={}",
+        beeminder_user, beeminder_goal, beeminder_token
     );
     let beeminder_body = format!(
         "value=1.0&comment=Logged via Mecris-Go Spin Backend (Steps: {}, Source: {})&request_id={}",
