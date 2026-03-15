@@ -7,75 +7,75 @@ import androidx.work.WorkerParameters
 import com.mecris.go.auth.PocketIdAuth
 import com.mecris.go.sync.SyncServiceApi
 import com.mecris.go.sync.WalkDataSummaryDto
-import kotlinx.coroutines.DelicateCoroutinesApi
-import kotlinx.coroutines.GlobalScope
-import kotlinx.coroutines.launch
 import java.time.Instant
 import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 
 class WalkHeuristicsWorker(
     appContext: Context,
     workerParams: WorkerParameters
 ) : CoroutineWorker(appContext, workerParams) {
 
-    // Note: In a real production app, we would use Dependency Injection (Dagger/Hilt)
-    // For this Phase 2 vertical slice, we instantiate manually.
     private val pocketIdAuth = PocketIdAuth(applicationContext)
     private val spinBaseUrl = "https://mecris-go-api-xupkwcis.fermyon.app/" 
     private val syncApi = SyncServiceApi.create(spinBaseUrl)
+    
+    private val prefs = applicationContext.getSharedPreferences("mecris_worker_state", Context.MODE_PRIVATE)
 
-    @OptIn(DelicateCoroutinesApi::class)
     override suspend fun doWork(): Result {
-        Log.d("WalkHeuristicsWorker", "Running background walk check...")
+        val today = DateTimeFormatter.ISO_LOCAL_DATE.withZone(ZoneId.systemDefault()).format(Instant.now())
+        
+        // 1. Priority Lore: Backoff if already successful today
+        val lastSyncedDay = prefs.getString("last_synced_day", "")
+        if (lastSyncedDay == today) {
+            Log.d("WalkHeuristicsWorker", "Priority Backoff: Walk already synced for $today. Skipping.")
+            return Result.success()
+        }
+
+        Log.d("WalkHeuristicsWorker", "Executing background walk check for $today...")
         
         val healthManager = HealthConnectManager(applicationContext)
         
+        // 2. Permission Check
         if (!healthManager.hasForegroundPermissions() || !healthManager.hasBackgroundPermission()) {
-            Log.e("WalkHeuristicsWorker", "Missing required Health Connect permissions")
+            Log.w("WalkHeuristicsWorker", "Missing permissions, cannot check health data in background.")
             return Result.failure()
         }
 
         try {
             val summary = healthManager.fetchRecentWalkData()
-            Log.d("WalkHeuristicsWorker", "Walk Inferred: ${summary.isWalkInferred} (Steps: ${summary.totalSteps})")
+            Log.d("WalkHeuristicsWorker", "Health Data: Inferred=${summary.isWalkInferred}, Steps=${summary.totalSteps}")
             
             if (summary.isWalkInferred) {
-                // Background Sync Logic
-                pocketIdAuth.getValidAccessToken { token ->
-                    if (token != null) {
-                        // We have a token, perform sync
-                        // Using GlobalScope for the callback fire-and-forget in background worker
-                        GlobalScope.launch { 
-                            try {
-                                val dto = WalkDataSummaryDto(
-                                    start_time = summary.startTime.toString(),
-                                    end_time = Instant.now().toString(),
-                                    step_count = summary.totalSteps.toInt(),
-                                    distance_meters = summary.totalDistanceMeters,
-                                    distance_source = summary.distanceSource,
-                                    confidence_score = 0.9,
-                                    gps_route_points = summary.routePointCount,
-                                    timezone = ZoneId.systemDefault().id
-                                )
-                                syncApi.uploadWalk("Bearer $token", dto)
-                                Log.i("WalkHeuristicsWorker", "Background sync successful")
-                            } catch (e: Exception) {
-                                Log.e("WalkHeuristicsWorker", "Background sync failed", e)
-                            }
-                        }
-                    } else {
-                        Log.w("WalkHeuristicsWorker", "No token available, skipping background sync")
-                    }
-                }
+                // 3. Reliable Token Retrieval
+                val token = pocketIdAuth.getAccessTokenSuspend()
+                if (token != null) {
+                    val dto = WalkDataSummaryDto(
+                        start_time = summary.startTime.toString(),
+                        end_time = Instant.now().toString(),
+                        step_count = summary.totalSteps.toInt(),
+                        distance_meters = summary.totalDistanceMeters,
+                        distance_source = summary.distanceSource,
+                        confidence_score = 0.9,
+                        gps_route_points = summary.routePointCount,
+                        timezone = ZoneId.systemDefault().id
+                    )
 
-                // Keep local cache for UI
-                val prefs = applicationContext.getSharedPreferences("mecris_go_prefs", Context.MODE_PRIVATE)
-                prefs.edit().putBoolean("walk_inferred_today", true).apply()
+                    // 4. Awaitable Cloud Sync
+                    val response = syncApi.uploadWalk("Bearer $token", dto)
+                    Log.i("WalkHeuristicsWorker", "Cloud Sync SUCCESS: ${response.message}")
+                    
+                    // 5. Update Local State
+                    prefs.edit().putString("last_synced_day", today).apply()
+                } else {
+                    Log.w("WalkHeuristicsWorker", "Auth required: Token retrieval failed.")
+                    return Result.retry() // Retry later if auth was just a glitch
+                }
             }
             
             return Result.success()
         } catch (e: Exception) {
-            Log.e("WalkHeuristicsWorker", "Error fetching health data", e)
+            Log.e("WalkHeuristicsWorker", "Execution error: ${e.message}")
             return Result.retry()
         }
     }

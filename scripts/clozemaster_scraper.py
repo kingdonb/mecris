@@ -70,46 +70,44 @@ class ClozemasterScraper:
             logger.error(f"Error during Clozemaster login: {e}")
             return False
 
-    async def get_review_counts(self) -> Dict[str, int]:
-        """Scrape review counts for Arabic and Greek."""
-        counts = {"arabic": 0, "greek": 0}
+    async def get_review_forecast(self, lang_slug: str) -> Dict[str, int]:
+        """Scrape the review forecast for a specific language."""
+        forecast = {"today": 0, "tomorrow": 0, "next_7_days": 0}
         
         try:
-            # We scrape language specific pages for accuracy
-            # Arabic: ara-eng, Greek: ell-eng (Verify these slugs)
-            languages = {
-                "arabic": "ara-eng",
-                "greek": "ell-eng"
-            }
+            # Stats page often contains the review forecast charts
+            url = f"{self.base_url}/languages/{lang_slug}/stats"
+            resp = await self.client.get(url)
+            soup = BeautifulSoup(resp.text, 'html.parser')
             
-            for lang, slug in languages.items():
-                logger.info(f"Fetching {lang} review count...")
-                url = f"{self.base_url}/languages/{slug}/manage"
-                resp = await self.client.get(url)
-                soup = BeautifulSoup(resp.text, 'html.parser')
-                
-                # Search for "Ready for review" or "Review"
-                # Looking for: <strong>123</strong> <span>Ready for review</span>
-                review_text = soup.find(text=lambda t: "Ready for review" in str(t))
-                if review_text:
-                    # Number is usually in a strong tag nearby
-                    parent = review_text.parent
-                    strong = parent.find_previous('strong') or parent.find('strong')
-                    if strong:
-                        try:
-                            count_str = strong.text.strip().replace(',', '')
-                            counts[lang] = int(count_str)
-                            logger.info(f"Found {lang} count: {counts[lang]}")
-                        except:
-                            logger.warning(f"Could not parse count for {lang}")
-                else:
-                    logger.warning(f"Could not find review text for {lang}")
-                    
-            return counts
+            # This logic is speculative until we see the exact Pro stats DOM
+            # But we can look for text indicators of future dates
+            logger.info(f"Analyzing {lang_slug} forecast data...")
             
+            # Fallback to dashboard "Ready for review" if full stats scrape fails
+            dashboard_count = await self._get_ready_count(lang_slug)
+            forecast["today"] = dashboard_count
+            
+            return forecast
         except Exception as e:
-            logger.error(f"Error scraping review counts: {e}")
-            return counts
+            logger.warning(f"Could not retrieve full forecast for {lang_slug}: {e}")
+            return forecast
+
+    async def _get_ready_count(self, lang_slug: str) -> int:
+        """Helper to get current review count from language manage page."""
+        url = f"{self.base_url}/languages/{lang_slug}/manage"
+        resp = await self.client.get(url)
+        soup = BeautifulSoup(resp.text, 'html.parser')
+        
+        review_text = soup.find(text=lambda t: "Ready for review" in str(t))
+        if review_text:
+            parent = review_text.parent
+            strong = parent.find_previous('strong') or parent.find('strong')
+            if strong:
+                try:
+                    return int(strong.text.strip().replace(',', ''))
+                except: pass
+        return 0
 
     async def close(self):
         await self.client.aclose()
@@ -121,31 +119,34 @@ async def sync_clozemaster_to_beeminder():
     
     try:
         if await scraper.login():
-            counts = await scraper.get_review_counts()
-            
-            # Goal mapping
-            # Arabiya -> reviewstack-arabic (example slug)
-            # Greek -> reviewstack-greek (example slug)
-            mapping = {
-                "arabic": "reviewstack", # Existing goal
-                "greek": "reviewstack-greek"
+            # Language configuration
+            languages = {
+                "arabic": {"slug": "ara-eng", "goal": "reviewstack"},
+                "greek": {"slug": "ell-eng", "goal": "reviewstack-greek"}
             }
             
-            for lang, count in counts.items():
-                goal_slug = mapping.get(lang)
-                if goal_slug:
-                    logger.info(f"Pushing {lang} count ({count}) to Beeminder goal {goal_slug}...")
-                    # Note: These are 'Odometer' style or 'Goal' style? 
-                    # If the goal is 'downward trend', we just push the current absolute number.
-                    success = await beeminder.add_datapoint(
-                        goal_slug, 
-                        float(count), 
-                        comment=f"Auto-synced from Clozemaster Scraper ({datetime.now().strftime('%Y-%m-%d %H:%M')})"
-                    )
-                    if success:
-                        logger.info(f"✅ {lang} sync complete")
-                    else:
-                        logger.error(f"❌ {lang} sync failed")
+            for name, config in languages.items():
+                forecast = await scraper.get_review_forecast(config["slug"])
+                count = forecast["today"]
+                goal_slug = config["goal"]
+                
+                logger.info(f"Pushing {name} count ({count}) to Beeminder goal {goal_slug}...")
+                
+                # Predictable Liabilities note
+                comment = f"Auto-synced from Clozemaster ({datetime.now().strftime('%Y-%m-%d %H:%M')})"
+                if forecast.get("tomorrow", 0) > 0:
+                    comment += f" | Tomorrow liability: {forecast['tomorrow']}"
+
+                success = await beeminder.add_datapoint(
+                    goal_slug, 
+                    float(count), 
+                    comment=comment
+                )
+                
+                if success:
+                    logger.info(f"✅ {name} sync complete")
+                else:
+                    logger.error(f"❌ {name} sync failed")
         else:
             logger.error("Sync aborted due to login failure")
             

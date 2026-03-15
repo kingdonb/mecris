@@ -140,11 +140,20 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun setupWorkManager() {
+        val workManager = WorkManager.getInstance(this)
+        
+        // Purge any legacy/ghost workers from previous builds
+        workManager.cancelAllWork()
+
         val walkCheckRequest = PeriodicWorkRequestBuilder<WalkHeuristicsWorker>(
             15, TimeUnit.MINUTES
         ).build()
 
-        WorkManager.getInstance(this).enqueue(walkCheckRequest)
+        workManager.enqueueUniquePeriodicWork(
+            "WalkHeuristicsSync",
+            androidx.work.ExistingPeriodicWorkPolicy.UPDATE, // Update to current config
+            walkCheckRequest
+        )
     }
 
     private fun syncWalkToSpin(walkData: WalkDataSummary) {

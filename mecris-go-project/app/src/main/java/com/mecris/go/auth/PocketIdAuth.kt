@@ -119,6 +119,14 @@ class PocketIdAuth(private val context: Context) {
         }
     }
 
+    suspend fun getAccessTokenSuspend(): String? {
+        return kotlinx.coroutines.suspendCancellableCoroutine { continuation ->
+            getValidAccessToken { token ->
+                continuation.resume(token, null)
+            }
+        }
+    }
+
     fun dispose() {
         authService.dispose()
     }
