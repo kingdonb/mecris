@@ -10,6 +10,7 @@ CREATE TABLE IF NOT EXISTS users (
     budget_spent_groq NUMERIC(10, 2) DEFAULT 0.00,
     mcp_server_url TEXT,
     beeminder_goal VARCHAR(255) DEFAULT 'bike',
+    beeminder_user VARCHAR(255),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
