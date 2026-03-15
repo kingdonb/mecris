@@ -203,6 +203,9 @@ async fn handle_sync_service(req: Request) -> anyhow::Result<impl IntoResponse> 
     };
 
     // 4. Dispatch to Beeminder API
+    // Calculate miles from meters (1 mile = 1609.34 meters)
+    let miles = walk.distance_meters / 1609.34;
+    
     // We use the start_time + user_id as an idempotency key (request_id)
     let request_id = format!("{}_{}", user_id, walk.start_time);
     let beeminder_url = format!(
@@ -210,8 +213,8 @@ async fn handle_sync_service(req: Request) -> anyhow::Result<impl IntoResponse> 
         beeminder_user, beeminder_goal, beeminder_token
     );
     let beeminder_body = format!(
-        "value=1.0&comment=Logged via Mecris-Go Spin Backend (Steps: {}, Source: {})&request_id={}",
-        walk.step_count, walk.distance_source, request_id
+        "value={:.2}&comment=Logged via Mecris-Go Spin Backend (Steps: {}, Source: {})&request_id={}",
+        miles, walk.step_count, walk.distance_source, request_id
     );
 
     let beeminder_req = Request::post(&beeminder_url, beeminder_body)
