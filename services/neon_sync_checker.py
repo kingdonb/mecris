@@ -31,7 +31,8 @@ class NeonSyncChecker:
             # Define 'today' in UTC (since Spin stores as UTC)
             today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
 
-            query = "SELECT COUNT(*) FROM walk_inferences WHERE start_time >= %s"
+            # Cast TEXT to TIMESTAMPTZ for comparison
+            query = "SELECT COUNT(*) FROM walk_inferences WHERE start_time::TIMESTAMPTZ >= %s"
             params = [today_start]
 
             if user_id:
@@ -59,7 +60,7 @@ class NeonSyncChecker:
             conn = psycopg2.connect(self.db_url)
             cur = conn.cursor()
 
-            query = "SELECT start_time, step_count, distance_meters, distance_source FROM walk_inferences"
+            query = "SELECT start_time::TIMESTAMPTZ, step_count, distance_meters, distance_source FROM walk_inferences"
             params = []
             
             if user_id:

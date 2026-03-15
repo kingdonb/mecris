@@ -17,8 +17,8 @@ CREATE TABLE IF NOT EXISTS users (
 CREATE TABLE IF NOT EXISTS walk_inferences (
     id SERIAL PRIMARY KEY,
     user_id VARCHAR(255) REFERENCES users(pocket_id_sub) ON DELETE CASCADE,
-    start_time TIMESTAMP WITH TIME ZONE NOT NULL,
-    end_time TIMESTAMP WITH TIME ZONE NOT NULL,
+    start_time TEXT NOT NULL,
+    end_time TEXT NOT NULL,
     step_count INTEGER NOT NULL,
     distance_meters NUMERIC(10, 2) NOT NULL,
     distance_source VARCHAR(50) NOT NULL, -- e.g., 'estimated', 'gps'
