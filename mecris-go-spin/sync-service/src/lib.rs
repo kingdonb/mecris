@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use spin_sdk::{
     http::{IntoResponse, Request, Response},
     http_component,
-    pg::{Connection, ParameterValue},
+    pg::{Connection, ParameterValue, DbValue},
     variables,
 };
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
@@ -14,7 +14,9 @@ struct WalkDataSummary {
     step_count: i32,
     distance_meters: f64,
     distance_source: String,
+    #[allow(dead_code)]
     confidence_score: f64,
+    #[allow(dead_code)]
     gps_route_points: i32,
     #[allow(dead_code)]
     timezone: String,
@@ -26,11 +28,9 @@ struct StatusResponse {
     message: String,
 }
 
-// Minimal JWT structure for decoding (without full signature validation for this immediate iteration)
 #[derive(Deserialize, Debug)]
 struct JwtClaims {
     sub: String,
-    // Pocket ID might include other claims, but we only strictly need 'sub' (User ID) for now
     #[allow(dead_code)]
     exp: Option<usize>,
 }
@@ -42,13 +42,11 @@ fn extract_user_id(auth_header: Option<&spin_sdk::http::HeaderValue>) -> Option<
     }
     let token = &header_val[7..];
 
-    // Split JWT: header.payload.signature
     let parts: Vec<&str> = token.split('.').collect();
     if parts.len() != 3 {
         return None;
     }
 
-    // Decode payload
     let payload_bytes = URL_SAFE_NO_PAD.decode(parts[1]).ok()?;
     let claims: JwtClaims = serde_json::from_slice(&payload_bytes).ok()?;
 
@@ -56,7 +54,7 @@ fn extract_user_id(auth_header: Option<&spin_sdk::http::HeaderValue>) -> Option<
 }
 
 #[http_component]
-fn handle_sync_service(req: Request) -> anyhow::Result<impl IntoResponse> {
+async fn handle_sync_service(req: Request) -> anyhow::Result<impl IntoResponse> {
     if req.method() != &spin_sdk::http::Method::Post {
         return Ok(Response::builder()
             .status(405)
@@ -64,12 +62,10 @@ fn handle_sync_service(req: Request) -> anyhow::Result<impl IntoResponse> {
             .build());
     }
 
-    // P2-2: Pocket ID Integration - JWT Check
     let auth_header = req.header("authorization");
     let user_id = match extract_user_id(auth_header) {
         Some(id) => id,
         None => {
-            // For testing, if a specific dev variable is set, we can allow bypass, otherwise strictly block
             if let Ok(bypass) = variables::get("auth_bypass") {
                 if bypass == "true" {
                     "dev_user_123".to_string()
@@ -99,7 +95,6 @@ fn handle_sync_service(req: Request) -> anyhow::Result<impl IntoResponse> {
         }
     };
 
-    // Write to Neon DB
     let db_url = match variables::get("db_url") {
         Ok(url) if !url.is_empty() => url,
         _ => {
@@ -118,41 +113,107 @@ fn handle_sync_service(req: Request) -> anyhow::Result<impl IntoResponse> {
 
     let connection = Connection::open(&db_url)?;
 
+    // 1. Write the telemetry to Neon DB
     let query = r#"
         INSERT INTO walk_inferences (
             user_id, start_time, end_time, step_count, distance_meters, distance_source, confidence_score, gps_route_points
         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        ON CONFLICT (user_id, start_time) DO NOTHING
     "#;
 
     let params = vec![
         ParameterValue::Str(user_id.clone()),
-        ParameterValue::Str(walk.start_time),
-        ParameterValue::Str(walk.end_time),
+        ParameterValue::Str(walk.start_time.clone()),
+        ParameterValue::Str(walk.end_time.clone()),
         ParameterValue::Int32(walk.step_count),
         ParameterValue::Floating64(walk.distance_meters),
-        ParameterValue::Str(walk.distance_source),
+        ParameterValue::Str(walk.distance_source.clone()),
         ParameterValue::Floating64(walk.confidence_score),
         ParameterValue::Int32(walk.gps_route_points),
     ];
 
-    match connection.execute(query, &params) {
-        Ok(_) => {
-            let resp = StatusResponse {
-                status: "success".to_string(),
-                message: format!("Walk ingested and saved to DB for user {}", user_id),
-            };
-            Ok(Response::builder()
-                .status(201)
-                .header("content-type", "application/json")
-                .body(serde_json::to_string(&resp).unwrap())
-                .build())
-        }
+    if let Err(e) = connection.execute(query, &params) {
+        eprintln!("Database error: {:?}", e);
+        return Ok(Response::builder()
+            .status(500)
+            .body("Internal Server Error")
+            .build());
+    }
+
+    // 2. Fetch the Beeminder Token
+    let token_query = "SELECT beeminder_token_encrypted FROM users WHERE pocket_id_sub = $1 LIMIT 1";
+    let token_params = vec![ParameterValue::Str(user_id.clone())];
+    let row_set = match connection.query(token_query, &token_params) {
+        Ok(rs) => rs,
         Err(e) => {
-            eprintln!("Database error: {:?}", e);
-            Ok(Response::builder()
+            eprintln!("Error fetching token: {:?}", e);
+            return Ok(Response::builder()
                 .status(500)
                 .body("Internal Server Error")
-                .build())
+                .build());
         }
+    };
+
+    if row_set.rows.is_empty() {
+        // We logged the walk, but the user hasn't set up Beeminder integration yet.
+        let resp = StatusResponse {
+            status: "success".to_string(),
+            message: "Walk saved. (No Beeminder token found)".to_string(),
+        };
+        return Ok(Response::builder()
+            .status(201)
+            .header("content-type", "application/json")
+            .body(serde_json::to_string(&resp).unwrap())
+            .build());
     }
+
+    let beeminder_token = match &row_set.rows[0][0] {
+        DbValue::Str(s) => s.clone(),
+        _ => return Ok(Response::builder()
+            .status(500)
+            .body("Invalid token format in DB")
+            .build()),
+    };
+
+    // 3. Dispatch to Beeminder API
+    // We use the start_time + user_id as an idempotency key (request_id)
+    // We assume the user's goal is named "bike" based on previous Phase 1 setup
+    let request_id = format!("{}_{}", user_id, walk.start_time);
+    let beeminder_url = format!(
+        "https://www.beeminder.com/api/v1/users/me/goals/bike/datapoints.json?auth_token={}",
+        beeminder_token
+    );
+    let beeminder_body = format!(
+        "value=1.0&comment=Logged via Mecris-Go Spin Backend (Steps: {}, Source: {})&request_id={}",
+        walk.step_count, walk.distance_source, request_id
+    );
+
+    let beeminder_req = Request::post(&beeminder_url, beeminder_body)
+        .header("content-type", "application/x-www-form-urlencoded")
+        .build();
+
+    let beeminder_res: Response = spin_sdk::http::send(beeminder_req).await?;
+    let status = *beeminder_res.status();
+    if !(200..=299).contains(&status) {
+        eprintln!("Failed to log to Beeminder: {:?}", beeminder_res.status());
+        let resp = StatusResponse {
+            status: "partial_success".to_string(),
+            message: "Walk saved locally, but failed to sync to Beeminder.".to_string(),
+        };
+        return Ok(Response::builder()
+            .status(201)
+            .header("content-type", "application/json")
+            .body(serde_json::to_string(&resp).unwrap())
+            .build());
+    }
+
+    let resp = StatusResponse {
+        status: "success".to_string(),
+        message: format!("Walk ingested and synced to Beeminder for user {}", user_id),
+    };
+    Ok(Response::builder()
+        .status(201)
+        .header("content-type", "application/json")
+        .body(serde_json::to_string(&resp).unwrap())
+        .build())
 }

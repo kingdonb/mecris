@@ -18,7 +18,7 @@ component = "sync-service"
 
 [component.sync-service]
 source = "target/wasm32-wasi/release/sync_service.wasm"
-allowed_outbound_hosts = ["postgres://*:*"]
+allowed_outbound_hosts = ["postgres://*:*", "https://www.beeminder.com"]
 key_value_stores = ["default"]
 [component.sync-service.variables]
 db_url = "{{ db_url }}"
