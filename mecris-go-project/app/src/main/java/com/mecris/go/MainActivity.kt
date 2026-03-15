@@ -231,6 +231,13 @@ fun MecrisGoApp(
         isLoading = false
     }
 
+    // Auto-sync heuristic: if walk is inferred and authenticated, sync to cloud
+    LaunchedEffect(walkData, authState) {
+        if (walkData?.isWalkInferred == true && authState is AuthState.Authenticated) {
+            onSyncToCloud(walkData!!)
+        }
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()

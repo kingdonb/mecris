@@ -38,12 +38,14 @@ class GroqOdometerTracker:
     def __init__(self, db_path: str = "mecris_virtual_budget.db"):
         self.db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), db_path)
         self.neon_url = os.getenv("NEON_DB_URL")
+        self.use_neon = False
         self.init_database()
         
     def init_database(self):
         """Initialize odometer tracking tables."""
         if self.neon_url:
             try:
+                import psycopg2
                 with psycopg2.connect(self.neon_url) as conn:
                     with conn.cursor() as cur:
                         cur.execute("""
@@ -81,51 +83,55 @@ class GroqOdometerTracker:
                                 created_at TIMESTAMPTZ NOT NULL
                             )
                         """)
+                self.use_neon = True
+                logger.info("GroqOdometerTracker: Neon database initialized successfully.")
                 return
             except Exception as e:
-                logger.error(f"Neon odometer init failed: {e}. Falling back to SQLite.")
+                logger.error(f"GroqOdometerTracker: Neon init failed: {e}. Fallback to SQLite is available but might be empty.")
 
-        with sqlite3.connect(self.db_path) as conn:
-            # Odometer readings table
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS groq_odometer_readings (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    timestamp TEXT NOT NULL,
-                    month TEXT NOT NULL,
-                    cumulative_value REAL NOT NULL,
-                    is_final_reading BOOLEAN DEFAULT FALSE,
-                    is_reset BOOLEAN DEFAULT FALSE,
-                    notes TEXT DEFAULT '',
-                    created_at TEXT NOT NULL
-                )
-            """)
-            
-            # Monthly summaries for reconciliation
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS groq_monthly_summaries (
-                    month TEXT PRIMARY KEY,
-                    total_cost REAL NOT NULL,
-                    first_reading_date TEXT,
-                    last_reading_date TEXT,
-                    reading_count INTEGER,
-                    finalized BOOLEAN DEFAULT FALSE,
-                    created_at TEXT NOT NULL,
-                    updated_at TEXT NOT NULL
-                )
-            """)
-            
-            # Reminder tracking
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS groq_reminders (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    reminder_type TEXT NOT NULL,  -- 'month_end', 'stale_data', 'reset_detected'
-                    scheduled_for DATE NOT NULL,
-                    sent BOOLEAN DEFAULT FALSE,
-                    sent_at TEXT,
-                    response TEXT,
-                    created_at TEXT NOT NULL
-                )
-            """)
+        if not self.use_neon:
+            logger.warning(f"GroqOdometerTracker: Using SQLite fallback at {self.db_path}")
+            with sqlite3.connect(self.db_path) as conn:
+                # Odometer readings table
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS groq_odometer_readings (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        timestamp TEXT NOT NULL,
+                        month TEXT NOT NULL,
+                        cumulative_value REAL NOT NULL,
+                        is_final_reading BOOLEAN DEFAULT FALSE,
+                        is_reset BOOLEAN DEFAULT FALSE,
+                        notes TEXT DEFAULT '',
+                        created_at TEXT NOT NULL
+                    )
+                """)
+                
+                # Monthly summaries for reconciliation
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS groq_monthly_summaries (
+                        month TEXT PRIMARY KEY,
+                        total_cost REAL NOT NULL,
+                        first_reading_date TEXT,
+                        last_reading_date TEXT,
+                        reading_count INTEGER,
+                        finalized BOOLEAN DEFAULT FALSE,
+                        created_at TEXT NOT NULL,
+                        updated_at TEXT NOT NULL
+                    )
+                """)
+                
+                # Reminder tracking
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS groq_reminders (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        reminder_type TEXT NOT NULL,
+                        scheduled_for DATE NOT NULL,
+                        sent BOOLEAN DEFAULT FALSE,
+                        sent_at TEXT,
+                        response TEXT,
+                        created_at TEXT NOT NULL
+                    )
+                """)
     
     def record_odometer_reading(self, value: float, notes: str = "", month: Optional[str] = None) -> Dict:
         """Record a new odometer reading, handling month boundaries intelligently."""
@@ -147,7 +153,7 @@ class GroqOdometerTracker:
                 reset_detected = True
                 self._finalize_month(last_month, last_value)
         
-        if self.neon_url:
+        if self.use_neon:
             try:
                 # For historical records, use a timestamp from that month
                 if month:
@@ -173,10 +179,12 @@ class GroqOdometerTracker:
                     "recorded": True, "month": target_month, "cumulative_value": value,
                     "reset_detected": reset_detected, "daily_usage_estimate": daily_usage,
                     "reminder_status": self.check_reminder_needs() if not month else {"status": "historical"},
-                    "timestamp": record_timestamp.isoformat(), "historical_record": bool(month)
+                    "timestamp": record_timestamp.isoformat(), "historical_record": bool(month),
+                    "source": "neon"
                 }
             except Exception as e:
-                logger.error(f"Neon record_odometer_reading failed: {e}")
+                logger.error(f"GroqOdometerTracker: Neon record_odometer_reading failed: {e}")
+                raise
 
         # Fallback to SQLite
         with sqlite3.connect(self.db_path) as conn:
@@ -198,12 +206,13 @@ class GroqOdometerTracker:
             "recorded": True, "month": target_month, "cumulative_value": value,
             "reset_detected": reset_detected, "daily_usage_estimate": daily_usage,
             "reminder_status": self.check_reminder_needs() if not month else {"status": "historical"},
-            "timestamp": record_timestamp if month else now.isoformat(), "historical_record": bool(month)
+            "timestamp": record_timestamp if month else now.isoformat(), "historical_record": bool(month),
+            "source": "sqlite"
         }
     
     def get_last_reading(self) -> Optional[Dict]:
         """Get the most recent odometer reading."""
-        if self.neon_url:
+        if self.use_neon:
             try:
                 with psycopg2.connect(self.neon_url) as conn:
                     with conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -218,7 +227,8 @@ class GroqOdometerTracker:
                             row['timestamp'] = row['timestamp'].isoformat()
                             return dict(row)
             except Exception as e:
-                logger.error(f"Neon get_last_reading failed: {e}")
+                logger.error(f"GroqOdometerTracker: Neon get_last_reading failed: {e}")
+                raise
 
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.execute("""
@@ -242,14 +252,16 @@ class GroqOdometerTracker:
     def _finalize_month(self, month: str, final_value: float):
         """Mark a month as finalized with its total cost."""
         now = datetime.now()
-        if self.neon_url:
+        if self.use_neon:
             try:
                 with psycopg2.connect(self.neon_url) as conn:
                     with conn.cursor() as cur:
                         cur.execute("UPDATE groq_odometer_readings SET is_final_reading = TRUE WHERE month = %s", (month,))
                         cur.execute("UPDATE groq_monthly_summaries SET total_cost = %s, finalized = TRUE, updated_at = %s WHERE month = %s", (final_value, now, month))
                 return
-            except Exception: pass
+            except Exception as e:
+                logger.error(f"GroqOdometerTracker: Neon _finalize_month failed: {e}")
+                raise
 
         with sqlite3.connect(self.db_path) as conn:
             conn.execute("UPDATE groq_odometer_readings SET is_final_reading = TRUE WHERE month = ?", (month,))
@@ -296,14 +308,15 @@ class GroqOdometerTracker:
         if now.day <= 3:
             last_month = (now.replace(day=1) - timedelta(days=1)).strftime("%Y-%m")
             finalized = False
-            if self.neon_url:
+            if self.use_neon:
                 try:
                     with psycopg2.connect(self.neon_url) as conn:
                         with conn.cursor() as cur:
                             cur.execute("SELECT finalized FROM groq_monthly_summaries WHERE month = %s", (last_month,))
                             row = cur.fetchone()
                             if row: finalized = row[0]
-                except Exception: pass
+                except Exception as e:
+                    logger.error(f"GroqOdometerTracker: Neon check_reminder_needs failed: {e}")
             else:
                 with sqlite3.connect(self.db_path) as conn:
                     cursor = conn.execute("SELECT finalized FROM groq_monthly_summaries WHERE month = ?", (last_month,))
@@ -328,7 +341,7 @@ class GroqOdometerTracker:
         now = datetime.now()
         current_month = now.strftime("%Y-%m")
         
-        if self.neon_url:
+        if self.use_neon:
             try:
                 with psycopg2.connect(self.neon_url) as conn:
                     with conn.cursor() as cur:
@@ -345,8 +358,10 @@ class GroqOdometerTracker:
                         yest = cur.fetchone()
                         diff = val - yest[0] if yest else 0
                         return {"has_data": True, "month": current_month, "cumulative_cost": val, "daily_average": avg, "daily_actual": diff if diff > 0 else avg, "day_of_month": day, "last_reading": ts.isoformat()}
-            except Exception: pass
+            except Exception as e:
+                logger.error(f"GroqOdometerTracker: Neon get_usage_for_virtual_budget failed: {e}")
 
+        # Fallback only if neon not used or failed
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.execute("SELECT cumulative_value, timestamp FROM groq_odometer_readings WHERE month = ? ORDER BY timestamp DESC LIMIT 1", (current_month,))
             curr = cursor.fetchone()
