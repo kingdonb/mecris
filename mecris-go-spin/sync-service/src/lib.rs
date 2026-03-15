@@ -129,7 +129,7 @@ async fn handle_sync_service(req: Request) -> anyhow::Result<impl IntoResponse> 
     let query = r#"
         INSERT INTO walk_inferences (
             user_id, start_time, end_time, step_count, distance_meters, distance_source, confidence_score, gps_route_points
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        ) VALUES ($1, $2::TIMESTAMPTZ, $3::TIMESTAMPTZ, $4, $5, $6, $7, $8)
         ON CONFLICT (user_id, start_time) DO NOTHING
     "#;
 
