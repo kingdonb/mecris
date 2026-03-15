@@ -106,13 +106,13 @@ class HealthConnectManager(private val context: Context) {
             return FullActivityReport(0, 0.0, "Permission Denied", 0, false, 0, now)
         }
 
-        val localDateTime = LocalDateTime.ofInstant(now, ZoneId.systemDefault())
-        val startOfToday = localDateTime.toLocalDate().atStartOfDay(ZoneId.systemDefault()).toInstant()
+        val localDateTime = LocalDateTime.ofInstant(now, ZoneId.of("America/New_York"))
+        val startOfToday = localDateTime.toLocalDate().atStartOfDay(ZoneId.of("America/New_York")).toInstant()
         val queryStart = startOfToday
         val timeRangeFilter = TimeRangeFilter.between(queryStart, now)
         val fallbackStart = now.truncatedTo(ChronoUnit.HOURS)
 
-        Log.d("HealthConnectManager", "Querying Health Connect from $queryStart to $now")
+        Log.d("HealthConnectManager", "Querying Health Connect from $queryStart to $now (Eastern Midnight)")
 
         // 1. Use Aggregate API for Steps and Distance (Native Deduplication)
         val aggregateRequest = AggregateRequest(
@@ -129,7 +129,8 @@ class HealthConnectManager(private val context: Context) {
         val sessions = healthConnectClient.readRecords(ReadRecordsRequest(ExerciseSessionRecord::class, timeRangeFilter)).records
         val walkingSessions = sessions.filter {
             it.exerciseType == ExerciseSessionRecord.EXERCISE_TYPE_WALKING ||
-            it.exerciseType == ExerciseSessionRecord.EXERCISE_TYPE_OTHER_WORKOUT
+            it.exerciseType == ExerciseSessionRecord.EXERCISE_TYPE_OTHER_WORKOUT ||
+            it.exerciseType == 79 // Redundant but explicit for Issue #76
         }
         
         var source = if (totalDistanceMeters > 0) "Health Connect (Deduplicated)" else "Health Connect (Passive)"
@@ -139,13 +140,22 @@ class HealthConnectManager(private val context: Context) {
         var hasRoutes = false
         var totalRoutePoints = 0
         walkingSessions.forEach { session ->
+            Log.d("HealthConnectManager", "Inspecting session: ${session.metadata.id}, type=${session.exerciseType}, hasRoute=${session.exerciseRouteResult != null}")
             when (val routeResult = session.exerciseRouteResult) {
                 is ExerciseRouteResult.Data -> {
                     hasRoutes = true
                     totalRoutePoints += routeResult.exerciseRoute.route.size
-                    Log.d("HealthConnectManager", "Found route with ${routeResult.exerciseRoute.route.size} pts")
+                    Log.d("HealthConnectManager", "SUCCESS: Found route with ${routeResult.exerciseRoute.route.size} pts for session ${session.metadata.id}")
                 }
-                else -> {}
+                is ExerciseRouteResult.NoData -> {
+                    Log.d("HealthConnectManager", "ROUTE DIAG: Session ${session.metadata.id} has NO route data (NoData)")
+                }
+                is ExerciseRouteResult.ConsentRequired -> {
+                    Log.w("HealthConnectManager", "ROUTE DIAG: Session ${session.metadata.id} requires CONSENT for routes!")
+                }
+                else -> {
+                    Log.d("HealthConnectManager", "ROUTE DIAG: Session ${session.metadata.id} route result is unknown or null")
+                }
             }
         }
 
