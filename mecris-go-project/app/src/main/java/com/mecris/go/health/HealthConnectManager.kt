@@ -46,30 +46,22 @@ class HealthConnectManager(private val context: Context) {
     suspend fun hasForegroundPermissions(): Boolean {
         if (!_isSupported.value) return false
         val granted = healthConnectClient.permissionController.getGrantedPermissions()
-        
         val stepsGranted = granted.contains(HealthPermission.getReadPermission(StepsRecord::class))
         val distGranted = granted.contains(HealthPermission.getReadPermission(DistanceRecord::class))
         val exerciseGranted = granted.contains(HealthPermission.getReadPermission(ExerciseSessionRecord::class))
-        
-        Log.d("HealthConnectManager", "PERM DIAG: Steps=$stepsGranted, Distance=$distGranted, Exercise=$exerciseGranted")
-        
         return stepsGranted && distGranted && exerciseGranted
     }
 
     suspend fun hasRoutePermission(): Boolean {
         if (!_isSupported.value) return false
         val granted = healthConnectClient.permissionController.getGrantedPermissions()
-        val routeGranted = granted.contains(routePermission)
-        Log.d("HealthConnectManager", "PERM DIAG: Route=$routeGranted")
-        return routeGranted
+        return granted.contains(routePermission)
     }
 
     suspend fun hasBackgroundPermission(): Boolean {
         if (!_isSupported.value) return false
         val granted = healthConnectClient.permissionController.getGrantedPermissions()
-        val bgGranted = granted.contains(backgroundPermission)
-        Log.d("HealthConnectManager", "PERM DIAG: Background=$bgGranted")
-        return bgGranted
+        return granted.contains(backgroundPermission)
     }
 
     suspend fun fetchRecentWalkData(): WalkDataSummary {
@@ -89,33 +81,7 @@ class HealthConnectManager(private val context: Context) {
 
     private suspend fun fetchFullActivityReport(): FullActivityReport {
         val now = Instant.now()
-        val monthAgo = now.minus(30, ChronoUnit.DAYS)
-        val monthFilter = TimeRangeFilter.between(monthAgo, now)
         
-        // 0. Refined Diagnostics with per-type try-catch
-        try {
-            val sessions = healthConnectClient.readRecords(ReadRecordsRequest(ExerciseSessionRecord::class, monthFilter)).records
-            Log.d("HealthConnectManager", "EXTREME DIAG: Found ${sessions.size} sessions in last 30d")
-            if (sessions.isNotEmpty()) {
-                val types = sessions.map { it.exerciseType }.distinct()
-                val sources = sessions.map { it.metadata.dataOrigin.packageName }.distinct()
-                Log.d("HealthConnectManager", "EXTREME DIAG: Session types=$types, sources=$sources")
-            }
-        } catch (e: Exception) { Log.e("HealthConnectManager", "Session Diag Failed: ${e.message}") }
-
-        try {
-            val stepsRecords = healthConnectClient.readRecords(ReadRecordsRequest(StepsRecord::class, monthFilter)).records
-            if (stepsRecords.isNotEmpty()) {
-                val sources = stepsRecords.map { it.metadata.dataOrigin.packageName }.distinct()
-                Log.d("HealthConnectManager", "EXTREME DIAG: Steps sources found: $sources")
-            }
-        } catch (e: Exception) { Log.e("HealthConnectManager", "Steps Diag Failed: ${e.message}") }
-
-        try {
-            val distRecords = healthConnectClient.readRecords(ReadRecordsRequest(DistanceRecord::class, monthFilter)).records
-            Log.d("HealthConnectManager", "EXTREME DIAG: Found ${distRecords.size} distance records in last 30d")
-        } catch (e: Exception) { Log.e("HealthConnectManager", "Distance Diag Failed: ${e.message}") }
-
         if (!hasForegroundPermissions()) {
             return FullActivityReport(0, 0.0, "Permission Denied", 0, false, 0, now)
         }
@@ -126,11 +92,15 @@ class HealthConnectManager(private val context: Context) {
         val timeRangeFilter = TimeRangeFilter.between(queryStart, now)
         val fallbackStart = now.truncatedTo(ChronoUnit.HOURS)
 
-        // 3. Read Exercise Sessions
+        Log.d("HealthConnectManager", "Querying Health Connect from $queryStart to $now")
+
+        // 3. Read Exercise Sessions - Be inclusive of 'OTHER_WORKOUT' (79)
         val sessions = healthConnectClient.readRecords(ReadRecordsRequest(ExerciseSessionRecord::class, timeRangeFilter)).records
         val walkingSessions = sessions.filter {
-            it.exerciseType == ExerciseSessionRecord.EXERCISE_TYPE_WALKING
+            it.exerciseType == ExerciseSessionRecord.EXERCISE_TYPE_WALKING ||
+            it.exerciseType == ExerciseSessionRecord.EXERCISE_TYPE_OTHER_WORKOUT
         }
+        Log.d("HealthConnectManager", "Relevant sessions found today: ${walkingSessions.size}")
         
         val effectiveStartTime = walkingSessions.minByOrNull { it.startTime }?.startTime ?: fallbackStart
 
@@ -142,6 +112,7 @@ class HealthConnectManager(private val context: Context) {
         
         var source = if (totalDistanceMeters > 0) "Health Connect (Distance)" else "Health Connect (Passive)"
 
+        // Fallback: If distance is 0 but we have steps, try to query specifically for session windows
         if (totalSteps > 0 && totalDistanceMeters == 0.0) {
             walkingSessions.forEach { session ->
                 val sessionFilter = TimeRangeFilter.between(session.startTime, session.endTime)
@@ -158,6 +129,7 @@ class HealthConnectManager(private val context: Context) {
                 is ExerciseRouteResult.Data -> {
                     hasRoutes = true
                     totalRoutePoints += routeResult.exerciseRoute.route.size
+                    Log.d("HealthConnectManager", "Found route with ${routeResult.exerciseRoute.route.size} pts in session ${session.metadata.id}")
                 }
                 else -> {}
             }
