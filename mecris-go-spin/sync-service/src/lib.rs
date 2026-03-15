@@ -122,36 +122,49 @@ async fn handle_sync_service(req: Request) -> anyhow::Result<impl IntoResponse> 
     let user_params = vec![ParameterValue::Str(user_id.clone())];
     let _ = connection.execute(user_upsert_query, &user_params);
 
-    // 2. Check Cooldown BEFORE anything else
-    let cooldown_query = r#"
-        SELECT id FROM walk_inferences 
+    // 2. Check Cooldown/Update availability
+    let existing_query = r#"
+        SELECT id, step_count FROM walk_inferences 
         WHERE user_id = $1 
-        AND status = 'logged' 
-        AND created_at > NOW() - INTERVAL '4 hours'
+        AND start_time = $2
         LIMIT 1
     "#;
-    let cooldown_params = vec![ParameterValue::Str(user_id.clone())];
-    let cooldown_rs = connection.query(cooldown_query, &cooldown_params)?;
+    let existing_params = vec![ParameterValue::Str(user_id.clone()), ParameterValue::Str(walk.start_time.clone())];
+    let existing_rs = connection.query(existing_query, &existing_params)?;
     
-    if !cooldown_rs.rows.is_empty() {
-        println!("Sync suppressed for user {}: cooldown active (4h)", user_id);
-        let resp = StatusResponse {
-            status: "success".to_string(),
-            message: "Walk ingested (Duplicate suppressed via cooldown)".to_string(),
+    if !existing_rs.rows.is_empty() {
+        let existing_steps_str = match &existing_rs.rows[0][1] {
+            DbValue::Str(s) => s.clone(),
+            _ => "0".to_string(),
         };
-        return Ok(Response::builder()
-            .status(200)
-            .header("content-type", "application/json")
-            .body(serde_json::to_string(&resp).unwrap())
-            .build());
+        let existing_steps: i32 = existing_steps_str.parse().unwrap_or(0);
+        
+        // Only allow update if steps increased by more than 50
+        if walk.step_count <= existing_steps + 50 {
+            println!("Sync suppressed for user {}: data stagnant ({} -> {})", user_id, existing_steps, walk.step_count);
+            let resp = StatusResponse {
+                status: "success".to_string(),
+                message: "Walk ingested (Duplicate suppressed via cooldown)".to_string(),
+            };
+            return Ok(Response::builder()
+                .status(200)
+                .header("content-type", "application/json")
+                .body(serde_json::to_string(&resp).unwrap())
+                .build());
+        }
+        println!("Updating existing walk for user {}: ({} -> {})", user_id, existing_steps, walk.step_count);
     }
 
-    // 3. Insert walk record (or update if start_time matches)
+    // 3. Upsert walk record
     let query = r#"
         INSERT INTO walk_inferences (
             user_id, start_time, end_time, step_count, distance_meters, distance_source, confidence_score, gps_route_points, status
         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'logging')
-        ON CONFLICT (user_id, start_time) DO UPDATE SET status = 'logging'
+        ON CONFLICT (user_id, start_time) DO UPDATE SET 
+            end_time = EXCLUDED.end_time,
+            step_count = EXCLUDED.step_count,
+            distance_meters = EXCLUDED.distance_meters,
+            status = 'logging'
     "#;
 
     let params = vec![
