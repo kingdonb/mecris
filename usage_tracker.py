@@ -395,8 +395,11 @@ class UsageTracker:
                         days_remaining = (period_end - datetime.now(period_end.tzinfo)).days if period_end.tzinfo else (period_end - datetime.now()).days
                         
                         # today spend
-                        cur.execute("SELECT SUM(estimated_cost) FROM usage_sessions WHERE timestamp::date = CURRENT_DATE")
-                        today_spend = cur.fetchone()["sum"] or 0
+                        cur.execute("""
+                            SELECT SUM(estimated_cost) FROM usage_sessions 
+                            WHERE (timestamp::TIMESTAMPTZ AT TIME ZONE 'US/Eastern')::date = CURRENT_DATE AT TIME ZONE 'US/Eastern'
+                        """)
+                        today_spend = cur.fetchone()['sum'] or 0
                         
                         cur.execute("SELECT SUM(estimated_cost) FROM usage_sessions WHERE timestamp > NOW() - INTERVAL '7 days'")
                         week_spend = cur.fetchone()["sum"] or 0
