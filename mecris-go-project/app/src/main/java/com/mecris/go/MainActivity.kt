@@ -219,6 +219,8 @@ fun MecrisGoApp(
     var hasBackground by remember { mutableStateOf(false) }
     var isLoading by remember { mutableStateOf(true) }
 
+    var lastSyncTime by remember { mutableStateOf(0L) }
+
     // Check permissions and fetch data on load
     LaunchedEffect(Unit) {
         isLoading = true
@@ -233,8 +235,15 @@ fun MecrisGoApp(
 
     // Auto-sync heuristic: if walk is inferred and authenticated, sync to cloud
     LaunchedEffect(walkData, authState) {
-        if (walkData?.isWalkInferred == true && authState is AuthState.Authenticated) {
+        val currentTime = System.currentTimeMillis()
+        val fifteenMinutesInMillis = 15 * 60 * 1000L
+        
+        if (walkData?.isWalkInferred == true && 
+            authState is AuthState.Authenticated && 
+            (currentTime - lastSyncTime > fifteenMinutesInMillis)) {
+            
             onSyncToCloud(walkData!!)
+            lastSyncTime = currentTime
         }
     }
 
