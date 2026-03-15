@@ -1,6 +1,7 @@
 package com.mecris.go.ui
 
 import android.os.Bundle
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.*
@@ -17,17 +18,26 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.mecris.go.auth.PocketIdAuth
+import com.mecris.go.auth.AuthState
 import com.mecris.go.health.HealthConnectManager
 import com.mecris.go.health.WalkDataSummary
+import com.mecris.go.sync.SyncServiceApi
+import com.mecris.go.sync.WalkDataSummaryDto
+import kotlinx.coroutines.launch
+import java.time.Instant
 import java.time.LocalDateTime
+import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
 class IntegrationsActivity : ComponentActivity() {
     private lateinit var healthConnectManager: HealthConnectManager
+    private lateinit var pocketIdAuth: PocketIdAuth
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         healthConnectManager = HealthConnectManager(this)
+        pocketIdAuth = PocketIdAuth(this)
         
         setContent {
             MaterialTheme(
@@ -44,6 +54,7 @@ class IntegrationsActivity : ComponentActivity() {
                 ) {
                     IntegrationsScreen(
                         healthManager = healthConnectManager,
+                        pocketIdAuth = pocketIdAuth,
                         onBack = { finish() }
                     )
                 }
@@ -54,24 +65,63 @@ class IntegrationsActivity : ComponentActivity() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun IntegrationsScreen(healthManager: HealthConnectManager, onBack: () -> Unit) {
+fun IntegrationsScreen(
+    healthManager: HealthConnectManager, 
+    pocketIdAuth: PocketIdAuth,
+    onBack: () -> Unit
+) {
     var walkData by remember { mutableStateOf<WalkDataSummary?>(null) }
     var lastSyncTime by remember { mutableStateOf("") }
     var syncStatus by remember { mutableStateOf("Ready") }
     var isLoading by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
     
-    val refreshData = {
-        isLoading = true
-        // In a real app, we'd use a CoroutineScope here
-        // For now, we simulate the fetch
-        isLoading = false
+    val spinBaseUrl = "https://mecris-go-api-xupkwcis.fermyon.app/"
+    val syncApi = SyncServiceApi.create(spinBaseUrl)
+
+    val forceSync = {
+        scope.launch {
+            isLoading = true
+            syncStatus = "Syncing..."
+            
+            val currentWalk = healthManager.fetchRecentWalkData()
+            walkData = currentWalk
+            
+            pocketIdAuth.getValidAccessToken { token ->
+                if (token != null) {
+                    scope.launch {
+                        try {
+                            val dto = WalkDataSummaryDto(
+                                start_time = currentWalk.startTime.toString(),
+                                end_time = Instant.now().toString(),
+                                step_count = currentWalk.totalSteps.toInt(),
+                                distance_meters = currentWalk.totalDistanceMeters,
+                                distance_source = currentWalk.distanceSource,
+                                confidence_score = 0.9,
+                                gps_route_points = currentWalk.routePointCount,
+                                timezone = ZoneId.systemDefault().id
+                            )
+                            syncApi.uploadWalk("Bearer $token", dto)
+                            syncStatus = "Success"
+                            lastSyncTime = LocalDateTime.now().format(DateTimeFormatter.ofPattern("HH:mm"))
+                        } catch (e: Exception) {
+                            syncStatus = "Error"
+                            Log.e("IntegrationsActivity", "Force sync failed: ${e.message}")
+                        } finally {
+                            isLoading = false
+                        }
+                    }
+                } else {
+                    syncStatus = "Auth Required"
+                    isLoading = false
+                }
+            }
+        }
     }
 
     LaunchedEffect(Unit) {
         if (healthManager.hasForegroundPermissions()) {
             walkData = healthManager.fetchRecentWalkData()
-            lastSyncTime = LocalDateTime.now().format(DateTimeFormatter.ofPattern("HH:mm"))
-            syncStatus = "Success"
         }
     }
 
@@ -85,8 +135,8 @@ fun IntegrationsScreen(healthManager: HealthConnectManager, onBack: () -> Unit) 
                     }
                 },
                 actions = {
-                    IconButton(onClick = { refreshData() }) {
-                        Icon(Icons.Default.Refresh, contentDescription = "Refresh")
+                    IconButton(onClick = { forceSync() }, enabled = !isLoading) {
+                        Icon(Icons.Default.Refresh, contentDescription = "Force Sync")
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -151,11 +201,24 @@ fun IntegrationsScreen(healthManager: HealthConnectManager, onBack: () -> Unit) 
                     color = Color.Gray
                 )
                 Text(
-                    text = if (lastSyncTime.isEmpty()) "PENDING" else "$syncStatus ($lastSyncTime)",
+                    text = if (lastSyncTime.isEmpty()) "READY" else "$syncStatus ($lastSyncTime)",
                     style = MaterialTheme.typography.labelSmall,
-                    color = if (syncStatus == "Success") Color(0xFF00C853) else Color.LightGray,
+                    color = if (syncStatus == "Success") Color(0xFF00C853) else if (syncStatus == "Error") Color.Red else Color.LightGray,
                     fontWeight = FontWeight.Bold
                 )
+                
+                Spacer(modifier = Modifier.width(16.dp))
+                
+                TextButton(
+                    onClick = { forceSync() },
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                    modifier = Modifier.height(32.dp),
+                    enabled = !isLoading
+                ) {
+                    Text(if (isLoading) "SYNCING..." else "FORCE SYNC", 
+                         style = MaterialTheme.typography.labelSmall, 
+                         color = Color(0xFF00E5FF))
+                }
             }
             
             Spacer(modifier = Modifier.height(16.dp))
@@ -192,7 +255,6 @@ fun IntegrationsScreen(healthManager: HealthConnectManager, onBack: () -> Unit) 
             
             Spacer(modifier = Modifier.height(8.dp))
             
-            // Forecast Section (Mock data until Neon forecast table is ready)
             LanguageForecastCard("ARABIC", 2532, 6, Color(0xFFFFD600))
             Spacer(modifier = Modifier.height(8.dp))
             LanguageForecastCard("GREEK", 0, 46, Color(0xFF00E5FF))
