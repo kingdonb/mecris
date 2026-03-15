@@ -10,6 +10,7 @@ description = ""
 
 [variables]
 db_url = { required = false, default = "" }
+auth_bypass = { required = false, default = "false" }
 
 [[trigger.http]]
 route = "/walks"
@@ -21,6 +22,7 @@ allowed_outbound_hosts = ["postgres://*:*"]
 key_value_stores = ["default"]
 [component.sync-service.variables]
 db_url = "{{ db_url }}"
+auth_bypass = "{{ auth_bypass }}"
 [component.sync-service.build]
 command = "cargo build --target wasm32-wasip1 --release"
 watch = ["src/**/*.rs", "Cargo.toml"]
