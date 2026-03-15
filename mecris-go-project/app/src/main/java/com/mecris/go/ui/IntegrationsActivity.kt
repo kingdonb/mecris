@@ -61,6 +61,13 @@ class IntegrationsActivity : ComponentActivity() {
             }
         }
     }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        if (::pocketIdAuth.isInitialized) {
+            pocketIdAuth.dispose()
+        }
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
