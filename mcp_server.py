@@ -23,6 +23,7 @@ from groq_odometer_tracker import get_groq_context_for_narrator, get_groq_remind
 from twilio_sender import smart_send_message, send_sms
 from scripts.anthropic_cost_tracker import AnthropicCostTracker
 from services.weather_service import WeatherService
+from services.neon_sync_checker import NeonSyncChecker
 
 # Load environment variables
 load_dotenv()
@@ -69,6 +70,7 @@ app.mount("/mcp", mcp.sse_app())
 # Initialize clients
 obsidian_client = ObsidianMCPClient()
 beeminder_client = BeeminderClient()
+neon_checker = NeonSyncChecker()
 usage_tracker = UsageTracker()
 virtual_budget_manager = VirtualBudgetManager()
 billing_reconciler = BillingReconciliation()
@@ -104,17 +106,50 @@ async def get_cached_beeminder_goals() -> List[Dict[str, Any]]:
         return []
 
 async def get_cached_daily_activity(goal_slug: str = "bike") -> Dict[str, Any]:
-    """Get daily activity status with 1-hour cache."""
+    """Get daily activity status with 15-minute cache (refreshed for Cloud sync)."""
     now = datetime.now()
     if goal_slug in daily_activity_cache:
         cache_entry = daily_activity_cache[goal_slug]
         if now < cache_entry["cache_expires"]:
-            return {"goal_slug": goal_slug, "has_activity_today": cache_entry["has_activity_today"], "status": "completed" if cache_entry["has_activity_today"] else "needed", "cached": True}
+            return {
+                "goal_slug": goal_slug, 
+                "has_activity_today": cache_entry["has_activity_today"], 
+                "status": "completed" if cache_entry["has_activity_today"] else "needed", 
+                "source": cache_entry.get("source", "cache"),
+                "cached": True
+            }
 
     try:
+        # Phase 2: Check Neon Cloud DB first for 'bike' (walks)
+        if goal_slug == "bike":
+            if neon_checker.has_walk_today():
+                activity_status = {
+                    "goal_slug": goal_slug,
+                    "has_activity_today": True,
+                    "status": "completed",
+                    "check_time": now.isoformat(),
+                    "message": "✅ Walk detected in Cloud Sync (Neon)",
+                    "source": "neon_cloud"
+                }
+                daily_activity_cache[goal_slug] = {
+                    "last_check": now, 
+                    "has_activity_today": True, 
+                    "cache_expires": now + timedelta(minutes=15),
+                    "source": "neon_cloud"
+                }
+                activity_status["cached"] = False
+                return activity_status
+
+        # Fallback to Beeminder (Legacy or non-walk goals)
         activity_status = await beeminder_client.get_daily_activity_status(goal_slug)
-        daily_activity_cache[goal_slug] = {"last_check": now, "has_activity_today": activity_status["has_activity_today"], "cache_expires": now + timedelta(hours=1)}
+        daily_activity_cache[goal_slug] = {
+            "last_check": now, 
+            "has_activity_today": activity_status["has_activity_today"], 
+            "cache_expires": now + timedelta(minutes=15 if goal_slug == "bike" else 60),
+            "source": "beeminder"
+        }
         activity_status["cached"] = False
+        activity_status["source"] = "beeminder"
         return activity_status
     except Exception as e:
         logger.error(f"Failed to fetch daily activity for {goal_slug}: {e}")
@@ -141,6 +176,13 @@ async def get_narrator_context() -> Dict[str, Any]:
         budget_status = get_budget_status_from_tracker()
         daily_walk_status = await get_cached_daily_activity("bike")
         groq_context = get_groq_context_for_narrator()
+
+        # Add latest cloud walk info if available
+        latest_cloud_walk = neon_checker.get_latest_walk()
+        if latest_cloud_walk:
+            # Convert datetime to ISO string for JSON serialization
+            if isinstance(latest_cloud_walk.get("start_time"), datetime):
+                latest_cloud_walk["start_time"] = latest_cloud_walk["start_time"].isoformat()
         
         # Fetch user preferences for vacation_mode
         target_phone = os.getenv('TWILIO_TO_NUMBER')
@@ -193,7 +235,9 @@ async def get_narrator_context() -> Dict[str, Any]:
             "summary": summary, "goals_status": {"total": len(active_goals)},
             "urgent_items": urgent_items, "beeminder_alerts": [e.get("message", "") for e in emergencies[:5]],
             "goal_runway": goal_runway, "budget_status": budget_status, "recommendations": recommendations,
-            "daily_walk_status": daily_walk_status, "vacation_mode": vacation_mode, "last_updated": datetime.now().isoformat()
+            "daily_walk_status": daily_walk_status, 
+            "latest_cloud_walk": latest_cloud_walk,
+            "vacation_mode": vacation_mode, "last_updated": datetime.now().isoformat()
         }
     except Exception as e:
         logger.error(f"Failed to build narrator context: {e}")

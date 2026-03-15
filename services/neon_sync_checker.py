@@ -1,0 +1,88 @@
+import os
+import logging
+from datetime import datetime, timezone
+import psycopg2
+from dotenv import load_dotenv
+
+load_dotenv()
+logger = logging.getLogger("mecris.neon")
+
+class NeonSyncChecker:
+    """Checks the Cloud Neon DB for recent walk telemetry synced from the Android app."""
+
+    def __init__(self):
+        self.db_url = os.getenv("NEON_DB_URL")
+        if not self.db_url:
+            logger.warning("NEON_DB_URL not configured. Cloud walk sync checks will be skipped.")
+
+    def has_walk_today(self, user_id: str = None) -> bool:
+        """
+        Queries the Neon walk_inferences table for any walk starting today.
+        If user_id is None, it checks for any user (default for single-user phase).
+        """
+        if not self.db_url:
+            return False
+
+        try:
+            # Connect to Neon
+            conn = psycopg2.connect(self.db_url)
+            cur = conn.cursor()
+
+            # Define 'today' in UTC (since Spin stores as UTC)
+            today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+
+            query = "SELECT COUNT(*) FROM walk_inferences WHERE start_time >= %s"
+            params = [today_start]
+
+            if user_id:
+                query += " AND user_id = %s"
+                params.append(user_id)
+
+            cur.execute(query, params)
+            count = cur.fetchone()[0]
+
+            cur.close()
+            conn.close()
+
+            return count > 0
+
+        except Exception as e:
+            logger.error(f"Failed to query Neon for walk data: {e}")
+            return False
+
+    def get_latest_walk(self, user_id: str = None):
+        """Fetches the most recent walk record for the user."""
+        if not self.db_url:
+            return None
+
+        try:
+            conn = psycopg2.connect(self.db_url)
+            cur = conn.cursor()
+
+            query = "SELECT start_time, step_count, distance_meters, distance_source FROM walk_inferences"
+            params = []
+            
+            if user_id:
+                query += " WHERE user_id = %s"
+                params.append(user_id)
+            
+            query += " ORDER BY start_time DESC LIMIT 1"
+
+            cur.execute(query, params)
+            row = cur.fetchone()
+
+            cur.close()
+            conn.close()
+
+            if row:
+                return {
+                    "start_time": row[0],
+                    "step_count": row[1],
+                    "distance_meters": row[2],
+                    "distance_source": row[3]
+                }
+            return None
+
+        except Exception as e:
+            logger.error(f"Failed to fetch latest walk from Neon: {e}")
+            return None
