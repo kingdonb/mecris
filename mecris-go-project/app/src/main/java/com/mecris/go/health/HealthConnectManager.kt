@@ -49,7 +49,15 @@ class HealthConnectManager(private val context: Context) {
     suspend fun hasForegroundPermissions(): Boolean {
         if (!_isSupported.value) return false
         val granted = healthConnectClient.permissionController.getGrantedPermissions()
-        return granted.containsAll(foregroundPermissions)
+        
+        // Detailed logging of permissions for diagnostics
+        val stepsGranted = granted.contains(HealthPermission.getReadPermission(StepsRecord::class))
+        val distGranted = granted.contains(HealthPermission.getReadPermission(DistanceRecord::class))
+        val exerciseGranted = granted.contains(HealthPermission.getReadPermission(ExerciseSessionRecord::class))
+        
+        Log.d("HealthConnectManager", "PERM DIAG: Steps=$stepsGranted, Distance=$distGranted, Exercise=$exerciseGranted")
+        
+        return stepsGranted && distGranted && exerciseGranted
     }
 
     suspend fun hasRoutePermission(): Boolean {
@@ -82,14 +90,23 @@ class HealthConnectManager(private val context: Context) {
     private suspend fun fetchFullActivityReport(): FullActivityReport {
         val now = Instant.now()
         
-        // 0. Diagnostic: Scan last 7 days for ANY exercise sessions
+        // 0. Deep Diagnostic: Scan last 7 days for ANY exercise sessions
         try {
             val weekAgo = now.minus(7, ChronoUnit.DAYS)
-            val weekRequest = ReadRecordsRequest(ExerciseSessionRecord::class, TimeRangeFilter.between(weekAgo, now))
-            val weekSessions = healthConnectClient.readRecords(weekRequest).records
+            val weekFilter = TimeRangeFilter.between(weekAgo, now)
+            
+            val weekSessions = healthConnectClient.readRecords(ReadRecordsRequest(ExerciseSessionRecord::class, weekFilter)).records
             Log.d("HealthConnectManager", "DIAGNOSTIC: Found ${weekSessions.size} sessions in last 7d")
             weekSessions.forEach { 
-                Log.d("HealthConnectManager", "DIAGNOSTIC SESSION: ID=${it.metadata.id}, Type=${it.exerciseType}, Start=${it.startTime}")
+                Log.d("HealthConnectManager", "DIAGNOSTIC SESSION: ID=${it.metadata.id}, Type=${it.exerciseType}, Start=${it.startTime}, Source=${it.metadata.dataOrigin.packageName}")
+            }
+
+            // Diagnostic: Broad Distance Scan
+            val weekDistRecords = healthConnectClient.readRecords(ReadRecordsRequest(DistanceRecord::class, weekFilter)).records
+            Log.d("HealthConnectManager", "DIAGNOSTIC: Found ${weekDistRecords.size} distance records in last 7d")
+            if (weekDistRecords.isNotEmpty()) {
+                val totalDist = weekDistRecords.sumOf { it.distance.inMeters }
+                Log.d("HealthConnectManager", "DIAGNOSTIC: Total distance in last 7d: $totalDist meters")
             }
         } catch (e: Exception) {
             Log.e("HealthConnectManager", "DIAGNOSTIC FAILED: ${e.message}")
@@ -109,40 +126,36 @@ class HealthConnectManager(private val context: Context) {
         Log.d("HealthConnectManager", "Querying Health Connect from $queryStart to $now")
 
         // 3. Read Exercise Sessions
-        val sessionRequest = ReadRecordsRequest(
-            recordType = ExerciseSessionRecord::class,
-            timeRangeFilter = timeRangeFilter
-        )
-        val sessions = healthConnectClient.readRecords(sessionRequest).records
-        Log.d("HealthConnectManager", "Total exercise sessions found: ${sessions.size}")
-        
+        val sessions = healthConnectClient.readRecords(ReadRecordsRequest(ExerciseSessionRecord::class, timeRangeFilter)).records
         val walkingSessions = sessions.filter {
             it.exerciseType == ExerciseSessionRecord.EXERCISE_TYPE_WALKING
         }
-        Log.d("HealthConnectManager", "Walking sessions found: ${walkingSessions.size}")
+        Log.d("HealthConnectManager", "Walking sessions found today: ${walkingSessions.size}")
         
         val effectiveStartTime = walkingSessions.minByOrNull { it.startTime }?.startTime ?: fallbackStart
 
         // 1. Read Steps
-        val stepsRequest = ReadRecordsRequest(recordType = StepsRecord::class, timeRangeFilter = timeRangeFilter)
-        val stepsRecords = healthConnectClient.readRecords(stepsRequest).records
-        var totalSteps = stepsRecords.sumOf { it.count }
+        val stepsRecords = healthConnectClient.readRecords(ReadRecordsRequest(StepsRecord::class, timeRangeFilter)).records
+        val totalSteps = stepsRecords.sumOf { it.count }
         Log.d("HealthConnectManager", "Steps from generic query: $totalSteps")
+        if (stepsRecords.isNotEmpty()) {
+            val sources = stepsRecords.map { it.metadata.dataOrigin.packageName }.distinct()
+            Log.d("HealthConnectManager", "Steps source apps: $sources")
+        }
 
         // 2. Read Distance
-        val distanceRequest = ReadRecordsRequest(recordType = DistanceRecord::class, timeRangeFilter = timeRangeFilter)
-        val distanceRecords = healthConnectClient.readRecords(distanceRequest).records
+        val distanceRecords = healthConnectClient.readRecords(ReadRecordsRequest(DistanceRecord::class, timeRangeFilter)).records
         var totalDistanceMeters = distanceRecords.sumOf { it.distance.inMeters }
         Log.d("HealthConnectManager", "Distance from generic query: $totalDistanceMeters")
         
         var source = if (totalDistanceMeters > 0) "Health Connect (Distance)" else "Health Connect (Passive)"
 
-        if (totalSteps == 0L && walkingSessions.isNotEmpty()) {
-            Log.d("HealthConnectManager", "Falling back to session-specific step query")
+        if (totalSteps > 0 && totalDistanceMeters == 0.0) {
+            Log.d("HealthConnectManager", "Attempting session-specific distance fallback")
             walkingSessions.forEach { session ->
                 val sessionFilter = TimeRangeFilter.between(session.startTime, session.endTime)
-                val sessionSteps = healthConnectClient.readRecords(ReadRecordsRequest(StepsRecord::class, sessionFilter)).records
-                totalSteps += sessionSteps.sumOf { it.count }
+                val sessionDist = healthConnectClient.readRecords(ReadRecordsRequest(DistanceRecord::class, sessionFilter)).records
+                totalDistanceMeters += sessionDist.sumOf { it.distance.inMeters }
             }
         }
 
