@@ -39,5 +39,15 @@ Tracing a "Walk" from the hardware sensor to the accountability ledger.
 - **L3 (High-Fidelity):** GPS Routes (Verified outdoor movement).
 - **L4 (Deep Insight):** Heart Rate/Intensity (Future expansion).
 
+## 5. State Divergence & Conflict Resolution
+The system maintains a dual-track state (Cloud vs Ledger).
+
+- **The Source of Truth (Neon Cloud):** The PostgreSQL `walk_log` contains the highest-fidelity raw telemetry received from the Android device.
+- **The Ledger (Beeminder):** Contains the official "Accountability Points" that drive the derailment logic.
+- **Conflict Resolution (Python MCP):** 
+    - When `get_cached_daily_activity` is called, it queries both Neon and Beeminder.
+    - **Inertia Strategy:** If Neon has a "Inferred Walk" but Beeminder is missing a datapoint, the status is marked as `completed` (Heuristic match). 
+    - **Self-Healing:** Future automation (Goal 1) will use Neon data to "fill the gaps" in Beeminder if a sync was missed due to connectivity issues.
+
 ---
 *Last Updated: March 15, 2026*

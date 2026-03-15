@@ -5,6 +5,7 @@ import android.os.Bundle
 import android.util.Log
 import android.widget.Toast
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
@@ -170,6 +171,11 @@ fun MecrisDashboard(
     // Opt-out preferences
     var collectDistance by remember { mutableStateOf(true) }
     var collectGpsRoutes by remember { mutableStateOf(true) }
+
+    // Navigation: Handle system back press
+    BackHandler(enabled = showSystemHealth) {
+        showSystemHealth = false
+    }
 
     val forceSync = {
         scope.launch {
