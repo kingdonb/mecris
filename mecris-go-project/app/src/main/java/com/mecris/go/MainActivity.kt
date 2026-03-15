@@ -4,6 +4,7 @@ import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -55,14 +56,20 @@ class MainActivity : ComponentActivity() {
             }
         }
 
+        // Launcher for Route permission
+        val requestRoutePermission = registerForActivityResult(requestPermissionActivityContract) { granted ->
+            if (granted.contains(healthConnectManager.routePermission)) {
+                Toast.makeText(this, "Route access granted!", Toast.LENGTH_SHORT).show()
+                recreate()
+            }
+        }
+
         // Launcher for Foreground permissions
         val requestForegroundPermissions = registerForActivityResult(requestPermissionActivityContract) { granted ->
             if (granted.containsAll(healthConnectManager.foregroundPermissions)) {
                 Toast.makeText(this, "Foreground permissions granted", Toast.LENGTH_SHORT).show()
                 recreate()
             } else {
-                // Some might be granted, some not. 
-                // We recreate anyway to let the UI reassess the state.
                 recreate()
             }
         }
@@ -78,6 +85,9 @@ class MainActivity : ComponentActivity() {
                         healthManager = healthConnectManager,
                         onRequestForegroundPermissions = {
                             requestForegroundPermissions.launch(healthConnectManager.foregroundPermissions)
+                        },
+                        onRequestRoutePermission = {
+                            requestRoutePermission.launch(setOf(healthConnectManager.routePermission))
                         },
                         onRequestBackgroundPermission = {
                             requestBackgroundPermission.launch(setOf(healthConnectManager.backgroundPermission))
@@ -124,12 +134,14 @@ fun MecrisGoApp(
     auth: PocketIdAuth,
     healthManager: HealthConnectManager,
     onRequestForegroundPermissions: () -> Unit,
+    onRequestRoutePermission: () -> Unit,
     onRequestBackgroundPermission: () -> Unit,
     onLogWalk: (Double) -> Unit
 ) {
     val scope = rememberCoroutineScope()
     var walkData by remember { mutableStateOf<WalkDataSummary?>(null) }
     var hasForeground by remember { mutableStateOf(false) }
+    var hasRoute by remember { mutableStateOf(false) }
     var hasBackground by remember { mutableStateOf(false) }
     var isLoading by remember { mutableStateOf(true) }
 
@@ -137,6 +149,7 @@ fun MecrisGoApp(
     LaunchedEffect(Unit) {
         isLoading = true
         hasForeground = healthManager.hasForegroundPermissions()
+        hasRoute = healthManager.hasRoutePermission()
         hasBackground = healthManager.hasBackgroundPermission()
         if (hasForeground) {
             walkData = healthManager.fetchRecentWalkData()
@@ -171,16 +184,29 @@ fun MecrisGoApp(
                 onGrant = onRequestForegroundPermissions
             )
         } else {
-            // Foreground granted, check background
-            if (!hasBackground) {
-                PermissionCard(
-                    title = "Background Access Missing",
-                    description = "To automatically detect walks while your phone is in your pocket, Mecris-Go needs background health access.",
-                    buttonText = "Grant Background Access",
-                    onGrant = onRequestBackgroundPermission,
-                    isWarning = true
-                )
-                Spacer(modifier = Modifier.height(16.dp))
+            // Foreground granted, check route and background
+            Column {
+                if (!hasRoute) {
+                    PermissionCard(
+                        title = "Route Access Missing",
+                        description = "To verify outdoor walks, Mecris-Go needs exercise route access.",
+                        buttonText = "Grant Route Access",
+                        onGrant = onRequestRoutePermission,
+                        isWarning = true
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                }
+                
+                if (!hasBackground) {
+                    PermissionCard(
+                        title = "Background Access Missing",
+                        description = "To automatically detect walks while your phone is in your pocket, Mecris-Go needs background health access.",
+                        buttonText = "Grant Background Access",
+                        onGrant = onRequestBackgroundPermission,
+                        isWarning = true
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                }
             }
 
             Text("✅ Health Connect Connected", color = MaterialTheme.colorScheme.primary)

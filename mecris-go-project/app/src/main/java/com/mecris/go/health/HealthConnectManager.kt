@@ -21,15 +21,17 @@ class HealthConnectManager(private val context: Context) {
 
     val healthConnectClient by lazy { HealthConnectClient.getOrCreate(context) }
 
+    // Level 1: Core permissions required for basic dashboard
     val foregroundPermissions = setOf(
         HealthPermission.getReadPermission(StepsRecord::class),
         HealthPermission.getReadPermission(DistanceRecord::class),
-        HealthPermission.getReadPermission(ExerciseSessionRecord::class),
-        // CRITICAL: Explicitly request Route permission
-        "android.permission.health.READ_EXERCISE_ROUTES"
+        HealthPermission.getReadPermission(ExerciseSessionRecord::class)
     )
 
-    // Special background permission
+    // Level 2: High-sensitivity route permission
+    val routePermission = "android.permission.health.READ_EXERCISE_ROUTES"
+
+    // Level 3: Background permission
     val backgroundPermission = "android.permission.health.READ_HEALTH_DATA_IN_BACKGROUND"
 
     private val _isSupported = MutableStateFlow(false)
@@ -47,8 +49,13 @@ class HealthConnectManager(private val context: Context) {
     suspend fun hasForegroundPermissions(): Boolean {
         if (!_isSupported.value) return false
         val granted = healthConnectClient.permissionController.getGrantedPermissions()
-        // Check if all foreground permissions are in the granted set
         return granted.containsAll(foregroundPermissions)
+    }
+
+    suspend fun hasRoutePermission(): Boolean {
+        if (!_isSupported.value) return false
+        val granted = healthConnectClient.permissionController.getGrantedPermissions()
+        return granted.contains(routePermission)
     }
 
     suspend fun hasBackgroundPermission(): Boolean {
@@ -77,12 +84,7 @@ class HealthConnectManager(private val context: Context) {
             return FullActivityReport(0, 0.0, "None", 0, false, 0)
         }
 
-        // Use Start of Day in local timezone for "Today's" metrics
         val now = Instant.now()
-        val startOfDay = LocalDateTime.now().withHour(0).withMinute(0).withSecond(0)
-            .atZone(ZoneId.systemDefault()).toInstant()
-        
-        // Look back at least 24 hours to ensure we catch yesterday's walk if it's early
         val startTime = now.minus(24, ChronoUnit.HOURS)
         val timeRangeFilter = TimeRangeFilter.between(startTime, now)
 
@@ -114,9 +116,7 @@ class HealthConnectManager(private val context: Context) {
             it.exerciseType == ExerciseSessionRecord.EXERCISE_TYPE_WALKING
         }
 
-        Log.d("HealthConnectManager", "Found ${walkingSessions.size} walking sessions")
-
-        // 4. Check for Routes and extract Point Count
+        // 4. Check for Routes
         var hasRoutes = false
         var totalRoutePoints = 0
         
@@ -125,25 +125,16 @@ class HealthConnectManager(private val context: Context) {
             if (routeResult is ExerciseRouteResult.Data) {
                 hasRoutes = true
                 totalRoutePoints += routeResult.exerciseRoute.route.size
-                Log.d("HealthConnectManager", "Session ${session.metadata.id} has route with ${routeResult.exerciseRoute.route.size} points")
-            } else if (routeResult is ExerciseRouteResult.ConsentRequired) {
-                Log.w("HealthConnectManager", "Route consent required for session ${session.metadata.id}")
             }
         }
 
-        // Source priority logic
         if (walkingSessions.isNotEmpty()) {
             source = "Health Connect (Walking Session)"
-            // If sessions exist, we might want to prioritize the distance associated with them
-            // But for now, we'll keep the aggregate distance if it's non-zero
         }
 
-        // Fallback estimate if all else fails
         if (totalDistanceMeters == 0.0 && totalSteps > 0) {
             totalDistanceMeters = totalSteps * 0.66
             source = "Estimated from Steps (0.66m)"
-        } else if (totalDistanceMeters == 0.0) {
-            source = "No Data"
         }
 
         return FullActivityReport(
