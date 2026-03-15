@@ -255,6 +255,11 @@ fun MecrisDashboard(
                     authState = authState,
                     authResultLauncher = authResultLauncher,
                     healthManager = healthManager,
+                    walkData = walkData,
+                    collectDistance = collectDistance,
+                    onCollectDistanceChange = { collectDistance = it },
+                    collectGpsRoutes = collectGpsRoutes,
+                    onCollectGpsRoutesChange = { collectGpsRoutes = it },
                     onRequestForeground = onRequestForeground,
                     onRequestRoute = onRequestRoute,
                     onRequestBackground = onRequestBackground,
@@ -267,10 +272,9 @@ fun MecrisDashboard(
                     lastSyncTime = lastSyncTime,
                     isLoading = isLoading,
                     collectDistance = collectDistance,
-                    onCollectDistanceChange = { collectDistance = it },
                     collectGpsRoutes = collectGpsRoutes,
-                    onCollectGpsRoutesChange = { collectGpsRoutes = it },
-                    onForceSync = { forceSync() }
+                    onForceSync = { forceSync() },
+                    onOpenSystemHealth = { showSystemHealth = true }
                 )
             }
         }
@@ -284,10 +288,9 @@ fun MainNeuralDashboard(
     lastSyncTime: String,
     isLoading: Boolean,
     collectDistance: Boolean,
-    onCollectDistanceChange: (Boolean) -> Unit,
     collectGpsRoutes: Boolean,
-    onCollectGpsRoutesChange: (Boolean) -> Unit,
-    onForceSync: () -> Unit
+    onForceSync: () -> Unit,
+    onOpenSystemHealth: () -> Unit
 ) {
     Text(
         text = "SYSTEM MOMENTUM",
@@ -356,19 +359,34 @@ fun MainNeuralDashboard(
     
     Spacer(modifier = Modifier.height(16.dp))
     
-    // Diagnostics (Prominent if there's an issue)
+    // Data Quality Alert (Compact link to settings)
     walkData?.let { data ->
-        DiagnosticsSection(
-            report = data.qualityReport,
-            collectDistance = collectDistance,
-            onCollectDistanceChange = onCollectDistanceChange,
-            collectGpsRoutes = collectGpsRoutes,
-            onCollectGpsRoutesChange = onCollectGpsRoutesChange
-        )
+        val hasDistanceIssue = data.qualityReport.issues.any { it.contains("distance", ignoreCase = true) } && collectDistance
+        val hasGpsIssue = data.qualityReport.issues.any { it.contains("GPS", ignoreCase = true) } && collectGpsRoutes
+        
+        if (hasDistanceIssue || hasGpsIssue) {
+            Surface(
+                onClick = onOpenSystemHealth,
+                color = Color(0xFF332B00), // Dark yellow
+                shape = RoundedCornerShape(8.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier.padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("⚠️", fontSize = 20.sp)
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("DATA QUALITY ALERT", style = MaterialTheme.typography.labelSmall, color = Color(0xFFFFD600), fontWeight = FontWeight.Bold)
+                        Text("System is reporting degraded telemetry. Click to resolve.", style = MaterialTheme.typography.bodySmall, color = Color.White)
+                    }
+                }
+            }
+            Spacer(modifier = Modifier.height(16.dp))
+        }
     }
 
-    Spacer(modifier = Modifier.height(16.dp))
-    
     OdometerView(
         value = 21.00,
         label = "VIRTUAL BUDGET",
@@ -408,6 +426,11 @@ fun SystemHealthScreen(
     authState: AuthState,
     authResultLauncher: ActivityResultLauncher<Intent>,
     healthManager: HealthConnectManager,
+    walkData: WalkDataSummary?,
+    collectDistance: Boolean,
+    onCollectDistanceChange: (Boolean) -> Unit,
+    collectGpsRoutes: Boolean,
+    onCollectGpsRoutesChange: (Boolean) -> Unit,
     onRequestForeground: () -> Unit,
     onRequestRoute: () -> Unit,
     onRequestBackground: () -> Unit,
@@ -421,6 +444,23 @@ fun SystemHealthScreen(
     )
     
     Spacer(modifier = Modifier.height(16.dp))
+
+    // Diagnostics & Data Quality Section (Now in Settings)
+    walkData?.let { data ->
+        DiagnosticsSection(
+            report = data.qualityReport,
+            collectDistance = collectDistance,
+            onCollectDistanceChange = onCollectDistanceChange,
+            collectGpsRoutes = collectGpsRoutes,
+            onCollectGpsRoutesChange = onCollectGpsRoutesChange,
+            onOpenSourceApp = {
+                // For now, this just opens Health Connect, but provides better labeling
+                onOpenSettings()
+            }
+        )
+    }
+
+    Spacer(modifier = Modifier.height(24.dp))
 
     // Auth Status
     when (val state = authState) {
@@ -588,14 +628,54 @@ fun LanguageForecastCard(name: String, today: Int, tomorrow: Int, color: Color) 
 }
 
 @Composable
-fun DiagnosticsSection(report: DataQualityReport, collectDistance: Boolean, onCollectDistanceChange: (Boolean) -> Unit, collectGpsRoutes: Boolean, onCollectGpsRoutesChange: (Boolean) -> Unit) {
-    if (report.isExcellent && collectDistance && collectGpsRoutes) return
-    Surface(modifier = Modifier.fillMaxWidth(), color = if (report.isExcellent) Color(0xFF1E1E1E) else Color(0xFF2D1616), shape = RoundedCornerShape(8.dp), border = if (report.isExcellent) null else androidx.compose.foundation.BorderStroke(1.dp, Color.Red)) {
+fun DiagnosticsSection(
+    report: DataQualityReport,
+    collectDistance: Boolean,
+    onCollectDistanceChange: (Boolean) -> Unit,
+    collectGpsRoutes: Boolean,
+    onCollectGpsRoutesChange: (Boolean) -> Unit,
+    onOpenSourceApp: () -> Unit
+) {
+    // Determine if we should even show the card (only if issues exist or opt-outs are active)
+    val hasDistanceIssue = report.issues.any { it.contains("distance", ignoreCase = true) } && collectDistance
+    val hasGpsIssue = report.issues.any { it.contains("GPS", ignoreCase = true) } && collectGpsRoutes
+    val isExcellent = !hasDistanceIssue && !hasGpsIssue
+
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        color = if (isExcellent) Color(0xFF1E1E1E) else Color(0xFF2D1616),
+        shape = RoundedCornerShape(8.dp),
+        border = if (isExcellent) null else androidx.compose.foundation.BorderStroke(1.dp, Color.Red)
+    ) {
         Column(modifier = Modifier.padding(12.dp)) {
-            Text("DATA QUALITY & PRIVACY", style = MaterialTheme.typography.labelSmall, color = if (report.isExcellent) Color(0xFF00C853) else Color.Red, fontWeight = FontWeight.Bold)
-            report.issues.forEach { issue ->
-                Text("⚠️ $issue", style = MaterialTheme.typography.bodySmall, color = Color.White, modifier = Modifier.padding(top = 4.dp))
+            Text(
+                "DATA QUALITY & PRIVACY",
+                style = MaterialTheme.typography.labelSmall,
+                color = if (isExcellent) Color(0xFF00C853) else Color.Red,
+                fontWeight = FontWeight.Bold
+            )
+            
+            if (hasDistanceIssue || hasGpsIssue) {
+                report.issues.forEach { issue ->
+                    // Only show issues that haven't been "silenced" by opt-out
+                    val isSilenced = (issue.contains("distance") && !collectDistance) || (issue.contains("GPS") && !collectGpsRoutes)
+                    if (!isSilenced) {
+                        Text("⚠️ $issue", style = MaterialTheme.typography.bodySmall, color = Color.White, modifier = Modifier.padding(top = 4.dp))
+                    }
+                }
+                
+                Spacer(modifier = Modifier.height(12.dp))
+                Button(
+                    onClick = onOpenSourceApp,
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color.DarkGray)
+                ) {
+                    Text("CONFIGURE SOURCE APP", style = MaterialTheme.typography.labelSmall)
+                }
+            } else if (isExcellent && report.isExcellent) {
+                Text("Status: Excellent", style = MaterialTheme.typography.bodySmall, color = Color.Gray, modifier = Modifier.padding(top = 4.dp))
             }
+
             Spacer(modifier = Modifier.height(12.dp))
             DataPreferenceRow("Collect Native Distance", collectDistance, onCollectDistanceChange)
             DataPreferenceRow("Collect GPS Routes", collectGpsRoutes, onCollectGpsRoutesChange)
