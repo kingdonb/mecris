@@ -73,7 +73,6 @@ obsidian_client = ObsidianMCPClient()
 beeminder_client = BeeminderClient()
 neon_checker = NeonSyncChecker()
 usage_tracker = UsageTracker()
-reminder_service = ReminderService(get_narrator_context, get_coaching_insight)
 virtual_budget_manager = VirtualBudgetManager()
 billing_reconciler = BillingReconciliation()
 weather_service = WeatherService()
@@ -82,6 +81,8 @@ try:
 except Exception as e:
     logger.warning(f"Failed to initialize AnthropicCostTracker: {e}")
     anthropic_cost_tracker = None
+
+reminder_service = None # Will be initialized later
 
 # --- Cache Implementation ---
 daily_activity_cache = {}
@@ -125,12 +126,14 @@ async def get_cached_daily_activity(goal_slug: str = "bike") -> Dict[str, Any]:
         # Phase 2: Check Neon Cloud DB first for 'bike' (walks)
         if goal_slug == "bike":
             if neon_checker.has_walk_today():
+                latest = neon_checker.get_latest_walk()
+                walk_info = f" (Steps: {latest['step_count']})" if latest else ""
                 activity_status = {
                     "goal_slug": goal_slug,
                     "has_activity_today": True,
                     "status": "completed",
                     "check_time": now.isoformat(),
-                    "message": "✅ Walk detected in Cloud Sync (Neon)",
+                    "message": f"✅ Walk detected in Cloud Sync (Neon){walk_info}",
                     "source": "neon_cloud"
                 }
                 daily_activity_cache[goal_slug] = {
@@ -508,6 +511,8 @@ async def send_reminder_message(message_data: Dict[str, Any]) -> Dict[str, Any]:
         conn.close()
 
 
+
+reminder_service = ReminderService(get_narrator_context, get_coaching_insight)
 
 if __name__ == "__main__":
     import sys
