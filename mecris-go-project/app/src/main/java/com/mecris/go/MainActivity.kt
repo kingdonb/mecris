@@ -107,17 +107,32 @@ class MainActivity : ComponentActivity() {
                     refreshTrigger = refreshTrigger,
                     onRefreshRequested = { refreshTrigger++ },
                     onRequestForeground = { 
-                        Log.d("MainActivity", "Launching foreground request: ${healthConnectManager.foregroundPermissions}")
-                        requestForegroundPermissions.launch(healthConnectManager.foregroundPermissions) 
+                        try {
+                            Log.d("MainActivity", "Launching foreground request: ${healthConnectManager.foregroundPermissions}")
+                            requestForegroundPermissions.launch(healthConnectManager.foregroundPermissions) 
+                        } catch (e: Exception) {
+                            Log.e("MainActivity", "Failed to launch foreground request: ${e.message}")
+                            Toast.makeText(this@MainActivity, "Could not open permission dialog. Please check Health Connect settings.", Toast.LENGTH_LONG).show()
+                        }
                     },
                     onRequestRoute = { 
-                        Log.d("MainActivity", "Launching route request: ${healthConnectManager.routePermission}")
-                        // CRITICAL: RequestMultiplePermissions takes an Array
-                        requestRoutePermission.launch(arrayOf(healthConnectManager.routePermission)) 
+                        try {
+                            Log.d("MainActivity", "Launching route request: ${healthConnectManager.routePermission}")
+                            // CRITICAL: RequestMultiplePermissions takes an Array
+                            requestRoutePermission.launch(arrayOf(healthConnectManager.routePermission)) 
+                        } catch (e: Exception) {
+                            Log.e("MainActivity", "Failed to launch route request: ${e.message}")
+                            Toast.makeText(this@MainActivity, "Could not open permission dialog. Please check Health Connect settings.", Toast.LENGTH_LONG).show()
+                        }
                     },
                     onRequestBackground = { 
-                        Log.d("MainActivity", "Launching background request: ${healthConnectManager.backgroundPermission}")
-                        requestBackgroundPermission.launch(setOf(healthConnectManager.backgroundPermission)) 
+                        try {
+                            Log.d("MainActivity", "Launching background request: ${healthConnectManager.backgroundPermission}")
+                            requestBackgroundPermission.launch(setOf(healthConnectManager.backgroundPermission)) 
+                        } catch (e: Exception) {
+                            Log.e("MainActivity", "Failed to launch background request: ${e.message}")
+                            Toast.makeText(this@MainActivity, "Could not open permission dialog. Please check Health Connect settings.", Toast.LENGTH_LONG).show()
+                        }
                     },
                     onOpenSettings = {
                         val intent = Intent(HealthConnectClient.ACTION_HEALTH_CONNECT_SETTINGS)
