@@ -145,7 +145,11 @@ class HealthConnectManager(private val context: Context) {
                 val sources = stepsRecords.map { it.metadata.dataOrigin.packageName }.distinct()
                 Log.d("HealthConnectManager", "DIAGNOSTIC: Steps sources found: $sources")
             }
-        } catch (e: Exception) { Log.e("HealthConnectManager", "Diag Failed: ${e.message}") }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) { 
+            Log.e("HealthConnectManager", "Diag Failed: ${e.message}") 
+        }
 
         if (!hasForegroundPermissions()) {
             return FullActivityReport(0, 0.0, "Permission Denied", 0, false, 0, now)

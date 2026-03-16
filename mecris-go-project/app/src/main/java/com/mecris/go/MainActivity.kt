@@ -85,7 +85,9 @@ class MainActivity : ComponentActivity() {
             refreshTrigger++
         }
 
-        val requestRoutePermission = registerForActivityResult(requestPermissionActivityContract) { granted ->
+        // Route permissions are high-sensitivity and use a standard platform request
+        // We use standard RequestMultiplePermissions to avoid HealthPermissionsRequestContract validation
+        val requestRoutePermission = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { granted ->
             Log.d("MainActivity", "Route Permission Result: $granted")
             refreshTrigger++
         }
@@ -110,7 +112,8 @@ class MainActivity : ComponentActivity() {
                     },
                     onRequestRoute = { 
                         Log.d("MainActivity", "Launching route request: ${healthConnectManager.routePermission}")
-                        requestRoutePermission.launch(setOf(healthConnectManager.routePermission, healthConnectManager.legacyRoutePermission)) 
+                        // CRITICAL: RequestMultiplePermissions takes an Array
+                        requestRoutePermission.launch(arrayOf(healthConnectManager.routePermission, healthConnectManager.legacyRoutePermission)) 
                     },
                     onRequestBackground = { 
                         Log.d("MainActivity", "Launching background request: ${healthConnectManager.backgroundPermission}")
@@ -182,6 +185,7 @@ fun MecrisDashboard(
     val scope = rememberCoroutineScope()
     var walkData by remember { mutableStateOf<WalkDataSummary?>(null) }
     var isLoading by remember { mutableStateOf(false) }
+    var isFetching by remember { mutableStateOf(true) }
     var syncStatus by remember { mutableStateOf("Ready") }
     var lastSyncTime by remember { mutableStateOf("") }
     
@@ -230,7 +234,7 @@ fun MecrisDashboard(
                                 distance_source = if (collectDistance) currentWalk.distanceSource else "Opt-out",
                                 confidence_score = 0.9,
                                 gps_route_points = if (collectGpsRoutes) currentWalk.routePointCount else 0,
-                                timezone = ZoneId.systemDefault().id
+                                timezone = ZoneId.of("America/New_York").id
                             )
                             syncApi.uploadWalk("Bearer $token", dto)
                             syncStatus = "Success"
@@ -251,10 +255,10 @@ fun MecrisDashboard(
     }
 
     LaunchedEffect(refreshTrigger) {
-        if (healthManager.hasForegroundPermissions()) {
-            Log.d("MecrisDashboard", "Refreshing walk data (Trigger: $refreshTrigger)")
-            walkData = healthManager.fetchRecentWalkData()
-        }
+        Log.d("MecrisDashboard", "Refreshing walk data (Trigger: $refreshTrigger)")
+        isFetching = true
+        walkData = healthManager.fetchRecentWalkData()
+        isFetching = false
     }
 
     Scaffold(
@@ -294,7 +298,10 @@ fun MecrisDashboard(
                     onCollectDistanceChange = { collectDistance = it },
                     collectGpsRoutes = collectGpsRoutes,
                     onCollectGpsRoutesChange = { collectGpsRoutes = it },
-                    onRequestForeground = onRequestForeground,
+                    onRequestForeground = { 
+                        Log.d("MainActivity", "Launching foreground request: ${healthManager.foregroundPermissions}")
+                        onRequestForeground() 
+                    },
                     onRequestRoute = onRequestRoute,
                     onRequestBackground = onRequestBackground,
                     onOpenSettings = onOpenSettings
@@ -305,6 +312,7 @@ fun MecrisDashboard(
                     syncStatus = syncStatus,
                     lastSyncTime = lastSyncTime,
                     isLoading = isLoading,
+                    isFetching = isFetching,
                     collectDistance = collectDistance,
                     collectGpsRoutes = collectGpsRoutes,
                     onForceSync = { forceSync() },
@@ -321,6 +329,7 @@ fun MainNeuralDashboard(
     syncStatus: String,
     lastSyncTime: String,
     isLoading: Boolean,
+    isFetching: Boolean,
     collectDistance: Boolean,
     collectGpsRoutes: Boolean,
     onForceSync: () -> Unit,
@@ -340,15 +349,17 @@ fun MainNeuralDashboard(
         val hasSteps = (walkData?.totalSteps ?: 0L) > 1500
         val isStable = hasWalked || hasSteps
         
-        val momentumValue = if (isStable) 0.9f else 0.2f
-        MomentumVisualizer(momentum = momentumValue)
+        val momentumValue = if (isFetching) 0.5f else if (isStable) 0.9f else 0.2f
+        val momentumColor = if (isFetching) Color.White else if (isStable) Color(0xFF00C853) else Color(0xFFFF1744)
+        
+        MomentumVisualizer(momentum = momentumValue, overrideColor = if (isFetching) Color.White else null)
         
         Column(modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 8.dp),
                horizontalAlignment = Alignment.CenterHorizontally) {
             Text(
-                text = if (isStable) "STABLE" else "CRITICAL",
+                text = if (isFetching) "FETCHING..." else if (isStable) "STABLE" else "CRITICAL",
                 style = MaterialTheme.typography.labelLarge,
-                color = if (isStable) Color(0xFF00C853) else Color(0xFFFF1744),
+                color = if (isFetching) Color.White else if (isStable) Color(0xFF00C853) else Color(0xFFFF1744),
                 fontWeight = FontWeight.ExtraBold,
                 letterSpacing = 2.sp
             )
@@ -584,7 +595,7 @@ fun SystemHealthScreen(
 // --- Reusable UI Components ---
 
 @Composable
-fun MomentumVisualizer(momentum: Float) {
+fun MomentumVisualizer(momentum: Float, overrideColor: Color? = null) {
     val infiniteTransition = rememberInfiniteTransition(label = "momentum")
     val pulseScale by infiniteTransition.animateFloat(
         initialValue = 0.8f,
@@ -599,8 +610,8 @@ fun MomentumVisualizer(momentum: Float) {
         label = "rotation"
     )
 
-    val color1 = if (momentum > 0.5f) Color(0xFF00C853) else Color(0xFFFF1744)
-    val color2 = if (momentum > 0.5f) Color(0xFF2979FF) else Color(0xFFFFEA00)
+    val color1 = overrideColor ?: (if (momentum > 0.5f) Color(0xFF00C853) else Color(0xFFFF1744))
+    val color2 = overrideColor?.copy(alpha = 0.5f) ?: (if (momentum > 0.5f) Color(0xFF2979FF) else Color(0xFFFFEA00))
 
     Canvas(modifier = Modifier.fillMaxSize().graphicsLayer(scaleX = pulseScale * (0.8f + momentum * 0.4f), scaleY = pulseScale * (0.8f + momentum * 0.4f), rotationZ = rotation)) {
         drawCircle(
