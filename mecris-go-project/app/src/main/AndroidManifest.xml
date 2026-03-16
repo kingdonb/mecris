@@ -45,17 +45,19 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
-            <!-- 4. CRITICAL: Rationale Screen for Health Connect -->
+            <!-- 4. CRITICAL: Rationale Screen for Health Connect (Required) -->
             <intent-filter>
                 <action android:name="androidx.health.ACTION_SHOW_PERMISSIONS_RATIONALE" />
+                <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
 
-            <!-- 5. CRITICAL: Permission Usage screen (required by Android 16) -->
+            <!-- 5. CRITICAL: Permission Usage screen (Required for Android 14+) -->
             <intent-filter>
-                <action android:name="androidx.health.ACTION_SHOW_PERMISSIONS_RATIONALE" />
+                <action android:name="android.intent.action.VIEW_PERMISSION_USAGE" />
                 <category android:name="android.intent.category.HEALTH_PERMISSIONS" />
+                <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
-            </activity>
+        </activity>
 
-            </application>
+    </application>
 </manifest>

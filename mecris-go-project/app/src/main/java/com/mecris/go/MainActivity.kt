@@ -76,21 +76,19 @@ class MainActivity : ComponentActivity() {
         val requestPermissionActivityContract = PermissionController.createRequestPermissionResultContract()
         
         val requestForegroundPermissions = registerForActivityResult(requestPermissionActivityContract) { granted ->
-            if (granted.containsAll(healthConnectManager.foregroundPermissions)) {
-                recreate()
-            }
+            Log.d("MainActivity", "Foreground Permissions Result: $granted")
+            // Always recreate to trigger fresh logs from HealthConnectManager
+            recreate()
         }
 
         val requestRoutePermission = registerForActivityResult(requestPermissionActivityContract) { granted ->
-            if (granted.contains(healthConnectManager.routePermission)) {
-                recreate()
-            }
+            Log.d("MainActivity", "Route Permission Result: $granted")
+            recreate()
         }
 
         val requestBackgroundPermission = registerForActivityResult(requestPermissionActivityContract) { granted ->
-            if (granted.contains(healthConnectManager.backgroundPermission)) {
-                recreate()
-            }
+            Log.d("MainActivity", "Background Permission Result: $granted")
+            recreate()
         }
 
         setContent {
@@ -100,12 +98,26 @@ class MainActivity : ComponentActivity() {
                     healthManager = healthConnectManager,
                     syncApi = syncApi,
                     authResultLauncher = authResultLauncher,
-                    onRequestForeground = { requestForegroundPermissions.launch(healthConnectManager.foregroundPermissions) },
-                    onRequestRoute = { requestRoutePermission.launch(setOf(healthConnectManager.routePermission)) },
-                    onRequestBackground = { requestBackgroundPermission.launch(setOf(healthConnectManager.backgroundPermission)) },
+                    onRequestForeground = { 
+                        Log.d("MainActivity", "Launching foreground request: ${healthConnectManager.foregroundPermissions}")
+                        requestForegroundPermissions.launch(healthConnectManager.foregroundPermissions) 
+                    },
+                    onRequestRoute = { 
+                        Log.d("MainActivity", "Launching route request: ${healthConnectManager.routePermission}")
+                        requestRoutePermission.launch(setOf(healthConnectManager.routePermission)) 
+                    },
+                    onRequestBackground = { 
+                        Log.d("MainActivity", "Launching background request: ${healthConnectManager.backgroundPermission}")
+                        requestBackgroundPermission.launch(setOf(healthConnectManager.backgroundPermission)) 
+                    },
                     onOpenSettings = {
                         val intent = Intent(HealthConnectClient.ACTION_HEALTH_CONNECT_SETTINGS)
-                        startActivity(intent)
+                        try {
+                            startActivity(intent)
+                        } catch (e: Exception) {
+                            Log.e("MainActivity", "Failed to open settings: ${e.message}")
+                            Toast.makeText(this@MainActivity, "Could not open Health Connect settings", Toast.LENGTH_SHORT).show()
+                        }
                     }
                 )
             }

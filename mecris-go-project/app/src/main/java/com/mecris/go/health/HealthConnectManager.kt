@@ -44,26 +44,48 @@ class HealthConnectManager(private val context: Context) {
         _isSupported.value = availability == HealthConnectClient.SDK_AVAILABLE
     }
 
+    private fun isPermissionGranted(granted: Set<String>, permission: String): Boolean {
+        if (granted.contains(permission)) return true
+        
+        // Handle potential string mismatches between android.permission.health and androidx.health.permissions
+        val altPermission = if (permission.startsWith("android.permission.health")) {
+            permission.replace("android.permission.health.READ_", "androidx.health.permissions.read.")
+        } else if (permission.startsWith("androidx.health.permissions.read")) {
+            permission.replace("androidx.health.permissions.read.", "android.permission.health.READ_").uppercase()
+        } else {
+            null
+        }
+        
+        return altPermission != null && granted.contains(altPermission)
+    }
+
     suspend fun hasForegroundPermissions(): Boolean {
         if (!_isSupported.value) return false
         val granted = healthConnectClient.permissionController.getGrantedPermissions()
-        val stepsGranted = granted.contains(HealthPermission.getReadPermission(StepsRecord::class))
-        val distGranted = granted.contains(HealthPermission.getReadPermission(DistanceRecord::class))
-        val exerciseGranted = granted.contains(HealthPermission.getReadPermission(ExerciseSessionRecord::class))
-        Log.d("HealthConnectManager", "PERM DIAG: Steps=$stepsGranted, Distance=$distGranted, Exercise=$exerciseGranted")
+        Log.d("HealthConnectManager", "ALL GRANTED PERMS: $granted")
+        
+        val stepsPerm = HealthPermission.getReadPermission(StepsRecord::class)
+        val distPerm = HealthPermission.getReadPermission(DistanceRecord::class)
+        val exercisePerm = HealthPermission.getReadPermission(ExerciseSessionRecord::class)
+        
+        val stepsGranted = isPermissionGranted(granted, stepsPerm)
+        val distGranted = isPermissionGranted(granted, distPerm)
+        val exerciseGranted = isPermissionGranted(granted, exercisePerm)
+        
+        Log.d("HealthConnectManager", "CHECKING: steps=$stepsPerm ($stepsGranted), dist=$distPerm ($distGranted), exercise=$exercisePerm ($exerciseGranted)")
         return stepsGranted && distGranted && exerciseGranted
     }
 
     suspend fun hasRoutePermission(): Boolean {
         if (!_isSupported.value) return false
         val granted = healthConnectClient.permissionController.getGrantedPermissions()
-        return granted.contains(routePermission)
+        return isPermissionGranted(granted, routePermission)
     }
 
     suspend fun hasBackgroundPermission(): Boolean {
         if (!_isSupported.value) return false
         val granted = healthConnectClient.permissionController.getGrantedPermissions()
-        return granted.contains(backgroundPermission)
+        return isPermissionGranted(granted, backgroundPermission)
     }
 
     suspend fun fetchRecentWalkData(): WalkDataSummary {
