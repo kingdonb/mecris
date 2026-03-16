@@ -199,6 +199,7 @@ fun MecrisDashboard(
     val authState by auth.authState.collectAsState()
     val scope = rememberCoroutineScope()
     var walkData by remember { mutableStateOf<WalkDataSummary?>(null) }
+    var budgetAmount by remember { mutableStateOf<Double?>(null) }
     var isLoading by remember { mutableStateOf(false) }
     var isFetching by remember { mutableStateOf(true) }
     var syncStatus by remember { mutableStateOf("Ready") }
@@ -273,6 +274,20 @@ fun MecrisDashboard(
         Log.d("MecrisDashboard", "Refreshing walk data (Trigger: $refreshTrigger)")
         isFetching = true
         walkData = healthManager.fetchRecentWalkData()
+        
+        auth.getValidAccessToken { token ->
+            if (token != null) {
+                scope.launch {
+                    try {
+                        val response = syncApi.getBudget("Bearer $token")
+                        budgetAmount = response.remaining_budget
+                    } catch (e: Exception) {
+                        Log.e("MecrisDashboard", "Failed to fetch budget: ${e.message}")
+                    }
+                }
+            }
+        }
+        
         isFetching = false
     }
 
@@ -324,6 +339,7 @@ fun MecrisDashboard(
             } else {
                 MainNeuralDashboard(
                     walkData = walkData,
+                    budgetAmount = budgetAmount,
                     syncStatus = syncStatus,
                     lastSyncTime = lastSyncTime,
                     isLoading = isLoading,
@@ -342,6 +358,7 @@ fun MecrisDashboard(
 @Composable
 fun MainNeuralDashboard(
     walkData: WalkDataSummary?,
+    budgetAmount: Double?,
     syncStatus: String,
     lastSyncTime: String,
     isLoading: Boolean,
@@ -365,12 +382,12 @@ fun MainNeuralDashboard(
         val hasWalked = walkData?.isWalkInferred == true
         val hasSteps = (walkData?.totalSteps ?: 0L) > 1500
         val isStable = hasWalked || hasSteps
-        
+
         val momentumValue = if (isFetching) 0.5f else if (isStable) 0.9f else 0.2f
         val momentumColor = if (isFetching) Color.White else if (isStable) Color(0xFF00C853) else Color(0xFFFF1744)
-        
+
         MomentumVisualizer(momentum = momentumValue, overrideColor = if (isFetching) Color.White else null)
-        
+
         Column(modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 8.dp),
                horizontalAlignment = Alignment.CenterHorizontally) {
             Text(
@@ -408,9 +425,9 @@ fun MainNeuralDashboard(
             color = if (syncStatus == "Success") Color(0xFF00C853) else if (syncStatus == "Error") Color.Red else Color.LightGray,
             fontWeight = FontWeight.Bold
         )
-        
+
         Spacer(modifier = Modifier.width(16.dp))
-        
+
         TextButton(
             onClick = onForceSync,
             modifier = Modifier.height(32.dp),
@@ -421,9 +438,9 @@ fun MainNeuralDashboard(
                  color = Color(0xFF00E5FF))
         }
     }
-    
+
     Spacer(modifier = Modifier.height(16.dp))
-    
+
     // GPS Route Opportunity! (The Christmas Tree)
     val sessionId = walkData?.consentableSessionId
     if (sessionId != null) {
@@ -437,7 +454,7 @@ fun MainNeuralDashboard(
             ),
             label = "glow"
         )
-        
+
         Button(
             onClick = { onRequestRoute(sessionId) },
             modifier = Modifier
@@ -457,12 +474,12 @@ fun MainNeuralDashboard(
         }
         Spacer(modifier = Modifier.height(16.dp))
     }
-    
+
     // Data Quality Alert (Compact link to settings)
     walkData?.let { data ->
         val hasDistanceIssue = data.qualityReport.issues.any { it.contains("distance", ignoreCase = true) } && collectDistance
         val hasGpsIssue = data.qualityReport.issues.any { it.contains("GPS", ignoreCase = true) } && collectGpsRoutes
-        
+
         if (hasDistanceIssue || hasGpsIssue) {
             Surface(
                 onClick = onOpenSystemHealth,
@@ -487,17 +504,17 @@ fun MainNeuralDashboard(
     }
 
     OdometerView(
-        value = 21.00,
-        label = "VIRTUAL BUDGET",
+        value = budgetAmount ?: 0.0,
+        label = if (budgetAmount != null) "VIRTUAL BUDGET" else "VIRTUAL BUDGET (FETCHING...)",
         digitColor = Color(0xFFFFD600)
     )
 
     Spacer(modifier = Modifier.height(8.dp))
-
     val miles = (walkData?.totalDistanceMeters ?: 0.0) / 1609.34
     OdometerView(
         value = miles,
         label = "TODAY'S DISTANCE",
+        symbol = "",
         suffix = "MI",
         digitColor = Color(0xFF00E5FF),
         digits = 4,

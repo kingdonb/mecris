@@ -3,6 +3,7 @@ package com.mecris.go.sync
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 import retrofit2.http.Body
+import retrofit2.http.GET
 import retrofit2.http.Header
 import retrofit2.http.POST
 
@@ -12,6 +13,11 @@ interface SyncServiceApi {
         @Header("Authorization") authHeader: String,
         @Body walkData: WalkDataSummaryDto
     ): SyncResponse
+
+    @GET("budget")
+    suspend fun getBudget(
+        @Header("Authorization") authHeader: String
+    ): BudgetResponseDto
 
     companion object {
         fun create(baseUrl: String): SyncServiceApi {
@@ -38,4 +44,8 @@ data class WalkDataSummaryDto(
 data class SyncResponse(
     val status: String,
     val message: String
+)
+
+data class BudgetResponseDto(
+    val remaining_budget: Double
 )
