@@ -58,7 +58,7 @@ dependencies {
     implementation("net.openid:appauth:0.11.1")
 
     // Health Connect
-    implementation("androidx.health.connect:connect-client:1.1.0-alpha06")
+    implementation("androidx.health.connect:connect-client:1.1.0-alpha11")
 
     // WorkManager
     implementation("androidx.work:work-runtime-ktx:2.9.0")
