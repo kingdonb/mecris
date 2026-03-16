@@ -113,7 +113,7 @@ class MainActivity : ComponentActivity() {
                     onRequestRoute = { 
                         Log.d("MainActivity", "Launching route request: ${healthConnectManager.routePermission}")
                         // CRITICAL: RequestMultiplePermissions takes an Array
-                        requestRoutePermission.launch(arrayOf(healthConnectManager.routePermission, healthConnectManager.legacyRoutePermission)) 
+                        requestRoutePermission.launch(arrayOf(healthConnectManager.routePermission)) 
                     },
                     onRequestBackground = { 
                         Log.d("MainActivity", "Launching background request: ${healthConnectManager.backgroundPermission}")

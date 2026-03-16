@@ -26,9 +26,9 @@ class HealthConnectManager(private val context: Context) {
         HealthPermission.getReadPermission(ExerciseSessionRecord::class)
     )
 
-    // Level 2: High-sensitivity route permission (Android 14+)
+    // Level 2: High-sensitivity route permission
+    // android.permission.health.READ_EXERCISE_ROUTES is the system permission string for Android 14+
     val routePermission = "android.permission.health.READ_EXERCISE_ROUTES"
-    val legacyRoutePermission = "androidx.health.permissions.read.EXERCISE_ROUTES"
 
     // Level 3: Background permission
     val backgroundPermission = "android.permission.health.READ_HEALTH_DATA_IN_BACKGROUND"
@@ -48,10 +48,6 @@ class HealthConnectManager(private val context: Context) {
     private fun isPermissionGranted(granted: Set<String>, permission: String): Boolean {
         if (granted.contains(permission)) return true
         
-        // Special case for routes which doesn't follow the standard pattern
-        if (permission == routePermission && granted.contains(legacyRoutePermission)) return true
-        if (permission == legacyRoutePermission && granted.contains(routePermission)) return true
-
         // Handle potential string mismatches between android.permission.health and androidx.health.permissions
         val altPermission = if (permission.startsWith("android.permission.health")) {
             permission.replace("android.permission.health.READ_", "androidx.health.permissions.read.")
@@ -67,24 +63,20 @@ class HealthConnectManager(private val context: Context) {
     suspend fun hasForegroundPermissions(): Boolean {
         if (!_isSupported.value) return false
         val granted = healthConnectClient.permissionController.getGrantedPermissions()
-        Log.d("HealthConnectManager", "ALL GRANTED PERMS: $granted")
         
         val stepsPerm = HealthPermission.getReadPermission(StepsRecord::class)
         val distPerm = HealthPermission.getReadPermission(DistanceRecord::class)
         val exercisePerm = HealthPermission.getReadPermission(ExerciseSessionRecord::class)
         
-        val stepsGranted = isPermissionGranted(granted, stepsPerm)
-        val distGranted = isPermissionGranted(granted, distPerm)
-        val exerciseGranted = isPermissionGranted(granted, exercisePerm)
-        
-        Log.d("HealthConnectManager", "CHECKING: steps=$stepsPerm ($stepsGranted), dist=$distPerm ($distGranted), exercise=$exercisePerm ($exerciseGranted)")
-        return stepsGranted && distGranted && exerciseGranted
+        return isPermissionGranted(granted, stepsPerm) && 
+               isPermissionGranted(granted, distPerm) && 
+               isPermissionGranted(granted, exercisePerm)
     }
 
     suspend fun hasRoutePermission(): Boolean {
         if (!_isSupported.value) return false
         val granted = healthConnectClient.permissionController.getGrantedPermissions()
-        return isPermissionGranted(granted, routePermission) || isPermissionGranted(granted, legacyRoutePermission)
+        return isPermissionGranted(granted, routePermission)
     }
 
     suspend fun hasBackgroundPermission(): Boolean {
@@ -112,12 +104,10 @@ class HealthConnectManager(private val context: Context) {
     private fun fetchDataQualityReport(report: FullActivityReport): DataQualityReport {
         val issues = mutableListOf<String>()
         
-        // Check 1: Steps but no native distance (Fit "Track activity" might be off)
         if (report.steps > 500 && report.distanceSource.contains("Estimated")) {
             issues.add("Distance is estimated. Native distance recording might be disabled in source app.")
         }
         
-        // Check 2: Sessions but no routes (Location might be off in source app)
         if (report.walkingSessionsCount > 0 && !report.hasExerciseRoutes) {
             issues.add("Exercise sessions found, but GPS routes are missing. Check location settings in source app.")
         }
@@ -134,20 +124,9 @@ class HealthConnectManager(private val context: Context) {
         val monthAgo = now.minus(30, ChronoUnit.DAYS)
         val monthFilter = TimeRangeFilter.between(monthAgo, now)
         
-        // 0. Deep Diagnostics
         try {
             val sessions = healthConnectClient.readRecords(ReadRecordsRequest(ExerciseSessionRecord::class, monthFilter)).records
             Log.d("HealthConnectManager", "DIAGNOSTIC: Found ${sessions.size} sessions in last 30d")
-            if (sessions.isNotEmpty()) {
-                val types = sessions.map { it.exerciseType }.distinct()
-                val sources = sessions.map { it.metadata.dataOrigin.packageName }.distinct()
-                Log.d("HealthConnectManager", "DIAGNOSTIC: Session types=$types, sources=$sources")
-            }
-            val stepsRecords = healthConnectClient.readRecords(ReadRecordsRequest(StepsRecord::class, monthFilter)).records
-            if (stepsRecords.isNotEmpty()) {
-                val sources = stepsRecords.map { it.metadata.dataOrigin.packageName }.distinct()
-                Log.d("HealthConnectManager", "DIAGNOSTIC: Steps sources found: $sources")
-            }
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
         } catch (e: Exception) { 
@@ -164,9 +143,6 @@ class HealthConnectManager(private val context: Context) {
         val timeRangeFilter = TimeRangeFilter.between(queryStart, now)
         val fallbackStart = now.truncatedTo(ChronoUnit.HOURS)
 
-        Log.d("HealthConnectManager", "Querying Health Connect from $queryStart to $now (Eastern Midnight)")
-
-        // 1. Use Aggregate API for Steps and Distance (Native Deduplication)
         val aggregateRequest = AggregateRequest(
             metrics = setOf(StepsRecord.COUNT_TOTAL, DistanceRecord.DISTANCE_TOTAL),
             timeRangeFilter = timeRangeFilter
@@ -175,29 +151,26 @@ class HealthConnectManager(private val context: Context) {
         val totalSteps = aggregateResponse[StepsRecord.COUNT_TOTAL] ?: 0L
         val totalDistanceMeters = aggregateResponse[DistanceRecord.DISTANCE_TOTAL]?.inMeters ?: 0.0
         
-        Log.d("HealthConnectManager", "Aggregate result: Steps=$totalSteps, Dist=$totalDistanceMeters")
-
-        // 2. Read Sessions for metadata and routes
         val sessions = healthConnectClient.readRecords(ReadRecordsRequest(ExerciseSessionRecord::class, timeRangeFilter)).records
         val walkingSessions = sessions.filter {
             it.exerciseType == ExerciseSessionRecord.EXERCISE_TYPE_WALKING ||
-            it.exerciseType == ExerciseSessionRecord.EXERCISE_TYPE_OTHER_WORKOUT ||
-            it.exerciseType == 79 // Redundant but explicit for Issue #76
+            it.exerciseType == ExerciseSessionRecord.EXERCISE_TYPE_OTHER_WORKOUT
         }
         
         var source = if (totalDistanceMeters > 0) "Health Connect (Deduplicated)" else "Health Connect (Passive)"
         if (walkingSessions.isNotEmpty()) { source = "Health Connect (Workouts)" }
 
-        // 3. Route Points and specific session diagnostics
         var hasRoutes = false
         var totalRoutePoints = 0
         walkingSessions.forEach { session ->
-            Log.d("HealthConnectManager", "Inspecting session: ${session.metadata.id}, type=${session.exerciseType}, hasRoute=${session.exerciseRouteResult != null}")
-            when (val routeResult = session.exerciseRouteResult) {
+            val routeResult = session.exerciseRouteResult
+            Log.d("HealthConnectManager", "Inspecting session: ${session.metadata.id}, resultType=${routeResult::class.simpleName}")
+            
+            when (routeResult) {
                 is ExerciseRouteResult.Data -> {
                     hasRoutes = true
                     totalRoutePoints += routeResult.exerciseRoute.route.size
-                    Log.d("HealthConnectManager", "SUCCESS: Found route with ${routeResult.exerciseRoute.route.size} pts for session ${session.metadata.id}")
+                    Log.d("HealthConnectManager", "SUCCESS: Found route with ${routeResult.exerciseRoute.route.size} pts")
                 }
                 is ExerciseRouteResult.NoData -> {
                     Log.d("HealthConnectManager", "ROUTE DIAG: Session ${session.metadata.id} has NO route data (NoData)")
@@ -205,13 +178,9 @@ class HealthConnectManager(private val context: Context) {
                 is ExerciseRouteResult.ConsentRequired -> {
                     Log.w("HealthConnectManager", "ROUTE DIAG: Session ${session.metadata.id} requires CONSENT for routes!")
                 }
-                else -> {
-                    Log.d("HealthConnectManager", "ROUTE DIAG: Session ${session.metadata.id} route result is unknown or null")
-                }
             }
         }
 
-        // 4. Final Fallback for missing distance (only if aggregate distance is truly zero)
         var finalDistance = totalDistanceMeters
         if (finalDistance == 0.0 && totalSteps > 0) {
             finalDistance = totalSteps * 0.66
