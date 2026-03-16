@@ -25,6 +25,7 @@ from scripts.anthropic_cost_tracker import AnthropicCostTracker
 from services.weather_service import WeatherService
 from services.neon_sync_checker import NeonSyncChecker
 from services.reminder_service import ReminderService
+from scripts.clozemaster_scraper import sync_clozemaster_to_beeminder
 
 # Load environment variables
 load_dotenv()
@@ -68,6 +69,8 @@ async def budget_status_endpoint():
 # and custom HTTP endpoints.
 app.mount("/mcp", mcp.sse_app())
 
+from scheduler import MecrisScheduler
+
 # Initialize clients
 obsidian_client = ObsidianMCPClient()
 beeminder_client = BeeminderClient()
@@ -76,6 +79,7 @@ usage_tracker = UsageTracker()
 virtual_budget_manager = VirtualBudgetManager()
 billing_reconciler = BillingReconciliation()
 weather_service = WeatherService()
+scheduler = MecrisScheduler(trigger_reminder_func=None) # We'll set the real func later or rely on the name
 try:
     anthropic_cost_tracker = AnthropicCostTracker()
 except Exception as e:
@@ -248,6 +252,11 @@ async def get_narrator_context() -> Dict[str, Any]:
             "goal_runway": goal_runway, "budget_status": budget_status, "recommendations": recommendations,
             "daily_walk_status": daily_walk_status, 
             "latest_cloud_walk": latest_cloud_walk,
+            "system_pulse": {
+                "running": scheduler.running,
+                "is_leader": scheduler.is_leader,
+                "process_id": scheduler.process_id
+            },
             "vacation_mode": vacation_mode, "last_updated": datetime.now().isoformat()
         }
     except Exception as e:
@@ -426,10 +435,9 @@ async def trigger_reminder_check() -> Dict[str, Any]:
         logger.error(f"Reminder trigger failed: {e}")
         return {"error": f"Reminder trigger failed: {e}"}
 
-from scheduler import MecrisScheduler
+# Link real function to scheduler
+scheduler.trigger_reminder_func = trigger_reminder_check
 
-# Initialize Scheduler
-scheduler = MecrisScheduler(trigger_reminder_func=trigger_reminder_check)
 
 @mcp.tool(description="Sidekiq-like: Enqueue a message to be sent after a delay (in minutes).")
 def enqueue_message(message: str, delay_minutes: int, to_number: Optional[str] = None) -> Dict[str, Any]:
@@ -467,6 +475,53 @@ async def get_coaching_insight() -> Dict[str, Any]:
             
     except Exception as e:
         logger.error(f"Failed to generate coaching insight: {e}")
+        return {"error": str(e)}
+
+@mcp.tool(description="Calculate the language review velocity (Review Pump) required to hit 0 reviews.")
+async def get_language_velocity_stats() -> Dict[str, Any]:
+    """Calculate the velocity required to hit 0 reviews based on current debt + forecasted liabilities."""
+    try:
+        # Get fresh data from scraper (dry_run to not push to Beeminder)
+        scraper_data = await sync_clozemaster_to_beeminder(dry_run=True)
+        if not scraper_data:
+            return {"error": "Failed to retrieve data from Clozemaster scraper"}
+            
+        now = datetime.now()
+        # Calculate days until Friday (end of work week target)
+        # Friday is weekday 4 (Mon=0, Sun=6)
+        days_until_friday = (4 - now.weekday()) % 7
+        if days_until_friday == 0: days_until_friday = 7 # If it is Friday, target next Friday
+        
+        results = {}
+        for lang, data in scraper_data.items():
+            debt = data.get("count", 0)
+            forecast = data.get("forecast", {})
+            tomorrow_liability = forecast.get("tomorrow", 0)
+            seven_day_liability = forecast.get("next_7_days", 0)
+            
+            # Total to clear including tomorrow
+            immediate_target = debt + tomorrow_liability
+            # Target to be at zero by Friday
+            # (Current debt + 7-day liability) / days until Friday (approximate)
+            weekly_target_velocity = (debt + seven_day_liability) / max(1, days_until_friday)
+            
+            results[lang] = {
+                "current_debt": debt,
+                "tomorrow_liability": tomorrow_liability,
+                "seven_day_liability": seven_day_liability,
+                "days_to_target": days_until_friday,
+                "required_velocity_to_friday": round(weekly_target_velocity, 1),
+                "status": "CRITICAL" if debt > 1000 else "WARNING" if debt > 100 else "STABLE"
+            }
+            
+        return {
+            "timestamp": now.isoformat(),
+            "target_day": "Friday",
+            "days_remaining": days_until_friday,
+            "languages": results
+        }
+    except Exception as e:
+        logger.error(f"Review Pump calculation failed: {e}")
         return {"error": str(e)}
 
 async def check_reminder_needed() -> Dict[str, Any]:
