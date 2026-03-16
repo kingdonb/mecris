@@ -26,8 +26,8 @@ class HealthConnectManager(private val context: Context) {
         HealthPermission.getReadPermission(ExerciseSessionRecord::class)
     )
 
-    // Level 2: High-sensitivity route permission
-    val routePermission = "android.permission.health.READ_EXERCISE_ROUTES"
+    // Level 2: High-sensitivity route permission (Corrected for Android 14+)
+    val routePermission = HealthPermission.getReadPermission(ExerciseRouteRecord::class)
 
     // Level 3: Background permission
     val backgroundPermission = "android.permission.health.READ_HEALTH_DATA_IN_BACKGROUND"

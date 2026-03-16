@@ -131,6 +131,13 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onResume() {
+        super.onResume()
+        // Force a data refresh whenever returning to the app
+        // This ensures settings changes in Health Connect are immediately reflected
+        recreate()
+    }
+
     private fun setupWorkManager() {
         val workManager = WorkManager.getInstance(this)
         val walkCheckRequest = PeriodicWorkRequestBuilder<WalkHeuristicsWorker>(
@@ -315,15 +322,18 @@ fun MainNeuralDashboard(
             .height(200.dp)
     ) {
         val hasWalked = walkData?.isWalkInferred == true
-        val momentumValue = if (hasWalked) 0.9f else 0.2f
+        val hasSteps = (walkData?.totalSteps ?: 0L) > 1500
+        val isStable = hasWalked || hasSteps
+        
+        val momentumValue = if (isStable) 0.9f else 0.2f
         MomentumVisualizer(momentum = momentumValue)
         
         Column(modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 8.dp),
                horizontalAlignment = Alignment.CenterHorizontally) {
             Text(
-                text = if (hasWalked) "STABLE" else "CRITICAL",
+                text = if (isStable) "STABLE" else "CRITICAL",
                 style = MaterialTheme.typography.labelLarge,
-                color = if (hasWalked) Color(0xFF00C853) else Color(0xFFFF1744),
+                color = if (isStable) Color(0xFF00C853) else Color(0xFFFF1744),
                 fontWeight = FontWeight.ExtraBold,
                 letterSpacing = 2.sp
             )
