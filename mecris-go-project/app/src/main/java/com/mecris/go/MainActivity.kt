@@ -34,6 +34,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.health.connect.client.HealthConnectClient
 import androidx.health.connect.client.PermissionController
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.lifecycleScope
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
@@ -75,20 +77,22 @@ class MainActivity : ComponentActivity() {
 
         val requestPermissionActivityContract = PermissionController.createRequestPermissionResultContract()
         
+        // Surgical refresh state
+        var refreshTrigger by mutableIntStateOf(0)
+
         val requestForegroundPermissions = registerForActivityResult(requestPermissionActivityContract) { granted ->
             Log.d("MainActivity", "Foreground Permissions Result: $granted")
-            // Always recreate to trigger fresh logs from HealthConnectManager
-            recreate()
+            refreshTrigger++
         }
 
         val requestRoutePermission = registerForActivityResult(requestPermissionActivityContract) { granted ->
             Log.d("MainActivity", "Route Permission Result: $granted")
-            recreate()
+            refreshTrigger++
         }
 
         val requestBackgroundPermission = registerForActivityResult(requestPermissionActivityContract) { granted ->
             Log.d("MainActivity", "Background Permission Result: $granted")
-            recreate()
+            refreshTrigger++
         }
 
         setContent {
@@ -98,6 +102,8 @@ class MainActivity : ComponentActivity() {
                     healthManager = healthConnectManager,
                     syncApi = syncApi,
                     authResultLauncher = authResultLauncher,
+                    refreshTrigger = refreshTrigger,
+                    onRefreshRequested = { refreshTrigger++ },
                     onRequestForeground = { 
                         Log.d("MainActivity", "Launching foreground request: ${healthConnectManager.foregroundPermissions}")
                         requestForegroundPermissions.launch(healthConnectManager.foregroundPermissions) 
@@ -129,13 +135,6 @@ class MainActivity : ComponentActivity() {
         if (::pocketIdAuth.isInitialized) {
             pocketIdAuth.dispose()
         }
-    }
-
-    override fun onResume() {
-        super.onResume()
-        // Force a data refresh whenever returning to the app
-        // This ensures settings changes in Health Connect are immediately reflected
-        recreate()
     }
 
     private fun setupWorkManager() {
@@ -172,6 +171,8 @@ fun MecrisDashboard(
     healthManager: HealthConnectManager,
     syncApi: SyncServiceApi,
     authResultLauncher: ActivityResultLauncher<Intent>,
+    refreshTrigger: Int,
+    onRefreshRequested: () -> Unit,
     onRequestForeground: () -> Unit,
     onRequestRoute: () -> Unit,
     onRequestBackground: () -> Unit,
@@ -187,6 +188,19 @@ fun MecrisDashboard(
     // UI State
     var showSystemHealth by remember { mutableStateOf(false) }
     
+    // Lifecycle listener to refresh on resume (without activity.recreate loop)
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                Log.d("MecrisDashboard", "Activity resumed, triggering surgical refresh")
+                onRefreshRequested()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
     // Opt-out preferences
     var collectDistance by remember { mutableStateOf(true) }
     var collectGpsRoutes by remember { mutableStateOf(true) }
@@ -236,8 +250,9 @@ fun MecrisDashboard(
         }
     }
 
-    LaunchedEffect(Unit) {
+    LaunchedEffect(refreshTrigger) {
         if (healthManager.hasForegroundPermissions()) {
+            Log.d("MecrisDashboard", "Refreshing walk data (Trigger: $refreshTrigger)")
             walkData = healthManager.fetchRecentWalkData()
         }
     }
