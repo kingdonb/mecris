@@ -27,7 +27,6 @@ class HealthConnectManager(private val context: Context) {
     )
 
     // Level 2: High-sensitivity route permission (Android 14+)
-    // Note: There is no ExerciseRouteRecord class; it's a metadata property
     val routePermission = "android.permission.health.READ_EXERCISE_ROUTES"
     val legacyRoutePermission = "androidx.health.permissions.read.EXERCISE_ROUTES"
 
@@ -49,6 +48,10 @@ class HealthConnectManager(private val context: Context) {
     private fun isPermissionGranted(granted: Set<String>, permission: String): Boolean {
         if (granted.contains(permission)) return true
         
+        // Special case for routes which doesn't follow the standard pattern
+        if (permission == routePermission && granted.contains(legacyRoutePermission)) return true
+        if (permission == legacyRoutePermission && granted.contains(routePermission)) return true
+
         // Handle potential string mismatches between android.permission.health and androidx.health.permissions
         val altPermission = if (permission.startsWith("android.permission.health")) {
             permission.replace("android.permission.health.READ_", "androidx.health.permissions.read.")

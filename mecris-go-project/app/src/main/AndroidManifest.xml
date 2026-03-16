@@ -16,6 +16,7 @@
     <uses-permission android:name="androidx.health.permissions.read.STEPS" />
     <uses-permission android:name="androidx.health.permissions.read.DISTANCE" />
     <uses-permission android:name="androidx.health.permissions.read.EXERCISE" />
+    <uses-permission android:name="androidx.health.permissions.read.EXERCISE_ROUTES" />
     <!-- REQUIRED FOR BACKGROUND CHECKS (WorkManager) -->
     <uses-permission android:name="android.permission.health.READ_HEALTH_DATA_IN_BACKGROUND" />
 
