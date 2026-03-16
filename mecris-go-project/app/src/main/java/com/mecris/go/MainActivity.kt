@@ -581,8 +581,12 @@ fun SystemHealthScreen(
         val sessionId = walkData?.consentableSessionId
         PermissionCard(
             title = "Route Access",
-            description = if (sessionId != null) "Consent required for recent walk" else "No recent walks require consent. Enable manually in Settings.",
-            buttonText = if (sessionId != null) "Grant" else "Settings",
+            description = if (sessionId != null) {
+                "Consent required for recent walk to read GPS route."
+            } else {
+                "No recent walks require consent. To enable routes:\n1. Record a walk in your fitness app with GPS on.\n2. Return here to grant consent."
+            },
+            buttonText = if (sessionId != null) "Grant" else "Check Settings",
             onGrant = {
                 if (sessionId != null) {
                     onRequestRoute(sessionId)
