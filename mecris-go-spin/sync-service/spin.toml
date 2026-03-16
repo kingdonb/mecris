@@ -13,7 +13,7 @@ db_url = { required = false, default = "" }
 auth_bypass = { required = false, default = "false" }
 
 [[trigger.http]]
-route = "/walks"
+route = "/..."
 component = "sync-service"
 
 [component.sync-service]

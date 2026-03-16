@@ -55,12 +55,65 @@ fn extract_user_id(auth_header: Option<&spin_sdk::http::HeaderValue>) -> Option<
 
 #[http_component]
 async fn handle_sync_service(req: Request) -> anyhow::Result<impl IntoResponse> {
-    if req.method() != &spin_sdk::http::Method::Post {
-        return Ok(Response::builder()
-            .status(405)
-            .body("Method Not Allowed")
-            .build());
+    let path = req.path();
+    
+    if path == "/walks" {
+        if req.method() != &spin_sdk::http::Method::Post {
+            return Ok(Response::builder().status(405).body("Method Not Allowed").build());
+        }
+        return handle_walks_post(req).await;
+    } else if path == "/budget" {
+        if req.method() != &spin_sdk::http::Method::Get {
+            return Ok(Response::builder().status(405).body("Method Not Allowed").build());
+        }
+        return handle_budget_get(req).await;
     }
+    
+    Ok(Response::builder().status(404).body("Not Found").build())
+}
+
+async fn handle_budget_get(_req: Request) -> anyhow::Result<Response> {
+    let db_url = match variables::get("db_url") {
+        Ok(url) if !url.is_empty() => url,
+        _ => return Ok(Response::builder().status(500).body("Missing db_url").build())
+    };
+
+    let connection = Connection::open(&db_url)?;
+    
+    let query = "SELECT remaining_budget FROM budget_tracking WHERE id = 1 LIMIT 1";
+    let row_set = match connection.query(query, &[]) {
+        Ok(rs) => rs,
+        Err(e) => {
+            eprintln!("Database error: {:?}", e);
+            return Ok(Response::builder().status(500).body("Internal Server Error").build());
+        }
+    };
+
+    if row_set.rows.is_empty() {
+        return Ok(Response::builder().status(404).body("Budget not found").build());
+    }
+
+    let remaining_budget = match &row_set.rows[0][0] {
+        DbValue::Floating64(f) => *f,
+        DbValue::Floating32(f) => *f as f64,
+        _ => return Ok(Response::builder().status(500).body("Invalid budget data type").build())
+    };
+
+    #[derive(Serialize)]
+    struct BudgetResponse {
+        remaining_budget: f64,
+    }
+    
+    let resp = BudgetResponse { remaining_budget };
+
+    Ok(Response::builder()
+        .status(200)
+        .header("content-type", "application/json")
+        .body(serde_json::to_string(&resp).unwrap())
+        .build())
+}
+
+async fn handle_walks_post(req: Request) -> anyhow::Result<Response> {
 
     let auth_header = req.header("authorization");
     let user_id = match extract_user_id(auth_header) {
