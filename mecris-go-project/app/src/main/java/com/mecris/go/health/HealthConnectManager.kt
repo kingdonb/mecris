@@ -114,13 +114,9 @@ class HealthConnectManager(private val context: Context) {
         if (report.steps > 500 && report.distanceSource.contains("Estimated")) {
             issues.add("Distance is estimated. Native distance recording might be disabled in source app.")
         }
-        
-        if (report.walkingSessionsCount > 0 && !report.hasExerciseRoutes) {
-            issues.add("Exercise sessions found, but GPS routes are missing. Check location settings in source app.")
-        }
 
         return DataQualityReport(
-            isExcellent = issues.isEmpty() && report.hasExerciseRoutes && !report.distanceSource.contains("Estimated"),
+            isExcellent = issues.isEmpty() && !report.distanceSource.contains("Estimated"),
             issues = issues,
             lastChecked = Instant.now()
         )

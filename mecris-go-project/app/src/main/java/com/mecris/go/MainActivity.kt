@@ -9,6 +9,7 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.animateColor
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -330,7 +331,8 @@ fun MecrisDashboard(
                     collectDistance = collectDistance,
                     collectGpsRoutes = collectGpsRoutes,
                     onForceSync = { forceSync() },
-                    onOpenSystemHealth = { showSystemHealth = true }
+                    onOpenSystemHealth = { showSystemHealth = true },
+                    onRequestRoute = onRequestRoute
                 )
             }
         }
@@ -347,7 +349,8 @@ fun MainNeuralDashboard(
     collectDistance: Boolean,
     collectGpsRoutes: Boolean,
     onForceSync: () -> Unit,
-    onOpenSystemHealth: () -> Unit
+    onOpenSystemHealth: () -> Unit,
+    onRequestRoute: (String) -> Unit
 ) {
     Text(
         text = "SYSTEM MOMENTUM",
@@ -420,6 +423,40 @@ fun MainNeuralDashboard(
     }
     
     Spacer(modifier = Modifier.height(16.dp))
+    
+    // GPS Route Opportunity! (The Christmas Tree)
+    val sessionId = walkData?.consentableSessionId
+    if (sessionId != null) {
+        val infiniteTransition = rememberInfiniteTransition(label = "christmas_tree")
+        val glowColor by infiniteTransition.animateColor(
+            initialValue = Color(0xFF00C853), // Green
+            targetValue = Color(0xFF00E5FF),  // Cyan
+            animationSpec = infiniteRepeatable(
+                animation = tween(1000, easing = LinearEasing),
+                repeatMode = RepeatMode.Reverse
+            ),
+            label = "glow"
+        )
+        
+        Button(
+            onClick = { onRequestRoute(sessionId) },
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 8.dp)
+                .background(Brush.horizontalGradient(listOf(Color(0xFF004D40), Color(0xFF006064))), shape = RoundedCornerShape(8.dp)),
+            colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent),
+            elevation = ButtonDefaults.buttonElevation(defaultElevation = 8.dp)
+        ) {
+            Text(
+                "🌟 UNLOCK GPS ROUTE 🌟",
+                style = MaterialTheme.typography.labelLarge,
+                color = glowColor,
+                fontWeight = FontWeight.Black,
+                letterSpacing = 1.sp
+            )
+        }
+        Spacer(modifier = Modifier.height(16.dp))
+    }
     
     // Data Quality Alert (Compact link to settings)
     walkData?.let { data ->
@@ -595,7 +632,7 @@ fun SystemHealthScreen(
                 }
             },
             onOpenSettings = onOpenSettings,
-            isWarning = true
+            isWarning = sessionId != null // Only warn if we actually need consent and don't have it
         )
     } else {
         IntegrationCard("GPS ENGINE", "Active", "Outdoor route tracking enabled")
