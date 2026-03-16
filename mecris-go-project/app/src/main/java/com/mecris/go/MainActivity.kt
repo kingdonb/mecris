@@ -117,9 +117,9 @@ class MainActivity : ComponentActivity() {
                     },
                     onRequestRoute = { 
                         try {
-                            Log.d("MainActivity", "Launching route request: ${healthConnectManager.routePermission}")
+                            Log.d("MainActivity", "Launching route request with base permission")
                             // CRITICAL: RequestMultiplePermissions takes an Array
-                            requestRoutePermission.launch(arrayOf(healthConnectManager.routePermission)) 
+                            requestRoutePermission.launch(healthConnectManager.routePermissionsArray) 
                         } catch (e: Exception) {
                             Log.e("MainActivity", "Failed to launch route request: ${e.message}")
                             Toast.makeText(this@MainActivity, "Could not open permission dialog. Please check Health Connect settings.", Toast.LENGTH_LONG).show()
