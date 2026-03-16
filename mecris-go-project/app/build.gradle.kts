@@ -5,11 +5,7 @@ plugins {
 
 android {
     namespace = "com.mecris.go"
-    compileSdk {
-        version = release(35) {
-            minorApiLevel = 1
-        }
-    }
+    compileSdk = 35
 
     defaultConfig {
         applicationId = "com.mecris.go"
