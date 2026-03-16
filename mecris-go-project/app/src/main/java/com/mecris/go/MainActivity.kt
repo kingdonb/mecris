@@ -503,6 +503,25 @@ fun MainNeuralDashboard(
         digits = 4,
         decimalPlaces = 2
     )
+
+    if ((walkData?.routePointCount ?: 0) > 0) {
+        Spacer(modifier = Modifier.height(16.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text("📍", fontSize = 16.sp)
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+                text = "${walkData?.routePointCount} GPS POINTS CAPTURED",
+                style = MaterialTheme.typography.labelSmall,
+                color = Color(0xFF00C853),
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 1.sp
+            )
+        }
+    }
     
     Spacer(modifier = Modifier.height(24.dp))
     
@@ -808,7 +827,9 @@ fun PermissionCard(title: String, description: String, buttonText: String, onGra
             Text(title, style = MaterialTheme.typography.titleSmall, color = Color.White)
             Text(description, style = MaterialTheme.typography.bodySmall, color = Color.LightGray)
             Row(modifier = Modifier.align(Alignment.End)) {
-                TextButton(onClick = onOpenSettings) { Text("Settings", color = Color.Gray) }
+                if (buttonText != "Settings" && buttonText != "Check Settings") {
+                    TextButton(onClick = onOpenSettings) { Text("Settings", color = Color.Gray) }
+                }
                 Button(onClick = onGrant) { Text(buttonText) }
             }
         }
