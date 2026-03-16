@@ -104,7 +104,7 @@ class MainActivity : ComponentActivity() {
                     },
                     onRequestRoute = { 
                         Log.d("MainActivity", "Launching route request: ${healthConnectManager.routePermission}")
-                        requestRoutePermission.launch(setOf(healthConnectManager.routePermission)) 
+                        requestRoutePermission.launch(setOf(healthConnectManager.routePermission, healthConnectManager.legacyRoutePermission)) 
                     },
                     onRequestBackground = { 
                         Log.d("MainActivity", "Launching background request: ${healthConnectManager.backgroundPermission}")

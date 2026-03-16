@@ -5,7 +5,6 @@ import android.util.Log
 import androidx.health.connect.client.HealthConnectClient
 import androidx.health.connect.client.permission.HealthPermission
 import androidx.health.connect.client.records.*
-import androidx.health.connect.client.records.ExerciseRouteRecord
 import androidx.health.connect.client.request.ReadRecordsRequest
 import androidx.health.connect.client.request.AggregateRequest
 import androidx.health.connect.client.time.TimeRangeFilter
@@ -27,8 +26,10 @@ class HealthConnectManager(private val context: Context) {
         HealthPermission.getReadPermission(ExerciseSessionRecord::class)
     )
 
-    // Level 2: High-sensitivity route permission (Corrected for Android 14+)
-    val routePermission = HealthPermission.getReadPermission(ExerciseRouteRecord::class)
+    // Level 2: High-sensitivity route permission (Android 14+)
+    // Note: There is no ExerciseRouteRecord class; it's a metadata property
+    val routePermission = "android.permission.health.READ_EXERCISE_ROUTES"
+    val legacyRoutePermission = "androidx.health.permissions.read.EXERCISE_ROUTES"
 
     // Level 3: Background permission
     val backgroundPermission = "android.permission.health.READ_HEALTH_DATA_IN_BACKGROUND"
@@ -80,7 +81,7 @@ class HealthConnectManager(private val context: Context) {
     suspend fun hasRoutePermission(): Boolean {
         if (!_isSupported.value) return false
         val granted = healthConnectClient.permissionController.getGrantedPermissions()
-        return isPermissionGranted(granted, routePermission)
+        return isPermissionGranted(granted, routePermission) || isPermissionGranted(granted, legacyRoutePermission)
     }
 
     suspend fun hasBackgroundPermission(): Boolean {
