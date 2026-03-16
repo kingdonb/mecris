@@ -18,7 +18,8 @@ class WalkDataSummaryTest {
             hasExerciseRoutes = false,
             routePointCount = 0,
             isWalkInferred = true,
-            startTime = Instant.now()
+            startTime = Instant.now(),
+            consentableSessionId = null
         )
         
         assertTrue(summary.isWalkInferred)
@@ -34,7 +35,8 @@ class WalkDataSummaryTest {
             hasExerciseRoutes = false,
             routePointCount = 0,
             isWalkInferred = true,
-            startTime = Instant.now()
+            startTime = Instant.now(),
+            consentableSessionId = "test-session"
         )
         
         assertTrue(summary.isWalkInferred)

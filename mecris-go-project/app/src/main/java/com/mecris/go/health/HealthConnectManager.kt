@@ -103,6 +103,7 @@ class HealthConnectManager(private val context: Context) {
             routePointCount = report.routePointCount,
             isWalkInferred = likelyWalked,
             startTime = report.startTime,
+            consentableSessionId = report.consentableSessionId,
             qualityReport = fetchDataQualityReport(report)
         )
     }
@@ -140,7 +141,7 @@ class HealthConnectManager(private val context: Context) {
         }
 
         if (!hasForegroundPermissions()) {
-            return FullActivityReport(0, 0.0, "Permission Denied", 0, false, 0, now)
+            return FullActivityReport(0, 0.0, "Permission Denied", 0, false, 0, now, null)
         }
 
         val localDateTime = LocalDateTime.ofInstant(now, ZoneId.of("America/New_York"))
@@ -168,6 +169,7 @@ class HealthConnectManager(private val context: Context) {
 
         var hasRoutes = false
         var totalRoutePoints = 0
+        var foundConsentableId: String? = null
         walkingSessions.forEach { session ->
             val routeResult = session.exerciseRouteResult
             Log.d("HealthConnectManager", "Inspecting session: ${session.metadata.id}, resultType=${routeResult::class.simpleName}")
@@ -183,6 +185,7 @@ class HealthConnectManager(private val context: Context) {
                 }
                 is ExerciseRouteResult.ConsentRequired -> {
                     Log.w("HealthConnectManager", "ROUTE DIAG: Session ${session.metadata.id} requires CONSENT for routes!")
+                    if (foundConsentableId == null) foundConsentableId = session.metadata.id
                 }
             }
         }
@@ -202,7 +205,8 @@ class HealthConnectManager(private val context: Context) {
             walkingSessionsCount = walkingSessions.size,
             hasExerciseRoutes = hasRoutes,
             routePointCount = totalRoutePoints,
-            startTime = effectiveStartTime
+            startTime = effectiveStartTime,
+            consentableSessionId = foundConsentableId
         )
     }
 }
@@ -216,6 +220,7 @@ data class WalkDataSummary(
     val routePointCount: Int,
     val isWalkInferred: Boolean,
     val startTime: Instant,
+    val consentableSessionId: String?,
     val qualityReport: DataQualityReport = DataQualityReport(true, emptyList(), Instant.now())
 )
 
@@ -232,5 +237,6 @@ private data class FullActivityReport(
     val walkingSessionsCount: Int,
     val hasExerciseRoutes: Boolean,
     val routePointCount: Int,
-    val startTime: Instant
+    val startTime: Instant,
+    val consentableSessionId: String?
 )

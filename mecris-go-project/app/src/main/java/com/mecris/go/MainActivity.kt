@@ -34,6 +34,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.health.connect.client.HealthConnectClient
 import androidx.health.connect.client.PermissionController
+import androidx.health.connect.client.contracts.ExerciseRouteRequestContract
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.lifecycleScope
@@ -85,10 +86,9 @@ class MainActivity : ComponentActivity() {
             refreshTrigger++
         }
 
-        // Route permissions are high-sensitivity and use a standard platform request
-        // We use standard RequestMultiplePermissions to avoid HealthPermissionsRequestContract validation
-        val requestRoutePermission = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { granted ->
-            Log.d("MainActivity", "Route Permission Result: $granted")
+        // Route permissions are high-sensitivity and require a per-session request
+        val requestRoutePermission = registerForActivityResult(ExerciseRouteRequestContract()) { routeResult ->
+            Log.d("MainActivity", "Route Permission Result: $routeResult")
             refreshTrigger++
         }
 
@@ -115,14 +115,13 @@ class MainActivity : ComponentActivity() {
                             Toast.makeText(this@MainActivity, "Could not open permission dialog. Please check Health Connect settings.", Toast.LENGTH_LONG).show()
                         }
                     },
-                    onRequestRoute = { 
+                    onRequestRoute = { sessionId ->
                         try {
-                            Log.d("MainActivity", "Launching route request with base permission")
-                            // CRITICAL: RequestMultiplePermissions takes an Array
-                            requestRoutePermission.launch(healthConnectManager.routePermissionsArray) 
+                            Log.d("MainActivity", "Launching per-session route request for: $sessionId")
+                            requestRoutePermission.launch(sessionId) 
                         } catch (e: Exception) {
                             Log.e("MainActivity", "Failed to launch route request: ${e.message}")
-                            Toast.makeText(this@MainActivity, "Could not open permission dialog. Please check Health Connect settings.", Toast.LENGTH_LONG).show()
+                            Toast.makeText(this@MainActivity, "Could not open permission dialog.", Toast.LENGTH_LONG).show()
                         }
                     },
                     onRequestBackground = { 
@@ -192,7 +191,7 @@ fun MecrisDashboard(
     refreshTrigger: Int,
     onRefreshRequested: () -> Unit,
     onRequestForeground: () -> Unit,
-    onRequestRoute: () -> Unit,
+    onRequestRoute: (String) -> Unit,
     onRequestBackground: () -> Unit,
     onOpenSettings: () -> Unit
 ) {
@@ -495,7 +494,7 @@ fun SystemHealthScreen(
     collectGpsRoutes: Boolean,
     onCollectGpsRoutesChange: (Boolean) -> Unit,
     onRequestForeground: () -> Unit,
-    onRequestRoute: () -> Unit,
+    onRequestRoute: (String) -> Unit,
     onRequestBackground: () -> Unit,
     onOpenSettings: () -> Unit
 ) {
@@ -579,11 +578,18 @@ fun SystemHealthScreen(
     Spacer(modifier = Modifier.height(8.dp))
 
     if (!hasRoute) {
+        val sessionId = walkData?.consentableSessionId
         PermissionCard(
             title = "Route Access",
-            description = "High-fidelity outdoor tracking",
-            buttonText = "Grant",
-            onGrant = onRequestRoute,
+            description = if (sessionId != null) "Consent required for recent walk" else "No recent walks require consent. Enable manually in Settings.",
+            buttonText = if (sessionId != null) "Grant" else "Settings",
+            onGrant = {
+                if (sessionId != null) {
+                    onRequestRoute(sessionId)
+                } else {
+                    onOpenSettings()
+                }
+            },
             onOpenSettings = onOpenSettings,
             isWarning = true
         )
