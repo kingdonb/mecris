@@ -200,6 +200,7 @@ fun MecrisDashboard(
     val scope = rememberCoroutineScope()
     var walkData by remember { mutableStateOf<WalkDataSummary?>(null) }
     var budgetAmount by remember { mutableStateOf<Double?>(null) }
+    var languageStats by remember { mutableStateOf<List<com.mecris.go.sync.LanguageStatDto>>(emptyList()) }
     var isLoading by remember { mutableStateOf(false) }
     var isFetching by remember { mutableStateOf(true) }
     var syncStatus by remember { mutableStateOf("Ready") }
@@ -281,8 +282,11 @@ fun MecrisDashboard(
                     try {
                         val response = syncApi.getBudget("Bearer $token")
                         budgetAmount = response.remaining_budget
+                        
+                        val langResponse = syncApi.getLanguages("Bearer $token")
+                        languageStats = langResponse.languages
                     } catch (e: Exception) {
-                        Log.e("MecrisDashboard", "Failed to fetch budget: ${e.message}")
+                        Log.e("MecrisDashboard", "Failed to fetch remote data: ${e.message}")
                     } finally {
                         isFetching = false
                     }
@@ -342,6 +346,7 @@ fun MecrisDashboard(
                 MainNeuralDashboard(
                     walkData = walkData,
                     budgetAmount = budgetAmount,
+                    languageStats = languageStats,
                     syncStatus = syncStatus,
                     lastSyncTime = lastSyncTime,
                     isLoading = isLoading,
@@ -361,6 +366,7 @@ fun MecrisDashboard(
 fun MainNeuralDashboard(
     walkData: WalkDataSummary?,
     budgetAmount: Double?,
+    languageStats: List<com.mecris.go.sync.LanguageStatDto>,
     syncStatus: String,
     lastSyncTime: String,
     isLoading: Boolean,
@@ -552,9 +558,21 @@ fun MainNeuralDashboard(
     
     Spacer(modifier = Modifier.height(8.dp))
     
-    LanguageForecastCard("ARABIC", 2532, 6, Color(0xFFFFD600))
-    Spacer(modifier = Modifier.height(8.dp))
-    LanguageForecastCard("GREEK", 0, 46, Color(0xFF00E5FF))
+    if (languageStats.isEmpty()) {
+        Text(
+            text = "FETCHING...",
+            style = MaterialTheme.typography.bodySmall,
+            color = Color.DarkGray
+        )
+    } else {
+        languageStats.forEach { stat ->
+            val cardColor = if (stat.name.equals("ARABIC", ignoreCase = true)) Color(0xFFFFD600) 
+                            else if (stat.name.equals("GREEK", ignoreCase = true)) Color(0xFF00E5FF) 
+                            else Color.White
+            LanguageForecastCard(stat.name, stat.current, stat.tomorrow, cardColor)
+            Spacer(modifier = Modifier.height(8.dp))
+        }
+    }
 }
 
 @Composable

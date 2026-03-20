@@ -19,6 +19,11 @@ interface SyncServiceApi {
         @Header("Authorization") authHeader: String
     ): BudgetResponseDto
 
+    @GET("languages")
+    suspend fun getLanguages(
+        @Header("Authorization") authHeader: String
+    ): LanguagesResponseDto
+
     companion object {
         fun create(baseUrl: String): SyncServiceApi {
             return Retrofit.Builder()
@@ -48,4 +53,15 @@ data class SyncResponse(
 
 data class BudgetResponseDto(
     val remaining_budget: Double
+)
+
+data class LanguageStatDto(
+    val name: String,
+    val current: Int,
+    val tomorrow: Int,
+    val next_7_days: Int
+)
+
+data class LanguagesResponseDto(
+    val languages: List<LanguageStatDto>
 )
