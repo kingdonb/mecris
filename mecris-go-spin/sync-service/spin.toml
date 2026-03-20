@@ -26,3 +26,18 @@ auth_bypass = "{{ auth_bypass }}"
 [component.sync-service.build]
 command = "cargo build --target wasm32-wasip1 --release"
 watch = ["src/**/*.rs", "Cargo.toml"]
+
+[[trigger.http]]
+route = "/languages/..."
+component = "language-service"
+
+[component.language-service]
+source = "language-service/app.wasm"
+allowed_outbound_hosts = ["postgres://*:*"]
+[component.language-service.variables]
+db_url = "{{ db_url }}"
+auth_bypass = "{{ auth_bypass }}"
+[component.language-service.build]
+command = "/Users/yebyen/w/mecris/.venv/bin/componentize-py --wit-path /Users/yebyen/w/mecris/.venv/lib/python3.13/site-packages/spin_sdk/wit -w spin-http componentize app -p . -p /Users/yebyen/w/mecris/.venv/lib/python3.13/site-packages -o app.wasm"
+workdir = "language-service"
+watch = ["*.py", "requirements.txt"]
