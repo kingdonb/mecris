@@ -85,7 +85,7 @@ async fn handle_languages_get(_req: Request) -> anyhow::Result<Response> {
 
     let connection = Connection::open(&db_url)?;
     
-    let query = "SELECT language_name, current_reviews, tomorrow_reviews, next_7_days_reviews FROM language_stats";
+    let query = "SELECT language_name, current_reviews, tomorrow_reviews, next_7_days_reviews, safebuf, derail_risk FROM language_stats";
     let row_set = match connection.query(query, &[]) {
         Ok(rs) => rs,
         Err(e) => {
@@ -100,6 +100,8 @@ async fn handle_languages_get(_req: Request) -> anyhow::Result<Response> {
         current: i32,
         tomorrow: i32,
         next_7_days: i32,
+        safebuf: i32,
+        derail_risk: String,
     }
 
     #[derive(Serialize)]
@@ -125,11 +127,21 @@ async fn handle_languages_get(_req: Request) -> anyhow::Result<Response> {
             DbValue::Int32(i) => *i,
             _ => 0,
         };
+        let safebuf = match &row[4] {
+            DbValue::Int32(i) => *i,
+            _ => 0,
+        };
+        let derail_risk = match &row[5] {
+            DbValue::Str(s) => s.clone(),
+            _ => "SAFE".to_string(),
+        };
         languages.push(LanguageStat {
             name,
             current,
             tomorrow,
             next_7_days,
+            safebuf,
+            derail_risk,
         });
     }
 

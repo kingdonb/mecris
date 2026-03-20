@@ -35,7 +35,7 @@ async def _global_language_sync_job():
     Background job that syncs Clozemaster stats to Beeminder and Neon DB.
     """
     try:
-        from mcp_server import scheduler
+        from mcp_server import scheduler, beeminder_client
         if not scheduler.is_leader:
             return
             
@@ -47,6 +47,16 @@ async def _global_language_sync_job():
         
         # Also update Neon database so the Android app gets fresh data
         if scraper_data:
+            # Fetch fresh Beeminder goals to get safebuf and derail_risk
+            all_goals = await beeminder_client.get_all_goals()
+            goal_map = {g.get("slug"): g for g in all_goals}
+            
+            # Map languages to Beeminder slugs (mirroring clozemaster_scraper.py)
+            lang_to_slug = {
+                "ARABIC": "reviewstack",
+                "GREEK": "reviewstack-greek" # or ellinika depending on the config, let's look up both
+            }
+            
             neon_url = os.getenv("NEON_DB_URL")
             if neon_url:
                 try:
@@ -59,15 +69,30 @@ async def _global_language_sync_job():
                                 tomorrow = forecast.get("tomorrow", 0)
                                 next_7 = forecast.get("next_7_days", 0)
                                 
+                                # Default values
+                                safebuf = 0
+                                derail_risk = 'SAFE'
+                                
+                                # Try to match goal
+                                slug = lang_to_slug.get(name)
+                                if name == "GREEK" and "ellinika" in goal_map:
+                                    slug = "ellinika"
+                                    
+                                if slug and slug in goal_map:
+                                    safebuf = goal_map[slug].get("safebuf", 0)
+                                    derail_risk = goal_map[slug].get("derail_risk", "SAFE")
+                                
                                 cur.execute("""
-                                    INSERT INTO language_stats (language_name, current_reviews, tomorrow_reviews, next_7_days_reviews)
-                                    VALUES (%s, %s, %s, %s)
+                                    INSERT INTO language_stats (language_name, current_reviews, tomorrow_reviews, next_7_days_reviews, safebuf, derail_risk)
+                                    VALUES (%s, %s, %s, %s, %s, %s)
                                     ON CONFLICT (language_name) DO UPDATE SET
                                         current_reviews = EXCLUDED.current_reviews,
                                         tomorrow_reviews = EXCLUDED.tomorrow_reviews,
                                         next_7_days_reviews = EXCLUDED.next_7_days_reviews,
+                                        safebuf = EXCLUDED.safebuf,
+                                        derail_risk = EXCLUDED.derail_risk,
                                         last_updated = CURRENT_TIMESTAMP
-                                """, (name, count, tomorrow, next_7))
+                                """, (name, count, tomorrow, next_7, safebuf, derail_risk))
                             conn.commit()
                 except Exception as e:
                     logger.error(f"Failed to update Neon DB with language stats: {e}")
