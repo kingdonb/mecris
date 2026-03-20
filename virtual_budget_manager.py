@@ -161,6 +161,9 @@ class VirtualBudgetManager:
                     res = cur.fetchone()
                     if res:
                         rem = res[0]
+                        if rem <= 0:
+                            return {"can_afford": False, "reason": "BUDGET_EXHAUSTED", "remaining": rem, "available": 0, "cost": cost}
+                        
                         avail = rem * (1 - self.emergency_reserve_ratio) if include_reserve else rem
                         if cost <= avail: return {"can_afford": True, "remaining": rem, "available": avail, "cost": cost, "after_spending": rem - cost}
                         return {"can_afford": False, "reason": "Insufficient budget", "remaining": rem, "available": avail, "cost": cost, "shortfall": cost - avail}
@@ -172,7 +175,7 @@ class VirtualBudgetManager:
         cost = self.calculate_cost(provider, model, input_tokens, output_tokens)
         afford = self.can_afford(cost, include_reserve=not emergency_override)
         if not afford["can_afford"] and not emergency_override:
-            return {"recorded": False, "reason": afford["reason"], "cost": cost, "affordability": afford}
+            return {"recorded": False, "reason": afford.get("reason", "Unknown"), "cost": cost, "affordability": afford}
         now, today = datetime.now(), date.today()
         
         if not self.neon_url:
@@ -207,10 +210,20 @@ class VirtualBudgetManager:
                     b_amt, rem, updated = dbudget["budget_amount"], dbudget["remaining_amount"], str(dbudget["updated_at"])
                     spent, avail = b_amt - rem, rem * (1 - self.emergency_reserve_ratio)
                     alerts = []
-                    if rem < (b_amt * 0.2): alerts.append("LOW_DAILY_BUDGET")
+                    if rem <= 0: alerts.append("BUDGET_EXHAUSTED")
+                    if 0 < rem < (b_amt * 0.2): alerts.append("LOW_DAILY_BUDGET")
                     if spent > (b_amt * 0.8): alerts.append("HIGH_DAILY_SPEND")
-                    if avail < 0.50: alerts.append("NEARING_RESERVE")
-                    return {"daily_budget": {"allocated": b_amt, "remaining": rem, "spent": spent, "available": avail, "emergency_reserve": rem - avail}, "provider_breakdown": provider_usage, "reconciliation_accuracy": recon_acc, "alerts": alerts, "budget_health": "GOOD" if not alerts else "WARNING" if len(alerts) < 2 else "CRITICAL", "last_updated": updated}
+                    if avail < 0.50 and rem > 0: alerts.append("NEARING_RESERVE")
+                    
+                    return {
+                        "daily_budget": {"allocated": b_amt, "remaining": rem, "spent": spent, "available": max(0, avail), "emergency_reserve": max(0, rem - avail)}, 
+                        "provider_breakdown": provider_usage, 
+                        "reconciliation_accuracy": recon_acc, 
+                        "alerts": alerts, 
+                        "budget_health": "GOOD" if not alerts else "WARNING" if "BUDGET_EXHAUSTED" not in alerts else "CRITICAL", 
+                        "is_halted": rem <= 0,
+                        "last_updated": updated
+                    }
         except Exception as e:
             logger.error(f"get_budget_status failed: {e}")
             return {"error": str(e)}
