@@ -30,6 +30,51 @@ async def _global_reminder_job(trigger_func_name: str):
     except Exception as e:
         logger.error(f"Background job failed: {e}")
 
+async def _global_language_sync_job():
+    """
+    Background job that syncs Clozemaster stats to Beeminder and Neon DB.
+    """
+    try:
+        from mcp_server import scheduler
+        if not scheduler.is_leader:
+            return
+            
+        logger.info("Background job (Leader): Syncing Clozemaster stats to Beeminder...")
+        from scripts.clozemaster_scraper import sync_clozemaster_to_beeminder
+        
+        # Scrape and push to Beeminder
+        scraper_data = await sync_clozemaster_to_beeminder(dry_run=False)
+        
+        # Also update Neon database so the Android app gets fresh data
+        if scraper_data:
+            neon_url = os.getenv("NEON_DB_URL")
+            if neon_url:
+                try:
+                    with psycopg2.connect(neon_url) as conn:
+                        with conn.cursor() as cur:
+                            for lang, data in scraper_data.items():
+                                name = lang.upper()
+                                count = data.get("count", 0)
+                                forecast = data.get("forecast", {})
+                                tomorrow = forecast.get("tomorrow", 0)
+                                next_7 = forecast.get("next_7_days", 0)
+                                
+                                cur.execute("""
+                                    INSERT INTO language_stats (language_name, current_reviews, tomorrow_reviews, next_7_days_reviews)
+                                    VALUES (%s, %s, %s, %s)
+                                    ON CONFLICT (language_name) DO UPDATE SET
+                                        current_reviews = EXCLUDED.current_reviews,
+                                        tomorrow_reviews = EXCLUDED.tomorrow_reviews,
+                                        next_7_days_reviews = EXCLUDED.next_7_days_reviews,
+                                        last_updated = CURRENT_TIMESTAMP
+                                """, (name, count, tomorrow, next_7))
+                            conn.commit()
+                except Exception as e:
+                    logger.error(f"Failed to update Neon DB with language stats: {e}")
+                    
+    except Exception as e:
+        logger.error(f"Clozemaster sync job failed: {e}")
+
 class MecrisScheduler:
     def __init__(self, trigger_reminder_func: Optional[Callable] = None):
         self.neon_url = os.getenv("NEON_DB_URL")
@@ -189,6 +234,13 @@ class MecrisScheduler:
                     args=['trigger_reminder_check'],
                     replace_existing=True
                 )
+                self.scheduler.add_job(
+                    _global_language_sync_job,
+                    'interval',
+                    hours=4,
+                    id='auto_language_sync',
+                    replace_existing=True
+                )
                 break
             except Exception as e:
                 if "database is locked" in str(e).lower() and attempt < 4:
@@ -203,6 +255,7 @@ class MecrisScheduler:
         try:
             if self.scheduler.running:
                 self.scheduler.remove_job('auto_reminder_check')
+                self.scheduler.remove_job('auto_language_sync')
         except: pass
 
     def enqueue_delayed_message(self, message: str, delay_minutes: int, to_number: Optional[str] = None):
