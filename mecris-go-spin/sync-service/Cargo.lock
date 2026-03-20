@@ -925,6 +925,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "spin-cron-macro"
+version = "0.4.1"
+source = "git+https://github.com/fermyon/spin-trigger-cron#581af5d8bc9984c09ee57548a5dc9878e9f3ad7f"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 1.0.109",
+]
+
+[[package]]
+name = "spin-cron-sdk"
+version = "0.4.1"
+source = "git+https://github.com/fermyon/spin-trigger-cron#581af5d8bc9984c09ee57548a5dc9878e9f3ad7f"
+dependencies = [
+ "spin-cron-macro",
+ "spin-executor",
+ "wit-bindgen",
+]
+
+[[package]]
 name = "spin-executor"
 version = "5.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1044,6 +1064,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
+ "spin-cron-sdk",
  "spin-sdk",
  "urlencoding",
 ]

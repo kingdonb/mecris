@@ -1,10 +1,34 @@
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use spin_sdk::{
     http::{IntoResponse, Request, Response},
     http_component,
     pg::{Connection, ParameterValue, DbValue},
     variables,
 };
+use spin_cron_sdk::{cron_component, Metadata};
+
+#[cron_component]
+async fn handle_cron(_metadata: Metadata) -> anyhow::Result<()> {
+    println!("Spin Cron: Starting failover sync check...");
+    let db_url = match variables::get("db_url") {
+        Ok(url) if !url.is_empty() => url,
+        _ => {
+            eprintln!("Missing db_url variable");
+            return Ok(());
+        }
+    };
+    
+    // We can reuse the logic from handle_failover_sync, 
+    // but handle_failover_sync returns a Response.
+    // Let's refactor the core logic.
+    match perform_failover_sync(&db_url).await {
+        Ok(msg) => println!("Spin Cron: {}", msg),
+        Err(e) => eprintln!("Spin Cron Error: {:?}", e),
+    }
+
+    Ok(())
+}
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 
 #[derive(Deserialize, Debug)]
@@ -72,6 +96,11 @@ async fn handle_sync_service(req: Request) -> anyhow::Result<impl IntoResponse> 
             return Ok(Response::builder().status(405).body("Method Not Allowed").build());
         }
         return handle_languages_get(req).await;
+    } else if path == "/health" {
+        if req.method() != &spin_sdk::http::Method::Get {
+            return Ok(Response::builder().status(405).body("Method Not Allowed").build());
+        }
+        return handle_health_get(req).await;
     } else if path == "/internal/failover-sync" {
         if req.method() != &spin_sdk::http::Method::Post && req.method() != &spin_sdk::http::Method::Get {
             return Ok(Response::builder().status(405).body("Method Not Allowed").build());
@@ -88,74 +117,92 @@ async fn handle_failover_sync(_req: Request) -> anyhow::Result<Response> {
         _ => return Ok(Response::builder().status(500).body("Missing db_url").build())
     };
 
-    let connection = match Connection::open(&db_url) {
-        Ok(c) => c,
+    match perform_failover_sync(&db_url).await {
+        Ok(msg) => {
+            let status = if msg.contains("skipped") { "skipped" } else { "active" };
+            let resp = StatusResponse {
+                status: status.to_string(),
+                message: msg,
+            };
+            Ok(Response::builder()
+                .status(200)
+                .header("content-type", "application/json")
+                .body(serde_json::to_string(&resp).unwrap())
+                .build())
+        },
         Err(e) => {
-            eprintln!("Failed to connect to db for failover sync: {:?}", e);
-            return Ok(Response::builder().status(500).body("Internal DB error").build());
+            let resp = StatusResponse {
+                status: "error".to_string(),
+                message: format!("Failover sync failed: {:?}", e),
+            };
+            Ok(Response::builder()
+                .status(500)
+                .header("content-type", "application/json")
+                .body(serde_json::to_string(&resp).unwrap())
+                .build())
         }
-    };
+    }
+}
 
-    let query = "SELECT heartbeat FROM scheduler_election WHERE role = 'leader' LIMIT 1";
-    let row_set = match connection.query(query, &[]) {
-        Ok(rs) => rs,
-        Err(e) => {
-            eprintln!("Failed to query election table: {:?}", e);
-            return Ok(Response::builder().status(500).body("Internal DB error").build());
-        }
-    };
+async fn perform_failover_sync(db_url: &str) -> anyhow::Result<String> {
+    let connection = Connection::open(db_url)?;
+
+    let query = "SELECT (heartbeat > NOW() - INTERVAL '90 seconds') as is_active FROM scheduler_election WHERE role = 'leader' LIMIT 1";
+    let row_set = connection.query(query, &[])?;
 
     let mut is_leader_active = false;
-    let now = chrono::Utc::now();
 
     if !row_set.rows.is_empty() {
-        // Spin's pg provider returns timestamp as u64 milliseconds or string depending on version,
-        // let's try to parse it from string or handle int if spin-sdk returns int.
-        // For spin_sdk::pg::DbValue we can check if it's a timestamp
-        // Actually spin_sdk returns string for timestamps usually, let's extract it.
-        let heartbeat_val = &row_set.rows[0][0];
-        if let DbValue::Str(s) = heartbeat_val {
-            // parse ISO8601
-            if let Ok(heartbeat_time) = chrono::DateTime::parse_from_rfc3339(s) {
-                let diff = now.signed_duration_since(heartbeat_time);
-                if diff.num_seconds() < 90 {
-                    is_leader_active = true;
-                }
-            }
+        if let DbValue::Boolean(active) = &row_set.rows[0][0] {
+            is_leader_active = *active;
         }
     }
 
     if is_leader_active {
-        let resp = StatusResponse {
-            status: "skipped".to_string(),
-            message: "Home server is active. Failover mode suppressed.".to_string(),
-        };
-        return Ok(Response::builder()
-            .status(200)
-            .header("content-type", "application/json")
-            .body(serde_json::to_string(&resp).unwrap())
-            .build());
+        return Ok("Home server is active. Failover mode skipped.".to_string());
     }
 
     // --- FAILOVER MODE ACTIVATED ---
     println!("FAILOVER MODE ACTIVE: Home server heartbeat is stale or missing.");
     
     // Scrape Clozemaster and push to Neon
-    let scrape_result = match run_clozemaster_scraper(&db_url).await {
-        Ok(msg) => msg,
-        Err(e) => format!("Scraper failed: {:?}", e),
-    };
+    run_clozemaster_scraper(db_url).await
+}
 
-    let resp = StatusResponse {
-        status: "active".to_string(),
-        message: format!("Failover Mode activated. {}", scrape_result),
-    };
+// Helper for managing cookies across requests
+struct CookieJar {
+    cookies: HashMap<String, String>,
+}
 
-    Ok(Response::builder()
-        .status(200)
-        .header("content-type", "application/json")
-        .body(serde_json::to_string(&resp).unwrap())
-        .build())
+impl CookieJar {
+    fn new() -> Self {
+        Self { cookies: HashMap::new() }
+    }
+
+    fn update_from_headers(&mut self, response: &Response) {
+        for (name, value) in response.headers() {
+            if name.to_string().to_lowercase() == "set-cookie" {
+                if let Ok(c) = std::str::from_utf8(value.as_ref()) {
+                    // Do not split by comma - each Set-Cookie header is one entry.
+                    let part = c.split(';').next().unwrap_or("");
+                    if let Some(pos) = part.find('=') {
+                        let k = part[..pos].trim().to_string();
+                        let v = part[pos+1..].trim().to_string();
+                        if !k.is_empty() {
+                            self.cookies.insert(k, v);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    fn to_header_value(&self) -> String {
+        self.cookies.iter()
+            .map(|(k, v)| format!("{}={}", k, v))
+            .collect::<Vec<_>>()
+            .join("; ")
+    }
 }
 
 async fn run_clozemaster_scraper(db_url: &str) -> anyhow::Result<String> {
@@ -166,69 +213,129 @@ async fn run_clozemaster_scraper(db_url: &str) -> anyhow::Result<String> {
         return Err(anyhow::anyhow!("Missing clozemaster credentials"));
     }
 
+    let user_agent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36";
+    let mut cookie_jar = CookieJar::new();
+
     println!("Failover worker: Starting Clozemaster sync...");
     
     // 1. GET login to grab CSRF token
     let login_get_req = Request::get("https://www.clozemaster.com/login")
-        .header("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36")
+        .header("User-Agent", user_agent)
+        .header("Upgrade-Insecure-Requests", "1")
         .build();
         
     let login_get_res: Response = spin_sdk::http::send(login_get_req).await?;
+    cookie_jar.update_from_headers(&login_get_res);
+    
     let body_bytes = login_get_res.body();
     let body_str = String::from_utf8_lossy(body_bytes);
     
     // Extract CSRF token
-    let re = regex::Regex::new(r#"name="authenticity_token" value="([^"]+)""#).unwrap();
-    let csrf_token = match re.captures(&body_str) {
+    let csrf_re = regex::Regex::new(r#"name="authenticity_token" value="([^"]+)""#).unwrap();
+    let csrf_token = match csrf_re.captures(&body_str) {
         Some(caps) => caps.get(1).unwrap().as_str().to_string(),
-        None => return Err(anyhow::anyhow!("Could not find CSRF token")),
+        None => return Err(anyhow::anyhow!("Could not find CSRF token on login page")),
     };
     
-    // Extract initial cookie if provided
-    let mut session_cookie = String::new();
-    if let Some(cookie_hdr) = login_get_res.header("set-cookie") {
-        if let Ok(c) = std::str::from_utf8(cookie_hdr.as_ref()) {
-            session_cookie = c.split(';').next().unwrap_or("").to_string();
-        }
-    }
+    // Detect login field name (user[login] or user[email])
+    let user_field = if body_str.contains("name=\"user[login]\"") {
+        "user[login]"
+    } else {
+        "user[email]"
+    };
 
     // 2. POST login
     let login_body = format!(
-        "user%5Bemail%5D={}&user%5Bpassword%5D={}&authenticity_token={}&commit=Log+In",
+        "{}={}&user%5Bpassword%5D={}&authenticity_token={}&commit=Log+In",
+        urlencoding::encode(user_field),
         urlencoding::encode(&email),
         urlencoding::encode(&password),
         urlencoding::encode(&csrf_token)
     );
     
     let login_post_req = Request::post("https://www.clozemaster.com/login", login_body)
-        .header("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36")
+        .header("User-Agent", user_agent)
         .header("Content-Type", "application/x-www-form-urlencoded")
-        .header("Cookie", session_cookie.clone())
+        .header("Cookie", cookie_jar.to_header_value())
+        .header("Referer", "https://www.clozemaster.com/login")
+        .header("Upgrade-Insecure-Requests", "1")
         .build();
         
     let login_post_res: Response = spin_sdk::http::send(login_post_req).await?;
+    cookie_jar.update_from_headers(&login_post_res);
+
+    let status = *login_post_res.status();
     
-    // Grab new cookie after login
-    if let Some(cookie_hdr) = login_post_res.header("set-cookie") {
-        if let Ok(c) = std::str::from_utf8(cookie_hdr.as_ref()) {
-            session_cookie = c.split(';').next().unwrap_or("").to_string();
+    // On success Clozemaster returns 302 to dashboard. 
+    if status == 200 {
+        let post_body = String::from_utf8_lossy(login_post_res.body());
+        if post_body.contains("Login") || post_body.contains("Invalid") {
+            return Err(anyhow::anyhow!("Login failed: still on login page after POST"));
         }
+    } else if status < 300 || status >= 400 {
+        return Err(anyhow::anyhow!("Login POST failed with status: {}", status));
     }
 
-    // 3. GET dashboard
-    let dash_req = Request::get("https://www.clozemaster.com/dashboard")
-        .header("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36")
-        .header("Cookie", session_cookie.clone())
-        .build();
-        
-    let dash_res: Response = spin_sdk::http::send(dash_req).await?;
-    let dash_body = String::from_utf8_lossy(dash_res.body());
+    // 3. GET dashboard (with redirect following)
+    let mut current_url = "https://www.clozemaster.com/dashboard".to_string();
+    let mut dash_body = String::new();
     
-    // Extract react props
-    let props_re = regex::Regex::new(r#"data-react-props="([^"]+)""#).unwrap();
-    let props_json_escaped = match props_re.captures(&dash_body) {
+    for _ in 0..3 {
+        let dash_req = Request::get(&current_url)
+            .header("User-Agent", user_agent)
+            .header("Cookie", cookie_jar.to_header_value())
+            .header("Referer", "https://www.clozemaster.com/login")
+            .header("Upgrade-Insecure-Requests", "1")
+            .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8")
+            .header("Accept-Language", "en-US,en;q=0.9")
+            .header("Cache-Control", "max-age=0")
+            .build();
+            
+        let dash_res: Response = spin_sdk::http::send(dash_req).await?;
+        let status = *dash_res.status();
+        cookie_jar.update_from_headers(&dash_res);
+        
+        if status >= 300 && status < 400 {
+            if let Some(loc) = dash_res.header("location") {
+                let loc_str = String::from_utf8_lossy(loc.as_ref()).to_string();
+                if loc_str.starts_with('/') {
+                    current_url = format!("https://www.clozemaster.com{}", loc_str);
+                } else {
+                    current_url = loc_str;
+                }
+                continue;
+            }
+        }
+        
+        dash_body = String::from_utf8_lossy(dash_res.body()).to_string();
+        break;
+    }
+    
+    // Check if we actually got the dashboard
+    if !dash_body.contains("DashboardV5") {
+        if dash_body.contains("Login") {
+            return Err(anyhow::anyhow!("Dashboard request redirected to login - session failed"));
+        }
+        return Err(anyhow::anyhow!("Could not find DashboardV5 in response - body size: {}", dash_body.len()));
+    }
+    
+    // Extract fresh CSRF token from dashboard for enrichment API calls
+    let csrf_meta_re = regex::Regex::new(r#"<meta[^>]+name=['"]csrf-token['"][^>]*content=['"]([^'"]+)['"]"#).unwrap();
+    let dash_csrf_token = match csrf_meta_re.captures(&dash_body) {
+        Some(caps) => caps.get(1).unwrap().as_str().to_string(),
+        None => {
+            let csrf_meta_re2 = regex::Regex::new(r#"<meta[^>]+content=['"]([^'"]+)['"][^>]*name=['"]csrf-token['"]"#).unwrap();
+            match csrf_meta_re2.captures(&dash_body) {
+                Some(caps) => caps.get(1).unwrap().as_str().to_string(),
+                None => csrf_token.clone(),
+            }
+        },
+    };
+
+    let dash_div_re = regex::Regex::new(r#"(?s)<div[^>]+data-react-class=['"]DashboardV5['"][^>]*data-react-props=['"]([^'"]+)['"]"#).unwrap();
+    let props_json_escaped = match dash_div_re.captures(&dash_body) {
         Some(caps) => caps.get(1).unwrap().as_str(),
-        None => return Err(anyhow::anyhow!("Could not find react props")),
+        None => return Err(anyhow::anyhow!("Could not find DashboardV5 react props")),
     };
     
     let props_json = html_escape::decode_html_entities(props_json_escaped).to_string();
@@ -238,35 +345,146 @@ async fn run_clozemaster_scraper(db_url: &str) -> anyhow::Result<String> {
     
     let mut arabic_count = 0;
     let mut greek_count = 0;
+    let mut arabic_lp_id = 0;
+    let mut greek_lp_id = 0;
     
     for pair in pairings {
         if let Some(slug) = pair.get("slug").and_then(|s| s.as_str()) {
+            let count = pair.get("numReadyForReview").and_then(|n| n.as_i64()).unwrap_or(0);
+            let id = pair.get("id").and_then(|n| n.as_i64()).unwrap_or(0);
             if slug == "ara-eng" {
-                arabic_count = pair.get("numReadyForReview").and_then(|n| n.as_i64()).unwrap_or(0);
+                arabic_count = count;
+                arabic_lp_id = id;
             } else if slug == "ell-eng" {
-                greek_count = pair.get("numReadyForReview").and_then(|n| n.as_i64()).unwrap_or(0);
+                greek_count = count;
+                greek_lp_id = id;
             }
         }
     }
+
+    let mut arabic_tomorrow = 0;
+    let mut arabic_next_7 = 0;
+    let mut greek_tomorrow = 0;
+    let mut greek_next_7 = 0;
+
+    async fn get_more_stats(lp_id: i64, lang_slug: &str, csrf: &str, cookie: &str, ua: &str) -> anyhow::Result<(i32, i32)> {
+        if lp_id == 0 { return Ok((0, 0)); }
+        let url = format!("https://www.clozemaster.com/api/v1/lp/{}/more-stats", lp_id);
+        let req = Request::get(&url)
+            .header("User-Agent", ua)
+            .header("X-Requested-With", "XMLHttpRequest")
+            .header("X-CSRF-Token", csrf)
+            .header("Cookie", cookie)
+            .header("Referer", &format!("https://www.clozemaster.com/l/{}", lang_slug))
+            .header("Accept", "*/*")
+            .header("Time-Zone-Offset-Hours", "-4")
+            .build();
+        let res: Response = spin_sdk::http::send(req).await?;
+        if *res.status() != 200 { return Ok((0, 0)); }
+        let body: serde_json::Value = serde_json::from_slice(res.body())?;
+        let forecast = body.get("reviewForecast").and_then(|f| f.as_array());
+        if let Some(f) = forecast {
+            let tomorrow = f.get(0).and_then(|v| if v.is_number() { v.as_i64() } else { v.get("count").and_then(|c| c.as_i64()) }).unwrap_or(0) as i32;
+            let next_7: i32 = f.iter().take(7).map(|v| if v.is_number() { v.as_i64() } else { v.get("count").and_then(|c| c.as_i64()) }.unwrap_or(0) as i32).sum();
+            return Ok((tomorrow, next_7));
+        }
+        Ok((0, 0))
+    }
+
+    let current_cookies = cookie_jar.to_header_value();
+
+    if arabic_lp_id != 0 {
+        if let Ok((t, n7)) = get_more_stats(arabic_lp_id, "ara-eng", &dash_csrf_token, &current_cookies, user_agent).await {
+            arabic_tomorrow = t;
+            arabic_next_7 = n7;
+        }
+    }
+    if greek_lp_id != 0 {
+        if let Ok((t, n7)) = get_more_stats(greek_lp_id, "ell-eng", &dash_csrf_token, &current_cookies, user_agent).await {
+            greek_tomorrow = t;
+            greek_next_7 = n7;
+        }
+    }
     
-    // We update Neon with what we found (base counts only for now to ensure failover works)
+    // 5. Update Neon
     let connection = Connection::open(db_url)?;
     
     let update_query = "
-        INSERT INTO language_stats (language_name, current_reviews)
-        VALUES ($1, $2)
+        INSERT INTO language_stats (language_name, current_reviews, tomorrow_reviews, next_7_days_reviews)
+        VALUES ($1, $2, $3, $4)
         ON CONFLICT (language_name) DO UPDATE SET
             current_reviews = EXCLUDED.current_reviews,
+            tomorrow_reviews = EXCLUDED.tomorrow_reviews,
+            next_7_days_reviews = EXCLUDED.next_7_days_reviews,
             last_updated = CURRENT_TIMESTAMP
     ";
     
-    let _ = connection.execute(update_query, &[ParameterValue::Str("ARABIC".to_string()), ParameterValue::Int32(arabic_count as i32)]);
-    let _ = connection.execute(update_query, &[ParameterValue::Str("GREEK".to_string()), ParameterValue::Int32(greek_count as i32)]);
+    let _ = connection.execute(update_query, &[ParameterValue::Str("ARABIC".to_string()), ParameterValue::Int32(arabic_count as i32), ParameterValue::Int32(arabic_tomorrow), ParameterValue::Int32(arabic_next_7)]);
+    let _ = connection.execute(update_query, &[ParameterValue::Str("GREEK".to_string()), ParameterValue::Int32(greek_count as i32), ParameterValue::Int32(greek_tomorrow), ParameterValue::Int32(greek_next_7)]);
     
-    // Note: To fully mirror Python, we would also pull Beeminder `safebuf` here and push datapoints to Beeminder API,
-    // but updating the Neon counts is the primary Failover step to keep the Android UI correct.
-    
-    Ok(format!("Scraped Arabic: {}, Greek: {}", arabic_count, greek_count))
+    Ok(format!("Scraped Arabic: {} (+{}), Greek: {} (+{})", arabic_count, arabic_tomorrow, greek_count, greek_tomorrow))
+}
+
+
+async fn handle_health_get(_req: Request) -> anyhow::Result<Response> {
+    let db_url = match variables::get("db_url") {
+        Ok(url) if !url.is_empty() => url,
+        _ => return Ok(Response::builder().status(500).body("Missing db_url").build())
+    };
+
+    let connection = match Connection::open(&db_url) {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("Failed to connect to db for health check: {:?}", e);
+            return Ok(Response::builder().status(500).body("Internal DB error").build());
+        }
+    };
+
+    let query = "SELECT process_id, heartbeat::text, (heartbeat > NOW() - INTERVAL '90 seconds') as is_active FROM scheduler_election WHERE role = 'leader' LIMIT 1";
+    let row_set = match connection.query(query, &[]) {
+        Ok(rs) => rs,
+        Err(e) => {
+            eprintln!("Failed to query election table: {:?}", e);
+            return Ok(Response::builder().status(500).body("Internal DB error").build());
+        }
+    };
+
+    let mut is_leader_active = false;
+    let mut leader_pid = "unknown".to_string();
+    let mut last_seen = "unknown".to_string();
+
+    if !row_set.rows.is_empty() {
+        if let DbValue::Str(pid) = &row_set.rows[0][0] {
+            leader_pid = pid.clone();
+        }
+        if let DbValue::Str(s) = &row_set.rows[0][1] {
+            last_seen = s.clone();
+        }
+        if let DbValue::Boolean(active) = &row_set.rows[0][2] {
+            is_leader_active = *active;
+        }
+    }
+
+    #[derive(Serialize)]
+    struct HealthResponse {
+        status: String,
+        home_server_active: bool,
+        leader_pid: String,
+        last_seen: String,
+    }
+
+    let resp = HealthResponse {
+        status: "ok".to_string(),
+        home_server_active: is_leader_active,
+        leader_pid,
+        last_seen,
+    };
+
+    Ok(Response::builder()
+        .status(200)
+        .header("content-type", "application/json")
+        .body(serde_json::to_string(&resp).unwrap())
+        .build())
 }
 
 async fn handle_languages_get(_req: Request) -> anyhow::Result<Response> {
@@ -277,7 +495,7 @@ async fn handle_languages_get(_req: Request) -> anyhow::Result<Response> {
 
     let connection = Connection::open(&db_url)?;
     
-    let query = "SELECT language_name, current_reviews, tomorrow_reviews, next_7_days_reviews, safebuf, derail_risk FROM language_stats";
+    let query = "SELECT language_name, current_reviews, tomorrow_reviews, next_7_days_reviews, daily_rate, safebuf, derail_risk FROM language_stats";
     let row_set = match connection.query(query, &[]) {
         Ok(rs) => rs,
         Err(e) => {
@@ -292,6 +510,7 @@ async fn handle_languages_get(_req: Request) -> anyhow::Result<Response> {
         current: i32,
         tomorrow: i32,
         next_7_days: i32,
+        daily_rate: f64,
         safebuf: i32,
         derail_risk: String,
     }
@@ -299,6 +518,10 @@ async fn handle_languages_get(_req: Request) -> anyhow::Result<Response> {
     #[derive(Serialize)]
     struct LanguagesResponse {
         languages: Vec<LanguageStat>,
+    }
+
+    if row_set.rows.is_empty() {
+        return Ok(Response::builder().status(404).body("No language stats found").build());
     }
 
     let mut languages = Vec::new();
@@ -319,11 +542,16 @@ async fn handle_languages_get(_req: Request) -> anyhow::Result<Response> {
             DbValue::Int32(i) => *i,
             _ => 0,
         };
-        let safebuf = match &row[4] {
+        let daily_rate = match &row[4] {
+            DbValue::Floating64(f) => *f,
+            DbValue::Floating32(f) => *f as f64,
+            _ => 0.0,
+        };
+        let safebuf = match &row[5] {
             DbValue::Int32(i) => *i,
             _ => 0,
         };
-        let derail_risk = match &row[5] {
+        let derail_risk = match &row[6] {
             DbValue::Str(s) => s.clone(),
             _ => "SAFE".to_string(),
         };
@@ -332,6 +560,7 @@ async fn handle_languages_get(_req: Request) -> anyhow::Result<Response> {
             current,
             tomorrow,
             next_7_days,
+            daily_rate,
             safebuf,
             derail_risk,
         });
