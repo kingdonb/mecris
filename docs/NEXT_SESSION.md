@@ -1,5 +1,13 @@
 # Next Session Plan - 2026-03-20
 
+## ✅ Completed in Last Session
+- **Infinite Postponement Fix**: Background job timers no longer reset during leadership election.
+- **SQLite Tech Debt**: Removed `mecris_virtual_budget.db` and all `sqlite3` fallback logic.
+- **Failover Mode Foundation**: Native Rust Clozemaster scraper built into Spin.
+- **Logic Consolidation**: Created `LanguageSyncService` to unify scraper/Beeminder/Neon logic (Issue #103).
+- **Hard-Stop Protection**: Implemented protective budget halts when remaining funds hit zero (Issue #102).
+- **Test Coverage**: Added 17 new tests covering scheduler, reminders, and budget protection.
+
 ## 🎯 Primary Goal: Autonomous High Availability
 Finalize the transition of Mecris into a resilient, cross-runtime system that survives local server downtime.
 
