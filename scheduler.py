@@ -75,6 +75,59 @@ async def _global_language_sync_job():
     except Exception as e:
         logger.error(f"Clozemaster sync job failed: {e}")
 
+async def _global_walk_sync_job():
+    """
+    Background job that checks Neon for pending walk inferences and syncs them to Beeminder.
+    """
+    try:
+        from mcp_server import scheduler, beeminder_client
+        if not scheduler.is_leader:
+            return
+            
+        neon_url = os.getenv("NEON_DB_URL")
+        if not neon_url:
+            return
+            
+        import psycopg2
+        from psycopg2.extras import RealDictCursor
+        
+        pending_walks = []
+        with psycopg2.connect(neon_url) as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute("SELECT * FROM walk_inferences WHERE status = 'pending'")
+                pending_walks = cur.fetchall()
+        
+        if not pending_walks:
+            return
+            
+        logger.info(f"Background job (Leader): Found {len(pending_walks)} pending walks. Syncing to Beeminder...")
+        for walk in pending_walks:
+            try:
+                # get user configuration
+                with psycopg2.connect(neon_url) as conn:
+                    with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                        cur.execute("SELECT beeminder_goal FROM users WHERE pocket_id_sub = %s", (walk['user_id'],))
+                        user = cur.fetchone()
+                
+                goal = user.get('beeminder_goal', 'bike') if user else 'bike'
+                
+                miles = float(walk['distance_meters']) / 1609.34
+                comment = f"Logged via Mecris MCP Sync (Steps: {walk['step_count']}, Source: {walk['distance_source']})"
+                request_id = f"{walk['user_id']}_{walk['start_time']}"
+                
+                # Push
+                success = await beeminder_client.add_datapoint(goal, miles, comment=comment, requestid=request_id)
+                if success:
+                    with psycopg2.connect(neon_url) as conn:
+                        with conn.cursor() as cur:
+                            cur.execute("UPDATE walk_inferences SET status = 'logged' WHERE id = %s", (walk['id'],))
+                        conn.commit()
+            except Exception as e:
+                logger.error(f"Failed to sync walk {walk['id']}: {e}")
+
+    except Exception as e:
+        logger.error(f"Neon walk sync job failed: {e}")
+
 class MecrisScheduler:
     def __init__(self, trigger_reminder_func: Optional[Callable] = None):
         self.neon_url = os.getenv("NEON_DB_URL")
@@ -241,6 +294,13 @@ class MecrisScheduler:
                     id='auto_language_sync',
                     replace_existing=True
                 )
+                self.scheduler.add_job(
+                    _global_walk_sync_job,
+                    'interval',
+                    minutes=15,
+                    id='auto_walk_sync',
+                    replace_existing=True
+                )
                 break
             except Exception as e:
                 if "database is locked" in str(e).lower() and attempt < 4:
@@ -256,6 +316,7 @@ class MecrisScheduler:
             if self.scheduler.running:
                 self.scheduler.remove_job('auto_reminder_check')
                 self.scheduler.remove_job('auto_language_sync')
+                self.scheduler.remove_job('auto_walk_sync')
         except: pass
 
     def enqueue_delayed_message(self, message: str, delay_minutes: int, to_number: Optional[str] = None):
