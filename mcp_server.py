@@ -385,6 +385,71 @@ def get_weather_full_report() -> Dict[str, Any]:
     """Get the complete, cached weather status including all OneCall data fields."""
     return weather_service.get_weather()
 
+@mcp.tool(description="Force an immediate scrape of Clozemaster and push to Beeminder.")
+async def trigger_language_sync() -> Dict[str, Any]:
+    """Manually trigger the Clozemaster to Beeminder sync process."""
+    try:
+        from scripts.clozemaster_scraper import sync_clozemaster_to_beeminder
+        import psycopg2
+        
+        # Scrape and push to Beeminder
+        scraper_data = await sync_clozemaster_to_beeminder(dry_run=False)
+        
+        # Update Neon DB for the Android App
+        if scraper_data:
+            # Fetch fresh Beeminder goals to get safebuf and derail_risk
+            all_goals = await beeminder_client.get_all_goals()
+            goal_map = {g.get("slug"): g for g in all_goals}
+            
+            # Map languages to Beeminder slugs
+            lang_to_slug = {
+                "ARABIC": "reviewstack",
+                "GREEK": "reviewstack-greek"
+            }
+
+            neon_url = os.getenv("NEON_DB_URL")
+            if neon_url:
+                try:
+                    with psycopg2.connect(neon_url) as conn:
+                        with conn.cursor() as cur:
+                            for lang, data in scraper_data.items():
+                                name = lang.upper()
+                                count = data.get("count", 0)
+                                forecast = data.get("forecast", {})
+                                tomorrow = forecast.get("tomorrow", 0)
+                                next_7 = forecast.get("next_7_days", 0)
+                                
+                                safebuf = 0
+                                derail_risk = 'SAFE'
+                                
+                                slug = lang_to_slug.get(name)
+                                if name == "GREEK" and "ellinika" in goal_map:
+                                    slug = "ellinika"
+                                    
+                                if slug and slug in goal_map:
+                                    safebuf = goal_map[slug].get("safebuf", 0)
+                                    derail_risk = goal_map[slug].get("derail_risk", "SAFE")
+                                
+                                cur.execute("""
+                                    INSERT INTO language_stats (language_name, current_reviews, tomorrow_reviews, next_7_days_reviews, safebuf, derail_risk)
+                                    VALUES (%s, %s, %s, %s, %s, %s)
+                                    ON CONFLICT (language_name) DO UPDATE SET
+                                        current_reviews = EXCLUDED.current_reviews,
+                                        tomorrow_reviews = EXCLUDED.tomorrow_reviews,
+                                        next_7_days_reviews = EXCLUDED.next_7_days_reviews,
+                                        safebuf = EXCLUDED.safebuf,
+                                        derail_risk = EXCLUDED.derail_risk,
+                                        last_updated = CURRENT_TIMESTAMP
+                                """, (name, count, tomorrow, next_7, safebuf, derail_risk))
+                            conn.commit()
+                except Exception as db_e:
+                    logger.error(f"Failed to update Neon DB with language stats during manual sync: {db_e}")
+                    
+        return {"success": True, "data": scraper_data}
+    except Exception as e:
+        logger.error(f"Manual Clozemaster sync failed: {e}")
+        return {"error": str(e)}
+
 @mcp.tool(description="Add a new goal to the local database.")
 def add_goal(title: str, description: str = "", priority: str = "medium", due_date: Optional[str] = None) -> Dict[str, Any]:
     return add_goal_from_tracker(title, description, priority, due_date)
