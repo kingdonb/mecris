@@ -67,9 +67,79 @@ async fn handle_sync_service(req: Request) -> anyhow::Result<impl IntoResponse> 
             return Ok(Response::builder().status(405).body("Method Not Allowed").build());
         }
         return handle_budget_get(req).await;
+    } else if path == "/languages" {
+        if req.method() != &spin_sdk::http::Method::Get {
+            return Ok(Response::builder().status(405).body("Method Not Allowed").build());
+        }
+        return handle_languages_get(req).await;
     }
     
     Ok(Response::builder().status(404).body("Not Found").build())
+}
+
+async fn handle_languages_get(_req: Request) -> anyhow::Result<Response> {
+    let db_url = match variables::get("db_url") {
+        Ok(url) if !url.is_empty() => url,
+        _ => return Ok(Response::builder().status(500).body("Missing db_url").build())
+    };
+
+    let connection = Connection::open(&db_url)?;
+    
+    let query = "SELECT language_name, current_reviews, tomorrow_reviews, next_7_days_reviews FROM language_stats";
+    let row_set = match connection.query(query, &[]) {
+        Ok(rs) => rs,
+        Err(e) => {
+            eprintln!("Database error: {:?}", e);
+            return Ok(Response::builder().status(500).body("Internal Server Error").build());
+        }
+    };
+
+    #[derive(Serialize)]
+    struct LanguageStat {
+        name: String,
+        current: i32,
+        tomorrow: i32,
+        next_7_days: i32,
+    }
+
+    #[derive(Serialize)]
+    struct LanguagesResponse {
+        languages: Vec<LanguageStat>,
+    }
+
+    let mut languages = Vec::new();
+    for row in row_set.rows {
+        let name = match &row[0] {
+            DbValue::Str(s) => s.clone(),
+            _ => continue,
+        };
+        let current = match &row[1] {
+            DbValue::Int32(i) => *i,
+            _ => 0,
+        };
+        let tomorrow = match &row[2] {
+            DbValue::Int32(i) => *i,
+            _ => 0,
+        };
+        let next_7_days = match &row[3] {
+            DbValue::Int32(i) => *i,
+            _ => 0,
+        };
+        languages.push(LanguageStat {
+            name,
+            current,
+            tomorrow,
+            next_7_days,
+        });
+    }
+
+    let resp = LanguagesResponse { languages };
+
+    Ok(Response::builder()
+        .status(200)
+        .header("content-type", "application/json")
+        .body(serde_json::to_string(&resp).unwrap())
+        .build())
 }
 
 async fn handle_budget_get(_req: Request) -> anyhow::Result<Response> {
