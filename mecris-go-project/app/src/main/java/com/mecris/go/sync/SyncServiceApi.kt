@@ -24,6 +24,16 @@ interface SyncServiceApi {
         @Header("Authorization") authHeader: String
     ): LanguagesResponseDto
 
+    @GET("health")
+    suspend fun getHealth(
+        @Header("Authorization") authHeader: String
+    ): HealthResponseDto
+
+    @GET("internal/failover-sync")
+    suspend fun triggerFailoverSync(
+        @Header("Authorization") authHeader: String
+    ): SyncResponse
+
     companion object {
         fun create(baseUrl: String): SyncServiceApi {
             return Retrofit.Builder()
@@ -59,7 +69,17 @@ data class LanguageStatDto(
     val name: String,
     val current: Int,
     val tomorrow: Int,
-    val next_7_days: Int
+    val next_7_days: Int,
+    val daily_rate: Double,
+    val safebuf: Int,
+    val derail_risk: String
+)
+
+data class HealthResponseDto(
+    val status: String,
+    val home_server_active: Boolean,
+    val leader_pid: String,
+    val last_seen: String
 )
 
 data class LanguagesResponseDto(

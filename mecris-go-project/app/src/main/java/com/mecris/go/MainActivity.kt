@@ -25,6 +25,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -49,6 +50,8 @@ import com.mecris.go.health.WalkDataSummary
 import com.mecris.go.health.WalkHeuristicsWorker
 import com.mecris.go.sync.SyncServiceApi
 import com.mecris.go.sync.WalkDataSummaryDto
+import com.mecris.go.sync.PersistenceManager
+import com.mecris.go.sync.DashboardCache
 import kotlinx.coroutines.launch
 import java.time.Instant
 import java.time.LocalDateTime
@@ -61,6 +64,7 @@ class MainActivity : ComponentActivity() {
 
     private lateinit var pocketIdAuth: PocketIdAuth
     private lateinit var healthConnectManager: HealthConnectManager
+    private lateinit var persistenceManager: PersistenceManager
 
     private val spinBaseUrl = "https://mecris-go-api-xupkwcis.fermyon.app/" 
     private val syncApi = SyncServiceApi.create(spinBaseUrl)
@@ -74,6 +78,7 @@ class MainActivity : ComponentActivity() {
         
         pocketIdAuth = PocketIdAuth(this)
         healthConnectManager = HealthConnectManager(this)
+        persistenceManager = PersistenceManager(this)
 
         setupWorkManager()
 
@@ -198,13 +203,18 @@ fun MecrisDashboard(
 ) {
     val authState by auth.authState.collectAsState()
     val scope = rememberCoroutineScope()
-    var walkData by remember { mutableStateOf<WalkDataSummary?>(null) }
-    var budgetAmount by remember { mutableStateOf<Double?>(null) }
-    var languageStats by remember { mutableStateOf<List<com.mecris.go.sync.LanguageStatDto>>(emptyList()) }
+    val cache = remember { persistenceManager.loadDashboard() }
+    
+    var walkData by remember { mutableStateOf<WalkDataSummary?>(cache?.walkData) }
+    var budgetAmount by remember { mutableStateOf<Double?>(cache?.budgetAmount) }
+    var languageStats by remember { mutableStateOf<List<com.mecris.go.sync.LanguageStatDto>>(cache?.languageStats ?: emptyList()) }
+    var homeServerActive by remember { mutableStateOf<Boolean?>(cache?.homeServerActive) }
     var isLoading by remember { mutableStateOf(false) }
-    var isFetching by remember { mutableStateOf(true) }
+    var isFetching by remember { mutableStateOf(persistenceManager.isCacheStale()) }
+
+    var fetchError by remember { mutableStateOf<String?>(null) }
     var syncStatus by remember { mutableStateOf("Ready") }
-    var lastSyncTime by remember { mutableStateOf("") }
+    var lastSyncTime by remember { mutableStateOf(cache?.lastSyncTime ?: "") }
     
     // UI State
     var showSystemHealth by remember { mutableStateOf(false) }
@@ -232,6 +242,9 @@ fun MecrisDashboard(
     }
 
     val forceSync = {
+        // Increment trigger to bypass cache in LaunchedEffect
+        refreshTrigger++
+        
         scope.launch {
             isLoading = true
             syncStatus = "Syncing..."
@@ -272,8 +285,17 @@ fun MecrisDashboard(
     }
 
     LaunchedEffect(refreshTrigger) {
-        Log.d("MecrisDashboard", "Refreshing walk data (Trigger: $refreshTrigger)")
+        val isStale = persistenceManager.isCacheStale()
+        // Only skip if this is the initial launch AND cache is fresh
+        if (refreshTrigger == 0 && !isStale) {
+            Log.d("MecrisDashboard", "Initial launch with fresh cache, skipping fetch.")
+            isFetching = false
+            return@LaunchedEffect
+        }
+
+        Log.d("MecrisDashboard", "Refreshing walk data (Trigger: $refreshTrigger, Stale: $isStale)")
         isFetching = true
+        fetchError = null
         walkData = healthManager.fetchRecentWalkData()
         
         auth.getValidAccessToken { token ->
@@ -282,11 +304,33 @@ fun MecrisDashboard(
                     try {
                         val response = syncApi.getBudget("Bearer $token")
                         budgetAmount = response.remaining_budget
+
+                        val healthResponse = syncApi.getHealth("Bearer $token")
+                        homeServerActive = healthResponse.home_server_active
                         
+                        // Proactively trigger failover sync (Spin will skip if Home is active)
+                        try {
+                            syncApi.triggerFailoverSync("Bearer $token")
+                        } catch (se: Exception) {
+                            Log.w("MecrisDashboard", "Failover sync trigger skipped/failed: ${se.message}")
+                        }
+
                         val langResponse = syncApi.getLanguages("Bearer $token")
                         languageStats = langResponse.languages
+                        
+                        // Save to cache
+                        val now = LocalDateTime.now().format(DateTimeFormatter.ofPattern("HH:mm"))
+                        lastSyncTime = now
+                        persistenceManager.saveDashboard(DashboardCache(
+                            walkData = walkData,
+                            budgetAmount = budgetAmount,
+                            languageStats = languageStats,
+                            homeServerActive = homeServerActive,
+                            lastSyncTime = now
+                        ))
                     } catch (e: Exception) {
                         Log.e("MecrisDashboard", "Failed to fetch remote data: ${e.message}")
+                        fetchError = e.message ?: "Unknown error"
                     } finally {
                         isFetching = false
                     }
@@ -347,10 +391,12 @@ fun MecrisDashboard(
                     walkData = walkData,
                     budgetAmount = budgetAmount,
                     languageStats = languageStats,
+                    homeServerActive = homeServerActive,
                     syncStatus = syncStatus,
                     lastSyncTime = lastSyncTime,
                     isLoading = isLoading,
                     isFetching = isFetching,
+                    fetchError = fetchError,
                     collectDistance = collectDistance,
                     collectGpsRoutes = collectGpsRoutes,
                     onForceSync = { forceSync() },
@@ -367,10 +413,12 @@ fun MainNeuralDashboard(
     walkData: WalkDataSummary?,
     budgetAmount: Double?,
     languageStats: List<com.mecris.go.sync.LanguageStatDto>,
+    homeServerActive: Boolean?,
     syncStatus: String,
     lastSyncTime: String,
     isLoading: Boolean,
     isFetching: Boolean,
+    fetchError: String?,
     collectDistance: Boolean,
     collectGpsRoutes: Boolean,
     onForceSync: () -> Unit,
@@ -422,6 +470,25 @@ fun MainNeuralDashboard(
         horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.CenterVertically
     ) {
+        // System Health Indicator
+        if (homeServerActive != null) {
+            val statusColor = if (homeServerActive!!) Color(0xFF00C853) else Color(0xFFFFD600)
+            val statusLabel = if (homeServerActive!!) "HOME: ONLINE" else "CLOUD: FAILOVER"
+            Surface(
+                color = statusColor.copy(alpha = 0.2f),
+                shape = RoundedCornerShape(4.dp),
+                modifier = Modifier.padding(end = 8.dp)
+            ) {
+                Text(
+                    text = statusLabel,
+                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = statusColor,
+                    fontWeight = FontWeight.ExtraBold
+                )
+            }
+        }
+
         Text(
             text = "CLOUD SYNC: ",
             style = MaterialTheme.typography.labelSmall,
@@ -560,16 +627,16 @@ fun MainNeuralDashboard(
     
     if (languageStats.isEmpty()) {
         Text(
-            text = "FETCHING...",
+            text = if (isFetching) "FETCHING..." else if (fetchError != null) "SYNC ERROR" else "NO REVIEWS",
             style = MaterialTheme.typography.bodySmall,
-            color = Color.DarkGray
+            color = if (fetchError != null) Color(0xFFFF1744) else Color.DarkGray
         )
     } else {
         languageStats.forEach { stat ->
             val cardColor = if (stat.name.equals("ARABIC", ignoreCase = true)) Color(0xFFFFD600) 
                             else if (stat.name.equals("GREEK", ignoreCase = true)) Color(0xFF00E5FF) 
                             else Color.White
-            LanguageForecastCard(stat.name, stat.current, stat.tomorrow, cardColor)
+            LanguageForecastCard(stat.name, stat.current, stat.tomorrow, stat.next_7_days, stat.daily_rate, stat.safebuf, stat.derail_risk, cardColor)
             Spacer(modifier = Modifier.height(8.dp))
         }
     }
@@ -778,16 +845,54 @@ fun IntegrationCard(name: String, status: String, description: String) {
 }
 
 @Composable
-fun LanguageForecastCard(name: String, today: Int, tomorrow: Int, color: Color) {
+fun LanguageForecastCard(name: String, today: Int, tomorrow: Int, next7Days: Int, dailyRate: Double, safebuf: Int, derailRisk: String, color: Color) {
+    val riskColor = when (derailRisk.uppercase()) {
+        "EMERGENCY" -> Color(0xFFFF1744) // Red
+        "CAUTION" -> Color(0xFFFFD600)   // Yellow
+        "OFF_TRACK" -> Color(0xFFFF9100) // Orange
+        else -> Color(0xFF00C853)        // Green
+    }
+
+    // Prominence logic
+    val isTomorrowUrgent = tomorrow > 0
+    val is7DayUrgent = next7Days > (dailyRate * 7)
+    
+    val tomorrowAlpha = if (isTomorrowUrgent) 1.0f else 0.4f
+    val next7Alpha = if (is7DayUrgent) 1.0f else 0.4f
+
     Surface(modifier = Modifier.fillMaxWidth(), color = Color(0xFF1E1E1E), shape = RoundedCornerShape(8.dp)) {
         Row(modifier = Modifier.padding(12.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             Column {
-                Text(name, style = MaterialTheme.typography.labelLarge, color = color, fontWeight = FontWeight.Bold)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(name, style = MaterialTheme.typography.labelLarge, color = color, fontWeight = FontWeight.Bold)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Surface(color = riskColor.copy(alpha = 0.2f), shape = RoundedCornerShape(4.dp)) {
+                        Text(
+                            text = derailRisk.uppercase(),
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = riskColor,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
                 Text("Today: $today cards", style = MaterialTheme.typography.bodySmall, color = Color.Gray)
+                Text("Runway: $safebuf days", style = MaterialTheme.typography.labelSmall, color = riskColor, fontWeight = FontWeight.Bold)
             }
             Column(horizontalAlignment = Alignment.End) {
-                Text("TOMORROW", style = MaterialTheme.typography.labelSmall, color = Color.Gray)
-                Text("+$tomorrow", style = MaterialTheme.typography.headlineSmall, color = Color.White, fontWeight = FontWeight.Black)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    // Tomorrow Forecast
+                    Column(horizontalAlignment = Alignment.End, modifier = Modifier.alpha(tomorrowAlpha)) {
+                        Text("TOMORROW", style = MaterialTheme.typography.labelSmall, color = Color.Gray)
+                        Text("+$tomorrow", style = MaterialTheme.typography.headlineSmall, color = Color.White, fontWeight = FontWeight.Black)
+                    }
+                    Spacer(modifier = Modifier.width(16.dp))
+                    // 7-Day Forecast
+                    Column(horizontalAlignment = Alignment.End, modifier = Modifier.alpha(next7Alpha)) {
+                        Text("7 DAY", style = MaterialTheme.typography.labelSmall, color = Color.Gray)
+                        Text("+$next7Days", style = MaterialTheme.typography.titleMedium, color = Color.White, fontWeight = FontWeight.Bold)
+                    }
+                }
             }
         }
     }
