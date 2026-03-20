@@ -36,70 +36,15 @@ async def _global_language_sync_job():
     then dynamically reschedules itself based on Beeminder urgency.
     """
     try:
-        from mcp_server import scheduler, beeminder_client
+        from mcp_server import scheduler, language_sync_service
         if not scheduler.is_leader:
             return
             
         logger.info("Background job (Leader): Syncing Clozemaster stats to Beeminder...")
-        from scripts.clozemaster_scraper import sync_clozemaster_to_beeminder
         
-        # Scrape and push to Beeminder
-        scraper_data = await sync_clozemaster_to_beeminder(dry_run=False)
-        
-        min_safebuf = 999
-        
-        # Also update Neon database so the Android app gets fresh data
-        if scraper_data:
-            # Fetch fresh Beeminder goals to get safebuf and derail_risk
-            all_goals = await beeminder_client.get_all_goals()
-            goal_map = {g.get("slug"): g for g in all_goals}
-            
-            # Map languages to Beeminder slugs (mirroring clozemaster_scraper.py)
-            lang_to_slug = {
-                "ARABIC": "reviewstack",
-                "GREEK": "reviewstack-greek" # or ellinika depending on the config, let's look up both
-            }
-            
-            neon_url = os.getenv("NEON_DB_URL")
-            if neon_url:
-                try:
-                    with psycopg2.connect(neon_url) as conn:
-                        with conn.cursor() as cur:
-                            for lang, data in scraper_data.items():
-                                name = lang.upper()
-                                count = data.get("count", 0)
-                                forecast = data.get("forecast", {})
-                                tomorrow = forecast.get("tomorrow", 0)
-                                next_7 = forecast.get("next_7_days", 0)
-                                
-                                # Default values
-                                safebuf = 0
-                                derail_risk = 'SAFE'
-                                
-                                # Try to match goal
-                                slug = lang_to_slug.get(name)
-                                if name == "GREEK" and "ellinika" in goal_map:
-                                    slug = "ellinika"
-                                    
-                                if slug and slug in goal_map:
-                                    safebuf = goal_map[slug].get("safebuf", 0)
-                                    derail_risk = goal_map[slug].get("derail_risk", "SAFE")
-                                    min_safebuf = min(min_safebuf, safebuf)
-                                
-                                cur.execute("""
-                                    INSERT INTO language_stats (language_name, current_reviews, tomorrow_reviews, next_7_days_reviews, safebuf, derail_risk)
-                                    VALUES (%s, %s, %s, %s, %s, %s)
-                                    ON CONFLICT (language_name) DO UPDATE SET
-                                        current_reviews = EXCLUDED.current_reviews,
-                                        tomorrow_reviews = EXCLUDED.tomorrow_reviews,
-                                        next_7_days_reviews = EXCLUDED.next_7_days_reviews,
-                                        safebuf = EXCLUDED.safebuf,
-                                        derail_risk = EXCLUDED.derail_risk,
-                                        last_updated = CURRENT_TIMESTAMP
-                                """, (name, count, tomorrow, next_7, safebuf, derail_risk))
-                            conn.commit()
-                except Exception as e:
-                    logger.error(f"Failed to update Neon DB with language stats: {e}")
+        # Perform sync
+        result = await language_sync_service.sync_all(dry_run=False)
+        min_safebuf = result.get("min_safebuf", 999)
                     
         # Dynamic rescheduling logic
         next_run_minutes = 240 # Default 4 hours
