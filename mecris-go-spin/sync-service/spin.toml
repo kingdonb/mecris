@@ -11,6 +11,8 @@ description = ""
 [variables]
 db_url = { required = false, default = "" }
 auth_bypass = { required = false, default = "false" }
+clozemaster_email = { required = false, default = "" }
+clozemaster_password = { required = false, default = "" }
 
 [[trigger.http]]
 route = "/..."
@@ -18,11 +20,13 @@ component = "sync-service"
 
 [component.sync-service]
 source = "target/wasm32-wasip1/release/sync_service.wasm"
-allowed_outbound_hosts = ["postgres://*:*", "https://www.beeminder.com"]
+allowed_outbound_hosts = ["postgres://*:*", "https://www.beeminder.com", "https://www.clozemaster.com"]
 key_value_stores = ["default"]
 [component.sync-service.variables]
 db_url = "{{ db_url }}"
 auth_bypass = "{{ auth_bypass }}"
+clozemaster_email = "{{ clozemaster_email }}"
+clozemaster_password = "{{ clozemaster_password }}"
 [component.sync-service.build]
 command = "cargo build --target wasm32-wasip1 --release"
 watch = ["src/**/*.rs", "Cargo.toml"]

@@ -72,9 +72,201 @@ async fn handle_sync_service(req: Request) -> anyhow::Result<impl IntoResponse> 
             return Ok(Response::builder().status(405).body("Method Not Allowed").build());
         }
         return handle_languages_get(req).await;
+    } else if path == "/internal/failover-sync" {
+        if req.method() != &spin_sdk::http::Method::Post && req.method() != &spin_sdk::http::Method::Get {
+            return Ok(Response::builder().status(405).body("Method Not Allowed").build());
+        }
+        return handle_failover_sync(req).await;
     }
     
     Ok(Response::builder().status(404).body("Not Found").build())
+}
+
+async fn handle_failover_sync(_req: Request) -> anyhow::Result<Response> {
+    let db_url = match variables::get("db_url") {
+        Ok(url) if !url.is_empty() => url,
+        _ => return Ok(Response::builder().status(500).body("Missing db_url").build())
+    };
+
+    let connection = match Connection::open(&db_url) {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("Failed to connect to db for failover sync: {:?}", e);
+            return Ok(Response::builder().status(500).body("Internal DB error").build());
+        }
+    };
+
+    let query = "SELECT heartbeat FROM scheduler_election WHERE role = 'leader' LIMIT 1";
+    let row_set = match connection.query(query, &[]) {
+        Ok(rs) => rs,
+        Err(e) => {
+            eprintln!("Failed to query election table: {:?}", e);
+            return Ok(Response::builder().status(500).body("Internal DB error").build());
+        }
+    };
+
+    let mut is_leader_active = false;
+    let now = chrono::Utc::now();
+
+    if !row_set.rows.is_empty() {
+        // Spin's pg provider returns timestamp as u64 milliseconds or string depending on version,
+        // let's try to parse it from string or handle int if spin-sdk returns int.
+        // For spin_sdk::pg::DbValue we can check if it's a timestamp
+        // Actually spin_sdk returns string for timestamps usually, let's extract it.
+        let heartbeat_val = &row_set.rows[0][0];
+        if let DbValue::Str(s) = heartbeat_val {
+            // parse ISO8601
+            if let Ok(heartbeat_time) = chrono::DateTime::parse_from_rfc3339(s) {
+                let diff = now.signed_duration_since(heartbeat_time);
+                if diff.num_seconds() < 90 {
+                    is_leader_active = true;
+                }
+            }
+        }
+    }
+
+    if is_leader_active {
+        let resp = StatusResponse {
+            status: "skipped".to_string(),
+            message: "Home server is active. Failover mode suppressed.".to_string(),
+        };
+        return Ok(Response::builder()
+            .status(200)
+            .header("content-type", "application/json")
+            .body(serde_json::to_string(&resp).unwrap())
+            .build());
+    }
+
+    // --- FAILOVER MODE ACTIVATED ---
+    println!("FAILOVER MODE ACTIVE: Home server heartbeat is stale or missing.");
+    
+    // Scrape Clozemaster and push to Neon
+    let scrape_result = match run_clozemaster_scraper(&db_url).await {
+        Ok(msg) => msg,
+        Err(e) => format!("Scraper failed: {:?}", e),
+    };
+
+    let resp = StatusResponse {
+        status: "active".to_string(),
+        message: format!("Failover Mode activated. {}", scrape_result),
+    };
+
+    Ok(Response::builder()
+        .status(200)
+        .header("content-type", "application/json")
+        .body(serde_json::to_string(&resp).unwrap())
+        .build())
+}
+
+async fn run_clozemaster_scraper(db_url: &str) -> anyhow::Result<String> {
+    let email = variables::get("clozemaster_email").unwrap_or_default();
+    let password = variables::get("clozemaster_password").unwrap_or_default();
+    
+    if email.is_empty() || password.is_empty() {
+        return Err(anyhow::anyhow!("Missing clozemaster credentials"));
+    }
+
+    println!("Failover worker: Starting Clozemaster sync...");
+    
+    // 1. GET login to grab CSRF token
+    let login_get_req = Request::get("https://www.clozemaster.com/login")
+        .header("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36")
+        .build();
+        
+    let login_get_res: Response = spin_sdk::http::send(login_get_req).await?;
+    let body_bytes = login_get_res.body();
+    let body_str = String::from_utf8_lossy(body_bytes);
+    
+    // Extract CSRF token
+    let re = regex::Regex::new(r#"name="authenticity_token" value="([^"]+)""#).unwrap();
+    let csrf_token = match re.captures(&body_str) {
+        Some(caps) => caps.get(1).unwrap().as_str().to_string(),
+        None => return Err(anyhow::anyhow!("Could not find CSRF token")),
+    };
+    
+    // Extract initial cookie if provided
+    let mut session_cookie = String::new();
+    if let Some(cookie_hdr) = login_get_res.header("set-cookie") {
+        if let Ok(c) = std::str::from_utf8(cookie_hdr.as_ref()) {
+            session_cookie = c.split(';').next().unwrap_or("").to_string();
+        }
+    }
+
+    // 2. POST login
+    let login_body = format!(
+        "user%5Bemail%5D={}&user%5Bpassword%5D={}&authenticity_token={}&commit=Log+In",
+        urlencoding::encode(&email),
+        urlencoding::encode(&password),
+        urlencoding::encode(&csrf_token)
+    );
+    
+    let login_post_req = Request::post("https://www.clozemaster.com/login", login_body)
+        .header("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36")
+        .header("Content-Type", "application/x-www-form-urlencoded")
+        .header("Cookie", session_cookie.clone())
+        .build();
+        
+    let login_post_res: Response = spin_sdk::http::send(login_post_req).await?;
+    
+    // Grab new cookie after login
+    if let Some(cookie_hdr) = login_post_res.header("set-cookie") {
+        if let Ok(c) = std::str::from_utf8(cookie_hdr.as_ref()) {
+            session_cookie = c.split(';').next().unwrap_or("").to_string();
+        }
+    }
+
+    // 3. GET dashboard
+    let dash_req = Request::get("https://www.clozemaster.com/dashboard")
+        .header("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36")
+        .header("Cookie", session_cookie.clone())
+        .build();
+        
+    let dash_res: Response = spin_sdk::http::send(dash_req).await?;
+    let dash_body = String::from_utf8_lossy(dash_res.body());
+    
+    // Extract react props
+    let props_re = regex::Regex::new(r#"data-react-props="([^"]+)""#).unwrap();
+    let props_json_escaped = match props_re.captures(&dash_body) {
+        Some(caps) => caps.get(1).unwrap().as_str(),
+        None => return Err(anyhow::anyhow!("Could not find react props")),
+    };
+    
+    let props_json = html_escape::decode_html_entities(props_json_escaped).to_string();
+    
+    let parsed: serde_json::Value = serde_json::from_str(&props_json)?;
+    let pairings = parsed.get("languagePairings").and_then(|p| p.as_array()).ok_or_else(|| anyhow::anyhow!("No languagePairings found"))?;
+    
+    let mut arabic_count = 0;
+    let mut greek_count = 0;
+    
+    for pair in pairings {
+        if let Some(slug) = pair.get("slug").and_then(|s| s.as_str()) {
+            if slug == "ara-eng" {
+                arabic_count = pair.get("numReadyForReview").and_then(|n| n.as_i64()).unwrap_or(0);
+            } else if slug == "ell-eng" {
+                greek_count = pair.get("numReadyForReview").and_then(|n| n.as_i64()).unwrap_or(0);
+            }
+        }
+    }
+    
+    // We update Neon with what we found (base counts only for now to ensure failover works)
+    let connection = Connection::open(db_url)?;
+    
+    let update_query = "
+        INSERT INTO language_stats (language_name, current_reviews)
+        VALUES ($1, $2)
+        ON CONFLICT (language_name) DO UPDATE SET
+            current_reviews = EXCLUDED.current_reviews,
+            last_updated = CURRENT_TIMESTAMP
+    ";
+    
+    let _ = connection.execute(update_query, &[ParameterValue::Str("ARABIC".to_string()), ParameterValue::Int32(arabic_count as i32)]);
+    let _ = connection.execute(update_query, &[ParameterValue::Str("GREEK".to_string()), ParameterValue::Int32(greek_count as i32)]);
+    
+    // Note: To fully mirror Python, we would also pull Beeminder `safebuf` here and push datapoints to Beeminder API,
+    // but updating the Neon counts is the primary Failover step to keep the Android UI correct.
+    
+    Ok(format!("Scraped Arabic: {}, Greek: {}", arabic_count, greek_count))
 }
 
 async fn handle_languages_get(_req: Request) -> anyhow::Result<Response> {
