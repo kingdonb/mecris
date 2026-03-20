@@ -25,7 +25,9 @@ As an agent interacting with Mecris, these are your core operational directives.
 **Stop thinking. Start testing. NOW.**
 - Prioritize small, testable tasks.
 - 30-minute cap per task segment.
+- **Consult `TDG.md` for specific test commands** (e.g., `PYTHONPATH=. .venv/bin/pytest`).
 - Use `Skill(tdg:atomic)` after coding sessions.
+- **Note on Cloud Cron**: The Spin Cron trigger is currently **DISABLED** in `spin.toml` to prevent it from masking local framework issues. Do not re-enable until the MCP leader can coordinate these events.
 
 ### 🐕 THE HIGHEST PRIORITY: PHYSICAL ACTIVITY
 **Every session: Prioritize physical activity, then technical work.**
