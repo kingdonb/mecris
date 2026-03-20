@@ -546,6 +546,7 @@ async def send_reminder_message(message_data: Dict[str, Any]) -> Dict[str, Any]:
     now = datetime.now()
     
     # Check if already sent today
+    checked_neon = False
     if neon_url:
         try:
             import psycopg2
@@ -555,55 +556,78 @@ async def send_reminder_message(message_data: Dict[str, Any]) -> Dict[str, Any]:
                     cur.execute("SELECT 1 FROM message_log WHERE date = %s AND type = %s", (today, msg_type))
                     if cur.fetchone():
                         return {"sent": False, "reason": f"Already sent {msg_type} today (Neon coordinated)"}
+            checked_neon = True
         except Exception as e:
-            logger.error(f"Neon message_log check failed: {e}")
+            logger.error(f"Neon message_log check failed: {e}. Falling back to SQLite.")
 
-    import sqlite3
-    conn = sqlite3.connect(db_path)
-    try:
-        with conn:
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS message_log (
-                    date TEXT,
-                    type TEXT,
-                    sent_at TIMESTAMP,
-                    PRIMARY KEY (date, type)
-                )
-            """)
-            # Check if already sent in SQLite
-            cursor = conn.execute("SELECT 1 FROM message_log WHERE date = ? AND type = ?", (str(today), msg_type))
-            if cursor.fetchone():
-                return {"sent": False, "reason": f"Already sent {msg_type} today (SQLite coordinated)"}
+    if not checked_neon:
+        import sqlite3
+        conn = sqlite3.connect(db_path)
+        try:
+            with conn:
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS message_log (
+                        date TEXT,
+                        type TEXT,
+                        sent_at TIMESTAMP,
+                        PRIMARY KEY (date, type)
+                    )
+                """)
+                # Check if already sent in SQLite
+                cursor = conn.execute("SELECT 1 FROM message_log WHERE date = ? AND type = ?", (str(today), msg_type))
+                if cursor.fetchone():
+                    return {"sent": False, "reason": f"Already sent {msg_type} today (SQLite coordinated)"}
+        finally:
+            conn.close()
 
-            if use_template:
-                from twilio_sender import send_whatsapp_template
-                template_sid = message_data.get("template_sid")
-                variables = message_data.get("variables", {})
-                success = send_whatsapp_template(template_sid, variables)
-                delivery_result = {
-                    "sent": success, 
-                    "method": "whatsapp_template", 
-                    "template_sid": template_sid
-                }
-            else:
-                message = message_data.get("message") or message_data.get("fallback_message")
-                delivery_result = smart_send_message(message)
+    if use_template:
+        from twilio_sender import send_whatsapp_template
+        template_sid = message_data.get("template_sid")
+        variables = message_data.get("variables", {})
+        success = send_whatsapp_template(template_sid, variables)
+        delivery_result = {
+            "sent": success, 
+            "method": "whatsapp_template", 
+            "template_sid": template_sid
+        }
+    else:
+        message = message_data.get("message") or message_data.get("fallback_message")
+        delivery_result = smart_send_message(message)
 
-            if delivery_result["sent"]:
-                # Log to Neon if available
-                if neon_url:
-                    try:
-                        with psycopg2.connect(neon_url) as conn_neon:
-                            with conn_neon.cursor() as cur:
-                                cur.execute("INSERT INTO message_log (date, type, sent_at) VALUES (%s, %s, %s)", (today, msg_type, now))
-                    except Exception as e:
-                        logger.error(f"Failed to log message to Neon: {e}")
-                
-                # Log to SQLite
-                conn.execute("INSERT INTO message_log VALUES (?, ?, ?)", (str(today), msg_type, now.isoformat()))
-            return delivery_result
-    finally:
-        conn.close()
+    if delivery_result["sent"]:
+        logged_to_neon = False
+        # Log to Neon if available
+        if neon_url:
+            try:
+                import psycopg2
+                with psycopg2.connect(neon_url) as conn_neon:
+                    with conn_neon.cursor() as cur:
+                        cur.execute("INSERT INTO message_log (date, type, sent_at) VALUES (%s, %s, %s)", (today, msg_type, now))
+                logged_to_neon = True
+            except Exception as e:
+                logger.error(f"Failed to log message to Neon: {e}")
+        
+        # Log to SQLite ONLY if Neon logging failed or was unavailable
+        if not logged_to_neon:
+            import sqlite3
+            conn = sqlite3.connect(db_path)
+            try:
+                with conn:
+                    conn.execute("""
+                        CREATE TABLE IF NOT EXISTS message_log (
+                            date TEXT,
+                            type TEXT,
+                            sent_at TIMESTAMP,
+                            PRIMARY KEY (date, type)
+                        )
+                    """)
+                    conn.execute("INSERT OR REPLACE INTO message_log VALUES (?, ?, ?)", (str(today), msg_type, now.isoformat()))
+            except Exception as e:
+                logger.error(f"Failed to log message to SQLite: {e}")
+            finally:
+                conn.close()
+
+    return delivery_result
 
 
 

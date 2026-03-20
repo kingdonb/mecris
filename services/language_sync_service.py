@@ -57,6 +57,7 @@ class LanguageSyncService:
                                 # Default values
                                 safebuf = 0
                                 derail_risk = 'SAFE'
+                                daily_rate = 0.0
                                 
                                 # Try to match goal
                                 slug = self.lang_to_slug.get(name)
@@ -65,21 +66,24 @@ class LanguageSyncService:
                                     slug = "ellinika"
                                     
                                 if slug and slug in goal_map:
-                                    safebuf = goal_map[slug].get("safebuf", 0)
-                                    derail_risk = goal_map[slug].get("derail_risk", "SAFE")
+                                    goal = goal_map[slug]
+                                    safebuf = goal.get("safebuf", 0)
+                                    derail_risk = goal.get("derail_risk", "SAFE")
+                                    daily_rate = goal.get("rate", 0.0)
                                     summary["min_safebuf"] = min(summary["min_safebuf"], safebuf)
                                 
                                 cur.execute("""
-                                    INSERT INTO language_stats (language_name, current_reviews, tomorrow_reviews, next_7_days_reviews, safebuf, derail_risk)
-                                    VALUES (%s, %s, %s, %s, %s, %s)
+                                    INSERT INTO language_stats (language_name, current_reviews, tomorrow_reviews, next_7_days_reviews, daily_rate, safebuf, derail_risk)
+                                    VALUES (%s, %s, %s, %s, %s, %s, %s)
                                     ON CONFLICT (language_name) DO UPDATE SET
                                         current_reviews = EXCLUDED.current_reviews,
                                         tomorrow_reviews = EXCLUDED.tomorrow_reviews,
                                         next_7_days_reviews = EXCLUDED.next_7_days_reviews,
+                                        daily_rate = EXCLUDED.daily_rate,
                                         safebuf = EXCLUDED.safebuf,
                                         derail_risk = EXCLUDED.derail_risk,
                                         last_updated = CURRENT_TIMESTAMP
-                                """, (name, count, tomorrow, next_7, safebuf, derail_risk))
+                                """, (name, count, tomorrow, next_7, daily_rate, safebuf, derail_risk))
                                 
                                 summary[lang] = {
                                     "count": count,

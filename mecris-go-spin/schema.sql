@@ -32,16 +32,22 @@ CREATE TABLE IF NOT EXISTS walk_inferences (
     CONSTRAINT idx_walk_user_start UNIQUE (user_id, start_time)
 );
 
--- 3. Notification Log Table (Placeholder for Phase 2)
-CREATE TABLE IF NOT EXISTS notification_log (
+-- 4. Language Stats Table
+CREATE TABLE IF NOT EXISTS language_stats (
+    language_name VARCHAR(50) PRIMARY KEY,
+    current_reviews INTEGER DEFAULT 0,
+    tomorrow_reviews INTEGER DEFAULT 0,
+    next_7_days_reviews INTEGER DEFAULT 0,
+    daily_rate NUMERIC(10, 2) DEFAULT 0,
+    safebuf INTEGER DEFAULT 0,
+    derail_risk VARCHAR(50) DEFAULT 'SAFE',
+    last_updated TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 5. Scheduler Election Table
+CREATE TABLE IF NOT EXISTS scheduler_election (
     id SERIAL PRIMARY KEY,
-    user_id VARCHAR(255) REFERENCES users(pocket_id_sub) ON DELETE CASCADE,
-    channel VARCHAR(50) NOT NULL, -- 'Push', 'Telegram', 'WhatsApp'
-    cost_usd NUMERIC(10, 5) DEFAULT 0.00,
-    prompt_tokens INTEGER DEFAULT 0,
-    completion_tokens INTEGER DEFAULT 0,
-    sent_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    
-    -- Spam Prevention: no more than 1 per 4 hours per user logic enforced via DB checks or App logic
-    CONSTRAINT spam_prevention CHECK (sent_at > NOW() - INTERVAL '4 hours')
+    role VARCHAR(50) NOT NULL UNIQUE, -- 'leader'
+    process_id VARCHAR(50) NOT NULL,
+    heartbeat TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );

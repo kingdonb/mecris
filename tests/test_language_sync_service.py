@@ -6,11 +6,14 @@ from datetime import datetime
 # We'll need to mock psycopg2 and beeminder_client
 @pytest.fixture
 def mock_dependencies():
-    with patch("psycopg2.connect") as mock_pg:
-        with patch("scripts.clozemaster_scraper.sync_clozemaster_to_beeminder") as mock_scrape:
+    with patch("psycopg2.connect") as mock_connect:
+        with patch("services.language_sync_service.sync_clozemaster_to_beeminder") as mock_scrape:
             mock_conn = MagicMock()
             mock_cur = MagicMock()
-            mock_pg.connect.return_value.__enter__.return_value = mock_conn
+            
+            # Setup connection context
+            mock_connect.return_value.__enter__.return_value = mock_conn
+            # Setup cursor context
             mock_conn.cursor.return_value.__enter__.return_value = mock_cur
             
             yield {
@@ -31,10 +34,13 @@ async def test_language_sync_service_coordination(mock_dependencies):
     
     # 2. Setup mock beeminder client
     mock_beeminder = MagicMock()
-    mock_beeminder.get_all_goals.return_value = [
-        {"slug": "reviewstack", "safebuf": 6, "derail_risk": "CAUTION"},
-        {"slug": "ellinika", "safebuf": 9, "derail_risk": "SAFE"}
-    ]
+    
+    async def mock_get_all_goals():
+        return [
+            {"slug": "reviewstack", "safebuf": 6, "derail_risk": "CAUTION"},
+            {"slug": "ellinika", "safebuf": 9, "derail_risk": "SAFE"}
+        ]
+    mock_beeminder.get_all_goals = mock_get_all_goals
     
     service = LanguageSyncService(mock_beeminder)
     
