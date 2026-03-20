@@ -5,7 +5,6 @@ This system creates a virtual budget layer above all LLM providers,
 managing spending allocation regardless of their billing models.
 """
 
-import sqlite3
 import json
 from datetime import datetime, timedelta, date
 from typing import Dict, List, Optional, Tuple
@@ -14,6 +13,9 @@ from enum import Enum
 import os
 import psycopg2
 from psycopg2.extras import RealDictCursor
+import logging
+
+logger = logging.getLogger("mecris.virtual_budget")
 
 class Provider(Enum):
     ANTHROPIC = "anthropic"
@@ -31,10 +33,11 @@ class ProviderUsage:
     reconciled: bool = False
 
 class VirtualBudgetManager:
-    def __init__(self, db_path: str = "mecris_virtual_budget.db"):
-        self.db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), db_path)
+    def __init__(self):
         self.neon_url = os.getenv("NEON_DB_URL")
-        
+        if not self.neon_url:
+            logger.warning("NEON_DB_URL not set in VirtualBudgetManager. Budgeting will fail.")
+            
         # Budget configuration
         self.daily_budget = float(os.getenv("DAILY_BUDGET", "2.00"))
         self.monthly_budget = float(os.getenv("MONTHLY_BUDGET", "60.00"))
@@ -60,15 +63,10 @@ class VirtualBudgetManager:
             }
         }
         
-        self.init_database()
+        if self.neon_url:
+            self.init_database()
 
     def init_database(self):
-        if self.neon_url:
-            self._init_neon()
-        else:
-            self._init_sqlite()
-
-    def _init_neon(self):
         try:
             with psycopg2.connect(self.neon_url) as conn:
                 with conn.cursor() as cur:
@@ -124,67 +122,26 @@ class VirtualBudgetManager:
                     """)
             self._ensure_daily_budget()
         except Exception as e:
-            self.neon_url = None
-            self._init_sqlite()
-
-    def _init_sqlite(self):
-        with sqlite3.connect(self.db_path) as conn:
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS budget_allocations (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    period_type TEXT NOT NULL,
-                    budget_amount REAL NOT NULL,
-                    remaining_amount REAL NOT NULL,
-                    period_start DATE NOT NULL,
-                    period_end DATE NOT NULL,
-                    created_at TEXT NOT NULL,
-                    updated_at TEXT NOT NULL
-                )
-            """)
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS provider_usage (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    provider TEXT NOT NULL,
-                    model TEXT NOT NULL,
-                    input_tokens INTEGER NOT NULL,
-                    output_tokens INTEGER NOT NULL,
-                    estimated_cost REAL NOT NULL,
-                    actual_cost REAL DEFAULT NULL,
-                    timestamp TEXT NOT NULL,
-                    session_type TEXT DEFAULT 'interactive',
-                    notes TEXT DEFAULT '',
-                    reconciled BOOLEAN DEFAULT FALSE
-                )
-            """)
-            self._ensure_daily_budget()
+            logger.error(f"Neon DB init failed: {e}")
 
     def _ensure_daily_budget(self):
+        if not self.neon_url: return
         today = date.today()
         tomorrow = today + timedelta(days=1)
         now = datetime.now()
         
-        if self.neon_url:
-            try:
-                with psycopg2.connect(self.neon_url) as conn:
-                    with conn.cursor() as cur:
-                        cur.execute("SELECT id FROM budget_allocations WHERE period_type = %s AND period_start = %s", ("daily", today))
-                        if not cur.fetchone():
-                            cur.execute("""
-                                INSERT INTO budget_allocations 
-                                (period_type, budget_amount, remaining_amount, period_start, period_end, created_at, updated_at)
-                                VALUES (%s, %s, %s, %s, %s, %s, %s)
-                            """, ("daily", self.daily_budget, self.daily_budget, today, tomorrow, now, now))
-                return
-            except Exception: pass
-
-        with sqlite3.connect(self.db_path) as conn:
-            cursor = conn.execute("SELECT id FROM budget_allocations WHERE period_type = ? AND period_start = ?", ("daily", today.isoformat()))
-            if not cursor.fetchone():
-                conn.execute("""
-                    INSERT INTO budget_allocations 
-                    (period_type, budget_amount, remaining_amount, period_start, period_end, created_at, updated_at)
-                    VALUES ('daily', ?, ?, ?, ?, ?, ?)
-                """, (self.daily_budget, self.daily_budget, today.isoformat(), tomorrow.isoformat(), now.isoformat(), now.isoformat()))
+        try:
+            with psycopg2.connect(self.neon_url) as conn:
+                with conn.cursor() as cur:
+                    cur.execute("SELECT id FROM budget_allocations WHERE period_type = %s AND period_start = %s", ("daily", today))
+                    if not cur.fetchone():
+                        cur.execute("""
+                            INSERT INTO budget_allocations 
+                            (period_type, budget_amount, remaining_amount, period_start, period_end, created_at, updated_at)
+                            VALUES (%s, %s, %s, %s, %s, %s, %s)
+                        """, ("daily", self.daily_budget, self.daily_budget, today, tomorrow, now, now))
+        except Exception as e:
+            logger.error(f"ensure_daily_budget failed: {e}")
 
     def calculate_cost(self, provider: Provider, model: str, input_tokens: int, output_tokens: int) -> float:
         if provider not in self.pricing or model not in self.pricing[provider]:
@@ -194,28 +151,22 @@ class VirtualBudgetManager:
         return round(input_tokens * pricing["input"] + output_tokens * pricing["output"], 6)
 
     def can_afford(self, cost: float, include_reserve: bool = True) -> Dict:
+        if not self.neon_url: return {"can_afford": False, "reason": "No DB"}
         self._ensure_daily_budget()
         today = date.today()
-        if self.neon_url:
-            try:
-                with psycopg2.connect(self.neon_url) as conn:
-                    with conn.cursor() as cur:
-                        cur.execute("SELECT remaining_amount FROM budget_allocations WHERE period_type = %s AND period_start = %s", ("daily", today))
-                        res = cur.fetchone()
-                        if res:
-                            rem = res[0]
-                            avail = rem * (1 - self.emergency_reserve_ratio) if include_reserve else rem
-                            if cost <= avail: return {"can_afford": True, "remaining": rem, "available": avail, "cost": cost, "after_spending": rem - cost}
-                            return {"can_afford": False, "reason": "Insufficient budget", "remaining": rem, "available": avail, "cost": cost, "shortfall": cost - avail}
-            except Exception: pass
-        with sqlite3.connect(self.db_path) as conn:
-            cursor = conn.execute("SELECT remaining_amount FROM budget_allocations WHERE period_type = ? AND period_start = ?", ("daily", today.isoformat()))
-            res = cursor.fetchone()
-            if not res: return {"can_afford": False, "reason": "No daily budget found"}
-            rem = res[0]
-            avail = rem * (1 - self.emergency_reserve_ratio) if include_reserve else rem
-            if cost <= avail: return {"can_afford": True, "remaining": rem, "available": avail, "cost": cost, "after_spending": rem - cost}
-            return {"can_afford": False, "reason": "Insufficient budget", "remaining": rem, "available": avail, "cost": cost, "shortfall": cost - avail}
+        try:
+            with psycopg2.connect(self.neon_url) as conn:
+                with conn.cursor() as cur:
+                    cur.execute("SELECT remaining_amount FROM budget_allocations WHERE period_type = %s AND period_start = %s", ("daily", today))
+                    res = cur.fetchone()
+                    if res:
+                        rem = res[0]
+                        avail = rem * (1 - self.emergency_reserve_ratio) if include_reserve else rem
+                        if cost <= avail: return {"can_afford": True, "remaining": rem, "available": avail, "cost": cost, "after_spending": rem - cost}
+                        return {"can_afford": False, "reason": "Insufficient budget", "remaining": rem, "available": avail, "cost": cost, "shortfall": cost - avail}
+        except Exception as e:
+            logger.error(f"can_afford check failed: {e}")
+        return {"can_afford": False, "reason": "DB Error"}
 
     def record_usage(self, provider: Provider, model: str, input_tokens: int, output_tokens: int, session_type: str = "interactive", notes: str = "", emergency_override: bool = False) -> Dict:
         cost = self.calculate_cost(provider, model, input_tokens, output_tokens)
@@ -223,98 +174,78 @@ class VirtualBudgetManager:
         if not afford["can_afford"] and not emergency_override:
             return {"recorded": False, "reason": afford["reason"], "cost": cost, "affordability": afford}
         now, today = datetime.now(), date.today()
-        if self.neon_url:
-            try:
-                with psycopg2.connect(self.neon_url) as conn:
-                    with conn.cursor() as cur:
-                        cur.execute("INSERT INTO provider_usage (provider, model, input_tokens, output_tokens, estimated_cost, timestamp, session_type, notes) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)", (provider.value, model, input_tokens, output_tokens, cost, now, session_type, notes))
-                        cur.execute("UPDATE budget_allocations SET remaining_amount = remaining_amount - %s, updated_at = %s WHERE period_type = %s AND period_start = %s", (cost, now, "daily", today))
-                return {"recorded": True, "cost": cost, "provider": provider.value, "model": model, "emergency_override": emergency_override, "remaining_budget": afford.get("after_spending", 0)}
-            except Exception: pass
-        with sqlite3.connect(self.db_path) as conn:
-            conn.execute("INSERT INTO provider_usage (provider, model, input_tokens, output_tokens, estimated_cost, timestamp, session_type, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", (provider.value, model, input_tokens, output_tokens, cost, now.isoformat(), session_type, notes))
-            conn.execute("UPDATE budget_allocations SET remaining_amount = remaining_amount - ?, updated_at = ? WHERE period_type = ? AND period_start = ?", (cost, now.isoformat(), "daily", today.isoformat()))
-        return {"recorded": True, "cost": cost, "provider": provider.value, "model": model, "emergency_override": emergency_override, "remaining_budget": afford.get("after_spending", 0)}
+        
+        if not self.neon_url:
+            return {"recorded": False, "reason": "No DB configured"}
+            
+        try:
+            with psycopg2.connect(self.neon_url) as conn:
+                with conn.cursor() as cur:
+                    cur.execute("INSERT INTO provider_usage (provider, model, input_tokens, output_tokens, estimated_cost, timestamp, session_type, notes) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)", (provider.value, model, input_tokens, output_tokens, cost, now, session_type, notes))
+                    cur.execute("UPDATE budget_allocations SET remaining_amount = remaining_amount - %s, updated_at = %s WHERE period_type = %s AND period_start = %s", (cost, now, "daily", today))
+            return {"recorded": True, "cost": cost, "provider": provider.value, "model": model, "emergency_override": emergency_override, "remaining_budget": afford.get("after_spending", 0)}
+        except Exception as e:
+            logger.error(f"record_usage failed: {e}")
+            return {"recorded": False, "reason": str(e)}
 
     def get_budget_status(self) -> Dict:
+        if not self.neon_url: return {"error": "Neon DB not configured"}
         self._ensure_daily_budget()
         today = date.today()
-        if self.neon_url:
-            try:
-                with psycopg2.connect(self.neon_url) as conn:
-                    with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                        cur.execute("SELECT budget_amount, remaining_amount, updated_at FROM budget_allocations WHERE period_type = %s AND period_start = %s", ("daily", today))
-                        dbudget = cur.fetchone()
-                        cur.execute("SELECT provider, SUM(estimated_cost) as cost, COUNT(*) as sessions FROM provider_usage WHERE timestamp::date = %s GROUP BY provider", (today,))
-                        provider_rows = cur.fetchall()
-                        provider_usage = {row['provider']: {'cost': row['cost'], 'sessions': row['sessions']} for row in provider_rows}
-                        cur.execute("SELECT provider, AVG(ABS(drift_percentage)) as drift FROM reconciliation_jobs WHERE job_date > CURRENT_DATE - INTERVAL '7 days' GROUP BY provider")
-                        recon_rows = cur.fetchall()
-                        recon_acc = {row['provider']: row['drift'] for row in recon_rows}
-                        if not dbudget: return {"error": "No daily budget found in Neon"}
-                        b_amt, rem, updated = dbudget["budget_amount"], dbudget["remaining_amount"], str(dbudget["updated_at"])
-                        spent, avail = b_amt - rem, rem * (1 - self.emergency_reserve_ratio)
-                        alerts = []
-                        if rem < (b_amt * 0.2): alerts.append("LOW_DAILY_BUDGET")
-                        if spent > (b_amt * 0.8): alerts.append("HIGH_DAILY_SPEND")
-                        if avail < 0.50: alerts.append("NEARING_RESERVE")
-                        return {"daily_budget": {"allocated": b_amt, "remaining": rem, "spent": spent, "available": avail, "emergency_reserve": rem - avail}, "provider_breakdown": provider_usage, "reconciliation_accuracy": recon_acc, "alerts": alerts, "budget_health": "GOOD" if not alerts else "WARNING" if len(alerts) < 2 else "CRITICAL", "last_updated": updated}
-            except Exception as e: pass
-        with sqlite3.connect(self.db_path) as conn:
-            cursor = conn.execute("SELECT budget_amount, remaining_amount, updated_at FROM budget_allocations WHERE period_type = ? AND period_start = ?", ("daily", today.isoformat()))
-            dbudget = cursor.fetchone()
-            cursor = conn.execute("SELECT provider, SUM(estimated_cost), COUNT(*) FROM provider_usage WHERE DATE(timestamp) = DATE('now') GROUP BY provider")
-            provider_usage = {row[0]: {"cost": row[1], "sessions": row[2]} for row in cursor.fetchall()}
-            cursor = conn.execute("SELECT provider, AVG(ABS(drift_percentage)) FROM reconciliation_jobs WHERE job_date > DATE('now', '-7 days') GROUP BY provider")
-            recon_acc = {row[0]: row[1] for row in cursor.fetchall()}
-            if not dbudget: return {"error": "No daily budget Found"}
-            b_amt, rem, updated = dbudget[0], dbudget[1], dbudget[2]
-            spent, avail = b_amt - rem, rem * (1 - self.emergency_reserve_ratio)
-            alerts = []
-            if rem < (b_amt * 0.2): alerts.append("LOW_DAILY_BUDGET")
-            if spent > (b_amt * 0.8): alerts.append("HIGH_DAILY_SPEND")
-            if avail < 0.50: alerts.append("NEARING_RESERVE")
-            return {"daily_budget": {"allocated": b_amt, "remaining": rem, "spent": spent, "available": avail, "emergency_reserve": rem - avail}, "provider_breakdown": provider_usage, "reconciliation_accuracy": recon_acc, "alerts": alerts, "budget_health": "GOOD" if not alerts else "WARNING" if len(alerts) < 2 else "CRITICAL", "last_updated": updated}
+        try:
+            with psycopg2.connect(self.neon_url) as conn:
+                with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                    cur.execute("SELECT budget_amount, remaining_amount, updated_at FROM budget_allocations WHERE period_type = %s AND period_start = %s", ("daily", today))
+                    dbudget = cur.fetchone()
+                    cur.execute("SELECT provider, SUM(estimated_cost) as cost, COUNT(*) as sessions FROM provider_usage WHERE timestamp::date = %s GROUP BY provider", (today,))
+                    provider_rows = cur.fetchall()
+                    provider_usage = {row['provider']: {'cost': row['cost'], 'sessions': row['sessions']} for row in provider_rows}
+                    cur.execute("SELECT provider, AVG(ABS(drift_percentage)) as drift FROM reconciliation_jobs WHERE job_date > CURRENT_DATE - INTERVAL '7 days' GROUP BY provider")
+                    recon_rows = cur.fetchall()
+                    recon_acc = {row['provider']: row['drift'] for row in recon_rows}
+                    if not dbudget: return {"error": "No daily budget found in Neon"}
+                    b_amt, rem, updated = dbudget["budget_amount"], dbudget["remaining_amount"], str(dbudget["updated_at"])
+                    spent, avail = b_amt - rem, rem * (1 - self.emergency_reserve_ratio)
+                    alerts = []
+                    if rem < (b_amt * 0.2): alerts.append("LOW_DAILY_BUDGET")
+                    if spent > (b_amt * 0.8): alerts.append("HIGH_DAILY_SPEND")
+                    if avail < 0.50: alerts.append("NEARING_RESERVE")
+                    return {"daily_budget": {"allocated": b_amt, "remaining": rem, "spent": spent, "available": avail, "emergency_reserve": rem - avail}, "provider_breakdown": provider_usage, "reconciliation_accuracy": recon_acc, "alerts": alerts, "budget_health": "GOOD" if not alerts else "WARNING" if len(alerts) < 2 else "CRITICAL", "last_updated": updated}
+        except Exception as e:
+            logger.error(f"get_budget_status failed: {e}")
+            return {"error": str(e)}
 
     def reset_daily_budget(self) -> Dict:
+        if not self.neon_url: return {"error": "Neon DB not configured"}
         today, now = date.today(), datetime.now()
         tomorrow = today + timedelta(days=1)
-        if self.neon_url:
-            try:
-                with psycopg2.connect(self.neon_url) as conn:
-                    with conn.cursor() as cur:
-                        cur.execute("INSERT INTO budget_allocations (period_type, budget_amount, remaining_amount, period_start, period_end, created_at, updated_at) VALUES (%s, %s, %s, %s, %s, %s, %s) ON CONFLICT DO NOTHING", ("daily", self.daily_budget, self.daily_budget, today, tomorrow, now, now))
-                return {"reset": True, "new_budget": self.daily_budget, "date": today.isoformat(), "timestamp": now.isoformat()}
-            except Exception: pass
-        with sqlite3.connect(self.db_path) as conn:
-            conn.execute("INSERT OR REPLACE INTO budget_allocations (period_type, budget_amount, remaining_amount, period_start, period_end, created_at, updated_at) VALUES ('daily', ?, ?, ?, ?, ?, ?)", (self.daily_budget, self.daily_budget, today.isoformat(), tomorrow.isoformat(), now.isoformat(), now.isoformat()))
-        return {"reset": True, "new_budget": self.daily_budget, "date": today.isoformat(), "timestamp": now.isoformat()}
+        try:
+            with psycopg2.connect(self.neon_url) as conn:
+                with conn.cursor() as cur:
+                    cur.execute("INSERT INTO budget_allocations (period_type, budget_amount, remaining_amount, period_start, period_end, created_at, updated_at) VALUES (%s, %s, %s, %s, %s, %s, %s) ON CONFLICT DO NOTHING", ("daily", self.daily_budget, self.daily_budget, today, tomorrow, now, now))
+            return {"reset": True, "new_budget": self.daily_budget, "date": today.isoformat(), "timestamp": now.isoformat()}
+        except Exception as e:
+            logger.error(f"reset_daily_budget failed: {e}")
+            return {"error": str(e)}
 
     def get_usage_summary(self, days: int = 7) -> Dict:
+        if not self.neon_url: return {"error": "Neon DB not configured"}
         cutoff = (datetime.now() - timedelta(days=days)).isoformat()
-        if self.neon_url:
-            try:
-                with psycopg2.connect(self.neon_url) as conn:
-                    with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                        cur.execute("SELECT provider, COUNT(*) as sessions, SUM(input_tokens) as input_tokens, SUM(output_tokens) as output_tokens, SUM(estimated_cost) as estimated_cost, SUM(CASE WHEN reconciled THEN actual_cost ELSE estimated_cost END) as total_cost FROM provider_usage WHERE timestamp > %s GROUP BY provider", (cutoff,))
-                        ptotals = {row["provider"]: dict(row) for row in cur.fetchall()}
-                        cur.execute("SELECT timestamp::date as date, provider, SUM(estimated_cost) as daily_cost FROM provider_usage WHERE timestamp > %s GROUP BY timestamp::date, provider ORDER BY date DESC", (cutoff,))
-                        breakdown = {}
-                        for row in cur.fetchall():
-                            d = str(row["date"])
-                            if d not in breakdown: breakdown[d] = {}
-                            breakdown[d][row["provider"]] = row["daily_cost"]
-                        return {"period_days": days, "provider_totals": ptotals, "daily_breakdown": breakdown, "total_estimated": sum(p["estimated_cost"] for p in ptotals.values()), "total_actual": sum(p["total_cost"] for p in ptotals.values())}
-            except Exception: pass
-        with sqlite3.connect(self.db_path) as conn:
-            cursor = conn.execute("SELECT provider, COUNT(*), SUM(input_tokens), SUM(output_tokens), SUM(estimated_cost), SUM(CASE WHEN reconciled THEN actual_cost ELSE estimated_cost END) FROM provider_usage WHERE timestamp > ? GROUP BY provider", (cutoff,))
-            ptotals = {row[0]: {"sessions": row[1], "input_tokens": row[2], "output_tokens": row[3], "estimated_cost": row[4], "total_cost": row[5]} for row in cursor.fetchall()}
-            cursor = conn.execute("SELECT DATE(timestamp), provider, SUM(estimated_cost) FROM provider_usage WHERE timestamp > ? GROUP BY DATE(timestamp), provider ORDER BY DATE(timestamp) DESC", (cutoff,))
-            breakdown = {}
-            for row in cursor.fetchall():
-                if row[0] not in breakdown: breakdown[row[0]] = {}
-                breakdown[row[0]][row[1]] = row[2]
-        return {"period_days": days, "provider_totals": ptotals, "daily_breakdown": breakdown, "total_estimated": sum(p["estimated_cost"] for p in ptotals.values()), "total_actual": sum(p["total_cost"] for p in ptotals.values())}
+        try:
+            with psycopg2.connect(self.neon_url) as conn:
+                with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                    cur.execute("SELECT provider, COUNT(*) as sessions, SUM(input_tokens) as input_tokens, SUM(output_tokens) as output_tokens, SUM(estimated_cost) as estimated_cost, SUM(CASE WHEN reconciled THEN actual_cost ELSE estimated_cost END) as total_cost FROM provider_usage WHERE timestamp > %s GROUP BY provider", (cutoff,))
+                    ptotals = {row["provider"]: dict(row) for row in cur.fetchall()}
+                    cur.execute("SELECT timestamp::date as date, provider, SUM(estimated_cost) as daily_cost FROM provider_usage WHERE timestamp > %s GROUP BY timestamp::date, provider ORDER BY date DESC", (cutoff,))
+                    breakdown = {}
+                    for row in cur.fetchall():
+                        d = str(row["date"])
+                        if d not in breakdown: breakdown[d] = {}
+                        breakdown[d][row["provider"]] = row["daily_cost"]
+                    return {"period_days": days, "provider_totals": ptotals, "daily_breakdown": breakdown, "total_estimated": sum(p["estimated_cost"] for p in ptotals.values()), "total_actual": sum(p["total_cost"] for p in ptotals.values())}
+        except Exception as e:
+            logger.error(f"get_usage_summary failed: {e}")
+            return {"error": str(e)}
 
 def record_anthropic_usage(model: str, input_tokens: int, output_tokens: int, session_type: str = "interactive", notes: str = "") -> float:
     return VirtualBudgetManager().record_usage(Provider.ANTHROPIC, model, input_tokens, output_tokens, session_type, notes).get("cost", 0.0)
