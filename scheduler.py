@@ -334,31 +334,35 @@ class MecrisScheduler:
         """Register recurring jobs that only the leader should run."""
         for attempt in range(5):
             try:
-                self.scheduler.add_job(
-                    _global_reminder_job, 
-                    'interval', 
-                    minutes=30, 
-                    id='auto_reminder_check',
-                    args=['trigger_reminder_check'],
-                    replace_existing=True
-                )
+                # Check if jobs are already registered to avoid resetting their timers
+                if not self.scheduler.get_job('auto_reminder_check'):
+                    self.scheduler.add_job(
+                        _global_reminder_job, 
+                        'interval', 
+                        minutes=30, 
+                        id='auto_reminder_check',
+                        args=['trigger_reminder_check'],
+                        replace_existing=True
+                    )
                 
                 # Kick off the initial language sync; it will reschedule itself dynamically
-                run_time = datetime.now() + timedelta(seconds=10)
-                self.scheduler.add_job(
-                    _global_language_sync_job,
-                    trigger=DateTrigger(run_date=run_time),
-                    id='auto_language_sync',
-                    replace_existing=True
-                )
+                if not self.scheduler.get_job('auto_language_sync'):
+                    run_time = datetime.now() + timedelta(seconds=10)
+                    self.scheduler.add_job(
+                        _global_language_sync_job,
+                        trigger=DateTrigger(run_date=run_time),
+                        id='auto_language_sync',
+                        replace_existing=True
+                    )
                 
-                self.scheduler.add_job(
-                    _global_walk_sync_job,
-                    'interval',
-                    minutes=15,
-                    id='auto_walk_sync',
-                    replace_existing=True
-                )
+                if not self.scheduler.get_job('auto_walk_sync'):
+                    self.scheduler.add_job(
+                        _global_walk_sync_job,
+                        'interval',
+                        minutes=15,
+                        id='auto_walk_sync',
+                        replace_existing=True
+                    )
                 break
             except Exception as e:
                 if "database is locked" in str(e).lower() and attempt < 4:
