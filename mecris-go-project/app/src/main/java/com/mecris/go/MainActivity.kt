@@ -283,12 +283,14 @@ fun MecrisDashboard(
                         budgetAmount = response.remaining_budget
                     } catch (e: Exception) {
                         Log.e("MecrisDashboard", "Failed to fetch budget: ${e.message}")
+                    } finally {
+                        isFetching = false
                     }
                 }
+            } else {
+                isFetching = false
             }
         }
-        
-        isFetching = false
     }
 
     Scaffold(
