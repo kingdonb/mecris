@@ -4,7 +4,7 @@ import os
 import sqlite3
 import uuid
 import psycopg2
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Dict, Any, Optional, Callable, Coroutine
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.date import DateTrigger
@@ -53,7 +53,7 @@ async def _global_language_sync_job():
         elif min_safebuf == 1:
             next_run_minutes = 60 # Derails tomorrow
             
-        run_time = datetime.now() + timedelta(minutes=next_run_minutes)
+        run_time = datetime.now(timezone.utc) + timedelta(minutes=next_run_minutes)
         scheduler.scheduler.add_job(
             _global_language_sync_job,
             trigger=DateTrigger(run_date=run_time),
@@ -67,7 +67,7 @@ async def _global_language_sync_job():
         # Ensure it runs again even if it failed
         from mcp_server import scheduler
         if scheduler.is_leader:
-            run_time = datetime.now() + timedelta(minutes=60)
+            run_time = datetime.now(timezone.utc) + timedelta(minutes=60)
             scheduler.scheduler.add_job(
                 _global_language_sync_job,
                 trigger=DateTrigger(run_date=run_time),
@@ -214,7 +214,7 @@ class MecrisScheduler:
 
     async def _attempt_leadership(self):
         """Try to claim or maintain the leader role."""
-        now = datetime.now()
+        now = datetime.now(timezone.utc)
         timeout = now - timedelta(seconds=90)
         
         if self.neon_url:
@@ -292,7 +292,7 @@ class MecrisScheduler:
                 
                 # Kick off the initial language sync; it will reschedule itself dynamically
                 if not self.scheduler.get_job('auto_language_sync'):
-                    run_time = datetime.now() + timedelta(seconds=10)
+                    run_time = datetime.now(timezone.utc) + timedelta(seconds=10)
                     self.scheduler.add_job(
                         _global_language_sync_job,
                         trigger=DateTrigger(run_date=run_time),
@@ -328,7 +328,7 @@ class MecrisScheduler:
 
     def enqueue_delayed_message(self, message: str, delay_minutes: int, to_number: Optional[str] = None):
         """Enqueue a job into the shared job store."""
-        run_time = datetime.now() + timedelta(minutes=delay_minutes)
+        run_time = datetime.now(timezone.utc) + timedelta(minutes=delay_minutes)
         job_id = f"msg_{int(run_time.timestamp())}_{self.process_id}"
         
         from twilio_sender import smart_send_message
