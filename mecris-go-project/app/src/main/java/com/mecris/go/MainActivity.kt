@@ -109,6 +109,7 @@ class MainActivity : ComponentActivity() {
                     auth = pocketIdAuth,
                     healthManager = healthConnectManager,
                     syncApi = syncApi,
+                    persistenceManager = persistenceManager,
                     authResultLauncher = authResultLauncher,
                     refreshTrigger = refreshTrigger,
                     onRefreshRequested = { refreshTrigger++ },
@@ -193,6 +194,7 @@ fun MecrisDashboard(
     auth: PocketIdAuth,
     healthManager: HealthConnectManager,
     syncApi: SyncServiceApi,
+    persistenceManager: PersistenceManager,
     authResultLauncher: ActivityResultLauncher<Intent>,
     refreshTrigger: Int,
     onRefreshRequested: () -> Unit,
@@ -242,8 +244,8 @@ fun MecrisDashboard(
     }
 
     val forceSync = {
-        // Increment trigger to bypass cache in LaunchedEffect
-        refreshTrigger++
+        // Trigger parent refresh which will bypass cache
+        onRefreshRequested()
         
         scope.launch {
             isLoading = true
