@@ -32,7 +32,8 @@ async def _global_reminder_job(trigger_func_name: str):
 
 async def _global_language_sync_job():
     """
-    Background job that syncs Clozemaster stats to Beeminder and Neon DB.
+    Background job that syncs Clozemaster stats to Beeminder and Neon DB, 
+    then dynamically reschedules itself based on Beeminder urgency.
     """
     try:
         from mcp_server import scheduler, beeminder_client
@@ -44,6 +45,8 @@ async def _global_language_sync_job():
         
         # Scrape and push to Beeminder
         scraper_data = await sync_clozemaster_to_beeminder(dry_run=False)
+        
+        min_safebuf = 999
         
         # Also update Neon database so the Android app gets fresh data
         if scraper_data:
@@ -81,6 +84,7 @@ async def _global_language_sync_job():
                                 if slug and slug in goal_map:
                                     safebuf = goal_map[slug].get("safebuf", 0)
                                     derail_risk = goal_map[slug].get("derail_risk", "SAFE")
+                                    min_safebuf = min(min_safebuf, safebuf)
                                 
                                 cur.execute("""
                                     INSERT INTO language_stats (language_name, current_reviews, tomorrow_reviews, next_7_days_reviews, safebuf, derail_risk)
@@ -97,8 +101,34 @@ async def _global_language_sync_job():
                 except Exception as e:
                     logger.error(f"Failed to update Neon DB with language stats: {e}")
                     
+        # Dynamic rescheduling logic
+        next_run_minutes = 240 # Default 4 hours
+        if min_safebuf <= 0:
+            next_run_minutes = 15 # Danger zone
+        elif min_safebuf == 1:
+            next_run_minutes = 60 # Derails tomorrow
+            
+        run_time = datetime.now() + timedelta(minutes=next_run_minutes)
+        scheduler.scheduler.add_job(
+            _global_language_sync_job,
+            trigger=DateTrigger(run_date=run_time),
+            id='auto_language_sync',
+            replace_existing=True
+        )
+        logger.info(f"Rescheduled language sync for {run_time.isoformat()} (min safebuf: {min_safebuf})")
+                    
     except Exception as e:
         logger.error(f"Clozemaster sync job failed: {e}")
+        # Ensure it runs again even if it failed
+        from mcp_server import scheduler
+        if scheduler.is_leader:
+            run_time = datetime.now() + timedelta(minutes=60)
+            scheduler.scheduler.add_job(
+                _global_language_sync_job,
+                trigger=DateTrigger(run_date=run_time),
+                id='auto_language_sync',
+                replace_existing=True
+            )
 
 async def _global_walk_sync_job():
     """
@@ -312,13 +342,16 @@ class MecrisScheduler:
                     args=['trigger_reminder_check'],
                     replace_existing=True
                 )
+                
+                # Kick off the initial language sync; it will reschedule itself dynamically
+                run_time = datetime.now() + timedelta(seconds=10)
                 self.scheduler.add_job(
                     _global_language_sync_job,
-                    'interval',
-                    hours=4,
+                    trigger=DateTrigger(run_date=run_time),
                     id='auto_language_sync',
                     replace_existing=True
                 )
+                
                 self.scheduler.add_job(
                     _global_walk_sync_job,
                     'interval',
