@@ -538,7 +538,7 @@ async def get_language_velocity_stats(user_id: str = None) -> Dict[str, Any]:
         lang_goals = {"arabic": "reviewstack", "greek": "reviewstack-greek"}
         completions = {}
         for lang, slug in lang_goals.items():
-            datapoints = await beeminder_client.get_datapoints(slug)
+            datapoints = await beeminder_client.get_goal_datapoints(slug)
             # sum all datapoints with today's date
             today_str = datetime.now().strftime("%Y-%m-%d")
             completions[lang] = sum(float(dp["value"]) for dp in datapoints if dp["daystamp"] == today_str)
