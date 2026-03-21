@@ -14,12 +14,14 @@ import java.time.format.DateTimeFormatter
 
 class WalkHeuristicsWorker(
     appContext: Context,
-    workerParams: WorkerParameters
+    workerParams: WorkerParameters,
+    private val injectedAuth: PocketIdAuth? = null,
+    private val injectedSyncApi: SyncServiceApi? = null
 ) : CoroutineWorker(appContext, workerParams) {
 
-    private val pocketIdAuth = PocketIdAuth(applicationContext)
+    private val pocketIdAuth = injectedAuth ?: PocketIdAuth(applicationContext)
     private val spinBaseUrl = "https://mecris-go-api-xupkwcis.fermyon.app/" 
-    private val syncApi = SyncServiceApi.create(spinBaseUrl)
+    private val syncApi = injectedSyncApi ?: SyncServiceApi.create(spinBaseUrl)
     
     private val prefs = applicationContext.getSharedPreferences("mecris_worker_state", Context.MODE_PRIVATE)
 
@@ -34,6 +36,30 @@ class WalkHeuristicsWorker(
         
         Log.d("WalkHeuristicsWorker", "Executing background check for $today (Last steps: $lastStepCount)")
         
+        // 4. Reliable Token Retrieval
+        val token = pocketIdAuth.getAccessTokenSuspend()
+
+        // --- Heartbeat & Cooperation Phase (Agnostic of Health Permissions) ---
+        try {
+            if (token != null) {
+                val hbResponse = syncApi.sendHeartbeat(
+                    "Bearer $token",
+                    com.mecris.go.sync.HeartbeatRequestDto(role = "android_client", process_id = "com.mecris.go")
+                )
+                Log.i("WalkHeuristicsWorker", "Heartbeat SUCCESS. MCP Active: ${hbResponse.mcp_server_active}")
+
+                // Cooperative Failover: If MCP is dark and we haven't triggered in 2 hours
+                val twoHoursAgo = Instant.now().minusSeconds(7200).toEpochMilli()
+                if (!hbResponse.mcp_server_active && lastFailoverTrigger < twoHoursAgo) {
+                    Log.w("WalkHeuristicsWorker", "MCP Server is DARK. Triggering Autonomous Failover Sync.")
+                    syncApi.triggerFailoverSync("Bearer $token")
+                    prefs.edit().putLong("last_failover_trigger", Instant.now().toEpochMilli()).apply()
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("WalkHeuristicsWorker", "Cooperative check failed: ${e.message}")
+        }
+
         val healthManager = HealthConnectManager(applicationContext)
         
         // 2. Permission Check
@@ -43,28 +69,6 @@ class WalkHeuristicsWorker(
         }
 
         try {
-            // Heartbeat & Cooperation Phase
-            val token = pocketIdAuth.getAccessTokenSuspend()
-            if (token != null) {
-                try {
-                    val hbResponse = syncApi.sendHeartbeat(
-                        "Bearer $token",
-                        HeartbeatRequestDto(role = "android_client", process_id = "com.mecris.go")
-                    )
-                    Log.i("WalkHeuristicsWorker", "Heartbeat SUCCESS. MCP Active: ${hbResponse.mcp_server_active}")
-
-                    // Cooperative Failover: If MCP is dark and we haven't triggered in 2 hours
-                    val twoHoursAgo = Instant.now().minusSeconds(7200).toEpochMilli()
-                    if (!hbResponse.mcp_server_active && lastFailoverTrigger < twoHoursAgo) {
-                        Log.w("WalkHeuristicsWorker", "MCP Server is DARK. Triggering Autonomous Failover Sync.")
-                        syncApi.triggerFailoverSync("Bearer $token")
-                        prefs.edit().putLong("last_failover_trigger", Instant.now().toEpochMilli()).apply()
-                    }
-                } catch (e: Exception) {
-                    Log.e("WalkHeuristicsWorker", "Cooperative check failed: ${e.message}")
-                }
-            }
-
             val summary = healthManager.fetchRecentWalkData()
             Log.d("WalkHeuristicsWorker", "Health Data: Inferred=${summary.isWalkInferred}, Steps=${summary.totalSteps}")
             
