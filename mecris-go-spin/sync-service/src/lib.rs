@@ -101,6 +101,11 @@ async fn handle_sync_service(req: Request) -> anyhow::Result<impl IntoResponse> 
             return Ok(Response::builder().status(405).body("Method Not Allowed").build());
         }
         return handle_health_get(req).await;
+    } else if path == "/heartbeat" {
+        if req.method() != &spin_sdk::http::Method::Post {
+            return Ok(Response::builder().status(405).body("Method Not Allowed").build());
+        }
+        return handle_heartbeat_post(req).await;
     } else if path == "/internal/failover-sync" {
         if req.method() != &spin_sdk::http::Method::Post && req.method() != &spin_sdk::http::Method::Get {
             return Ok(Response::builder().status(405).body("Method Not Allowed").build());
@@ -478,6 +483,89 @@ async fn handle_health_get(_req: Request) -> anyhow::Result<Response> {
         home_server_active: is_leader_active,
         leader_pid,
         last_seen,
+    };
+
+    Ok(Response::builder()
+        .status(200)
+        .header("content-type", "application/json")
+        .body(serde_json::to_string(&resp).unwrap())
+        .build())
+}
+
+#[derive(Deserialize)]
+struct HeartbeatRequest {
+    role: String,
+    process_id: String,
+}
+
+#[derive(Serialize)]
+struct HeartbeatResponse {
+    status: String,
+    mcp_server_active: bool,
+}
+
+async fn handle_heartbeat_post(req: Request) -> anyhow::Result<Response> {
+    let body_bytes = req.into_body();
+    let body_str = match std::str::from_utf8(&body_bytes) {
+        Ok(s) => s,
+        Err(_) => return Ok(Response::builder().status(400).body("Invalid UTF-8 body").build())
+    };
+
+    let req_data: HeartbeatRequest = match serde_json::from_str(body_str) {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("JSON parse error: {}", e);
+            return Ok(Response::builder().status(400).body("Invalid JSON payload").build())
+        }
+    };
+
+    let db_url = match variables::get("db_url") {
+        Ok(url) if !url.is_empty() => url,
+        _ => return Ok(Response::builder().status(500).body("Missing db_url").build())
+    };
+
+    let connection = match Connection::open(&db_url) {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("DB Connection failed: {:?}", e);
+            return Ok(Response::builder().status(500).body("Internal DB Error").build())
+        }
+    };
+
+    // Upsert the heartbeat
+    let upsert_query = "
+        INSERT INTO scheduler_election (role, process_id, heartbeat)
+        VALUES ($1, $2, CURRENT_TIMESTAMP)
+        ON CONFLICT (role) DO UPDATE SET
+            process_id = EXCLUDED.process_id,
+            heartbeat = CURRENT_TIMESTAMP
+    ";
+    
+    let _ = connection.execute(
+        upsert_query,
+        &[
+            ParameterValue::Str(req_data.role.clone()),
+            ParameterValue::Str(req_data.process_id.clone())
+        ]
+    );
+
+    // Query MCP Server status (fallback to checking 'leader' for backward compatibility)
+    let query = "SELECT (heartbeat > NOW() - INTERVAL '90 seconds') as is_active FROM scheduler_election WHERE role IN ('leader', 'mcp_server') ORDER BY heartbeat DESC LIMIT 1";
+    let row_set = match connection.query(query, &[]) {
+        Ok(rs) => rs,
+        Err(_) => return Ok(Response::builder().status(500).body("Internal DB Error").build())
+    };
+
+    let mut is_mcp_active = false;
+    if !row_set.rows.is_empty() {
+        if let DbValue::Boolean(active) = &row_set.rows[0][0] {
+            is_mcp_active = *active;
+        }
+    }
+
+    let resp = HeartbeatResponse {
+        status: "ok".to_string(),
+        mcp_server_active: is_mcp_active,
     };
 
     Ok(Response::builder()
