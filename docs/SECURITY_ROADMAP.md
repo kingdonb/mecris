@@ -51,6 +51,8 @@
 ## 👥 Phase 2: Architectural Multi-Tenancy (Steps 11-30)
 
 11. **Strict Row-Level Isolation (Application Layer)**
+    - (In Progress) Every record in `language_stats` and `budget_tracking` now includes a `user_id`.
+    - **Goal Funnel**: The `language_stats` table now includes a `beeminder_slug` column. Languages without a slug are automatically deprioritized in the UI, creating a natural "funnel" for users to connect their learning progress to Beeminder goals.
     - Update all Python and Rust backend queries to include mandatory `WHERE user_id = :verified_sub`.
 
 12. **User-Scoped Secrets API**
