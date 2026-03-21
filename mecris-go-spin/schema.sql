@@ -41,6 +41,7 @@ CREATE TABLE IF NOT EXISTS language_stats (
     daily_rate NUMERIC(10, 2) DEFAULT 0,
     safebuf INTEGER DEFAULT 0,
     derail_risk VARCHAR(50) DEFAULT 'SAFE',
+    pump_multiplier NUMERIC(4, 1) DEFAULT 1.0,
     last_updated TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
