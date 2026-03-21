@@ -55,6 +55,9 @@ import com.mecris.go.sync.PersistenceManager
 import com.mecris.go.sync.DashboardCache
 import kotlinx.coroutines.launch
 import java.time.Instant
+import retrofit2.HttpException
+import com.google.gson.Gson
+import com.mecris.go.sync.SyncResponse
 import java.time.LocalDateTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -67,7 +70,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var healthConnectManager: HealthConnectManager
     private lateinit var persistenceManager: PersistenceManager
 
-    private val spinBaseUrl = "https://mecris-go-api-xupkwcis.fermyon.app/" 
+    private val spinBaseUrl = "https://mecris-sync-v2-r0r86pso.fermyon.app/" 
     private val syncApi = SyncServiceApi.create(spinBaseUrl)
 
     private val authResultLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
@@ -322,6 +325,14 @@ fun MecrisDashboard(
                         // Proactively trigger failover sync (Spin will skip if Home is active)
                         try {
                             syncApi.triggerFailoverSync("Bearer $token")
+                        } catch (se: HttpException) {
+                            val errorBody = se.response()?.errorBody()?.string()
+                            val detail = try {
+                                Gson().fromJson(errorBody, SyncResponse::class.java).message
+                            } catch (e: Exception) {
+                                errorBody ?: se.message()
+                            }
+                            Log.w("MecrisDashboard", "Failover sync trigger failed ($detail)")
                         } catch (se: Exception) {
                             Log.w("MecrisDashboard", "Failover sync trigger skipped/failed: ${se.message}")
                         }
@@ -339,6 +350,15 @@ fun MecrisDashboard(
                             homeServerActive = homeServerActive,
                             lastSyncTime = now
                         ))
+                    } catch (e: HttpException) {
+                        val errorBody = e.response()?.errorBody()?.string()
+                        val detail = try {
+                            Gson().fromJson(errorBody, SyncResponse::class.java).message
+                        } catch (ex: Exception) {
+                            errorBody ?: e.message()
+                        }
+                        Log.e("MecrisDashboard", "Failed to fetch remote data: $detail")
+                        fetchError = detail
                     } catch (e: Exception) {
                         Log.e("MecrisDashboard", "Failed to fetch remote data: ${e.message}")
                         fetchError = e.message ?: "Unknown error"
