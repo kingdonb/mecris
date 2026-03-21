@@ -8,13 +8,13 @@ def test_maintenance_lever_only_clears_liabilities():
     assert target == 100
 
 def test_aggressive_lever_clears_portion_of_backlog():
-    pump = ReviewPump(multiplier=4.0) # 5 days
-    # 1000 debt, 0 tomorrow liability -> target should be 200
+    pump = ReviewPump(multiplier=4.0) # 7 days
+    # 1000 debt, 0 tomorrow liability -> target should be 142
     target = pump.calculate_target(current_debt=1000, tomorrow_liability=0)
-    assert target == 200
+    assert target == 142
 
 def test_blitz_lever_clears_half_backlog():
-    pump = ReviewPump(multiplier=10.0) # 2 days
+    pump = ReviewPump(multiplier=7.0) # 2 days
     target = pump.calculate_target(current_debt=1000, tomorrow_liability=50)
     assert target == 550 # 500 (half debt) + 50 (liability)
 
