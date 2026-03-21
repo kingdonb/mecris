@@ -32,6 +32,10 @@ CREATE TABLE IF NOT EXISTS walk_inferences (
     CONSTRAINT idx_walk_user_start UNIQUE (user_id, start_time)
 );
 
+-- Performance Indexes
+CREATE INDEX IF NOT EXISTS idx_walk_status ON walk_inferences(status);
+CREATE INDEX IF NOT EXISTS idx_walk_start_time ON walk_inferences (start_time);
+
 -- 4. Language Stats Table
 CREATE TABLE IF NOT EXISTS language_stats (
     language_name VARCHAR(50) PRIMARY KEY,
