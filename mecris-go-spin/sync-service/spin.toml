@@ -18,11 +18,10 @@ clozemaster_password = { required = false, default = "" }
 route = "/..."
 component = "sync-service"
 
-# [[trigger.cron]]
-# component = "sync-service"
-# cron_expression = "0 0 */2 * * *"
-# NOTE: Cron is temporarily disabled to avoid masking issues in the main framework.
-# It should only be re-enabled once the MCP leader can coordinate these events.
+[[trigger.cron]]
+component = "sync-service"
+cron_expression = "0 0 */2 * * *"
+# Cron enabled to support Autonomous Failover (Issue #100)
 
 [component.sync-service]
 source = "target/wasm32-wasip1/release/sync_service.wasm"
