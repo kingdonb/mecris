@@ -490,24 +490,24 @@ async def get_coaching_insight() -> Dict[str, Any]:
         return {"error": str(e)}
 
 @mcp.tool(description="Set the Review Pump intensity multiplier (1.0, 2.0, 4.0, 10.0).")
-async def set_review_pump_lever(language: str, multiplier: float) -> Dict[str, Any]:
+async def set_review_pump_lever(language: str, multiplier: float, user_id: str = None) -> Dict[str, Any]:
     """Adjust how fast the backlog should be cleared. 1.0=Maintenance, 4.0=Aggressive, 10.0=Blitz."""
-    valid_multipliers = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0]
+    valid_multipliers = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 10.0]
     if multiplier not in valid_multipliers:
         return {"error": f"Invalid multiplier. Must be one of {valid_multipliers}"}
 
-    success = await asyncio.to_thread(neon_checker.update_pump_multiplier, language, multiplier)
+    success = await asyncio.to_thread(neon_checker.update_pump_multiplier, language, multiplier, user_id)
     if success:
         return {"success": True, "message": f"Review Pump for {language} set to {multiplier}x"}
     else:
         return {"error": "Failed to update multiplier in Neon DB"}
 
 @mcp.tool(description="Calculate the language review velocity (Review Pump) required to hit 0 reviews.")
-async def get_language_velocity_stats() -> Dict[str, Any]:
+async def get_language_velocity_stats(user_id: str = None) -> Dict[str, Any]:
     """Calculate the velocity required to hit 0 reviews based on current debt, forecasted liabilities, and chosen lever."""
     try:
         # 1. Get stats from Neon (cached from last scraper run) - use to_thread to avoid blocking event loop
-        db_stats = await asyncio.to_thread(neon_checker.get_language_stats)
+        db_stats = await asyncio.to_thread(neon_checker.get_language_stats, user_id)
         if not db_stats:
             # Fallback to scrape if DB is empty
             scraper_data = await sync_clozemaster_to_beeminder(dry_run=True)
