@@ -17,10 +17,12 @@
     - Implement a "bootstrap" admin user identified by a specific `sub`.
     - **Step 2 Goal**: Centralize trust configuration in Fermyon Cloud secrets.
 
-3.  **PII Encryption at Rest**
+3.  **PII Encryption at Rest & Third-Party OAuth Transition**
     - Integrate AES-256-GCM encryption in the Rust backend for `beeminder_token_encrypted`.
-    - Store the `MASTER_ENCRYPTION_KEY` in a hardware-backed secret store.
-    - **Step 3 Goal**: Ensure a database breach does not reveal user Beeminder tokens.
+    - **Transition to Beeminder Client OAuth**: Avoid storing Beeminder tokens entirely by implementing the [Beeminder Client OAuth flow](https://api.beeminder.com/#client-oauth).
+    - **Clozemaster Auth Research**: Investigate if Clozemaster's Google/Apple OAuth flow can be leveraged for the scraper to avoid password storage. Derive their private API directly from the React model to minimize data scraping overhead.
+    - Store any remaining sensitive secrets (e.g., encryption keys) in a hardware-backed secret store.
+    - **Step 3 Goal**: Eliminate token/password storage where possible; encrypt what remains.
 
 4.  **PKCE and Nonce Audit**
     - Audit the Android AppAuth flow to ensure Proof Key for Code Exchange (PKCE) is strictly enforced.
