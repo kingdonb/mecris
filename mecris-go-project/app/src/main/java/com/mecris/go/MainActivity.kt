@@ -217,9 +217,9 @@ fun MecrisDashboard(
     var homeServerActive by remember { mutableStateOf<Boolean?>(cache?.homeServerActive) }
     var isLoading by remember { mutableStateOf(false) }
     var isFetching by remember { mutableStateOf(persistenceManager.isCacheStale()) }
+    var surgicalUpdateInProgress by remember { mutableStateOf(false) }
 
-    var fetchError by remember { mutableStateOf<String?>(null) }
-    var syncStatus by remember { mutableStateOf("Ready") }
+    var fetchError by remember { mutableStateOf<String?>(null) }    var syncStatus by remember { mutableStateOf("Ready") }
     var lastSyncTime by remember { mutableStateOf(cache?.lastSyncTime ?: "") }
     
     // UI State
@@ -299,6 +299,10 @@ fun MecrisDashboard(
     }
 
     LaunchedEffect(refreshTrigger) {
+        if (surgicalUpdateInProgress) {
+            Log.d("MecrisDashboard", "Skipping full refresh: surgical update in progress")
+            return@LaunchedEffect
+        }
         val isStale = persistenceManager.isCacheStale()
         // Only skip if this is the initial launch AND cache is fresh
         if (refreshTrigger == 0 && !isStale) {
@@ -438,6 +442,7 @@ fun MecrisDashboard(
                             try {
                                 val token = auth.getAccessTokenSuspend()
                                 if (token != null) {
+                                    surgicalUpdateInProgress = true
                                     syncApi.updateMultiplier(
                                         "Bearer $token",
                                         com.mecris.go.sync.MultiplierRequestDto(name, multiplier)
@@ -457,10 +462,15 @@ fun MecrisDashboard(
                                         lastSyncTime = lastSyncTime
                                     ))
                                     
-                                    // Also trigger a surgical refresh via parent to sync with potential backend side-effects
+                                    // Give the backend a moment to settle
+                                    kotlinx.coroutines.delay(1000)
+                                    surgicalUpdateInProgress = false
+                                    
+                                    // Now trigger a refresh to sync everything else
                                     onRefreshRequested()
                                 }
                             } catch (e: Exception) {
+                                surgicalUpdateInProgress = false
                                 Log.e("MecrisApp", "Failed to update multiplier: ${e.message}")
                             }
                         }
@@ -711,13 +721,9 @@ fun ReviewPumpWidget(
     stat: com.mecris.go.sync.LanguageStatDto,
     onMultiplierChange: (String, Double) -> Unit
 ) {
-    // 1. OPTIMISTIC STATE: We keep a local copy of the multiplier so the UI reacts instantly
-    var localMultiplier by remember(stat.name, stat.pump_multiplier) { 
-        mutableStateOf(stat.pump_multiplier ?: 1.0) 
-    }
-    
-    val leverName = com.mecris.go.sync.ReviewPumpCalculator.getLeverName(localMultiplier)
-    val targetFlowRate = com.mecris.go.sync.ReviewPumpCalculator.calculateTargetFlowRate(localMultiplier, stat.current, stat.tomorrow)
+    val currentMultiplier = stat.pump_multiplier ?: 1.0
+    val leverName = com.mecris.go.sync.ReviewPumpCalculator.getLeverName(currentMultiplier)
+    val targetFlowRate = com.mecris.go.sync.ReviewPumpCalculator.calculateTargetFlowRate(currentMultiplier, stat.current, stat.tomorrow)
     
     val accentColor = if (stat.name.equals("ARABIC", ignoreCase = true)) Color(0xFFFFD600) 
                       else if (stat.name.equals("GREEK", ignoreCase = true)) Color(0xFF00E5FF) 
@@ -869,7 +875,7 @@ fun ReviewPumpWidget(
                 Text("SHIFT LEVER", style = MaterialTheme.typography.labelSmall, color = Color.Gray)
                 Row {
                     (1..7).forEach { i ->
-                        val isSelected = localMultiplier.toInt() == i
+                        val isSelected = currentMultiplier.toInt() == i
                         Box(
                             modifier = Modifier
                                 .padding(horizontal = 4.dp)
@@ -879,8 +885,6 @@ fun ReviewPumpWidget(
                                     RoundedCornerShape(6.dp)
                                 )
                                 .clickable { 
-                                    // 2. IMMEDIATE FEEDBACK: Update local state before network call
-                                    localMultiplier = i.toDouble()
                                     onMultiplierChange(stat.name, i.toDouble()) 
                                 },
                             contentAlignment = Alignment.Center
