@@ -3,7 +3,7 @@
 spin_manifest_version = 2
 
 [application]
-name = "mecris-go-api"
+name = "mecris-sync-v2"
 version = "0.1.0"
 authors = ["Kingdon B <kingdon@urmanac.com>"]
 description = ""
@@ -11,8 +11,11 @@ description = ""
 [variables]
 db_url = { required = false, default = "" }
 auth_bypass = { required = false, default = "false" }
+oidc_discovery_url = { required = false, default = "https://metnoom.urmanac.com/.well-known/openid-configuration" }
+oidc_jwks_json = { required = false, default = "" }
 clozemaster_email = { required = false, default = "" }
 clozemaster_password = { required = false, default = "" }
+master_encryption_key = { required = false, default = "" }
 
 [[trigger.http]]
 route = "/..."
@@ -31,8 +34,11 @@ key_value_stores = ["default"]
 [component.sync-service.variables]
 db_url = "{{ db_url }}"
 auth_bypass = "{{ auth_bypass }}"
+oidc_discovery_url = "{{ oidc_discovery_url }}"
+oidc_jwks_json = "{{ oidc_jwks_json }}"
 clozemaster_email = "{{ clozemaster_email }}"
 clozemaster_password = "{{ clozemaster_password }}"
+master_encryption_key = "{{ master_encryption_key }}"
 [component.sync-service.build]
 command = "cargo build --target wasm32-wasip1 --release"
 watch = ["src/**/*.rs", "Cargo.toml"]

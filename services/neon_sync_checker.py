@@ -13,6 +13,7 @@ class NeonSyncChecker:
 
     def __init__(self):
         self.db_url = os.getenv("NEON_DB_URL")
+        self.default_user_id = os.getenv("DEFAULT_USER_ID")
         if not self.db_url:
             logger.warning("NEON_DB_URL not configured. Cloud walk sync checks will be skipped.")
 
@@ -24,6 +25,8 @@ class NeonSyncChecker:
         """
         if not self.db_url:
             return False
+            
+        target_user_id = user_id or self.default_user_id
 
         try:
             # Connect to Neon
@@ -44,9 +47,9 @@ class NeonSyncChecker:
             """
             params = [today_start.replace(tzinfo=None)] # AT TIME ZONE returns a naive timestamp in that zone
 
-            if user_id:
+            if target_user_id:
                 query += " AND user_id = %s"
-                params.append(user_id)
+                params.append(target_user_id)
 
             cur.execute(query, params)
             count = cur.fetchone()[0]
@@ -65,6 +68,8 @@ class NeonSyncChecker:
         """Fetches the most recent walk record for the user."""
         if not self.db_url:
             return None
+            
+        target_user_id = user_id or self.default_user_id
 
         try:
             conn = psycopg2.connect(self.db_url)
@@ -73,9 +78,9 @@ class NeonSyncChecker:
             query = "SELECT start_time::TIMESTAMPTZ, step_count, distance_meters, distance_source FROM walk_inferences"
             params = []
             
-            if user_id:
+            if target_user_id:
                 query += " WHERE user_id = %s"
-                params.append(user_id)
+                params.append(target_user_id)
             
             query += " ORDER BY start_time DESC LIMIT 1"
 
@@ -98,16 +103,18 @@ class NeonSyncChecker:
             logger.error(f"Failed to fetch latest walk from Neon: {e}")
             return None
 
-    def get_language_stats(self) -> Dict[str, Any]:
-        """Fetches all rows from language_stats table."""
+    def get_language_stats(self, user_id: str = None) -> Dict[str, Any]:
+        """Fetches all rows from language_stats table for the user."""
         if not self.db_url:
             return {}
+            
+        target_user_id = user_id or self.default_user_id
 
         try:
             conn = psycopg2.connect(self.db_url)
             cur = conn.cursor()
 
-            cur.execute("SELECT language_name, current_reviews, tomorrow_reviews, next_7_days_reviews, pump_multiplier FROM language_stats")
+            cur.execute("SELECT language_name, current_reviews, tomorrow_reviews, next_7_days_reviews, pump_multiplier FROM language_stats WHERE user_id = %s", (target_user_id,))
             rows = cur.fetchall()
 
             cur.close()
@@ -127,10 +134,12 @@ class NeonSyncChecker:
             logger.error(f"Failed to fetch language stats from Neon: {e}")
             return {}
 
-    def update_pump_multiplier(self, language_name: str, multiplier: float) -> bool:
-        """Updates the pump_multiplier for a specific language."""
+    def update_pump_multiplier(self, language_name: str, multiplier: float, user_id: str = None) -> bool:
+        """Updates the pump_multiplier for a specific language and user."""
         if not self.db_url:
             return False
+            
+        target_user_id = user_id or self.default_user_id
 
         try:
             conn = psycopg2.connect(self.db_url)
@@ -139,8 +148,8 @@ class NeonSyncChecker:
             cur.execute("""
                 UPDATE language_stats 
                 SET pump_multiplier = %s 
-                WHERE language_name = %s
-            """, (multiplier, language_name.upper()))
+                WHERE language_name = %s AND user_id = %s
+            """, (multiplier, language_name.upper(), target_user_id))
             
             conn.commit()
             cur.close()
