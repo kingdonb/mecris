@@ -40,6 +40,12 @@ interface SyncServiceApi {
         @Body heartbeatData: HeartbeatRequestDto
     ): HeartbeatResponseDto
 
+    @POST("languages/multiplier")
+    suspend fun updateMultiplier(
+        @Header("Authorization") authHeader: String,
+        @Body request: MultiplierRequestDto
+    ): retrofit2.Response<Unit>
+
     companion object {
         fun create(baseUrl: String): SyncServiceApi {
             return Retrofit.Builder()
@@ -101,4 +107,9 @@ data class HeartbeatRequestDto(
 data class HeartbeatResponseDto(
     val status: String,
     val mcp_server_active: Boolean
+)
+
+data class MultiplierRequestDto(
+    val name: String,
+    val multiplier: Double
 )

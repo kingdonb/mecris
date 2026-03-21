@@ -13,6 +13,7 @@ import androidx.compose.animation.animateColor
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -98,7 +99,7 @@ class MainActivity : ComponentActivity() {
             refreshTrigger++
         }
 
-        val requestBackgroundPermission = registerForActivityResult(requestPermissionActivityContract) { granted ->
+        val requestBackgroundPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
             Log.d("MainActivity", "Background Permission Result: $granted")
             refreshTrigger++
         }
@@ -134,7 +135,7 @@ class MainActivity : ComponentActivity() {
                     onRequestBackground = { 
                         try {
                             Log.d("MainActivity", "Launching background request: ${healthConnectManager.backgroundPermission}")
-                            requestBackgroundPermission.launch(setOf(healthConnectManager.backgroundPermission)) 
+                            requestBackgroundPermission.launch(healthConnectManager.backgroundPermission) 
                         } catch (e: Exception) {
                             Log.e("MainActivity", "Failed to launch background request: ${e.message}")
                             Toast.makeText(this@MainActivity, "Could not open permission dialog. Please check Health Connect settings.", Toast.LENGTH_LONG).show()
@@ -221,13 +222,21 @@ fun MecrisDashboard(
     // UI State
     var showSystemHealth by remember { mutableStateOf(false) }
     
-    // Lifecycle listener to refresh on resume (without activity.recreate loop)
+    // Lifecycle listener to refresh on resume (with 30s debounce to prevent loops)
     val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    var lastResumeRefresh by remember { mutableLongStateOf(0L) }
+    
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
-                Log.d("MecrisDashboard", "Activity resumed, triggering surgical refresh")
-                onRefreshRequested()
+                val now = System.currentTimeMillis()
+                if (now - lastResumeRefresh > 30000L) { // 30 second debounce
+                    Log.d("MecrisDashboard", "Activity resumed, triggering surgical refresh")
+                    lastResumeRefresh = now
+                    onRefreshRequested()
+                } else {
+                    Log.d("MecrisDashboard", "Activity resumed, skipping refresh (debounced)")
+                }
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -403,7 +412,24 @@ fun MecrisDashboard(
                     collectGpsRoutes = collectGpsRoutes,
                     onForceSync = { forceSync() },
                     onOpenSystemHealth = { showSystemHealth = true },
-                    onRequestRoute = onRequestRoute
+                    onRequestRoute = onRequestRoute,
+                    onMultiplierChange = { name, multiplier ->
+                        scope.launch {
+                            try {
+                                val token = auth.getAccessTokenSuspend()
+                                if (token != null) {
+                                    syncApi.updateMultiplier(
+                                        "Bearer $token",
+                                        com.mecris.go.sync.MultiplierRequestDto(name, multiplier)
+                                    )
+                                    // Trigger a surgical refresh via parent
+                                    onRefreshRequested()
+                                }
+                            } catch (e: Exception) {
+                                Log.e("MecrisApp", "Failed to update multiplier: ${e.message}")
+                            }
+                        }
+                    }
                 )
             }
         }
@@ -425,7 +451,8 @@ fun MainNeuralDashboard(
     collectGpsRoutes: Boolean,
     onForceSync: () -> Unit,
     onOpenSystemHealth: () -> Unit,
-    onRequestRoute: (String) -> Unit
+    onRequestRoute: (String) -> Unit,
+    onMultiplierChange: (String, Double) -> Unit
 ) {
     Text(
         text = "SYSTEM MOMENTUM",
@@ -635,17 +662,27 @@ fun MainNeuralDashboard(
         )
     } else {
         languageStats.forEach { stat ->
-            ReviewPumpWidget(stat)
+            ReviewPumpWidget(
+                stat = stat,
+                onMultiplierChange = onMultiplierChange
+            )
             Spacer(modifier = Modifier.height(16.dp))
         }
     }
 }
 
 @Composable
-fun ReviewPumpWidget(stat: com.mecris.go.sync.LanguageStatDto) {
-    val multiplier = stat.pump_multiplier ?: 1.0
-    val leverName = com.mecris.go.sync.ReviewPumpCalculator.getLeverName(multiplier)
-    val targetFlowRate = com.mecris.go.sync.ReviewPumpCalculator.calculateTargetFlowRate(multiplier, stat.current, stat.tomorrow)
+fun ReviewPumpWidget(
+    stat: com.mecris.go.sync.LanguageStatDto,
+    onMultiplierChange: (String, Double) -> Unit
+) {
+    // 1. OPTIMISTIC STATE: We keep a local copy of the multiplier so the UI reacts instantly
+    var localMultiplier by remember(stat.name, stat.pump_multiplier) { 
+        mutableStateOf(stat.pump_multiplier ?: 1.0) 
+    }
+    
+    val leverName = com.mecris.go.sync.ReviewPumpCalculator.getLeverName(localMultiplier)
+    val targetFlowRate = com.mecris.go.sync.ReviewPumpCalculator.calculateTargetFlowRate(localMultiplier, stat.current, stat.tomorrow)
     
     val accentColor = if (stat.name.equals("ARABIC", ignoreCase = true)) Color(0xFFFFD600) 
                       else if (stat.name.equals("GREEK", ignoreCase = true)) Color(0xFF00E5FF) 
@@ -694,13 +731,30 @@ fun ReviewPumpWidget(stat: com.mecris.go.sync.LanguageStatDto) {
                 }
             }
 
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // Liability Numbers
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column {
+                    Text("TOMORROW", style = MaterialTheme.typography.labelSmall, color = Color.Gray)
+                    Text("+${stat.tomorrow}", style = MaterialTheme.typography.titleSmall, color = Color.White, fontWeight = FontWeight.Bold)
+                }
+                Column(horizontalAlignment = Alignment.End) {
+                    Text("7 DAY", style = MaterialTheme.typography.labelSmall, color = Color.Gray)
+                    Text("+${stat.next_7_days}", style = MaterialTheme.typography.titleSmall, color = Color.White, fontWeight = FontWeight.Bold)
+                }
+            }
+
             Spacer(modifier = Modifier.height(16.dp))
 
             // The Pressure Gauge
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(60.dp)
+                    .height(80.dp) // Taller for more impact
                     .background(Color.Black, RoundedCornerShape(8.dp))
                     .padding(8.dp),
                 contentAlignment = Alignment.CenterStart
@@ -713,8 +767,7 @@ fun ReviewPumpWidget(stat: com.mecris.go.sync.LanguageStatDto) {
                         .background(Color(0xFF333333), RoundedCornerShape(4.dp))
                 )
                 
-                // The Target Marker (Vertical line on the track)
-                // Assuming max readable scale is 1000 for visualization
+                // The Target Marker
                 val maxScale = 1000.0
                 val targetPos = (targetFlowRate / maxScale).coerceIn(0.1, 0.9).toFloat()
                 
@@ -735,7 +788,13 @@ fun ReviewPumpWidget(stat: com.mecris.go.sync.LanguageStatDto) {
                 ) {
                     Column {
                         Text("TARGET FLOW", style = MaterialTheme.typography.labelSmall, color = Color.Gray)
-                        Text("$targetFlowRate", style = MaterialTheme.typography.titleLarge, color = Color.White, fontWeight = FontWeight.Black)
+                        // THE ONE NUMBER: Significantly bigger and bolder
+                        Text(
+                            text = "$targetFlowRate", 
+                            style = MaterialTheme.typography.headlineLarge, 
+                            color = accentColor, 
+                            fontWeight = FontWeight.Black
+                        )
                     }
                     
                     Column(horizontalAlignment = Alignment.End) {
@@ -745,33 +804,47 @@ fun ReviewPumpWidget(stat: com.mecris.go.sync.LanguageStatDto) {
                 }
             }
 
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(16.dp))
 
-            // The Lever (Radio Spots)
+            // The Lever (Interactive Radio Spots)
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("LEVER", style = MaterialTheme.typography.labelSmall, color = Color.Gray)
+                Text("SHIFT LEVER", style = MaterialTheme.typography.labelSmall, color = Color.Gray)
                 Row {
                     (1..7).forEach { i ->
-                        val isSelected = multiplier.toInt() == i
+                        val isSelected = localMultiplier.toInt() == i
                         Box(
                             modifier = Modifier
                                 .padding(horizontal = 4.dp)
-                                .size(12.dp)
+                                .size(32.dp) // Larger tap target
                                 .background(
-                                    if (isSelected) accentColor else Color.DarkGray,
-                                    RoundedCornerShape(2.dp)
+                                    if (isSelected) accentColor else Color(0xFF333333),
+                                    RoundedCornerShape(6.dp)
                                 )
-                        )
+                                .clickable { 
+                                    // 2. IMMEDIATE FEEDBACK: Update local state before network call
+                                    localMultiplier = i.toDouble()
+                                    onMultiplierChange(stat.name, i.toDouble()) 
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "${i}x",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = if (isSelected) Color.Black else Color.Gray,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
                     }
                 }
             }
         }
     }
 }
+
 
 
 @Composable
