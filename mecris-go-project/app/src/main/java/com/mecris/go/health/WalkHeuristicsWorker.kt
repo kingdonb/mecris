@@ -12,7 +12,9 @@ import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
-class WalkHeuristicsWorker(
+import kotlin.jvm.JvmOverloads
+
+class WalkHeuristicsWorker @JvmOverloads constructor(
     appContext: Context,
     workerParams: WorkerParameters,
     private val injectedAuth: PocketIdAuth? = null,
