@@ -138,8 +138,9 @@ async def get_cached_daily_activity(goal_slug: str = "bike") -> Dict[str, Any]:
     try:
         # Phase 2: Check Neon Cloud DB first for 'bike' (walks)
         if goal_slug == "bike":
-            if neon_checker.has_walk_today():
-                latest = neon_checker.get_latest_walk()
+            has_walk = await asyncio.to_thread(neon_checker.has_walk_today)
+            if has_walk:
+                latest = await asyncio.to_thread(neon_checker.get_latest_walk)
                 walk_info = f" (Steps: {latest['step_count']})" if latest else ""
                 activity_status = {
                     "goal_slug": goal_slug,
@@ -191,12 +192,12 @@ async def get_narrator_context() -> Dict[str, Any]:
         beeminder_goals = await get_cached_beeminder_goals()
         emergencies = await beeminder_client.get_emergencies(beeminder_goals)
         goal_runway = await beeminder_client.get_runway_summary(limit=6, all_goals=beeminder_goals)
-        budget_status = get_budget_status_from_tracker()
+        budget_status = await asyncio.to_thread(get_budget_status_from_tracker)
         daily_walk_status = await get_cached_daily_activity("bike")
-        groq_context = get_groq_context_for_narrator()
+        groq_context = await asyncio.to_thread(get_groq_context_for_narrator)
 
-        # Add latest cloud walk info if available
-        latest_cloud_walk = neon_checker.get_latest_walk()
+        # Add latest cloud walk info if available (use to_thread to avoid blocking event loop)
+        latest_cloud_walk = await asyncio.to_thread(neon_checker.get_latest_walk)
         if latest_cloud_walk:
             # Convert datetime to ISO string for JSON serialization
             if isinstance(latest_cloud_walk.get("start_time"), datetime):
@@ -207,12 +208,12 @@ async def get_narrator_context() -> Dict[str, Any]:
         vacation_mode = False
         if target_phone:
             from sms_consent_manager import consent_manager
-            user_prefs = consent_manager.get_user_preferences(target_phone)
+            user_prefs = await asyncio.to_thread(consent_manager.get_user_preferences, target_phone)
             if user_prefs:
                 vacation_mode = user_prefs.get("preferences", {}).get("vacation_mode", False)
 
         # Weather-aware logic
-        weather = weather_service.get_weather()
+        weather = await asyncio.to_thread(weather_service.get_weather)
         is_appropriate, weather_msg = weather_service.is_walk_appropriate(weather)
 
         pending_todos = [t for t in todos if not t.get("completed", False)]
@@ -424,10 +425,10 @@ def get_groq_context() -> Dict[str, Any]:
 async def get_unified_cost_status() -> Dict[str, Any]:
     try:
         from groq_odometer_tracker import _get_tracker
-        budget_data = get_budget_status_from_tracker()
+        budget_data = await asyncio.to_thread(get_budget_status_from_tracker)
         groq_tracker = _get_tracker()
-        groq_status = groq_tracker.check_reminder_needs()
-        groq_usage = groq_tracker.get_usage_for_virtual_budget()
+        groq_status = await asyncio.to_thread(groq_tracker.check_reminder_needs)
+        groq_usage = await asyncio.to_thread(groq_tracker.get_usage_for_virtual_budget)
         return {"claude": budget_data, "groq": {**groq_status, **groq_usage}}
     except Exception as e:
         logger.error(f"Failed to get unified cost status: {e}")
@@ -491,11 +492,11 @@ async def get_coaching_insight() -> Dict[str, Any]:
 @mcp.tool(description="Set the Review Pump intensity multiplier (1.0, 2.0, 4.0, 10.0).")
 async def set_review_pump_lever(language: str, multiplier: float) -> Dict[str, Any]:
     """Adjust how fast the backlog should be cleared. 1.0=Maintenance, 4.0=Aggressive, 10.0=Blitz."""
-    valid_multipliers = [1.0, 2.0, 4.0, 10.0]
+    valid_multipliers = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0]
     if multiplier not in valid_multipliers:
         return {"error": f"Invalid multiplier. Must be one of {valid_multipliers}"}
 
-    success = neon_checker.update_pump_multiplier(language, multiplier)
+    success = await asyncio.to_thread(neon_checker.update_pump_multiplier, language, multiplier)
     if success:
         return {"success": True, "message": f"Review Pump for {language} set to {multiplier}x"}
     else:
@@ -505,8 +506,8 @@ async def set_review_pump_lever(language: str, multiplier: float) -> Dict[str, A
 async def get_language_velocity_stats() -> Dict[str, Any]:
     """Calculate the velocity required to hit 0 reviews based on current debt, forecasted liabilities, and chosen lever."""
     try:
-        # 1. Get stats from Neon (cached from last scraper run)
-        db_stats = neon_checker.get_language_stats()
+        # 1. Get stats from Neon (cached from last scraper run) - use to_thread to avoid blocking event loop
+        db_stats = await asyncio.to_thread(neon_checker.get_language_stats)
         if not db_stats:
             # Fallback to scrape if DB is empty
             scraper_data = await sync_clozemaster_to_beeminder(dry_run=True)
