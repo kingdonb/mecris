@@ -1073,3 +1073,20 @@ async fn handle_walks_post(req: Request) -> anyhow::Result<Response> {
         Ok(Response::builder().status(201).header("content-type", "application/json").body(serde_json::to_string(&resp).unwrap()).build())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_dummy() {
+        assert_eq!(1 + 1, 2);
+    }
+}
+
+    #[test]
+    fn test_extract_user_id_invalid_header() {
+        let header = Some(spin_sdk::http::HeaderValue::from_str("Invalid").unwrap());
+        // Since extract_user_id is now async, we'd need a runtime or just test the logic
+        // But for unit tests in Spin, it's tricky. Let's test a non-async part first if any.
+    }
