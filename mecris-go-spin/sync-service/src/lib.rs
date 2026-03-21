@@ -332,7 +332,19 @@ async fn handle_heartbeat_post(req: Request) -> anyhow::Result<Response> {
         &[ParameterValue::Str(pid.to_string())]
     )?;
     
-    Ok(Response::builder().status(200).body("Heartbeat received").build())
+    // Determine if MCP is active (just updated it, so yes)
+    #[derive(Serialize)]
+    struct HeartbeatResponse {
+        status: String,
+        mcp_server_active: bool,
+    }
+    let resp = HeartbeatResponse { status: "ok".to_string(), mcp_server_active: true };
+
+    Ok(Response::builder()
+        .status(200)
+        .header("content-type", "application/json")
+        .body(serde_json::to_string(&resp).unwrap())
+        .build())
 }
 
 #[derive(Deserialize)]

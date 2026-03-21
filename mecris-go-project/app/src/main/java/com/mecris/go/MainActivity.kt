@@ -442,7 +442,22 @@ fun MecrisDashboard(
                                         "Bearer $token",
                                         com.mecris.go.sync.MultiplierRequestDto(name, multiplier)
                                     )
-                                    // Trigger a surgical refresh via parent
+                                    
+                                    // Update local state and cache immediately
+                                    languageStats = languageStats.map {
+                                        if (it.name.equals(name, ignoreCase = true)) {
+                                            it.copy(pump_multiplier = multiplier)
+                                        } else it
+                                    }
+                                    persistenceManager.saveDashboard(DashboardCache(
+                                        walkData = walkData,
+                                        budgetAmount = budgetAmount,
+                                        languageStats = languageStats,
+                                        homeServerActive = homeServerActive,
+                                        lastSyncTime = lastSyncTime
+                                    ))
+                                    
+                                    // Also trigger a surgical refresh via parent to sync with potential backend side-effects
                                     onRefreshRequested()
                                 }
                             } catch (e: Exception) {
