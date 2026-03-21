@@ -2,6 +2,8 @@ package com.mecris.go.health
 
 import android.content.Context
 import android.util.Log
+import androidx.core.content.ContextCompat
+import android.content.pm.PackageManager
 import androidx.health.connect.client.HealthConnectClient
 import androidx.health.connect.client.permission.HealthPermission
 import androidx.health.connect.client.records.*
@@ -80,15 +82,11 @@ class HealthConnectManager(private val context: Context) {
     }
 
     suspend fun hasRoutePermission(): Boolean {
-        if (!_isSupported.value) return false
-        val granted = healthConnectClient.permissionController.getGrantedPermissions()
-        return isPermissionGranted(granted, routePermission)
+        return ContextCompat.checkSelfPermission(context, routePermission) == PackageManager.PERMISSION_GRANTED
     }
 
     suspend fun hasBackgroundPermission(): Boolean {
-        if (!_isSupported.value) return false
-        val granted = healthConnectClient.permissionController.getGrantedPermissions()
-        return isPermissionGranted(granted, backgroundPermission)
+        return ContextCompat.checkSelfPermission(context, backgroundPermission) == PackageManager.PERMISSION_GRANTED
     }
 
     suspend fun fetchRecentWalkData(): WalkDataSummary {
