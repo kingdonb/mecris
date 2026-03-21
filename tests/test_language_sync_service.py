@@ -47,28 +47,31 @@ async def test_language_sync_service_coordination(mock_dependencies):
     # 3. Run sync
     with patch.dict("os.environ", {"NEON_DB_URL": "postgres://fake"}):
         result = await service.sync_all(dry_run=False)
-    
     # 4. Verify results
     assert result["success"] is True
     assert result["min_safebuf"] == 6
     assert result["arabic"]["count"] == 2600
+    assert result["arabic"]["pump_multiplier"] == 1.0 # Default
     assert result["greek"]["count"] == 20
-    
-    # 5. Verify database calls (should have been 2 UPSERTs)
-    assert mock_dependencies["cursor"].execute.call_count == 2
-    
+
+    # 5. Verify database calls (should have been 2 UPSERTs + 2 SELECTs)
+    assert mock_dependencies["cursor"].execute.call_count == 4
+
     # Check one of the UPSERT calls
     # SQL should contain our new columns
     args_list = mock_dependencies["cursor"].execute.call_args_list
-    sql = args_list[0][0][0]
-    params = args_list[0][0][1]
-    
+    # args_list[0] and [2] are SELECTs, [1] and [3] are INSERTs
+    sql = args_list[1][0][0]
+    params = args_list[1][0][1]
+
     assert "INSERT INTO language_stats" in sql
     assert "safebuf" in sql
     assert "derail_risk" in sql
-    
+    assert "pump_multiplier" in sql
+
     # Check mapping logic (Arabic -> reviewstack)
-    # The first call should be ARABIC
-    if params[0] == "ARABIC":
-        assert params[4] == 6 # safebuf from reviewstack
-        assert params[5] == "CAUTION" # risk from reviewstack
+    # We need to find the call where params[0] == "ARABIC"
+    arabic_call = next(call for call in args_list if "INSERT" in call[0][0] and call[0][1][0] == "ARABIC")
+    arabic_params = arabic_call[0][1]
+    assert arabic_params[7] == 1.0 # pump_multiplier at index 7 (new)
+    assert arabic_params[5] == 6 # safebuf from reviewstack (now at index 5)

@@ -72,7 +72,8 @@ data class LanguageStatDto(
     val next_7_days: Int,
     val daily_rate: Double,
     val safebuf: Int,
-    val derail_risk: String
+    val derail_risk: String,
+    val pump_multiplier: Double? = 1.0
 )
 
 data class HealthResponseDto(
