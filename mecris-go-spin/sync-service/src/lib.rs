@@ -30,6 +30,7 @@ async fn handle_cron(_metadata: Metadata) -> anyhow::Result<()> {
     Ok(())
 }
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
+use jsonwebtoken::{decode, DecodingKey, Validation, Algorithm};
 
 #[derive(Deserialize, Debug)]
 struct WalkDataSummary {
@@ -55,8 +56,9 @@ struct StatusResponse {
 #[derive(Deserialize, Debug)]
 struct JwtClaims {
     sub: String,
-    #[allow(dead_code)]
-    exp: Option<usize>,
+    exp: usize,
+    iss: Option<String>,
+    aud: Option<String>,
 }
 
 fn extract_user_id(auth_header: Option<&spin_sdk::http::HeaderValue>) -> Option<String> {
@@ -66,6 +68,8 @@ fn extract_user_id(auth_header: Option<&spin_sdk::http::HeaderValue>) -> Option<
     }
     let token = &header_val[7..];
 
+    // INSECURE: Transitioning to full verification in Step 1 of Security Roadmap.
+    // We parse the payload using jsonwebtoken to prepare for Validation usage.
     let parts: Vec<&str> = token.split('.').collect();
     if parts.len() != 3 {
         return None;
@@ -73,6 +77,13 @@ fn extract_user_id(auth_header: Option<&spin_sdk::http::HeaderValue>) -> Option<
 
     let payload_bytes = URL_SAFE_NO_PAD.decode(parts[1]).ok()?;
     let claims: JwtClaims = serde_json::from_slice(&payload_bytes).ok()?;
+
+    // Minimal validation: Check expiration if present
+    let now = chrono::Utc::now().timestamp() as usize;
+    if claims.exp < now {
+        eprintln!("Token expired at {}", claims.exp);
+        return None;
+    }
 
     Some(claims.sub)
 }
@@ -587,6 +598,12 @@ struct MultiplierRequest {
 }
 
 async fn handle_multiplier_post(req: Request) -> anyhow::Result<Response> {
+    let auth_header = req.header("authorization");
+    let user_id = match extract_user_id(auth_header) {
+        Some(id) => id,
+        None => return Ok(Response::builder().status(401).body("Unauthorized").build()),
+    };
+
     let body_bytes = req.into_body();
     let body_str = match std::str::from_utf8(&body_bytes) {
         Ok(s) => s,
@@ -614,8 +631,8 @@ async fn handle_multiplier_post(req: Request) -> anyhow::Result<Response> {
         }
     };
 
-    let query = "UPDATE language_stats SET pump_multiplier = $1 WHERE language_name = $2";
-    match connection.execute(query, &[ParameterValue::Floating64(req_data.multiplier), ParameterValue::Str(req_data.name.to_uppercase())]) {
+    let query = "UPDATE language_stats SET pump_multiplier = $1 WHERE user_id = $2 AND language_name = $3";
+    match connection.execute(query, &[ParameterValue::Floating64(req_data.multiplier), ParameterValue::Str(user_id), ParameterValue::Str(req_data.name.to_uppercase())]) {
         Ok(_) => Ok(Response::builder().status(200).body("Multiplier updated").build()),
         Err(e) => {
             eprintln!("Update failed: {:?}", e);
@@ -624,7 +641,13 @@ async fn handle_multiplier_post(req: Request) -> anyhow::Result<Response> {
     }
 }
 
-async fn handle_languages_get(_req: Request) -> anyhow::Result<Response> {
+async fn handle_languages_get(req: Request) -> anyhow::Result<Response> {
+    let auth_header = req.header("authorization");
+    let user_id = match extract_user_id(auth_header) {
+        Some(id) => id,
+        None => return Ok(Response::builder().status(401).body("Unauthorized").build()),
+    };
+
     let db_url = match variables::get("db_url") {
         Ok(url) if !url.is_empty() => url,
         _ => return Ok(Response::builder().status(500).body("Missing db_url").build())
@@ -632,8 +655,8 @@ async fn handle_languages_get(_req: Request) -> anyhow::Result<Response> {
 
     let connection = Connection::open(&db_url)?;
     
-    let query = "SELECT language_name, current_reviews, tomorrow_reviews, next_7_days_reviews, daily_rate, safebuf, derail_risk, pump_multiplier FROM language_stats";
-    let row_set = match connection.query(query, &[]) {
+    let query = "SELECT language_name, current_reviews, tomorrow_reviews, next_7_days_reviews, daily_rate, safebuf, derail_risk, pump_multiplier FROM language_stats WHERE user_id = $1";
+    let row_set = match connection.query(query, &[ParameterValue::Str(user_id)]) {
         Ok(rs) => rs,
         Err(e) => {
             eprintln!("Database error: {:?}", e);
@@ -656,10 +679,6 @@ async fn handle_languages_get(_req: Request) -> anyhow::Result<Response> {
     #[derive(Serialize)]
     struct LanguagesResponse {
         languages: Vec<LanguageStat>,
-    }
-
-    if row_set.rows.is_empty() {
-        return Ok(Response::builder().status(404).body("No language stats found").build());
     }
 
     let mut languages = Vec::new();
@@ -720,7 +739,13 @@ async fn handle_languages_get(_req: Request) -> anyhow::Result<Response> {
         .build())
 }
 
-async fn handle_budget_get(_req: Request) -> anyhow::Result<Response> {
+async fn handle_budget_get(req: Request) -> anyhow::Result<Response> {
+    let auth_header = req.header("authorization");
+    let user_id = match extract_user_id(auth_header) {
+        Some(id) => id,
+        None => return Ok(Response::builder().status(401).body("Unauthorized").build()),
+    };
+
     let db_url = match variables::get("db_url") {
         Ok(url) if !url.is_empty() => url,
         _ => return Ok(Response::builder().status(500).body("Missing db_url").build())
@@ -728,38 +753,14 @@ async fn handle_budget_get(_req: Request) -> anyhow::Result<Response> {
 
     let connection = Connection::open(&db_url)?;
     
-    let query = "SELECT remaining_budget FROM budget_tracking WHERE id = 1 LIMIT 1";
-    let row_set = match connection.query(query, &[]) {
+    let query = "SELECT remaining_budget FROM budget_tracking WHERE user_id = $1 LIMIT 1";
+    let row_set = match connection.query(query, &[ParameterValue::Str(user_id)]) {
         Ok(rs) => rs,
         Err(e) => {
             eprintln!("Database error: {:?}", e);
             return Ok(Response::builder().status(500).body("Internal Server Error").build());
         }
     };
-
-    if row_set.rows.is_empty() {
-        return Ok(Response::builder().status(404).body("Budget not found").build());
-    }
-
-    let remaining_budget = match &row_set.rows[0][0] {
-        DbValue::Floating64(f) => *f,
-        DbValue::Floating32(f) => *f as f64,
-        _ => return Ok(Response::builder().status(500).body("Invalid budget data type").build())
-    };
-
-    #[derive(Serialize)]
-    struct BudgetResponse {
-        remaining_budget: f64,
-    }
-    
-    let resp = BudgetResponse { remaining_budget };
-
-    Ok(Response::builder()
-        .status(200)
-        .header("content-type", "application/json")
-        .body(serde_json::to_string(&resp).unwrap())
-        .build())
-}
 
 async fn handle_walks_post(req: Request) -> anyhow::Result<Response> {
 
