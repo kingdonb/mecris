@@ -83,3 +83,6 @@ htmlcov/
 /servers
 /servers/**
 tools/talktype/talktype_whisper_server.pid
+
+# Large Models
+.models/
