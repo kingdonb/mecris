@@ -5,6 +5,7 @@ import android.util.Log
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import com.mecris.go.auth.PocketIdAuth
+import com.mecris.go.sync.HeartbeatRequestDto
 import com.mecris.go.sync.SyncServiceApi
 import com.mecris.go.sync.WalkDataSummaryDto
 import java.time.Instant
@@ -29,6 +30,7 @@ class WalkHeuristicsWorker(
         // 1. Inertia Logic: Check if we already hit the "COMPLETED" state today
         val lastSyncedDay = prefs.getString("last_synced_day", "")
         val lastStepCount = prefs.getLong("last_step_count", 0L)
+        val lastFailoverTrigger = prefs.getLong("last_failover_trigger", 0L)
         
         Log.d("WalkHeuristicsWorker", "Executing background check for $today (Last steps: $lastStepCount)")
         
@@ -41,6 +43,28 @@ class WalkHeuristicsWorker(
         }
 
         try {
+            // Heartbeat & Cooperation Phase
+            val token = pocketIdAuth.getAccessTokenSuspend()
+            if (token != null) {
+                try {
+                    val hbResponse = syncApi.sendHeartbeat(
+                        "Bearer $token",
+                        HeartbeatRequestDto(role = "android_client", process_id = "com.mecris.go")
+                    )
+                    Log.i("WalkHeuristicsWorker", "Heartbeat SUCCESS. MCP Active: ${hbResponse.mcp_server_active}")
+
+                    // Cooperative Failover: If MCP is dark and we haven't triggered in 2 hours
+                    val twoHoursAgo = Instant.now().minusSeconds(7200).toEpochMilli()
+                    if (!hbResponse.mcp_server_active && lastFailoverTrigger < twoHoursAgo) {
+                        Log.w("WalkHeuristicsWorker", "MCP Server is DARK. Triggering Autonomous Failover Sync.")
+                        syncApi.triggerFailoverSync("Bearer $token")
+                        prefs.edit().putLong("last_failover_trigger", Instant.now().toEpochMilli()).apply()
+                    }
+                } catch (e: Exception) {
+                    Log.e("WalkHeuristicsWorker", "Cooperative check failed: ${e.message}")
+                }
+            }
+
             val summary = healthManager.fetchRecentWalkData()
             Log.d("WalkHeuristicsWorker", "Health Data: Inferred=${summary.isWalkInferred}, Steps=${summary.totalSteps}")
             
@@ -50,7 +74,6 @@ class WalkHeuristicsWorker(
             
             if (statusChanged || significantIncrease) {
                 // 4. Reliable Token Retrieval
-                val token = pocketIdAuth.getAccessTokenSuspend()
                 if (token != null) {
                     val dto = WalkDataSummaryDto(
                         start_time = summary.startTime.toString(),

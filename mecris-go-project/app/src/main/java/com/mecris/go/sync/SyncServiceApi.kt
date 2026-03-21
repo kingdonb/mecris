@@ -34,6 +34,12 @@ interface SyncServiceApi {
         @Header("Authorization") authHeader: String
     ): SyncResponse
 
+    @POST("heartbeat")
+    suspend fun sendHeartbeat(
+        @Header("Authorization") authHeader: String,
+        @Body heartbeatData: HeartbeatRequestDto
+    ): HeartbeatResponseDto
+
     companion object {
         fun create(baseUrl: String): SyncServiceApi {
             return Retrofit.Builder()
@@ -85,4 +91,14 @@ data class HealthResponseDto(
 
 data class LanguagesResponseDto(
     val languages: List<LanguageStatDto>
+)
+
+data class HeartbeatRequestDto(
+    val role: String,
+    val process_id: String
+)
+
+data class HeartbeatResponseDto(
+    val status: String,
+    val mcp_server_active: Boolean
 )
