@@ -1,0 +1,17 @@
+{
+  "approved_templates": {
+    "HXdf745ded3d0f6373f3333765ba18fd07": "mecris_system_maintenance_v2",
+    "HXf39921201717621e5bac94a4e6d4eab3": "mecris_daily_briefing_v2",
+    "HX62f7e3269007f950cfde304f2a290b6d": "mecris_sync_confirmation_v2",
+    "HX1aa68d63582981d8dee93596760334cf": "mecris_budget_statement_v2",
+    "HX9403f1b85350b8c05780a1128b79f3c2": "mecris_status_v2",
+    "HXf7661d0e55ad51e926e2bddb3c7c66ce": "mecris_milestone_notice_v1",
+    "HXecc09b4995719ceb65dfb6da544343cc": "mecris_preference_update_v1",
+    "HX138b3d037c5ebcb6a828d85ad8e9f3a8": "mecris_security_checkpoint_v1",
+    "HX97c5978812394a2daf5fefca76078934": "mecris_activity_verification_v1",
+    "HX638b7f9403e04c8fa880370f1b7a9ba1": "mecris_urgency_alert_v2",
+    "HXbb3327078f3e3361dad21f0a2dc6a8dd": "mecris_daily_alert_v1"
+  },
+  "last_updated": "2026-03-21",
+  "notes": "Pruned HX9e6692d8a5689ee3c0b855f43092563a (activity_check_v2) due to Twilio Error 63049."
+}
