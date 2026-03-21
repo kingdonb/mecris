@@ -22,7 +22,7 @@ class LanguageSyncService:
             "GREEK": "reviewstack-greek"
         }
 
-    def _update_neon_db(self, scraper_data: Dict, goal_map: Dict, summary: Dict) -> None:
+    def _update_neon_db(self, scraper_data: Dict, goal_map: Dict, summary: Dict, user_id: str) -> None:
         """Synchronous helper method to update Neon DB."""
         try:
             with psycopg2.connect(self.neon_url) as conn:
@@ -38,7 +38,6 @@ class LanguageSyncService:
                         safebuf = 0
                         derail_risk = 'SAFE'
                         daily_rate = 0.0
-                        pump_multiplier = 1.0
                         
                         # Try to match goal
                         slug = self.lang_to_slug.get(name)
@@ -53,42 +52,36 @@ class LanguageSyncService:
                             daily_rate = goal.get("rate", 0.0)
                             summary["min_safebuf"] = min(summary["min_safebuf"], safebuf)
 
-                        # Fetch existing multiplier if any
-                        cur.execute("SELECT pump_multiplier FROM language_stats WHERE language_name = %s", (name,))
-                        row = cur.fetchone()
-                        if row:
-                            pump_multiplier = float(row[0])
-                        
                         cur.execute("""
-                            INSERT INTO language_stats (language_name, current_reviews, tomorrow_reviews, next_7_days_reviews, daily_rate, safebuf, derail_risk, pump_multiplier)
-                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-                            ON CONFLICT (language_name) DO UPDATE SET
+                            INSERT INTO language_stats (user_id, language_name, current_reviews, tomorrow_reviews, next_7_days_reviews, daily_rate, safebuf, derail_risk, beeminder_slug)
+                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                            ON CONFLICT (user_id, language_name) DO UPDATE SET
                                 current_reviews = EXCLUDED.current_reviews,
                                 tomorrow_reviews = EXCLUDED.tomorrow_reviews,
                                 next_7_days_reviews = EXCLUDED.next_7_days_reviews,
                                 daily_rate = EXCLUDED.daily_rate,
                                 safebuf = EXCLUDED.safebuf,
                                 derail_risk = EXCLUDED.derail_risk,
-                                pump_multiplier = EXCLUDED.pump_multiplier,
+                                beeminder_slug = EXCLUDED.beeminder_slug,
                                 last_updated = CURRENT_TIMESTAMP
-                        """, (name, count, tomorrow, next_7, daily_rate, safebuf, derail_risk, pump_multiplier))
+                        """, (user_id, name, count, tomorrow, next_7, daily_rate, safebuf, derail_risk, slug))
                         
                         summary[lang] = {
                             "count": count,
                             "safebuf": safebuf,
-                            "derail_risk": derail_risk,
-                            "pump_multiplier": pump_multiplier
+                            "derail_risk": derail_risk
                         }
                     conn.commit()
         except Exception as e:
             logger.error(f"Failed to update Neon DB with language stats: {e}")
             summary["db_error"] = str(e)
 
-    async def sync_all(self, dry_run: bool = False) -> Dict[str, Any]:
+    async def sync_all(self, dry_run: bool = False, user_id: str = None) -> Dict[str, Any]:
         """
         Perform a full sync: Scrape -> Beeminder (if not dry_run) -> Neon.
         Returns a summary of the sync.
         """
+        target_user_id = user_id or os.getenv("DEFAULT_USER_ID")
         try:
             # 1. Scrape and push to Beeminder
             scraper_data = await sync_clozemaster_to_beeminder(dry_run=dry_run)
@@ -107,7 +100,7 @@ class LanguageSyncService:
 
             # 3. Update Neon DB
             if self.neon_url:
-                await asyncio.to_thread(self._update_neon_db, scraper_data, goal_map, summary)
+                await asyncio.to_thread(self._update_neon_db, scraper_data, goal_map, summary, target_user_id)
             
             return summary
 

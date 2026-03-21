@@ -217,6 +217,7 @@ fun MecrisDashboard(
     var homeServerActive by remember { mutableStateOf<Boolean?>(cache?.homeServerActive) }
     var isLoading by remember { mutableStateOf(false) }
     var isFetching by remember { mutableStateOf(persistenceManager.isCacheStale()) }
+    var surgicalUpdateInProgress by remember { mutableStateOf(false) }
 
     var fetchError by remember { mutableStateOf<String?>(null) }
     var syncStatus by remember { mutableStateOf("Ready") }
@@ -299,6 +300,10 @@ fun MecrisDashboard(
     }
 
     LaunchedEffect(refreshTrigger) {
+        if (surgicalUpdateInProgress) {
+            Log.d("MecrisDashboard", "Skipping full refresh: surgical update in progress")
+            return@LaunchedEffect
+        }
         val isStale = persistenceManager.isCacheStale()
         // Only skip if this is the initial launch AND cache is fresh
         if (refreshTrigger == 0 && !isStale) {
@@ -338,7 +343,11 @@ fun MecrisDashboard(
                         }
 
                         val langResponse = syncApi.getLanguages("Bearer $token")
-                        languageStats = langResponse.languages
+                        
+                        // Only update if no surgical update is fighting us
+                        if (!surgicalUpdateInProgress) {
+                            languageStats = langResponse.languages
+                        }
                         
                         // Save to cache
                         val now = LocalDateTime.now().format(DateTimeFormatter.ofPattern("HH:mm"))
@@ -438,14 +447,32 @@ fun MecrisDashboard(
                             try {
                                 val token = auth.getAccessTokenSuspend()
                                 if (token != null) {
+                                    surgicalUpdateInProgress = true
                                     syncApi.updateMultiplier(
                                         "Bearer $token",
                                         com.mecris.go.sync.MultiplierRequestDto(name, multiplier)
                                     )
-                                    // Trigger a surgical refresh via parent
-                                    onRefreshRequested()
+                                    
+                                    // Update local state and cache immediately
+                                    languageStats = languageStats.map {
+                                        if (it.name.equals(name, ignoreCase = true)) {
+                                            it.copy(pump_multiplier = multiplier)
+                                        } else it
+                                    }
+                                    persistenceManager.saveDashboard(DashboardCache(
+                                        walkData = walkData,
+                                        budgetAmount = budgetAmount,
+                                        languageStats = languageStats,
+                                        homeServerActive = homeServerActive,
+                                        lastSyncTime = lastSyncTime
+                                    ))
+                                    
+                                    // Give the backend a moment to settle
+                                    kotlinx.coroutines.delay(2000)
+                                    surgicalUpdateInProgress = false
                                 }
                             } catch (e: Exception) {
+                                surgicalUpdateInProgress = false
                                 Log.e("MecrisApp", "Failed to update multiplier: ${e.message}")
                             }
                         }
@@ -696,20 +723,18 @@ fun ReviewPumpWidget(
     stat: com.mecris.go.sync.LanguageStatDto,
     onMultiplierChange: (String, Double) -> Unit
 ) {
-    // 1. OPTIMISTIC STATE: We keep a local copy of the multiplier so the UI reacts instantly
-    var localMultiplier by remember(stat.name, stat.pump_multiplier) { 
-        mutableStateOf(stat.pump_multiplier ?: 1.0) 
-    }
-    
-    val leverName = com.mecris.go.sync.ReviewPumpCalculator.getLeverName(localMultiplier)
-    val targetFlowRate = com.mecris.go.sync.ReviewPumpCalculator.calculateTargetFlowRate(localMultiplier, stat.current, stat.tomorrow)
+    val currentMultiplier = stat.pump_multiplier ?: 1.0
+    val leverName = com.mecris.go.sync.ReviewPumpCalculator.getLeverName(currentMultiplier)
+    val targetFlowRate = com.mecris.go.sync.ReviewPumpCalculator.calculateTargetFlowRate(currentMultiplier, stat.current, stat.tomorrow)
     
     val accentColor = if (stat.name.equals("ARABIC", ignoreCase = true)) Color(0xFFFFD600) 
                       else if (stat.name.equals("GREEK", ignoreCase = true)) Color(0xFF00E5FF) 
                       else Color.White
 
     Surface(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .then(if (!stat.has_goal) Modifier.alpha(0.6f) else Modifier),
         color = Color(0xFF1E1E1E),
         shape = RoundedCornerShape(12.dp),
         border = androidx.compose.foundation.BorderStroke(1.dp, accentColor.copy(alpha = 0.3f))
@@ -721,13 +746,30 @@ fun ReviewPumpWidget(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column {
-                    Text(
-                        text = stat.name.uppercase(),
-                        style = MaterialTheme.typography.titleMedium,
-                        color = accentColor,
-                        fontWeight = FontWeight.Black,
-                        letterSpacing = 1.sp
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = stat.name.uppercase(),
+                            style = MaterialTheme.typography.titleMedium,
+                            color = accentColor,
+                            fontWeight = FontWeight.Black,
+                            letterSpacing = 1.sp
+                        )
+                        if (!stat.has_goal) {
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Surface(
+                                color = Color.DarkGray,
+                                shape = RoundedCornerShape(4.dp)
+                            ) {
+                                Text(
+                                    text = "NO GOAL",
+                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = Color.LightGray,
+                                    fontSize = 8.sp
+                                )
+                            }
+                        }
+                    }
                     Text(
                         text = "DEBT: ${stat.current} CARDS",
                         style = MaterialTheme.typography.labelSmall,
@@ -835,7 +877,7 @@ fun ReviewPumpWidget(
                 Text("SHIFT LEVER", style = MaterialTheme.typography.labelSmall, color = Color.Gray)
                 Row {
                     (1..7).forEach { i ->
-                        val isSelected = localMultiplier.toInt() == i
+                        val isSelected = currentMultiplier.toInt() == i
                         Box(
                             modifier = Modifier
                                 .padding(horizontal = 4.dp)
@@ -845,8 +887,6 @@ fun ReviewPumpWidget(
                                     RoundedCornerShape(6.dp)
                                 )
                                 .clickable { 
-                                    // 2. IMMEDIATE FEEDBACK: Update local state before network call
-                                    localMultiplier = i.toDouble()
                                     onMultiplierChange(stat.name, i.toDouble()) 
                                 },
                             contentAlignment = Alignment.Center
