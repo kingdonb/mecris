@@ -219,7 +219,8 @@ fun MecrisDashboard(
     var isFetching by remember { mutableStateOf(persistenceManager.isCacheStale()) }
     var surgicalUpdateInProgress by remember { mutableStateOf(false) }
 
-    var fetchError by remember { mutableStateOf<String?>(null) }    var syncStatus by remember { mutableStateOf("Ready") }
+    var fetchError by remember { mutableStateOf<String?>(null) }
+    var syncStatus by remember { mutableStateOf("Ready") }
     var lastSyncTime by remember { mutableStateOf(cache?.lastSyncTime ?: "") }
     
     // UI State
@@ -342,7 +343,11 @@ fun MecrisDashboard(
                         }
 
                         val langResponse = syncApi.getLanguages("Bearer $token")
-                        languageStats = langResponse.languages
+                        
+                        // Only update if no surgical update is fighting us
+                        if (!surgicalUpdateInProgress) {
+                            languageStats = langResponse.languages
+                        }
                         
                         // Save to cache
                         val now = LocalDateTime.now().format(DateTimeFormatter.ofPattern("HH:mm"))
@@ -463,11 +468,8 @@ fun MecrisDashboard(
                                     ))
                                     
                                     // Give the backend a moment to settle
-                                    kotlinx.coroutines.delay(1000)
+                                    kotlinx.coroutines.delay(2000)
                                     surgicalUpdateInProgress = false
-                                    
-                                    // Now trigger a refresh to sync everything else
-                                    onRefreshRequested()
                                 }
                             } catch (e: Exception) {
                                 surgicalUpdateInProgress = false
