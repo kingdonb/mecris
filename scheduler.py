@@ -128,6 +128,47 @@ async def _global_walk_sync_job():
     except Exception as e:
         logger.error(f"Neon walk sync job failed: {e}")
 
+async def _global_cooperative_monitor_job():
+    """
+    Background job that monitors the Android heartbeat and sends alerts if dark for > 4 hours.
+    """
+    try:
+        from mcp_server import scheduler
+        if not scheduler.is_leader:
+            return
+            
+        neon_url = os.getenv("NEON_DB_URL")
+        if not neon_url:
+            return
+
+        import psycopg2
+        from psycopg2.extras import RealDictCursor
+        from twilio_sender import smart_send_message
+
+        with psycopg2.connect(neon_url) as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute("SELECT heartbeat FROM scheduler_election WHERE role = 'android_client'")
+                row = cur.fetchone()
+                
+                if row and row['heartbeat']:
+                    last_hb = row['heartbeat']
+                    if datetime.now(timezone.utc) - last_hb > timedelta(hours=4):
+                        logger.warning("Android worker is DARK (> 4h). Sending alert.")
+                        # Check message log to prevent spamming
+                        today = datetime.now().date()
+                        cur.execute("SELECT 1 FROM message_log WHERE date = %s AND type = 'android_dark'", (today,))
+                        if not cur.fetchone():
+                            msg = "🤖 Mecris: I haven't heard from your phone's background worker in over 4 hours. Please open the Mecris-Go app to ensure sync is active! 🐕"
+                            result = smart_send_message(msg)
+                            if result.get("sent"):
+                                cur.execute("INSERT INTO message_log (date, type, sent_at) VALUES (%s, 'android_dark', NOW())", (today,))
+                                conn.commit()
+                else:
+                    logger.info("No android_client heartbeat record found yet.")
+
+    except Exception as e:
+        logger.error(f"Cooperative monitor job failed: {e}")
+
 class MecrisScheduler:
     def __init__(self, trigger_reminder_func: Optional[Callable] = None):
         self.neon_url = os.getenv("NEON_DB_URL")
@@ -308,6 +349,15 @@ class MecrisScheduler:
                         id='auto_walk_sync',
                         replace_existing=True
                     )
+
+                if not self.scheduler.get_job('auto_cooperative_monitor'):
+                    self.scheduler.add_job(
+                        _global_cooperative_monitor_job,
+                        'interval',
+                        minutes=60,
+                        id='auto_cooperative_monitor',
+                        replace_existing=True
+                    )
                 break
             except Exception as e:
                 if "database is locked" in str(e).lower() and attempt < 4:
@@ -324,6 +374,7 @@ class MecrisScheduler:
                 self.scheduler.remove_job('auto_reminder_check')
                 self.scheduler.remove_job('auto_language_sync')
                 self.scheduler.remove_job('auto_walk_sync')
+                self.scheduler.remove_job('auto_cooperative_monitor')
         except: pass
 
     def enqueue_delayed_message(self, message: str, delay_minutes: int, to_number: Optional[str] = None):
