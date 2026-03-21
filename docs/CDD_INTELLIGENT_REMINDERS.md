@@ -17,8 +17,9 @@ We decided to transform the system into an **Intelligent Coaching Agent** with t
 ### B. The Reasoning Layer (Python MCP)
 - **Role**: Central intelligence with access to full user context.
 - **Responsibility**: Synthesizes a "Coaching Insight" based on multiple data streams.
+- **Multi-Tenancy**: Every context aggregation and insight generation is scoped by `user_id`.
 - **Logic**:
-  - Aggregates `Beeminder` (Goals), `Obsidian` (Notes), and `Budget` status.
+  - Aggregates `Beeminder` (Goals), `Obsidian` (Notes), and `Budget` status for the specific user.
   - Generates a specific "Pivot" recommendation (e.g., "Since you walked, work on Mecris").
 
 ## 3. Architecture Refactor
@@ -47,4 +48,5 @@ To support this, we refactored the Python server to use a **Service-Repository P
 
 ## 5. Deployment Configuration
 *   **WASM**: Configured via `spin.toml` with `latitude`/`longitude` variables (defaulting to South Bend, IN).
-*   **Secrets**: Requires `openweather_api_key` and `beeminder_api_key` in the runtime environment.
+*   **Multi-Tenant DB**: Uses Neon PostgreSQL with `user_id` columns for strict row-level isolation.
+*   **Secrets**: Requires `openweather_api_key`, `beeminder_api_key`, and `pocket_id_jwks` for token verification.

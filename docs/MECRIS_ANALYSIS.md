@@ -1,20 +1,20 @@
 # Mecris Budget and Goal Analysis
 
-*Analysis Date: August 3, 2025*
+*Analysis Date: March 21, 2026*
 
 ## Executive Summary
 
-I analyzed the Mecris narrator context system to distinguish between real calculations and mocked data, and identified key improvements needed for the control loop. The system now has a robust goal tracking mechanism and smart alert spam protection.
+I analyzed the Mecris narrator context system after the migration to **Neon PostgreSQL** and the implementation of **Multi-Tenancy**. The system now has a robust, user-isolated goal tracking mechanism and smart alert spam protection.
 
-## Budget Data Analysis
+## Multi-Tenant Data Analysis
 
 ### Real vs Mocked Data
 
-**REAL (Calculated):**
-- `total_budget` and `remaining_budget`: Updated via manual script (`update_budget.sh`) from Anthropic console
-- `used_budget`: Calculated as `total_budget - remaining_budget` ✅ 
-- `days_remaining`: Calculated from `period_end` and current date ✅
-- Database records of actual token usage sessions ✅
+**REAL (Calculated & Isolated):**
+- `total_budget` and `remaining_budget`: Stored in `budget_tracking`, scoped by `user_id`. ✅ 
+- `used_budget`: Calculated per user. ✅ 
+- `days_remaining`: Calculated from `budget_period_end` per user. ✅
+- Database records of actual token usage sessions in `usage_sessions` table with `user_id` constraint. ✅
 
 **PREVIOUSLY MOCKED (Now Fixed):**
 - `today_spend`: Actually calculated from database ✅
@@ -47,12 +47,12 @@ The "no active goals found - consider setting objectives" message was triggered 
 ### Problem
 Without cooldown protection, the system could spam alerts when budget is critically low or when beemergencies persist.
 
-### Solution: Time-Based Cooldowns
-- **Critical budget alerts**: 2-hour cooldown
-- **Warning budget alerts**: 6-hour cooldown  
-- **Beemergency alerts**: 90-minute cooldown (shorter due to time sensitivity)
-- **Alert logging**: Full audit trail in database
-- **Graceful degradation**: Returns alert status with cooldown reason
+### Solution: Time-Based Cooldowns (User-Aware)
+- **Critical budget alerts**: 2-hour cooldown.
+- **Warning budget alerts**: 6-hour cooldown.  
+- **Beemergency alerts**: 90-minute cooldown (shorter due to time sensitivity).
+- **Alert logging**: Full audit trail in `alert_log` table, scoped by `user_id`.
+- **Graceful degradation**: Returns alert status with cooldown reason.
 
 ### Innovation: Context-Aware Cooldowns
 Different alert types have different urgency profiles:
@@ -81,22 +81,14 @@ Different alert types have different urgency profiles:
 
 ## Technical Innovations
 
-### 1. Database Schema Evolution
-Added `goals` and `alert_log` tables to existing `usage_sessions` and `budget_tracking` tables.
+### 1. Multi-Tenant Database Schema
+Migrated from SQLite to Neon PostgreSQL with strict row-level isolation via `user_id` on all tables.
 
-### 2. Graceful Fallbacks
-```python
-try:
-    todos = await obsidian_client.get_todos()
-except:
-    todos = []  # System continues operating
-```
+### 2. Distributed Leader Election
+Added a `scheduler_election` table to coordinate background tasks across multiple server instances per user.
 
-### 3. Spam-Resistant Alerting
-```sql
-SELECT COUNT(*) FROM alert_log 
-WHERE alert_type = ? AND alert_level = ? AND sent_at > ?
-```
+### 3. WhatsApp Template Integration
+Implemented Twilio Content API integration with approved templates (`mecris_status_v2`) for reliable proactive messaging.
 
 ### 4. Goal Completion Workflow
 Script-based interface matching existing `update_budget.sh` pattern:
@@ -124,18 +116,17 @@ Script-based interface matching existing `update_budget.sh` pattern:
 ## System Health
 
 ### Current Status: **OPERATIONAL** ✅
-- ✅ Budget tracking: Accurate real-time calculations
-- ✅ Goal management: 5 active goals, completion workflow ready
-- ✅ Alert system: Spam-protected, context-aware cooldowns  
-- ✅ Beeminder integration: 9 goals monitored, no emergencies
-- ✅ MCP server: All endpoints responding correctly
+- ✅ Budget tracking: Multi-tenant real-time calculations.
+- ✅ Goal management: User-scoped active goals.
+- ✅ Alert system: WhatsApp Template delivery with user-isolated cooldowns.
+- ✅ Beeminder integration: Monitored via user-provided tokens.
+- ✅ Background Sync: Distributed leader-based sync for walks and reviews.
 
 ### Risk Assessment: **LOW**
-- No critical beemergencies
-- Budget sufficient for planned timeline
-- All systems have graceful fallbacks
-- Alert fatigue prevented by cooldown logic
+- No critical beemergencies.
+- Multi-tenancy hardened via database constraints.
+- All systems have graceful fallbacks to console or SMS.
 
 ---
 
-*This analysis represents the current state of Mecris as a persistent cognitive agent system. The hybrid local/remote architecture ensures reliability while the spam protection prevents notification fatigue. Ready for final testing and August 5 budget expiry observation.*
+*This analysis represents the current state of Mecris as a persistent, multi-tenant cognitive agent system. The distributed architecture ensures reliability while the strict data isolation provides a foundation for scaling to multiple users.*

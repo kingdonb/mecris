@@ -11,7 +11,8 @@ class ReminderService:
     def __init__(self, context_provider, coaching_provider):
         self.context_provider = context_provider
         self.coaching_provider = coaching_provider
-        self.walk_template_sid = "HX9e6692d8a5689ee3c0b855f43092563a" # activity_check_v2
+        # HX9403f1b85350b8c05780a1128b79f3c2 = mecris_status_v2 (Confirmed working)
+        self.walk_template_sid = "HX9403f1b85350b8c05780a1128b79f3c2" 
         self.urgency_template_sid = "HX638b7f9403e04c8fa880370f1b7a9ba1" # urgency_alert_v2
 
     async def check_reminder_needed(self, user_id: str = None) -> Dict[str, Any]:

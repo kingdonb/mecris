@@ -15,16 +15,16 @@ The system has full access to MCP context (Beeminder, budget, walk status) witho
 
 ## 🏗️ SYSTEM ARCHITECTURE
 
-### Budget-Independent Context Collection
+### Multi-Tenant Context Collection
 
 ```
-Cron → MCP Narrator Context → Budget Check → Message Strategy → Delivery
-  ↓           ↓                     ↓              ↓            ↓
-Hourly    Full State           Claude credits?   How smart?   Always works
-Check     (Always works)       (Affects style)  (Adaptive)   (Reliable)
+Cron → MCP Narrator Context (user_id) → Budget Check → Message Strategy → Delivery
+  ↓           ↓                             ↓              ↓            ↓
+Hourly    User-Scoped                  Claude credits?   How smart?   Always works
+Check     Full State                   (Per User)       (Adaptive)   (Reliable)
 ```
 
-**Key Insight**: All the data we need (walk status, Beeminder alerts, budget warnings) comes from MCP server without consuming Claude credits.
+**Key Insight**: All data (walk status, Beeminder alerts, budget warnings) is scoped by `user_id` in the Neon DB, allowing the system to serve multiple users independently.
 
 ### Three-Tier Messaging System
 
@@ -45,22 +45,22 @@ Analyze this context and decide if/what to message. Consider:
 - Tone that motivates without annoying
 """
 ```
-
 #### Tier 2: Smart Templates (Budget Constrained)
 **When**: Claude credits too low for regular use, but some available for emergencies
 **Capability**: Full MCP context analysis with deterministic template selection
 ```python
-def smart_template_decision(context, current_time):
+def smart_template_decision(context, current_time, user_id):
     """All MCP data available - just using templates instead of Claude"""
     walk_needed = context["daily_walk_status"]["status"] == "needed"
     urgent_beeminder = [alert for alert in context["beeminder_alerts"] if "CRITICAL" in alert]
     budget_critical = any("BUDGET CRITICAL" in item for item in context["urgent_items"])
     hour = current_time.hour
-    
-    # Primary: Walk reminders (afternoon window)
-    if walk_needed and 14 <= hour <= 17:
-        return select_walk_template(context, hour)
-    
+
+    # Primary: Walk reminders (afternoon window: 1 PM - 5 PM)
+    if walk_needed and 13 <= hour <= 17:
+        return select_walk_template(context, hour, user_id)
+...
+```
     # Secondary: Morning beeminder summary (once per day, non-work-interrupting)
     if urgent_beeminder and hour in [8, 9] and not sent_today("beeminder_summary"):
         return f"🚨 FYI: {len(urgent_beeminder)} Beeminder goals need attention today"
@@ -163,16 +163,16 @@ def should_send_morning_walk_alert(context, calendar_events):
     return walk_needed and afternoon_busy and morning_hours
 ```
 
-## 🔧 IMPLEMENTATION PHASES
+## 🔧 IMPLEMENTATION STATUS
 
-### Phase 1: Base Reliability (Current Sprint)
-**Goal**: Walk reminders work with $0 Claude budget
+### Phase 1: Multi-Tenancy & Reliability (Complete)
+**Goal**: User-isolated reminders work with $0 Claude budget
 
-- [ ] Budget tier assessment from MCP context
-- [ ] Walk reminder templates with MCP data
-- [ ] Simple heuristic (afternoons, no spam)
-- [ ] `/intelligent-reminder/check` endpoint
-- [ ] Cron integration
+- [x] user_id scoping for all database tables
+- [x] Walk reminder window (1 PM - 5 PM)
+- [x] Known-working template selection (`mecris_status_v2`)
+- [x] `/intelligent-reminder/trigger` endpoint with user_id support
+- [x] Shared message log to prevent multi-user spam
 
 ### Phase 2: Smart Templates (Next)
 **Goal**: Rich context without Claude costs
@@ -199,9 +199,9 @@ def should_send_morning_walk_alert(context, calendar_events):
 "🚶‍♂️ Walk reminder - dogs are waiting!"
 ```
 
-**Tier 2 (Smart Template)**:
+**Tier 2 (Smart Template - mecris_status_v2)**:
 ```
-"🚶‍♂️ No walk logged yet today - your bike goal needs 0.5 miles and the dogs need exercise!"
+"Mecris Status Update: Your goal Daily Walk is currently NOT FOUND. Your commitment Boris & Fiona is EXPECTANT. Time: 01:58 PM."
 ```
 
 **Tier 1 (Claude Enhanced)**:

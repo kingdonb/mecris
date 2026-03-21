@@ -17,10 +17,10 @@ Tracing a "Walk" from the hardware sensor to the accountability ledger.
     - Data quality diagnostics (Distance vs Steps) are attached to this payload.
 4.  **Backend Persistence (Spin/Neon):**
     - The Spin (Go/Rust) backend validates the OIDC token via PocketID.
-    - Data is stored in the **Neon PostgreSQL** `walk_log` table.
+    - Data is stored in the **Neon PostgreSQL** `walk_inferences` table, strictly scoped by `user_id`.
 5.  **Accountability Bridge (Python MCP):**
-    - The Python MCP server calls `get_cached_daily_activity`.
-    - It checks both the Neon Cloud and Beeminder API.
+    - The Python MCP server calls `get_cached_daily_activity(user_id)`.
+    - It checks both the Neon Cloud and Beeminder API for that specific user.
     - **Timezone Lock:** All components are now synchronized to `America/New_York` midnight for "Today" resets.
 
 ## 2. The Review Pump (Language Debt)
@@ -29,9 +29,9 @@ Tracing a "Walk" from the hardware sensor to the accountability ledger.
 3.  **Velocity Engine:** The MCP tool `get_language_velocity_stats` calculates the *Clearance Velocity* (cards/day) required to hit 0 reviews by Friday.
 
 ## 3. The Autonomous Pulse (Scheduler)
-1.  **Leader Election:** `scheduler.py` uses Neon/PostgreSQL to elect a single "Leader" process across distributed instances.
-2.  **Heartbeat:** The Leader process performs periodic checks (Reminders, Budget updates).
-3.  **Visibility:** The `system_pulse` field in `get_narrator_context` allows any agent to verify scheduler health.
+1.  **Leader Election:** `scheduler.py` uses Neon/PostgreSQL to elect a single "Leader" process **per user** across distributed instances.
+2.  **Heartbeat:** The Leader process performs periodic checks (Reminders, Budget updates) scoped by `user_id`.
+3.  **Visibility:** The `system_pulse` field in `get_narrator_context` allows any agent to verify scheduler health for the active user.
 
 ## 4. Hierarchy of Data Quality
 - **L1 (Critical):** Step Count (Passive, high reliability).
@@ -42,12 +42,12 @@ Tracing a "Walk" from the hardware sensor to the accountability ledger.
 ## 5. State Divergence & Conflict Resolution
 The system maintains a dual-track state (Cloud vs Ledger).
 
-- **The Source of Truth (Neon Cloud):** The PostgreSQL `walk_log` contains the highest-fidelity raw telemetry received from the Android device.
+- **The Source of Truth (Neon Cloud):** The PostgreSQL `walk_inferences` contains the highest-fidelity raw telemetry received from the Android device, isolated by `user_id`.
 - **The Ledger (Beeminder):** Contains the official "Accountability Points" that drive the derailment logic.
 - **Conflict Resolution (Python MCP):** 
     - When `get_cached_daily_activity` is called, it queries both Neon and Beeminder.
     - **Inertia Strategy:** If Neon has a "Inferred Walk" but Beeminder is missing a datapoint, the status is marked as `completed` (Heuristic match). 
-    - **Self-Healing:** Future automation (Goal 1) will use Neon data to "fill the gaps" in Beeminder if a sync was missed due to connectivity issues.
+    - **Self-Healing:** Background worker automatically pushes pending Neon walks to Beeminder for each user.
 
 ---
-*Last Updated: March 15, 2026*
+*Last Updated: March 21, 2026*

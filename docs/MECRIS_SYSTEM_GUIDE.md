@@ -23,15 +23,21 @@ Mecris (Greek: μακρύς - "long, extended") is a **persistent cognitive agen
                    │Obsidian│ │Bee │ │ Twilio │
                    │  Vault │ │mind│ │ Alerts │
                    └────────┘ └────┘ └────────┘
+                                │
+                        ┌───────▼───────┐
+                        │   Neon DB     │
+                        │(Multi-tenant) │
+                        └───────────────┘
 ```
 
 ### Core Components
 
-1. **MCP Server** (`mcp_server.py`) - Central FastAPI application
-2. **Obsidian Client** (`obsidian_client.py`) - Goals and todos extraction  
-3. **Beeminder Client** (`beeminder_client.py`) - Goal tracking and derailment detection
-4. **Claude Monitor** (`claude_monitor.py`) - Budget tracking and burn rate analysis
-5. **Twilio Sender** (`twilio_sender.py`) - SMS alerts for emergencies
+1. **MCP Server** (`mcp_server.py`) - Multi-tenant FastAPI application.
+2. **Neon DB** - PostgreSQL database with strict row-level isolation via `user_id`.
+3. **Obsidian Client** (`obsidian_client.py`) - Goals and todos extraction.  
+4. **Beeminder Client** (`beeminder_client.py`) - Goal tracking and derailment detection.
+5. **Usage Tracker** (`usage_tracker.py`) - Multi-tenant budget and token tracking.
+6. **Twilio Sender** (`twilio_sender.py`) - WhatsApp and SMS alerts scoped by user.
 
 ---
 
@@ -41,29 +47,17 @@ Mecris (Greek: μακρύς - "long, extended") is a **persistent cognitive agen
 
 Create `.env` file:
 ```bash
-# Obsidian MCP Connection
-OBSIDIAN_MCP_HOST=localhost
-OBSIDIAN_MCP_PORT=3001
-OBSIDIAN_VAULT_PATH=/path/to/your/vault
-
-# Beeminder API
-BEEMINDER_USERNAME=your_username
-BEEMINDER_AUTH_TOKEN=your_auth_token
+# Multi-Tenant Auth
+DEFAULT_USER_ID=your_id_here
+NEON_DB_URL=postgres://...
 
 # Twilio Alerts
 TWILIO_ACCOUNT_SID=your_sid
 TWILIO_AUTH_TOKEN=your_token
 TWILIO_FROM_NUMBER=+1234567890
+TWILIO_WHATSAPP_FROM=whatsapp:+1234567890
 TWILIO_TO_NUMBER=+1234567890
-
-# Claude Budget Tracking
-CLAUDE_BUDGET_LIMIT=25.00
-CLAUDE_EXPIRY_DATE=2025-08-05
-CLAUDE_USAGE_FILE=claude_usage.json
-
-# Server Config
-PORT=8000
-DEBUG=false
+...
 ```
 
 ### 2. Install Dependencies
@@ -101,13 +95,13 @@ Server runs at `http://localhost:8000`
 - `POST /beeminder/alert` - Check for emergencies and send SMS
 
 ### Claude Budget Tracking
-- `GET /budget/status` - Current credit usage and projections
-- `POST /budget/track` - Record usage costs manually
-- `POST /budget/alert` - Check budget and send low-credit alerts
+- `GET /budget/status` - Current user's credit usage and projections.
+- `POST /budget/track` - Record usage costs for a specific user.
+- `POST /budget/alert` - Check budget and send low-credit alerts.
 
-### Unified Context
-- `GET /narrator/context` - **Main endpoint** - Strategic summary for Claude narrator
-- `POST /log-session` - Log session summary back to Obsidian
+### Multi-Tenant Context
+- `GET /narrator/context` - Strategic summary scoped by `user_id`.
+- `POST /log-session` - Log session summary for the active user.
 
 ---
 
@@ -125,23 +119,26 @@ Server runs at `http://localhost:8000`
 - Generates actionable emergency alerts
 - Sorts by urgency for prioritization
 
-### 3. **Claude Budget Management**
-- Tracks credit usage with daily burn rate calculation
-- Projects days remaining until budget/expiry
-- Sends SMS alerts at configurable thresholds
-- Maintains usage history for analysis
+### 3. **Multi-Tenant Budget Management**
+- Tracks credit usage per user with individual burn rates.
+- Row-level isolation ensures privacy and independent tracking.
+- Maintains usage history in Neon for analysis.
 
-### 4. **SMS Alert System**
-- Beemergency notifications for critical goals
-- Budget warnings when credits run low
-- Configurable urgency levels and thresholds
-- WhatsApp support via Twilio sandbox
+### 4. **WhatsApp Template System**
+- Uses pre-approved templates (`mecris_status_v2`) for proactive nudges.
+- Scoped by `user_id` to prevent cross-user message collisions.
+- Fallback to SMS for reliable emergency delivery.
 
 ### 5. **Narrator Context Aggregation**
 - Unified strategic summary from all data sources
 - Risk assessment and priority recommendations
 - Budget-aware advice (focus on high-value work when credits low)
 - Session logging for memory persistence
+
+### 6. **Cooperative Background Workers**
+- Distributed leader election ensures only one background sync runs per user.
+- Monitors Android client heartbeats to ensure mobile sync is active.
+- Automated recovery if a process dies or loses connectivity.
 
 ---
 

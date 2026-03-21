@@ -66,6 +66,21 @@ The test script verifies:
    - Server endpoint connectivity
    - Alert trigger mechanisms
 
+## WhatsApp Messaging
+
+### WhatsApp Templates (Required for Production)
+Twilio requires pre-approved templates to initiate conversations on WhatsApp. 
+
+1. **Approved Templates**: Managed in `data/approved_templates.json`.
+2. **Key Template**: `mecris_status_v2` (`HX9403f1b85350b8c05780a1128b79f3c2`) is the confirmed working template for status updates and walk reminders.
+3. **Variables**: Templates typically accept 5 variables ({{1}} through {{5}}).
+
+### Multi-Tenant Messaging
+Every message sent is logged in the Neon DB `message_log` table, scoped by `user_id`. This ensures:
+- **Rate Limiting**: Users don't receive duplicate alerts.
+- **Privacy**: Message history is isolated per user.
+- **Auditability**: Successful deliveries are tracked with Twilio SIDs.
+
 ## WhatsApp Sandbox Setup (Optional)
 
 For WhatsApp testing, you may need to join Twilio's sandbox:
@@ -162,6 +177,18 @@ Time to wrap up or top up.
 - **WhatsApp**: Rich formatting, free in sandbox, requires setup
 
 The system tries WhatsApp first, falls back to SMS if needed.
+
+## Debugging
+
+If a message is not received but the system reports a `201 Created` status from Twilio:
+
+1. **Check Delivery Status**:
+   ```bash
+   python3 scripts/debug_twilio_messages.py
+   ```
+2. **Verify Error Codes**:
+   - **63049**: Invalid Content SID or Template not approved for sender.
+   - **63016**: Recipient hasn't opted in or sandbox session expired.
 
 ## Troubleshooting
 
