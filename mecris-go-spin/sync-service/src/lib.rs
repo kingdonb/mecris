@@ -30,7 +30,54 @@ async fn handle_cron(_metadata: Metadata) -> anyhow::Result<()> {
     Ok(())
 }
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
-use jsonwebtoken::{decode, DecodingKey, Validation, Algorithm};
+use jwt_simple::prelude::*;
+use spin_sdk::key_value::Store;
+
+#[derive(Deserialize, Debug, Serialize)]
+struct Jwks {
+    keys: Vec<JwKey>,
+}
+
+#[derive(Deserialize, Debug, Serialize)]
+struct JwKey {
+    kid: String,
+    kty: String,
+    alg: String,
+    n: String,
+    e: String,
+}
+
+#[derive(Deserialize, Debug)]
+struct OidcConfig {
+    jwks_uri: String,
+}
+
+async fn get_jwks() -> anyhow::Result<Jwks> {
+    let store = Store::open_default()?;
+    
+    // Check cache
+    if let Ok(cached) = store.get("jwks") {
+        if let Some(bytes) = cached {
+            if let Ok(jwks) = serde_json::from_slice(&bytes) {
+                return Ok(jwks);
+            }
+        }
+    }
+
+    let discovery_url = variables::get("oidc_discovery_url")?;
+    let req = Request::get(&discovery_url).build();
+    let res: Response = spin_sdk::http::send(req).await?;
+    let config: OidcConfig = serde_json::from_slice(res.body())?;
+
+    let req = Request::get(&config.jwks_uri).build();
+    let res: Response = spin_sdk::http::send(req).await?;
+    let jwks: Jwks = serde_json::from_slice(res.body())?;
+
+    // Cache for 1 hour (Spin KV doesn't support TTL natively, we'd need a timestamp)
+    let _ = store.set("jwks", &serde_json::to_vec(&jwks)?);
+
+    Ok(jwks)
+}
 
 #[derive(Deserialize, Debug)]
 struct WalkDataSummary {
@@ -53,39 +100,101 @@ struct StatusResponse {
     message: String,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Serialize)]
 struct JwtClaims {
     sub: String,
-    exp: usize,
+    exp: u64,
     iss: Option<String>,
     aud: Option<String>,
 }
 
-fn extract_user_id(auth_header: Option<&spin_sdk::http::HeaderValue>) -> Option<String> {
+use aes_gcm::{
+    aead::{Aead, KeyInit},
+    Aes256Gcm, Nonce
+};
+
+async fn decrypt_token(encrypted_hex: &str) -> anyhow::Result<String> {
+    let key_str = variables::get("master_encryption_key")?;
+    let key_bytes = hex::decode(key_str)?;
+    let cipher = Aes256Gcm::new_from_slice(&key_bytes)?;
+
+    let encrypted_bytes = hex::decode(encrypted_hex)?;
+    if encrypted_bytes.len() < 12 {
+        return Err(anyhow::anyhow!("Invalid encrypted token length"));
+    }
+
+    let nonce = Nonce::from_slice(&encrypted_bytes[..12]);
+    let ciphertext = &encrypted_bytes[12..];
+
+    let decrypted_bytes = cipher.decrypt(nonce, ciphertext)
+        .map_err(|e| anyhow::anyhow!("Decryption failed: {:?}", e))?;
+
+    Ok(String::from_utf8(decrypted_bytes)?)
+}
+
+#[allow(dead_code)]
+async fn encrypt_token(plain_text: &str) -> anyhow::Result<String> {
+    let key_str = variables::get("master_encryption_key")?;
+    let key_bytes = hex::decode(key_str)?;
+    let cipher = Aes256Gcm::new_from_slice(&key_bytes)?;
+
+    let mut nonce_bytes = [0u8; 12];
+    // In a real WASM environment, we'd need a source of randomness.
+    // Spin SDK doesn't provide it directly in all versions, 
+    // but getrandom crate with "js" or "wasi" feature works.
+    // For now, we'll use a fixed nonce (INSECURE) or better, 
+    // ensure the user provides one if possible.
+    // Actually, we can use the current time as a pseudo-nonce for now 
+    // IF we don't have getrandom.
+    // Let's assume getrandom works since we are in wasm32-wasip1.
+    getrandom::getrandom(&mut nonce_bytes)?;
+    let nonce = Nonce::from_slice(&nonce_bytes);
+
+    let ciphertext = cipher.encrypt(nonce, plain_text.as_bytes())
+        .map_err(|e| anyhow::anyhow!("Encryption failed: {:?}", e))?;
+
+    let mut combined = nonce_bytes.to_vec();
+    combined.extend(ciphertext);
+
+    Ok(hex::encode(combined))
+}
+
+async fn extract_user_id(auth_header: Option<&spin_sdk::http::HeaderValue>) -> Option<String> {
     let header_val = std::str::from_utf8(auth_header?.as_ref()).ok()?;
     if !header_val.starts_with("Bearer ") {
         return None;
     }
     let token = &header_val[7..];
 
-    // INSECURE: Transitioning to full verification in Step 1 of Security Roadmap.
-    // We parse the payload using jsonwebtoken to prepare for Validation usage.
+    // 1. Fetch JWKS
+    let jwks = get_jwks().await.ok()?;
+
+    // 2. Decode header to get kid
+    // jwt-simple doesn't expose header easily in unverified parse, 
+    // we can use manual decode for kid
     let parts: Vec<&str> = token.split('.').collect();
-    if parts.len() != 3 {
-        return None;
+    if parts.len() != 3 { return None; }
+    let header_bytes = URL_SAFE_NO_PAD.decode(parts[0]).ok()?;
+    let header: serde_json::Value = serde_json::from_slice(&header_bytes).ok()?;
+    let kid = header.get("kid")?.as_str()?;
+
+    // 3. Find key
+    let key = jwks.keys.iter().find(|k| k.kid == kid)?;
+
+    // 4. Verify signature
+    if key.kty == "RSA" && key.alg == "RS256" {
+        let n_bytes = URL_SAFE_NO_PAD.decode(&key.n).ok()?;
+        let e_bytes = URL_SAFE_NO_PAD.decode(&key.e).ok()?;
+        let public_key = RS256PublicKey::from_components(&n_bytes, &e_bytes).ok()?;
+        
+        let options = VerificationOptions::default();
+        // options.allowed_issuers = Some(HashSet::from(["https://metnoom.urmanac.com".to_string()]));
+        
+        let claims = public_key.verify_token::<JwtClaims>(token, Some(options)).ok()?;
+        return Some(claims.custom.sub);
     }
 
-    let payload_bytes = URL_SAFE_NO_PAD.decode(parts[1]).ok()?;
-    let claims: JwtClaims = serde_json::from_slice(&payload_bytes).ok()?;
-
-    // Minimal validation: Check expiration if present
-    let now = chrono::Utc::now().timestamp() as usize;
-    if claims.exp < now {
-        eprintln!("Token expired at {}", claims.exp);
-        return None;
-    }
-
-    Some(claims.sub)
+    None
 }
 
 #[http_component]
@@ -599,7 +708,7 @@ struct MultiplierRequest {
 
 async fn handle_multiplier_post(req: Request) -> anyhow::Result<Response> {
     let auth_header = req.header("authorization");
-    let user_id = match extract_user_id(auth_header) {
+    let user_id = match extract_user_id(auth_header).await {
         Some(id) => id,
         None => return Ok(Response::builder().status(401).body("Unauthorized").build()),
     };
@@ -643,7 +752,7 @@ async fn handle_multiplier_post(req: Request) -> anyhow::Result<Response> {
 
 async fn handle_languages_get(req: Request) -> anyhow::Result<Response> {
     let auth_header = req.header("authorization");
-    let user_id = match extract_user_id(auth_header) {
+    let user_id = match extract_user_id(auth_header).await {
         Some(id) => id,
         None => return Ok(Response::builder().status(401).body("Unauthorized").build()),
     };
@@ -741,7 +850,7 @@ async fn handle_languages_get(req: Request) -> anyhow::Result<Response> {
 
 async fn handle_budget_get(req: Request) -> anyhow::Result<Response> {
     let auth_header = req.header("authorization");
-    let user_id = match extract_user_id(auth_header) {
+    let user_id = match extract_user_id(auth_header).await {
         Some(id) => id,
         None => return Ok(Response::builder().status(401).body("Unauthorized").build()),
     };
@@ -761,11 +870,34 @@ async fn handle_budget_get(req: Request) -> anyhow::Result<Response> {
             return Ok(Response::builder().status(500).body("Internal Server Error").build());
         }
     };
+    let remaining_budget = if row_set.rows.is_empty() {
+        0.0
+    } else {
+        match &row_set.rows[0][0] {
+            DbValue::Floating64(f) => *f,
+            DbValue::Floating32(f) => *f as f64,
+            _ => 0.0
+        }
+    };
+
+    #[derive(Serialize)]
+    struct BudgetResponse {
+        remaining_budget: f64,
+    }
+    
+    let resp = BudgetResponse { remaining_budget };
+
+    Ok(Response::builder()
+        .status(200)
+        .header("content-type", "application/json")
+        .body(serde_json::to_string(&resp).unwrap())
+        .build())
+}
 
 async fn handle_walks_post(req: Request) -> anyhow::Result<Response> {
 
     let auth_header = req.header("authorization");
-    let user_id = match extract_user_id(auth_header) {
+    let user_id = match extract_user_id(auth_header).await {
         Some(id) => id,
         None => {
             if let Ok(bypass) = variables::get("auth_bypass") {
@@ -895,7 +1027,15 @@ async fn handle_walks_post(req: Request) -> anyhow::Result<Response> {
         return Ok(Response::builder().status(201).header("content-type", "application/json").body(serde_json::to_string(&resp).unwrap()).build());
     }
 
-    let beeminder_token = match &row_set.rows[0][0] { DbValue::Str(s) => s.clone(), _ => return Ok(Response::builder().status(500).body("Invalid token").build()) };
+    let beeminder_token_raw = match &row_set.rows[0][0] { DbValue::Str(s) => s.clone(), _ => return Ok(Response::builder().status(500).body("Invalid token").build()) };
+    let beeminder_token = match decrypt_token(&beeminder_token_raw).await {
+        Ok(t) => t,
+        Err(_) => {
+            // Fallback to plaintext for migration period
+            println!("Warning: Using plaintext Beeminder token for user {}", user_id);
+            beeminder_token_raw
+        }
+    };
     let beeminder_goal = match &row_set.rows[0][1] { DbValue::Str(s) if !s.is_empty() => s.clone(), _ => "bike".to_string() };
     let beeminder_user = match &row_set.rows[0][2] { DbValue::Str(s) if !s.is_empty() => s.clone(), _ => "me".to_string() };
 

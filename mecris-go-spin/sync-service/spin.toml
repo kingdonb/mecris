@@ -11,6 +11,7 @@ description = ""
 [variables]
 db_url = { required = false, default = "" }
 auth_bypass = { required = false, default = "false" }
+oidc_discovery_url = { required = false, default = "https://metnoom.urmanac.com/.well-known/openid-configuration" }
 clozemaster_email = { required = false, default = "" }
 clozemaster_password = { required = false, default = "" }
 
@@ -26,11 +27,12 @@ component = "sync-service"
 
 [component.sync-service]
 source = "target/wasm32-wasip1/release/sync_service.wasm"
-allowed_outbound_hosts = ["postgres://*:*", "https://www.beeminder.com", "https://www.clozemaster.com"]
+allowed_outbound_hosts = ["postgres://*:*", "https://www.beeminder.com", "https://www.clozemaster.com", "https://metnoom.urmanac.com"]
 key_value_stores = ["default"]
 [component.sync-service.variables]
 db_url = "{{ db_url }}"
 auth_bypass = "{{ auth_bypass }}"
+oidc_discovery_url = "{{ oidc_discovery_url }}"
 clozemaster_email = "{{ clozemaster_email }}"
 clozemaster_password = "{{ clozemaster_password }}"
 [component.sync-service.build]
