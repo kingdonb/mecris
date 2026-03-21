@@ -6,9 +6,12 @@ class ReviewPump:
     """
     LEVER_CONFIG = {
         1.0: {"name": "Maintenance", "days": None},
-        2.0: {"name": "Steady Progress", "days": 14},
-        4.0: {"name": "Aggressive", "days": 5},
-        10.0: {"name": "The Blitz", "days": 2}
+        2.0: {"name": "Steady", "days": 14},
+        3.0: {"name": "Brisk", "days": 10},
+        4.0: {"name": "Aggressive", "days": 7}, # The Akrasia Horizon
+        5.0: {"name": "High Pressure", "days": 5},
+        6.0: {"name": "Very High Pressure", "days": 3},
+        7.0: {"name": "The Blitz", "days": 2}
     }
 
     def __init__(self, multiplier: float = 1.0):

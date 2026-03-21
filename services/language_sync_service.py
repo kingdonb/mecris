@@ -58,6 +58,7 @@ class LanguageSyncService:
                                 safebuf = 0
                                 derail_risk = 'SAFE'
                                 daily_rate = 0.0
+                                pump_multiplier = 1.0
                                 
                                 # Try to match goal
                                 slug = self.lang_to_slug.get(name)
@@ -71,10 +72,16 @@ class LanguageSyncService:
                                     derail_risk = goal.get("derail_risk", "SAFE")
                                     daily_rate = goal.get("rate", 0.0)
                                     summary["min_safebuf"] = min(summary["min_safebuf"], safebuf)
+
+                                # Fetch existing multiplier if any
+                                cur.execute("SELECT pump_multiplier FROM language_stats WHERE language_name = %s", (name,))
+                                row = cur.fetchone()
+                                if row:
+                                    pump_multiplier = float(row[0])
                                 
                                 cur.execute("""
-                                    INSERT INTO language_stats (language_name, current_reviews, tomorrow_reviews, next_7_days_reviews, daily_rate, safebuf, derail_risk)
-                                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                                    INSERT INTO language_stats (language_name, current_reviews, tomorrow_reviews, next_7_days_reviews, daily_rate, safebuf, derail_risk, pump_multiplier)
+                                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                                     ON CONFLICT (language_name) DO UPDATE SET
                                         current_reviews = EXCLUDED.current_reviews,
                                         tomorrow_reviews = EXCLUDED.tomorrow_reviews,
@@ -82,13 +89,15 @@ class LanguageSyncService:
                                         daily_rate = EXCLUDED.daily_rate,
                                         safebuf = EXCLUDED.safebuf,
                                         derail_risk = EXCLUDED.derail_risk,
+                                        pump_multiplier = EXCLUDED.pump_multiplier,
                                         last_updated = CURRENT_TIMESTAMP
-                                """, (name, count, tomorrow, next_7, daily_rate, safebuf, derail_risk))
+                                """, (name, count, tomorrow, next_7, daily_rate, safebuf, derail_risk, pump_multiplier))
                                 
                                 summary[lang] = {
                                     "count": count,
                                     "safebuf": safebuf,
-                                    "derail_risk": derail_risk
+                                    "derail_risk": derail_risk,
+                                    "pump_multiplier": pump_multiplier
                                 }
                             conn.commit()
                 except Exception as e:

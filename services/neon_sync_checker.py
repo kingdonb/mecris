@@ -1,6 +1,7 @@
 import os
 import logging
 from datetime import datetime, timezone
+from typing import Dict, Any, Optional
 import psycopg2
 from dotenv import load_dotenv
 
@@ -96,3 +97,56 @@ class NeonSyncChecker:
         except Exception as e:
             logger.error(f"Failed to fetch latest walk from Neon: {e}")
             return None
+
+    def get_language_stats(self) -> Dict[str, Any]:
+        """Fetches all rows from language_stats table."""
+        if not self.db_url:
+            return {}
+
+        try:
+            conn = psycopg2.connect(self.db_url)
+            cur = conn.cursor()
+
+            cur.execute("SELECT language_name, current_reviews, tomorrow_reviews, next_7_days_reviews, pump_multiplier FROM language_stats")
+            rows = cur.fetchall()
+
+            cur.close()
+            conn.close()
+
+            stats = {}
+            for row in rows:
+                stats[row[0].lower()] = {
+                    "current": row[1],
+                    "tomorrow": row[2],
+                    "next_7_days": row[3],
+                    "multiplier": float(row[4]) if row[4] is not None else 1.0
+                }
+            return stats
+
+        except Exception as e:
+            logger.error(f"Failed to fetch language stats from Neon: {e}")
+            return {}
+
+    def update_pump_multiplier(self, language_name: str, multiplier: float) -> bool:
+        """Updates the pump_multiplier for a specific language."""
+        if not self.db_url:
+            return False
+
+        try:
+            conn = psycopg2.connect(self.db_url)
+            cur = conn.cursor()
+
+            cur.execute("""
+                UPDATE language_stats 
+                SET pump_multiplier = %s 
+                WHERE language_name = %s
+            """, (multiplier, language_name.upper()))
+            
+            conn.commit()
+            cur.close()
+            conn.close()
+            return True
+
+        except Exception as e:
+            logger.error(f"Failed to update pump_multiplier in Neon: {e}")
+            return False
