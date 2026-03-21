@@ -620,12 +620,12 @@ fun MainNeuralDashboard(
     Spacer(modifier = Modifier.height(24.dp))
     
     Text(
-        text = "LANGUAGE LIABILITIES",
+        text = "LANGUAGE LIABILITIES (THE REVIEW PUMP)",
         style = MaterialTheme.typography.labelSmall,
         color = Color.Gray
     )
     
-    Spacer(modifier = Modifier.height(8.dp))
+    Spacer(modifier = Modifier.height(12.dp))
     
     if (languageStats.isEmpty()) {
         Text(
@@ -635,14 +635,144 @@ fun MainNeuralDashboard(
         )
     } else {
         languageStats.forEach { stat ->
-            val cardColor = if (stat.name.equals("ARABIC", ignoreCase = true)) Color(0xFFFFD600) 
-                            else if (stat.name.equals("GREEK", ignoreCase = true)) Color(0xFF00E5FF) 
-                            else Color.White
-            LanguageForecastCard(stat.name, stat.current, stat.tomorrow, stat.next_7_days, stat.daily_rate, stat.safebuf, stat.derail_risk, cardColor)
-            Spacer(modifier = Modifier.height(8.dp))
+            ReviewPumpWidget(stat)
+            Spacer(modifier = Modifier.height(16.dp))
         }
     }
 }
+
+@Composable
+fun ReviewPumpWidget(stat: com.mecris.go.sync.LanguageStatDto) {
+    val multiplier = stat.pump_multiplier ?: 1.0
+    val leverName = com.mecris.go.sync.ReviewPumpCalculator.getLeverName(multiplier)
+    val targetFlowRate = com.mecris.go.sync.ReviewPumpCalculator.calculateTargetFlowRate(multiplier, stat.current, stat.tomorrow)
+    
+    val accentColor = if (stat.name.equals("ARABIC", ignoreCase = true)) Color(0xFFFFD600) 
+                      else if (stat.name.equals("GREEK", ignoreCase = true)) Color(0xFF00E5FF) 
+                      else Color.White
+
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        color = Color(0xFF1E1E1E),
+        shape = RoundedCornerShape(12.dp),
+        border = androidx.compose.foundation.BorderStroke(1.dp, accentColor.copy(alpha = 0.3f))
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column {
+                    Text(
+                        text = stat.name.uppercase(),
+                        style = MaterialTheme.typography.titleMedium,
+                        color = accentColor,
+                        fontWeight = FontWeight.Black,
+                        letterSpacing = 1.sp
+                    )
+                    Text(
+                        text = "DEBT: ${stat.current} CARDS",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color.Gray
+                    )
+                }
+                
+                Column(horizontalAlignment = Alignment.End) {
+                    Surface(
+                        color = accentColor.copy(alpha = 0.1f),
+                        shape = RoundedCornerShape(4.dp)
+                    ) {
+                        Text(
+                            text = leverName.uppercase(),
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = accentColor,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // The Pressure Gauge
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(60.dp)
+                    .background(Color.Black, RoundedCornerShape(8.dp))
+                    .padding(8.dp),
+                contentAlignment = Alignment.CenterStart
+            ) {
+                // Background Track
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(8.dp)
+                        .background(Color(0xFF333333), RoundedCornerShape(4.dp))
+                )
+                
+                // The Target Marker (Vertical line on the track)
+                // Assuming max readable scale is 1000 for visualization
+                val maxScale = 1000.0
+                val targetPos = (targetFlowRate / maxScale).coerceIn(0.1, 0.9).toFloat()
+                
+                Canvas(modifier = Modifier.fillMaxSize()) {
+                    val x = size.width * targetPos
+                    drawLine(
+                        color = Color.White,
+                        start = Offset(x, 0f),
+                        end = Offset(x, size.height),
+                        strokeWidth = 4f
+                    )
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text("TARGET FLOW", style = MaterialTheme.typography.labelSmall, color = Color.Gray)
+                        Text("$targetFlowRate", style = MaterialTheme.typography.titleLarge, color = Color.White, fontWeight = FontWeight.Black)
+                    }
+                    
+                    Column(horizontalAlignment = Alignment.End) {
+                        Text("RUNWAY", style = MaterialTheme.typography.labelSmall, color = Color.Gray)
+                        Text("${stat.safebuf}D", style = MaterialTheme.typography.titleLarge, color = if (stat.safebuf < 3) Color.Red else Color(0xFF00C853), fontWeight = FontWeight.Black)
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // The Lever (Radio Spots)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("LEVER", style = MaterialTheme.typography.labelSmall, color = Color.Gray)
+                Row {
+                    (1..7).forEach { i ->
+                        val isSelected = multiplier.toInt() == i
+                        Box(
+                            modifier = Modifier
+                                .padding(horizontal = 4.dp)
+                                .size(12.dp)
+                                .background(
+                                    if (isSelected) accentColor else Color.DarkGray,
+                                    RoundedCornerShape(2.dp)
+                                )
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
 
 @Composable
 fun SystemHealthScreen(
