@@ -383,7 +383,7 @@ async fn handle_languages_get(req: Request) -> anyhow::Result<Response> {
     let db_url = variables::get("db_url")?;
     let connection = Connection::open(&db_url)?;
     
-    let query = "SELECT language_name, current_reviews, tomorrow_reviews, next_7_days_reviews, daily_rate, safebuf, derail_risk, pump_multiplier, beeminder_slug FROM language_stats WHERE user_id = $1";
+    let query = "SELECT language_name, current_reviews, tomorrow_reviews, next_7_days_reviews, daily_rate::FLOAT8, safebuf, derail_risk, pump_multiplier::FLOAT8, beeminder_slug FROM language_stats WHERE user_id = $1";
     let row_set = connection.query(query, &[ParameterValue::Str(user_id)])?;
 
     #[derive(Serialize)]
@@ -411,10 +411,10 @@ async fn handle_languages_get(req: Request) -> anyhow::Result<Response> {
             current: match &row[1] { DbValue::Int32(i) => *i, _ => 0 },
             tomorrow: match &row[2] { DbValue::Int32(i) => *i, _ => 0 },
             next_7_days: match &row[3] { DbValue::Int32(i) => *i, _ => 0 },
-            daily_rate: match &row[4] { DbValue::Floating64(f) => *f, DbValue::Floating32(f) => *f as f64, _ => 0.0 },
+            daily_rate: match &row[4] { DbValue::Floating64(f) => *f, _ => 0.0 },
             safebuf: match &row[5] { DbValue::Int32(i) => *i, _ => 0 },
             derail_risk: match &row[6] { DbValue::Str(s) => s.clone(), _ => "SAFE".to_string() },
-            pump_multiplier: match &row[7] { DbValue::Floating64(f) => *f, DbValue::Floating32(f) => *f as f64, DbValue::Int32(i) => *i as f64, _ => 1.0 },
+            pump_multiplier: match &row[7] { DbValue::Floating64(f) => *f, _ => 1.0 },
             has_goal: slug.as_ref().map_or(false, |s| !s.is_empty()),
         }
     }).collect();

@@ -108,7 +108,27 @@ Claude Code can be configured using the `.mcp.json` file in the project root or 
 }
 ```
 
-## 5. Maintenance Commands
+## 5. Spin Backend Configuration (Cloud)
+
+The Mecris-Go sync service requires specific variables to be set in Fermyon Cloud for OIDC verification and PII encryption.
+
+### Required Secrets
+
+| Variable | Description | Example Value |
+| :--- | :--- | :--- |
+| `oidc_discovery_url` | The URL to your OIDC provider's configuration. | `https://metnoom.urmanac.com/.well-known/openid-configuration` |
+| `master_encryption_key` | 32-byte key in hex format (64 chars) for AES-256-GCM. | `000102...1d1e` |
+| `db_url` | Neon PostgreSQL connection string. | `postgres://user:pass@host/db` |
+
+### Setting Variables via Spin CLI
+
+```bash
+spin cloud variable set oidc_discovery_url="https://<your-oidc-domain>/.well-known/openid-configuration"
+spin cloud variable set master_encryption_key="$(openssl rand -hex 32)"
+spin cloud variable set db_url="<your-neon-db-url>"
+```
+
+## 6. Maintenance Commands
 
 - **Check Health**: `curl http://localhost:8000/health`
 - **Run Tests**: `PYTHONPATH=. uv run python3 tests/test_mecris.py`
