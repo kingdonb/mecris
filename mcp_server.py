@@ -22,6 +22,7 @@ from billing_reconciliation import BillingReconciliation
 from groq_odometer_tracker import get_groq_context_for_narrator, get_groq_reminder_status, record_groq_reading as record_groq_reading_from_tracker
 from twilio_sender import smart_send_message, send_sms
 from scripts.anthropic_cost_tracker import AnthropicCostTracker
+from scripts.clozemaster_scraper import sync_clozemaster_to_beeminder
 from services.weather_service import WeatherService
 from services.neon_sync_checker import NeonSyncChecker
 from services.reminder_service import ReminderService
