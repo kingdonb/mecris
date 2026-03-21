@@ -34,8 +34,9 @@ class OdometerReading:
     notes: str = ""
 
 class GroqOdometerTracker:
-    def __init__(self):
+    def __init__(self, user_id: str = None):
         self.neon_url = os.getenv("NEON_DB_URL")
+        self.user_id = user_id or os.getenv("DEFAULT_USER_ID")
         if not self.neon_url:
             logger.warning("NEON_DB_URL not set in GroqOdometerTracker. Odometer tracking will fail.")
         else:
@@ -85,8 +86,9 @@ class GroqOdometerTracker:
         except Exception as e:
             logger.error(f"GroqOdometerTracker: Neon init failed: {e}.")
     
-    def record_odometer_reading(self, value: float, notes: str = "", month: Optional[str] = None) -> Dict:
+    def record_odometer_reading(self, value: float, notes: str = "", month: Optional[str] = None, user_id: str = None) -> Dict:
         """Record a new odometer reading, handling month boundaries intelligently."""
+        target_user_id = user_id or self.user_id
         if not self.neon_url:
             return {"recorded": False, "reason": "No DB configured"}
             
@@ -94,7 +96,7 @@ class GroqOdometerTracker:
         target_month = month if month else now.strftime("%Y-%m")
         
         # Check for odometer reset (only for current month recordings)
-        last_reading = self.get_last_reading()
+        last_reading = self.get_last_reading(target_user_id)
         reset_detected = False
         
         if last_reading and not month:
@@ -103,10 +105,10 @@ class GroqOdometerTracker:
             
             if value < last_value and target_month != last_month:
                 reset_detected = True
-                self._finalize_month(last_month, last_value)
+                self._finalize_month(last_month, last_value, target_user_id)
             elif target_month != last_month and value < 1.0:
                 reset_detected = True
-                self._finalize_month(last_month, last_value)
+                self._finalize_month(last_month, last_value, target_user_id)
         
         try:
             # For historical records, use a timestamp from that month
@@ -120,19 +122,19 @@ class GroqOdometerTracker:
                 with conn.cursor() as cur:
                     cur.execute("""
                         INSERT INTO groq_odometer_readings 
-                        (timestamp, month, cumulative_value, is_reset, notes, created_at)
-                        VALUES (%s, %s, %s, %s, %s, %s)
-                    """, (record_timestamp, target_month, value, reset_detected, notes, now))
+                        (timestamp, month, cumulative_value, is_reset, notes, created_at, user_id)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    """, (record_timestamp, target_month, value, reset_detected, notes, now, target_user_id))
                     
                     # Update summary
-                    self._update_monthly_summary_neon(cur, target_month, value)
+                    self._update_monthly_summary_neon(cur, target_month, value, target_user_id)
             
             # Daily usage and reminder
             daily_usage = self._calculate_daily_usage(target_month, value) if not month else 0.0
             return {
                 "recorded": True, "month": target_month, "cumulative_value": value,
                 "reset_detected": reset_detected, "daily_usage_estimate": daily_usage,
-                "reminder_status": self.check_reminder_needs() if not month else {"status": "historical"},
+                "reminder_status": self.check_reminder_needs(target_user_id) if not month else {"status": "historical"},
                 "timestamp": record_timestamp.isoformat(), "historical_record": bool(month),
                 "source": "neon"
             }
@@ -140,8 +142,9 @@ class GroqOdometerTracker:
             logger.error(f"GroqOdometerTracker: Neon record_odometer_reading failed: {e}")
             raise
 
-    def get_last_reading(self) -> Optional[Dict]:
+    def get_last_reading(self, user_id: str = None) -> Optional[Dict]:
         """Get the most recent odometer reading."""
+        target_user_id = user_id or self.user_id
         if not self.neon_url: return None
         try:
             with psycopg2.connect(self.neon_url) as conn:
@@ -149,9 +152,10 @@ class GroqOdometerTracker:
                     cur.execute("""
                         SELECT timestamp, month, cumulative_value as value, is_final_reading as is_final, is_reset
                         FROM groq_odometer_readings
+                        WHERE user_id = %s
                         ORDER BY timestamp DESC
                         LIMIT 1
-                    """)
+                    """, (target_user_id,))
                     row = cur.fetchone()
                     if row:
                         row['timestamp'] = row['timestamp'].isoformat()
@@ -167,28 +171,29 @@ class GroqOdometerTracker:
             return current_value / day_of_month
         return 0.0
     
-    def _finalize_month(self, month: str, final_value: float):
+    def _finalize_month(self, month: str, final_value: float, user_id: str):
         """Mark a month as finalized with its total cost."""
         if not self.neon_url: return
         now = datetime.now()
         try:
             with psycopg2.connect(self.neon_url) as conn:
                 with conn.cursor() as cur:
-                    cur.execute("UPDATE groq_odometer_readings SET is_final_reading = TRUE WHERE month = %s", (month,))
-                    cur.execute("UPDATE groq_monthly_summaries SET total_cost = %s, finalized = TRUE, updated_at = %s WHERE month = %s", (final_value, now, month))
+                    cur.execute("UPDATE groq_odometer_readings SET is_final_reading = TRUE WHERE month = %s AND user_id = %s", (month, user_id))
+                    cur.execute("UPDATE groq_monthly_summaries SET total_cost = %s, finalized = TRUE, updated_at = %s WHERE month = %s AND user_id = %s", (final_value, now, month, user_id))
         except Exception as e:
             logger.error(f"GroqOdometerTracker: Neon _finalize_month failed: {e}")
     
-    def _update_monthly_summary_neon(self, cur, month: str, value: float):
+    def _update_monthly_summary_neon(self, cur, month: str, value: float, user_id: str):
         now = datetime.now()
-        cur.execute("SELECT month FROM groq_monthly_summaries WHERE month = %s", (month,))
+        cur.execute("SELECT month FROM groq_monthly_summaries WHERE month = %s AND user_id = %s", (month, user_id))
         if cur.fetchone():
-            cur.execute("UPDATE groq_monthly_summaries SET total_cost = %s, last_reading_date = %s, reading_count = reading_count + 1, updated_at = %s WHERE month = %s", (value, now.date(), now, month))
+            cur.execute("UPDATE groq_monthly_summaries SET total_cost = %s, last_reading_date = %s, reading_count = reading_count + 1, updated_at = %s WHERE month = %s AND user_id = %s", (value, now.date(), now, month, user_id))
         else:
-            cur.execute("INSERT INTO groq_monthly_summaries (month, total_cost, first_reading_date, last_reading_date, reading_count, created_at, updated_at) VALUES (%s, %s, %s, %s, 1, %s, %s)", (month, value, now.date(), now.date(), now, now))
+            cur.execute("INSERT INTO groq_monthly_summaries (month, total_cost, first_reading_date, last_reading_date, reading_count, created_at, updated_at, user_id) VALUES (%s, %s, %s, %s, 1, %s, %s, %s)", (month, value, now.date(), now.date(), now, now, user_id))
     
-    def check_reminder_needs(self) -> Dict:
+    def check_reminder_needs(self, user_id: str = None) -> Dict:
         """Check if we need to remind the user about readings."""
+        target_user_id = user_id or self.user_id
         now = datetime.now()
         status = OdometerStatus.NORMAL
         reminders_needed = []
@@ -198,7 +203,7 @@ class GroqOdometerTracker:
             status = OdometerStatus.APPROACHING_RESET
             reminders_needed.append({"type": "month_end", "urgency": "high" if days_until_month_end <= 1 else "medium", "message": f"📊 Groq usage reading needed in {days_until_month_end} days"})
         
-        last_reading = self.get_last_reading()
+        last_reading = self.get_last_reading(target_user_id)
         days_since = None
         if last_reading:
             last_ts = datetime.fromisoformat(last_reading['timestamp'].replace('Z', '+00:00')) if isinstance(last_reading['timestamp'], str) else last_reading['timestamp']
@@ -216,7 +221,7 @@ class GroqOdometerTracker:
             try:
                 with psycopg2.connect(self.neon_url) as conn:
                     with conn.cursor() as cur:
-                        cur.execute("SELECT finalized FROM groq_monthly_summaries WHERE month = %s", (last_month,))
+                        cur.execute("SELECT finalized FROM groq_monthly_summaries WHERE month = %s AND user_id = %s", (last_month, target_user_id))
                         row = cur.fetchone()
                         if row: finalized = row[0]
             except Exception as e:
@@ -236,14 +241,15 @@ class GroqOdometerTracker:
         else: last_day = date(now.year, now.month + 1, 1) - timedelta(days=1)
         return (last_day - now.date()).days
     
-    def get_usage_for_virtual_budget(self) -> Dict:
+    def get_usage_for_virtual_budget(self, user_id: str = None) -> Dict:
+        target_user_id = user_id or self.user_id
         if not self.neon_url: return {"has_data": False, "error": "No DB Configured"}
         now = datetime.now()
         current_month = now.strftime("%Y-%m")
         try:
             with psycopg2.connect(self.neon_url) as conn:
                 with conn.cursor() as cur:
-                    cur.execute("SELECT cumulative_value, timestamp FROM groq_odometer_readings WHERE month = %s ORDER BY timestamp DESC LIMIT 1", (current_month,))
+                    cur.execute("SELECT cumulative_value, timestamp FROM groq_odometer_readings WHERE month = %s AND user_id = %s ORDER BY timestamp DESC LIMIT 1", (current_month, target_user_id))
                     curr = cur.fetchone()
                     if not curr: return {"has_data": False, "needs_reading": True}
                     
@@ -252,7 +258,7 @@ class GroqOdometerTracker:
                     avg = val / day if day > 0 else 0
                     
                     yesterday = now - timedelta(days=1)
-                    cur.execute("SELECT cumulative_value FROM groq_odometer_readings WHERE timestamp::date = %s ORDER BY timestamp DESC LIMIT 1", (yesterday.date(),))
+                    cur.execute("SELECT cumulative_value FROM groq_odometer_readings WHERE user_id = %s AND timestamp::date = %s ORDER BY timestamp DESC LIMIT 1", (target_user_id, yesterday.date()))
                     yest = cur.fetchone()
                     diff = val - yest[0] if yest else 0
                     return {"has_data": True, "month": current_month, "cumulative_cost": val, "daily_average": avg, "daily_actual": diff if diff > 0 else avg, "day_of_month": day, "last_reading": ts.isoformat()}
@@ -260,9 +266,10 @@ class GroqOdometerTracker:
             logger.error(f"GroqOdometerTracker: Neon get_usage_for_virtual_budget failed: {e}")
             return {"has_data": False, "error": str(e)}
     
-    def generate_narrator_context(self) -> Dict:
-        reminder_status = self.check_reminder_needs()
-        usage_data = self.get_usage_for_virtual_budget()
+    def generate_narrator_context(self, user_id: str = None) -> Dict:
+        target_user_id = user_id or self.user_id
+        reminder_status = self.check_reminder_needs(target_user_id)
+        usage_data = self.get_usage_for_virtual_budget(target_user_id)
         context = {
             "groq_tracking": {
                 "status": reminder_status["status"], "has_current_data": usage_data.get("has_data", False),
@@ -283,14 +290,14 @@ def _get_tracker() -> GroqOdometerTracker:
     if _global_tracker is None: _global_tracker = GroqOdometerTracker()
     return _global_tracker
 
-def record_groq_reading(value: float, notes: str = "", month: Optional[str] = None) -> Dict:
-    return _get_tracker().record_odometer_reading(value, notes, month)
+def record_groq_reading(value: float, notes: str = "", month: Optional[str] = None, user_id: str = None) -> Dict:
+    return _get_tracker().record_odometer_reading(value, notes, month, user_id)
 
-def get_groq_reminder_status() -> Dict:
-    return _get_tracker().check_reminder_needs()
+def get_groq_reminder_status(user_id: str = None) -> Dict:
+    return _get_tracker().check_reminder_needs(user_id)
 
-def get_groq_context_for_narrator() -> Dict:
-    return _get_tracker().generate_narrator_context()
+def get_groq_context_for_narrator(user_id: str = None) -> Dict:
+    return _get_tracker().generate_narrator_context(user_id)
 
 if __name__ == "__main__":
     vbm = GroqOdometerTracker()

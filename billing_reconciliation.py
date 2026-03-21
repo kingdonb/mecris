@@ -34,17 +34,19 @@ class ReconciliationResult:
     error: Optional[str] = None
 
 class BillingReconciliation:
-    def __init__(self):
+    def __init__(self, user_id: str = None):
         self.budget_manager = VirtualBudgetManager()
         self.neon_url = os.getenv("NEON_DB_URL")
+        self.user_id = user_id or os.getenv("DEFAULT_USER_ID")
     
-    def reconcile_anthropic(self, target_date: date) -> ReconciliationResult:
+    def reconcile_anthropic(self, target_date: date, user_id: str = None) -> ReconciliationResult:
         """Reconcile Anthropic usage for a specific date."""
-        logger.info(f"Starting Anthropic reconciliation for {target_date}")
+        target_user_id = user_id or self.user_id
+        logger.info(f"Starting Anthropic reconciliation for {target_date} (User: {target_user_id})")
         
         try:
             # Get our estimated costs for the date
-            estimated_total, usage_records = self._get_estimated_costs(Provider.ANTHROPIC, target_date)
+            estimated_total, usage_records = self._get_estimated_costs(Provider.ANTHROPIC, target_date, target_user_id)
             
             if not usage_records:
                 return ReconciliationResult(
@@ -108,13 +110,14 @@ class BillingReconciliation:
                 error=str(e)
             )
     
-    def reconcile_groq(self, target_date: date) -> ReconciliationResult:
+    def reconcile_groq(self, target_date: date, user_id: str = None) -> ReconciliationResult:
         """Reconcile Groq usage for a specific date."""
-        logger.info(f"Starting Groq reconciliation for {target_date}")
+        target_user_id = user_id or self.user_id
+        logger.info(f"Starting Groq reconciliation for {target_date} (User: {target_user_id})")
         
         try:
             # Get our estimated costs for the date
-            estimated_total, usage_records = self._get_estimated_costs(Provider.GROQ, target_date)
+            estimated_total, usage_records = self._get_estimated_costs(Provider.GROQ, target_date, target_user_id)
             
             if not usage_records:
                 return ReconciliationResult(
@@ -178,34 +181,35 @@ class BillingReconciliation:
                 error=str(e)
             )
     
-    def reconcile_all_providers(self, target_date: date) -> List[ReconciliationResult]:
+    def reconcile_all_providers(self, target_date: date, user_id: str = None) -> List[ReconciliationResult]:
         """Reconcile all providers for a specific date."""
         results = []
         
         # Reconcile Anthropic
-        anthro_result = self.reconcile_anthropic(target_date)
+        anthro_result = self.reconcile_anthropic(target_date, user_id)
         results.append(anthro_result)
         
         # Reconcile Groq
-        groq_result = self.reconcile_groq(target_date)
+        groq_result = self.reconcile_groq(target_date, user_id)
         results.append(groq_result)
         
         return results
     
-    def daily_reconciliation(self, days_back: int = 1) -> List[ReconciliationResult]:
+    def daily_reconciliation(self, days_back: int = 1, user_id: str = None) -> List[ReconciliationResult]:
         """Run daily reconciliation for recent days."""
         results = []
+        target_user_id = user_id or self.user_id
         
         for i in range(days_back):
             target_date = date.today() - timedelta(days=i+1)  # Skip today, start with yesterday
-            logger.info(f"Running daily reconciliation for {target_date}")
+            logger.info(f"Running daily reconciliation for {target_date} (User: {target_user_id})")
             
-            daily_results = self.reconcile_all_providers(target_date)
+            daily_results = self.reconcile_all_providers(target_date, target_user_id)
             results.extend(daily_results)
         
         return results
     
-    def _get_estimated_costs(self, provider: Provider, target_date: date) -> Tuple[float, List[Dict]]:
+    def _get_estimated_costs(self, provider: Provider, target_date: date, user_id: str) -> Tuple[float, List[Dict]]:
         """Get estimated costs for a provider on a specific date."""
         if self.neon_url:
             try:
@@ -213,8 +217,8 @@ class BillingReconciliation:
                     with conn.cursor() as cur:
                         cur.execute("""
                             SELECT id, estimated_cost FROM provider_usage 
-                            WHERE provider = %s AND timestamp::date = %s AND reconciled = FALSE
-                        """, (provider.value, target_date))
+                            WHERE provider = %s AND timestamp::date = %s AND reconciled = FALSE AND user_id = %s
+                        """, (provider.value, target_date, user_id))
                         records = cur.fetchall()
                         total_estimated = sum(row[1] for row in records)
                         usage_records = [{"id": row[0], "estimated_cost": row[1]} for row in records]
@@ -311,7 +315,7 @@ class BillingReconciliation:
         return ((estimated - actual) / actual) * 100.0
     
     def _update_usage_records_with_actual_costs(self, provider: Provider, target_date: date, 
-                                               usage_records: List[Dict], total_actual: float) -> int:
+                                               usage_records: List[Dict], total_actual: float, user_id: str) -> int:
         """Update usage records with reconciled actual costs."""
         if not usage_records or total_actual <= 0:
             return 0
@@ -332,8 +336,8 @@ class BillingReconciliation:
                             cur.execute("""
                                 UPDATE provider_usage 
                                 SET actual_cost = %s, reconciled = TRUE 
-                                WHERE id = %s
-                            """, (actual_cost, record["id"]))
+                                WHERE id = %s AND user_id = %s
+                            """, (actual_cost, record["id"], user_id))
                             records_updated += 1
                 return records_updated
             except Exception as e:
@@ -353,7 +357,7 @@ class BillingReconciliation:
         return records_updated
     
     def _log_reconciliation_job(self, provider: str, target_date: date, estimated_total: float,
-                               actual_total: float, drift_percentage: float, records_reconciled: int):
+                               actual_total: float, drift_percentage: float, records_reconciled: int, user_id: str):
         """Log a reconciliation job for tracking accuracy over time."""
         now = datetime.now()
         
@@ -363,9 +367,9 @@ class BillingReconciliation:
                     with conn.cursor() as cur:
                         cur.execute("""
                             INSERT INTO reconciliation_jobs 
-                            (provider, job_date, estimated_total, actual_total, drift_percentage, records_reconciled, reconciled_at)
-                            VALUES (%s, %s, %s, %s, %s, %s, %s)
-                        """, (provider, target_date, estimated_total, actual_total, drift_percentage, records_reconciled, now))
+                            (provider, job_date, estimated_total, actual_total, drift_percentage, records_reconciled, reconciled_at, user_id)
+                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                        """, (provider, target_date, estimated_total, actual_total, drift_percentage, records_reconciled, now, user_id))
                 return
             except Exception as e:
                 logger.error(f"Neon _log_reconciliation_job failed: {e}")
@@ -386,8 +390,9 @@ class BillingReconciliation:
                 now.isoformat()
             ))
     
-    def get_reconciliation_summary(self, days: int = 7) -> Dict:
+    def get_reconciliation_summary(self, days: int = 7, user_id: str = None) -> Dict:
         """Get reconciliation accuracy summary for recent days."""
+        target_user_id = user_id or self.user_id
         if self.neon_url:
             try:
                 with psycopg2.connect(self.neon_url) as conn:
@@ -402,9 +407,9 @@ class BillingReconciliation:
                                 SUM(estimated_total) as total_estimated,
                                 SUM(actual_total) as total_actual
                             FROM reconciliation_jobs 
-                            WHERE job_date > CURRENT_DATE - INTERVAL %s
+                            WHERE job_date > CURRENT_DATE - INTERVAL %s AND user_id = %s
                             GROUP BY provider
-                        """, (f"{days} days",))
+                        """, (f"{days} days", target_user_id))
                         
                         provider_summary = {}
                         for row in cur.fetchall():
@@ -420,10 +425,10 @@ class BillingReconciliation:
                         cur.execute("""
                             SELECT provider, job_date, drift_percentage, records_reconciled, reconciled_at
                             FROM reconciliation_jobs 
-                            WHERE job_date > CURRENT_DATE - INTERVAL %s
+                            WHERE job_date > CURRENT_DATE - INTERVAL %s AND user_id = %s
                             ORDER BY reconciled_at DESC
                             LIMIT 20
-                        """, (f"{days} days",))
+                        """, (f"{days} days", target_user_id))
                         
                         recent_jobs = [dict(row) for row in cur.fetchall()]
                         for job in recent_jobs:

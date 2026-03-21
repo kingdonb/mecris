@@ -33,8 +33,9 @@ class ProviderUsage:
     reconciled: bool = False
 
 class VirtualBudgetManager:
-    def __init__(self):
+    def __init__(self, user_id: str = None):
         self.neon_url = os.getenv("NEON_DB_URL")
+        self.user_id = user_id or os.getenv("DEFAULT_USER_ID")
         if not self.neon_url:
             logger.warning("NEON_DB_URL not set in VirtualBudgetManager. Budgeting will fail.")
             
@@ -73,18 +74,21 @@ class VirtualBudgetManager:
                     cur.execute("""
                         CREATE TABLE IF NOT EXISTS budget_allocations (
                             id SERIAL PRIMARY KEY,
+                            user_id TEXT REFERENCES users(pocket_id_sub),
                             period_type TEXT NOT NULL,
                             budget_amount DOUBLE PRECISION NOT NULL,
                             remaining_amount DOUBLE PRECISION NOT NULL,
                             period_start DATE NOT NULL,
                             period_end DATE NOT NULL,
                             created_at TIMESTAMPTZ NOT NULL,
-                            updated_at TIMESTAMPTZ NOT NULL
+                            updated_at TIMESTAMPTZ NOT NULL,
+                            UNIQUE(user_id, period_type, period_start)
                         );
                     """)
                     cur.execute("""
                         CREATE TABLE IF NOT EXISTS provider_usage (
                             id SERIAL PRIMARY KEY,
+                            user_id TEXT REFERENCES users(pocket_id_sub),
                             provider TEXT NOT NULL,
                             model TEXT NOT NULL,
                             input_tokens INTEGER NOT NULL,
@@ -100,6 +104,7 @@ class VirtualBudgetManager:
                     cur.execute("""
                         CREATE TABLE IF NOT EXISTS reconciliation_jobs (
                             id SERIAL PRIMARY KEY,
+                            user_id TEXT REFERENCES users(pocket_id_sub),
                             provider TEXT NOT NULL,
                             job_date DATE NOT NULL,
                             estimated_total DOUBLE PRECISION NOT NULL,
@@ -112,20 +117,22 @@ class VirtualBudgetManager:
                     cur.execute("""
                         CREATE TABLE IF NOT EXISTS provider_cache (
                             id SERIAL PRIMARY KEY,
+                            user_id TEXT REFERENCES users(pocket_id_sub),
                             provider TEXT NOT NULL,
                             cache_key TEXT NOT NULL,
                             cache_data TEXT NOT NULL,
                             cached_at TIMESTAMPTZ NOT NULL,
                             expires_at TIMESTAMPTZ NOT NULL,
-                            UNIQUE(provider, cache_key)
+                            UNIQUE(user_id, provider, cache_key)
                         );
                     """)
-            self._ensure_daily_budget()
+            self._ensure_daily_budget(self.user_id)
         except Exception as e:
             logger.error(f"Neon DB init failed: {e}")
 
-    def _ensure_daily_budget(self):
-        if not self.neon_url: return
+    def _ensure_daily_budget(self, user_id: str = None):
+        target_user_id = user_id or self.user_id
+        if not self.neon_url or not target_user_id: return
         today = date.today()
         tomorrow = today + timedelta(days=1)
         now = datetime.now()
@@ -133,13 +140,13 @@ class VirtualBudgetManager:
         try:
             with psycopg2.connect(self.neon_url) as conn:
                 with conn.cursor() as cur:
-                    cur.execute("SELECT id FROM budget_allocations WHERE period_type = %s AND period_start = %s", ("daily", today))
+                    cur.execute("SELECT id FROM budget_allocations WHERE user_id = %s AND period_type = %s AND period_start = %s", (target_user_id, "daily", today))
                     if not cur.fetchone():
                         cur.execute("""
                             INSERT INTO budget_allocations 
-                            (period_type, budget_amount, remaining_amount, period_start, period_end, created_at, updated_at)
-                            VALUES (%s, %s, %s, %s, %s, %s, %s)
-                        """, ("daily", self.daily_budget, self.daily_budget, today, tomorrow, now, now))
+                            (user_id, period_type, budget_amount, remaining_amount, period_start, period_end, created_at, updated_at)
+                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                        """, (target_user_id, "daily", self.daily_budget, self.daily_budget, today, tomorrow, now, now))
         except Exception as e:
             logger.error(f"ensure_daily_budget failed: {e}")
 
@@ -150,14 +157,15 @@ class VirtualBudgetManager:
             pricing = self.pricing[provider][model]
         return round(input_tokens * pricing["input"] + output_tokens * pricing["output"], 6)
 
-    def can_afford(self, cost: float, include_reserve: bool = True) -> Dict:
+    def can_afford(self, cost: float, include_reserve: bool = True, user_id: str = None) -> Dict:
+        target_user_id = user_id or self.user_id
         if not self.neon_url: return {"can_afford": False, "reason": "No DB"}
-        self._ensure_daily_budget()
+        self._ensure_daily_budget(target_user_id)
         today = date.today()
         try:
             with psycopg2.connect(self.neon_url) as conn:
                 with conn.cursor() as cur:
-                    cur.execute("SELECT remaining_amount FROM budget_allocations WHERE period_type = %s AND period_start = %s", ("daily", today))
+                    cur.execute("SELECT remaining_amount FROM budget_allocations WHERE user_id = %s AND period_type = %s AND period_start = %s", (target_user_id, "daily", today))
                     res = cur.fetchone()
                     if res:
                         rem = res[0]
@@ -168,12 +176,13 @@ class VirtualBudgetManager:
                         if cost <= avail: return {"can_afford": True, "remaining": rem, "available": avail, "cost": cost, "after_spending": rem - cost}
                         return {"can_afford": False, "reason": "Insufficient budget", "remaining": rem, "available": avail, "cost": cost, "shortfall": cost - avail}
         except Exception as e:
-            logger.error(f"can_afford check failed: {e}")
+            logger.error(f"can_afford check failed for {target_user_id}: {e}")
         return {"can_afford": False, "reason": "DB Error"}
 
-    def record_usage(self, provider: Provider, model: str, input_tokens: int, output_tokens: int, session_type: str = "interactive", notes: str = "", emergency_override: bool = False) -> Dict:
+    def record_usage(self, provider: Provider, model: str, input_tokens: int, output_tokens: int, session_type: str = "interactive", notes: str = "", emergency_override: bool = False, user_id: str = None) -> Dict:
+        target_user_id = user_id or self.user_id
         cost = self.calculate_cost(provider, model, input_tokens, output_tokens)
-        afford = self.can_afford(cost, include_reserve=not emergency_override)
+        afford = self.can_afford(cost, include_reserve=not emergency_override, user_id=target_user_id)
         if not afford["can_afford"] and not emergency_override:
             return {"recorded": False, "reason": afford.get("reason", "Unknown"), "cost": cost, "affordability": afford}
         now, today = datetime.now(), date.today()
@@ -184,29 +193,30 @@ class VirtualBudgetManager:
         try:
             with psycopg2.connect(self.neon_url) as conn:
                 with conn.cursor() as cur:
-                    cur.execute("INSERT INTO provider_usage (provider, model, input_tokens, output_tokens, estimated_cost, timestamp, session_type, notes) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)", (provider.value, model, input_tokens, output_tokens, cost, now, session_type, notes))
-                    cur.execute("UPDATE budget_allocations SET remaining_amount = remaining_amount - %s, updated_at = %s WHERE period_type = %s AND period_start = %s", (cost, now, "daily", today))
+                    cur.execute("INSERT INTO provider_usage (user_id, provider, model, input_tokens, output_tokens, estimated_cost, timestamp, session_type, notes) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)", (target_user_id, provider.value, model, input_tokens, output_tokens, cost, now, session_type, notes))
+                    cur.execute("UPDATE budget_allocations SET remaining_amount = remaining_amount - %s, updated_at = %s WHERE user_id = %s AND period_type = %s AND period_start = %s", (cost, now, target_user_id, "daily", today))
             return {"recorded": True, "cost": cost, "provider": provider.value, "model": model, "emergency_override": emergency_override, "remaining_budget": afford.get("after_spending", 0)}
         except Exception as e:
-            logger.error(f"record_usage failed: {e}")
+            logger.error(f"record_usage failed for {target_user_id}: {e}")
             return {"recorded": False, "reason": str(e)}
 
-    def get_budget_status(self) -> Dict:
+    def get_budget_status(self, user_id: str = None) -> Dict:
+        target_user_id = user_id or self.user_id
         if not self.neon_url: return {"error": "Neon DB not configured"}
-        self._ensure_daily_budget()
+        self._ensure_daily_budget(target_user_id)
         today = date.today()
         try:
             with psycopg2.connect(self.neon_url) as conn:
                 with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                    cur.execute("SELECT budget_amount, remaining_amount, updated_at FROM budget_allocations WHERE period_type = %s AND period_start = %s", ("daily", today))
+                    cur.execute("SELECT budget_amount, remaining_amount, updated_at FROM budget_allocations WHERE user_id = %s AND period_type = %s AND period_start = %s", (target_user_id, "daily", today))
                     dbudget = cur.fetchone()
-                    cur.execute("SELECT provider, SUM(estimated_cost) as cost, COUNT(*) as sessions FROM provider_usage WHERE timestamp::date = %s GROUP BY provider", (today,))
+                    cur.execute("SELECT provider, SUM(estimated_cost) as cost, COUNT(*) as sessions FROM provider_usage WHERE user_id = %s AND timestamp::date = %s GROUP BY provider", (target_user_id, today))
                     provider_rows = cur.fetchall()
                     provider_usage = {row['provider']: {'cost': row['cost'], 'sessions': row['sessions']} for row in provider_rows}
-                    cur.execute("SELECT provider, AVG(ABS(drift_percentage)) as drift FROM reconciliation_jobs WHERE job_date > CURRENT_DATE - INTERVAL '7 days' GROUP BY provider")
+                    cur.execute("SELECT provider, AVG(ABS(drift_percentage)) as drift FROM reconciliation_jobs WHERE user_id = %s AND job_date > CURRENT_DATE - INTERVAL '7 days' GROUP BY provider", (target_user_id,))
                     recon_rows = cur.fetchall()
                     recon_acc = {row['provider']: row['drift'] for row in recon_rows}
-                    if not dbudget: return {"error": "No daily budget found in Neon"}
+                    if not dbudget: return {"error": f"No daily budget found for {target_user_id} in Neon"}
                     b_amt, rem, updated = dbudget["budget_amount"], dbudget["remaining_amount"], str(dbudget["updated_at"])
                     spent, avail = b_amt - rem, rem * (1 - self.emergency_reserve_ratio)
                     alerts = []
@@ -228,28 +238,30 @@ class VirtualBudgetManager:
             logger.error(f"get_budget_status failed: {e}")
             return {"error": str(e)}
 
-    def reset_daily_budget(self) -> Dict:
+    def reset_daily_budget(self, user_id: str = None) -> Dict:
+        target_user_id = user_id or self.user_id
         if not self.neon_url: return {"error": "Neon DB not configured"}
         today, now = date.today(), datetime.now()
         tomorrow = today + timedelta(days=1)
         try:
             with psycopg2.connect(self.neon_url) as conn:
                 with conn.cursor() as cur:
-                    cur.execute("INSERT INTO budget_allocations (period_type, budget_amount, remaining_amount, period_start, period_end, created_at, updated_at) VALUES (%s, %s, %s, %s, %s, %s, %s) ON CONFLICT DO NOTHING", ("daily", self.daily_budget, self.daily_budget, today, tomorrow, now, now))
+                    cur.execute("INSERT INTO budget_allocations (user_id, period_type, budget_amount, remaining_amount, period_start, period_end, created_at, updated_at) VALUES (%s, %s, %s, %s, %s, %s, %s, %s) ON CONFLICT DO NOTHING", (target_user_id, "daily", self.daily_budget, self.daily_budget, today, tomorrow, now, now))
             return {"reset": True, "new_budget": self.daily_budget, "date": today.isoformat(), "timestamp": now.isoformat()}
         except Exception as e:
-            logger.error(f"reset_daily_budget failed: {e}")
+            logger.error(f"reset_daily_budget failed for {target_user_id}: {e}")
             return {"error": str(e)}
 
-    def get_usage_summary(self, days: int = 7) -> Dict:
+    def get_usage_summary(self, days: int = 7, user_id: str = None) -> Dict:
+        target_user_id = user_id or self.user_id
         if not self.neon_url: return {"error": "Neon DB not configured"}
         cutoff = (datetime.now() - timedelta(days=days)).isoformat()
         try:
             with psycopg2.connect(self.neon_url) as conn:
                 with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                    cur.execute("SELECT provider, COUNT(*) as sessions, SUM(input_tokens) as input_tokens, SUM(output_tokens) as output_tokens, SUM(estimated_cost) as estimated_cost, SUM(CASE WHEN reconciled THEN actual_cost ELSE estimated_cost END) as total_cost FROM provider_usage WHERE timestamp > %s GROUP BY provider", (cutoff,))
+                    cur.execute("SELECT provider, COUNT(*) as sessions, SUM(input_tokens) as input_tokens, SUM(output_tokens) as output_tokens, SUM(estimated_cost) as estimated_cost, SUM(CASE WHEN reconciled THEN actual_cost ELSE estimated_cost END) as total_cost FROM provider_usage WHERE user_id = %s AND timestamp > %s GROUP BY provider", (target_user_id, cutoff,))
                     ptotals = {row["provider"]: dict(row) for row in cur.fetchall()}
-                    cur.execute("SELECT timestamp::date as date, provider, SUM(estimated_cost) as daily_cost FROM provider_usage WHERE timestamp > %s GROUP BY timestamp::date, provider ORDER BY date DESC", (cutoff,))
+                    cur.execute("SELECT timestamp::date as date, provider, SUM(estimated_cost) as daily_cost FROM provider_usage WHERE user_id = %s AND timestamp > %s GROUP BY timestamp::date, provider ORDER BY date DESC", (target_user_id, cutoff,))
                     breakdown = {}
                     for row in cur.fetchall():
                         d = str(row["date"])
@@ -257,17 +269,17 @@ class VirtualBudgetManager:
                         breakdown[d][row["provider"]] = row["daily_cost"]
                     return {"period_days": days, "provider_totals": ptotals, "daily_breakdown": breakdown, "total_estimated": sum(p["estimated_cost"] for p in ptotals.values()), "total_actual": sum(p["total_cost"] for p in ptotals.values())}
         except Exception as e:
-            logger.error(f"get_usage_summary failed: {e}")
+            logger.error(f"get_usage_summary failed for {target_user_id}: {e}")
             return {"error": str(e)}
 
-def record_anthropic_usage(model: str, input_tokens: int, output_tokens: int, session_type: str = "interactive", notes: str = "") -> float:
-    return VirtualBudgetManager().record_usage(Provider.ANTHROPIC, model, input_tokens, output_tokens, session_type, notes).get("cost", 0.0)
+def record_anthropic_usage(model: str, input_tokens: int, output_tokens: int, session_type: str = "interactive", notes: str = "", user_id: str = None) -> float:
+    return VirtualBudgetManager(user_id=user_id).record_usage(Provider.ANTHROPIC, model, input_tokens, output_tokens, session_type, notes, user_id=user_id).get("cost", 0.0)
 
-def record_groq_usage(model: str, input_tokens: int, output_tokens: int, session_type: str = "interactive", notes: str = "") -> float:
-    return VirtualBudgetManager().record_usage(Provider.GROQ, model, input_tokens, output_tokens, session_type, notes).get("cost", 0.0)
+def record_groq_usage(model: str, input_tokens: int, output_tokens: int, session_type: str = "interactive", notes: str = "", user_id: str = None) -> float:
+    return VirtualBudgetManager(user_id=user_id).record_usage(Provider.GROQ, model, input_tokens, output_tokens, session_type, notes, user_id=user_id).get("cost", 0.0)
 
-def get_virtual_budget_status() -> Dict:
-    return VirtualBudgetManager().get_budget_status()
+def get_virtual_budget_status(user_id: str = None) -> Dict:
+    return VirtualBudgetManager(user_id=user_id).get_budget_status(user_id=user_id)
 
 if __name__ == "__main__":
     vbm = VirtualBudgetManager()

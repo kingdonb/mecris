@@ -27,9 +27,10 @@ class UsageSession:
     notes: str = ""
 
 class UsageTracker:
-    def __init__(self, db_path: str = "mecris_usage.db"):
+    def __init__(self, db_path: str = "mecris_usage.db", user_id: str = None):
         self.db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), db_path)
         self.neon_url = os.getenv("NEON_DB_URL")
+        self.user_id = user_id or os.getenv("DEFAULT_USER_ID")
         self.use_neon = False
         self.init_database()
         
@@ -73,12 +74,13 @@ class UsageTracker:
                         output_tokens INTEGER NOT NULL,
                         estimated_cost DOUBLE PRECISION NOT NULL,
                         session_type TEXT NOT NULL,
-                        notes TEXT DEFAULT ''
+                        notes TEXT DEFAULT '',
+                        user_id TEXT REFERENCES users(pocket_id_sub)
                     )
                 """)
                 cur.execute("""
                     CREATE TABLE IF NOT EXISTS budget_tracking (
-                        id INTEGER PRIMARY KEY,
+                        user_id TEXT PRIMARY KEY REFERENCES users(pocket_id_sub),
                         total_budget DOUBLE PRECISION NOT NULL,
                         remaining_budget DOUBLE PRECISION NOT NULL,
                         budget_period_start TEXT NOT NULL,
@@ -95,7 +97,8 @@ class UsageTracker:
                         status TEXT DEFAULT 'active',
                         created_at TIMESTAMPTZ NOT NULL,
                         completed_at TIMESTAMPTZ DEFAULT NULL,
-                        due_date TEXT DEFAULT NULL
+                        due_date TEXT DEFAULT NULL,
+                        user_id TEXT REFERENCES users(pocket_id_sub)
                     )
                 """)
                 cur.execute("""
@@ -105,18 +108,20 @@ class UsageTracker:
                         alert_level TEXT NOT NULL,
                         message TEXT NOT NULL,
                         sent_at TIMESTAMPTZ NOT NULL,
-                        context TEXT DEFAULT ''
+                        context TEXT DEFAULT '',
+                        user_id TEXT REFERENCES users(pocket_id_sub)
                     )
                 """)
                 
                 # Initialize budget if not exists
-                cur.execute("SELECT COUNT(*) FROM budget_tracking")
-                if cur.fetchone()[0] == 0:
-                    cur.execute("""
-                        INSERT INTO budget_tracking 
-                        (id, total_budget, remaining_budget, budget_period_start, budget_period_end, last_updated)
-                        VALUES (1, 24.96, 24.95, '2025-08-06', '2025-09-30', %s)
-                    """, (datetime.now(),))
+                if self.user_id:
+                    cur.execute("SELECT COUNT(*) FROM budget_tracking WHERE user_id = %s", (self.user_id,))
+                    if cur.fetchone()[0] == 0:
+                        cur.execute("""
+                            INSERT INTO budget_tracking 
+                            (user_id, total_budget, remaining_budget, budget_period_start, budget_period_end, last_updated)
+                            VALUES (%s, 24.96, 24.95, '2025-08-06', '2025-09-30', %s)
+                        """, (self.user_id, datetime.now()))
 
     def _init_sqlite(self):
         """Initialize SQLite database for usage tracking."""
@@ -190,8 +195,9 @@ class UsageTracker:
         return round(cost, 6)
 
     def record_session(self, model: str, input_tokens: int, output_tokens: int, 
-                      session_type: str = "interactive", notes: str = "") -> float:
+                      session_type: str = "interactive", notes: str = "", user_id: str = None) -> float:
         """Record a usage session and return estimated cost."""
+        target_user_id = user_id or self.user_id
         cost = self.calculate_cost(model, input_tokens, output_tokens)
         now = datetime.now()
         
@@ -201,16 +207,16 @@ class UsageTracker:
                     with conn.cursor() as cur:
                         cur.execute("""
                             INSERT INTO usage_sessions 
-                            (timestamp, model, input_tokens, output_tokens, estimated_cost, session_type, notes)
-                            VALUES (%s, %s, %s, %s, %s, %s, %s)
-                        """, (now, model, input_tokens, output_tokens, cost, session_type, notes))
+                            (timestamp, model, input_tokens, output_tokens, estimated_cost, session_type, notes, user_id)
+                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                        """, (now, model, input_tokens, output_tokens, cost, session_type, notes, target_user_id))
                         
                         # Update remaining budget
                         cur.execute("""
                             UPDATE budget_tracking 
                             SET remaining_budget = remaining_budget - %s, last_updated = %s
-                            WHERE id = 1
-                        """, (cost, now))
+                            WHERE user_id = %s
+                        """, (cost, now, target_user_id))
                 return cost
             except Exception as e:
                 logger.error(f"UsageTracker: Neon record_session failed: {e}")
@@ -233,17 +239,18 @@ class UsageTracker:
         
         return cost
 
-    def get_budget_status(self) -> Dict:
+    def get_budget_status(self, user_id: str = None) -> Dict:
         """Get current budget status with alerts."""
+        target_user_id = user_id or self.user_id
         if self.use_neon:
             try:
                 with psycopg2.connect(self.neon_url) as conn:
                     with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                        cur.execute("SELECT * FROM budget_tracking WHERE id = 1")
+                        cur.execute("SELECT * FROM budget_tracking WHERE user_id = %s", (target_user_id,))
                         budget_info = cur.fetchone()
                         
                         if not budget_info:
-                            return {"error": "No budget information found in Neon"}
+                            return {"error": f"No budget information found for {target_user_id} in Neon"}
                         
                         total, remaining = budget_info['total_budget'], budget_info['remaining_budget']
                         period_end_val = budget_info['budget_period_end']
@@ -258,11 +265,11 @@ class UsageTracker:
                         # today spend
                         cur.execute("""
                             SELECT SUM(estimated_cost) FROM usage_sessions 
-                            WHERE (timestamp::TIMESTAMPTZ AT TIME ZONE 'US/Eastern')::date = CURRENT_DATE AT TIME ZONE 'US/Eastern'
-                        """)
+                            WHERE user_id = %s AND (timestamp::TIMESTAMPTZ AT TIME ZONE 'US/Eastern')::date = CURRENT_DATE AT TIME ZONE 'US/Eastern'
+                        """, (target_user_id,))
                         today_spend = cur.fetchone()['sum'] or 0
                         
-                        cur.execute("SELECT SUM(estimated_cost) FROM usage_sessions WHERE timestamp > NOW() - INTERVAL '7 days'")
+                        cur.execute("SELECT SUM(estimated_cost) FROM usage_sessions WHERE user_id = %s AND timestamp > NOW() - INTERVAL '7 days'", (target_user_id,))
                         week_spend = cur.fetchone()['sum'] or 0
                         
                         daily_burn_rate = week_spend / 7 if week_spend > 0 else 0
@@ -342,8 +349,9 @@ class UsageTracker:
             "budget_health": "GOOD" if not alerts else "WARNING" if len(alerts) < 3 else "CRITICAL"
         }
 
-    def get_recent_sessions(self, limit: int = 10) -> List[Dict]:
+    def get_recent_sessions(self, limit: int = 10, user_id: str = None) -> List[Dict]:
         """Get the most recent usage sessions."""
+        target_user_id = user_id or self.user_id
         if self.use_neon:
             try:
                 with psycopg2.connect(self.neon_url) as conn:
@@ -351,9 +359,10 @@ class UsageTracker:
                         cur.execute("""
                             SELECT timestamp, model, input_tokens, output_tokens, estimated_cost, session_type, notes 
                             FROM usage_sessions 
+                            WHERE user_id = %s
                             ORDER BY timestamp DESC 
                             LIMIT %s
-                        """, (limit,))
+                        """, (target_user_id, limit,))
                         sessions = cur.fetchall()
                         for s in sessions:
                             s['timestamp'] = s['timestamp'].isoformat()
@@ -384,8 +393,9 @@ class UsageTracker:
             ]
 
     def update_budget(self, remaining_budget: float, total_budget: Optional[float] = None, 
-                     period_end: Optional[str] = None) -> Dict:
+                     period_end: Optional[str] = None, user_id: str = None) -> Dict:
         """Manually update budget information."""
+        target_user_id = user_id or self.user_id
         now = datetime.now()
         timestamp = now.isoformat()
         
@@ -397,16 +407,16 @@ class UsageTracker:
                             cur.execute("""
                                 UPDATE budget_tracking 
                                 SET total_budget = %s, remaining_budget = %s, budget_period_end = %s, last_updated = %s
-                                WHERE id = 1
-                            """, (total_budget, remaining_budget, period_end, now))
+                                WHERE user_id = %s
+                            """, (total_budget, remaining_budget, period_end, now, target_user_id))
                         else:
                             cur.execute("""
                                 UPDATE budget_tracking 
                                 SET remaining_budget = %s, last_updated = %s
-                                WHERE id = 1
-                            """, (remaining_budget, now))
+                                WHERE user_id = %s
+                            """, (remaining_budget, now, target_user_id))
                         
-                        cur.execute("SELECT * FROM budget_tracking WHERE id = 1")
+                        cur.execute("SELECT * FROM budget_tracking WHERE user_id = %s", (target_user_id,))
                         budget_info = cur.fetchone()
                         return {
                             "total": budget_info['total_budget'],
@@ -444,8 +454,9 @@ class UsageTracker:
             "last_updated": budget_info[5]
         }
 
-    def get_goals(self) -> List[Dict]:
+    def get_goals(self, user_id: str = None) -> List[Dict]:
         """Get all goals with their status."""
+        target_user_id = user_id or self.user_id
         if self.use_neon:
             try:
                 with psycopg2.connect(self.neon_url) as conn:
@@ -453,6 +464,7 @@ class UsageTracker:
                         cur.execute("""
                             SELECT id, title, description, priority, status, created_at, completed_at, due_date
                             FROM goals 
+                            WHERE user_id = %s
                             ORDER BY 
                                 CASE priority 
                                     WHEN 'high' THEN 1 
@@ -464,7 +476,7 @@ class UsageTracker:
                                     WHEN 'completed' THEN 2
                                 END,
                                 created_at
-                        """)
+                        """, (target_user_id,))
                         return [dict(row) for row in cur.fetchall()]
             except Exception as e:
                 logger.error(f"UsageTracker: Neon get_goals failed: {e}")
@@ -502,8 +514,9 @@ class UsageTracker:
                 for row in cursor.fetchall()
             ]
 
-    def complete_goal(self, goal_id: int) -> Dict:
+    def complete_goal(self, goal_id: int, user_id: str = None) -> Dict:
         """Mark a goal as completed."""
+        target_user_id = user_id or self.user_id
         now = datetime.now()
         timestamp = now.isoformat()
         
@@ -511,15 +524,17 @@ class UsageTracker:
             try:
                 with psycopg2.connect(self.neon_url) as conn:
                     with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                        cur.execute("SELECT title FROM goals WHERE id = %s", (goal_id,))
+                        cur.execute("SELECT title FROM goals WHERE id = %s AND user_id = %s", (goal_id, target_user_id))
                         goal = cur.fetchone()
                         if goal:
                             cur.execute("""
                                 UPDATE goals 
                                 SET status = 'completed', completed_at = %s 
-                                WHERE id = %s
-                            """, (now, goal_id))
+                                WHERE id = %s AND user_id = %s
+                            """, (now, goal_id, target_user_id))
                             return {"completed": True, "goal_id": goal_id, "title": goal['title'], "completed_at": timestamp}
+                        else:
+                            return {"error": f"Goal {goal_id} not found for user {target_user_id}"}
             except Exception as e:
                 logger.error(f"UsageTracker: Neon complete_goal failed: {e}")
                 raise
@@ -535,8 +550,9 @@ class UsageTracker:
             """, (timestamp, goal_id))
             return {"completed": True, "goal_id": goal_id, "title": goal[0], "completed_at": timestamp}
 
-    def add_goal(self, title: str, description: str = "", priority: str = 'medium', due_date: Optional[str] = None) -> Dict:
+    def add_goal(self, title: str, description: str = "", priority: str = 'medium', due_date: Optional[str] = None, user_id: str = None) -> Dict:
         """Add a new goal."""
+        target_user_id = user_id or self.user_id
         now = datetime.now()
         timestamp = now.isoformat()
         
@@ -548,10 +564,10 @@ class UsageTracker:
                 with psycopg2.connect(self.neon_url) as conn:
                     with conn.cursor() as cur:
                         cur.execute("""
-                            INSERT INTO goals (title, description, priority, status, created_at, due_date)
-                            VALUES (%s, %s, %s, 'active', %s, %s)
+                            INSERT INTO goals (title, description, priority, status, created_at, due_date, user_id)
+                            VALUES (%s, %s, %s, 'active', %s, %s, %s)
                             RETURNING id
-                        """, (title, description, priority, now, due_date))
+                        """, (title, description, priority, now, due_date, target_user_id))
                         goal_id = cur.fetchone()[0]
                         return {"added": True, "goal_id": goal_id, "title": title, "priority": priority, "created_at": timestamp}
             except Exception as e:
@@ -566,8 +582,9 @@ class UsageTracker:
             goal_id = cursor.lastrowid
             return {"added": True, "goal_id": goal_id, "title": title, "priority": priority, "created_at": timestamp}
 
-    def should_send_alert(self, alert_type: str, alert_level: str, cooldown_minutes: int = 60) -> bool:
+    def should_send_alert(self, alert_type: str, alert_level: str, cooldown_minutes: int = 60, user_id: str = None) -> bool:
         """Check if an alert should be sent based on cooldown."""
+        target_user_id = user_id or self.user_id
         cutoff = datetime.now() - timedelta(minutes=cooldown_minutes)
         
         if self.use_neon:
@@ -576,8 +593,8 @@ class UsageTracker:
                     with conn.cursor() as cur:
                         cur.execute("""
                             SELECT COUNT(*) FROM alert_log 
-                            WHERE alert_type = %s AND alert_level = %s AND sent_at > %s
-                        """, (alert_type, alert_level, cutoff))
+                            WHERE alert_type = %s AND alert_level = %s AND sent_at > %s AND user_id = %s
+                        """, (alert_type, alert_level, cutoff, target_user_id))
                         return cur.fetchone()[0] == 0
             except Exception as e:
                 logger.error(f"UsageTracker: Neon should_send_alert failed: {e}")
@@ -590,8 +607,9 @@ class UsageTracker:
             """, (alert_type, alert_level, cutoff.isoformat()))
             return cursor.fetchone()[0] == 0
 
-    def log_alert(self, alert_type: str, alert_level: str, message: str, context: str = ""):
+    def log_alert(self, alert_type: str, alert_level: str, message: str, context: str = "", user_id: str = None):
         """Log a sent alert."""
+        target_user_id = user_id or self.user_id
         now = datetime.now()
         
         if self.use_neon:
@@ -599,9 +617,9 @@ class UsageTracker:
                 with psycopg2.connect(self.neon_url) as conn:
                     with conn.cursor() as cur:
                         cur.execute("""
-                            INSERT INTO alert_log (alert_type, alert_level, message, sent_at, context)
-                            VALUES (%s, %s, %s, %s, %s)
-                        """, (alert_type, alert_level, message, now, context))
+                            INSERT INTO alert_log (alert_type, alert_level, message, sent_at, context, user_id)
+                            VALUES (%s, %s, %s, %s, %s, %s)
+                        """, (alert_type, alert_level, message, now, context, target_user_id))
                 return
             except Exception as e:
                 logger.error(f"UsageTracker: Neon log_alert failed: {e}")
@@ -613,8 +631,9 @@ class UsageTracker:
                 VALUES (?, ?, ?, ?, ?)
             """, (alert_type, alert_level, message, now.isoformat(), context))
 
-    def get_usage_summary(self, days: int = 7) -> Dict:
+    def get_usage_summary(self, days: int = 7, user_id: str = None) -> Dict:
         """Get usage summary for the last N days."""
+        target_user_id = user_id or self.user_id
         cutoff_date = (datetime.now() - timedelta(days=days))
         
         if self.use_neon:
@@ -625,10 +644,10 @@ class UsageTracker:
                         cur.execute("""
                             SELECT timestamp::date as date, SUM(estimated_cost) as cost
                             FROM usage_sessions 
-                            WHERE timestamp > %s
+                            WHERE user_id = %s AND timestamp > %s
                             GROUP BY timestamp::date
                             ORDER BY date DESC
-                        """, (cutoff_date,))
+                        """, (target_user_id, cutoff_date,))
                         
                         daily_usage = [dict(row) for row in cur.fetchall()]
                         for d in daily_usage:
@@ -638,18 +657,18 @@ class UsageTracker:
                         cur.execute("""
                             SELECT session_type, SUM(estimated_cost) as cost, COUNT(*) as count
                             FROM usage_sessions 
-                            WHERE timestamp > %s
+                            WHERE user_id = %s AND timestamp > %s
                             GROUP BY session_type
-                        """, (cutoff_date,))
+                        """, (target_user_id, cutoff_date,))
                         type_usage = {row['session_type']: {"cost": row['cost'], "count": row['count']} for row in cur.fetchall()}
                         
                         # Model breakdown
                         cur.execute("""
                             SELECT model, SUM(estimated_cost) as cost, COUNT(*) as count
                             FROM usage_sessions 
-                            WHERE timestamp > %s
+                            WHERE user_id = %s AND timestamp > %s
                             GROUP BY model
-                        """, (cutoff_date,))
+                        """, (target_user_id, cutoff_date,))
                         model_usage = {row['model']: {"cost": row['cost'], "count": row['count']} for row in cur.fetchall()}
                         
                         total_cost = sum(d['cost'] for d in daily_usage)
@@ -715,29 +734,29 @@ def get_tracker():
 
 # Global convenience functions
 def record_usage(input_tokens: int, output_tokens: int, model: str = "claude-3-5-sonnet-20241022", 
-                session_type: str = "interactive", notes: str = "") -> float:
+                session_type: str = "interactive", notes: str = "", user_id: str = None) -> float:
     tracker = get_tracker()
-    return tracker.record_session(model, input_tokens, output_tokens, session_type, notes)
+    return tracker.record_session(model, input_tokens, output_tokens, session_type, notes, user_id)
 
-def get_budget_status() -> Dict:
+def get_budget_status(user_id: str = None) -> Dict:
     tracker = get_tracker()
-    return tracker.get_budget_status()
+    return tracker.get_budget_status(user_id)
 
-def update_remaining_budget(amount: float) -> Dict:
+def update_remaining_budget(amount: float, user_id: str = None) -> Dict:
     tracker = get_tracker()
-    return tracker.update_budget(amount)
+    return tracker.update_budget(amount, user_id=user_id)
 
-def get_goals() -> List[Dict]:
+def get_goals(user_id: str = None) -> List[Dict]:
     tracker = get_tracker()
-    return tracker.get_goals()
+    return tracker.get_goals(user_id)
 
-def add_goal(title: str, description: str = "", priority: str = "medium", due_date: Optional[str] = None) -> Dict:
+def add_goal(title: str, description: str = "", priority: str = "medium", due_date: Optional[str] = None, user_id: str = None) -> Dict:
     tracker = get_tracker()
-    return tracker.add_goal(title, description, priority, due_date)
+    return tracker.add_goal(title, description, priority, due_date, user_id)
 
-def complete_goal(goal_id: int) -> Dict:
+def complete_goal(goal_id: int, user_id: str = None) -> Dict:
     tracker = get_tracker()
-    return tracker.complete_goal(goal_id)
+    return tracker.complete_goal(goal_id, user_id)
 
 if __name__ == "__main__":
     # Configure logging for standalone test

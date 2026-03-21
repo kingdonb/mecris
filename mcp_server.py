@@ -7,7 +7,7 @@ import os
 import logging
 import asyncio
 import sys
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date, timezone
 from typing import List, Dict, Any, Optional
 
 from dotenv import load_dotenv
@@ -78,18 +78,17 @@ obsidian_client = ObsidianMCPClient()
 beeminder_client = BeeminderClient()
 neon_checker = NeonSyncChecker()
 language_sync_service = LanguageSyncService(beeminder_client)
+# Trackers will use DEFAULT_USER_ID from env if not specified
 usage_tracker = UsageTracker()
 virtual_budget_manager = VirtualBudgetManager()
 billing_reconciler = BillingReconciliation()
 weather_service = WeatherService()
-scheduler = MecrisScheduler(trigger_reminder_func=None) # We'll set the real func later or rely on the name
+scheduler = MecrisScheduler() 
 try:
     anthropic_cost_tracker = AnthropicCostTracker()
 except Exception as e:
     logger.warning(f"Failed to initialize AnthropicCostTracker: {e}")
     anthropic_cost_tracker = None
-
-reminder_service = None # Will be initialized later
 
 # --- Cache Implementation ---
 daily_activity_cache = {}
@@ -115,14 +114,15 @@ async def get_cached_beeminder_goals() -> List[Dict[str, Any]]:
             return beeminder_goals_cache["data"]
         return []
 
-async def get_cached_daily_activity(goal_slug: str = "bike") -> Dict[str, Any]:
+async def get_cached_daily_activity(goal_slug: str = "bike", user_id: str = None) -> Dict[str, Any]:
     """Get daily activity status with 15-minute cache (refreshed for Cloud sync)."""
+    target_user_id = user_id or os.getenv("DEFAULT_USER_ID")
     import zoneinfo
     eastern = zoneinfo.ZoneInfo("US/Eastern")
     local_now = datetime.now(eastern)
     today_str = local_now.strftime("%Y-%m-%d")
     
-    cache_key = f"{goal_slug}:{today_str}"
+    cache_key = f"{target_user_id}:{goal_slug}:{today_str}"
     
     if cache_key in daily_activity_cache:
         cache_entry = daily_activity_cache[cache_key]
@@ -138,9 +138,9 @@ async def get_cached_daily_activity(goal_slug: str = "bike") -> Dict[str, Any]:
     try:
         # Phase 2: Check Neon Cloud DB first for 'bike' (walks)
         if goal_slug == "bike":
-            has_walk = await asyncio.to_thread(neon_checker.has_walk_today)
+            has_walk = await asyncio.to_thread(neon_checker.has_walk_today, target_user_id)
             if has_walk:
-                latest = await asyncio.to_thread(neon_checker.get_latest_walk)
+                latest = await asyncio.to_thread(neon_checker.get_latest_walk, target_user_id)
                 walk_info = f" (Steps: {latest['step_count']})" if latest else ""
                 activity_status = {
                     "goal_slug": goal_slug,
@@ -179,10 +179,11 @@ async def get_cached_daily_activity(goal_slug: str = "bike") -> Dict[str, Any]:
 # --- Tool Implementations ---
 
 @mcp.tool(description="Get unified strategic context with goals, budget, and recommendations.")
-async def get_narrator_context() -> Dict[str, Any]:
+async def get_narrator_context(user_id: str = None) -> Dict[str, Any]:
     """Get unified strategic context with goals, budget, and recommendations."""
+    target_user_id = user_id or os.getenv("DEFAULT_USER_ID")
     try:
-        goals = get_goals()
+        goals = usage_tracker.get_goals(target_user_id)
         active_goals = [g for g in goals if g.get("status") == "active"]
         try:
             todos = await obsidian_client.get_todos()
@@ -192,12 +193,12 @@ async def get_narrator_context() -> Dict[str, Any]:
         beeminder_goals = await get_cached_beeminder_goals()
         emergencies = await beeminder_client.get_emergencies(beeminder_goals)
         goal_runway = await beeminder_client.get_runway_summary(limit=6, all_goals=beeminder_goals)
-        budget_status = await asyncio.to_thread(get_budget_status_from_tracker)
-        daily_walk_status = await get_cached_daily_activity("bike")
-        groq_context = await asyncio.to_thread(get_groq_context_for_narrator)
+        budget_status = await asyncio.to_thread(usage_tracker.get_budget_status, target_user_id)
+        daily_walk_status = await get_cached_daily_activity("bike", target_user_id)
+        groq_context = await asyncio.to_thread(get_groq_context_for_narrator, target_user_id)
 
         # Add latest cloud walk info if available (use to_thread to avoid blocking event loop)
-        latest_cloud_walk = await asyncio.to_thread(neon_checker.get_latest_walk)
+        latest_cloud_walk = await asyncio.to_thread(neon_checker.get_latest_walk, target_user_id)
         if latest_cloud_walk:
             # Convert datetime to ISO string for JSON serialization
             if isinstance(latest_cloud_walk.get("start_time"), datetime):
@@ -284,32 +285,32 @@ async def get_beeminder_status() -> Dict[str, Any]:
         return {"error": f"Failed to fetch Beeminder status: {e}"}
 
 @mcp.tool(description="Get current usage and budget status with days remaining.")
-def get_budget_status() -> Dict[str, Any]:
-    return get_budget_status_from_tracker()
+def get_budget_status(user_id: str = None) -> Dict[str, Any]:
+    return usage_tracker.get_budget_status(user_id)
 
 @mcp.tool(description="Get recent usage sessions.")
-def get_recent_usage(limit: int = 10) -> List[Dict[str, Any]]:
-    return usage_tracker.get_recent_sessions(limit)
+def get_recent_usage(limit: int = 10, user_id: str = None) -> List[Dict[str, Any]]:
+    return usage_tracker.get_recent_sessions(limit, user_id)
 
 @mcp.tool(description="Record Claude usage session with token counts.")
-def record_usage_session(input_tokens: int, output_tokens: int, model: str = "claude-3-5-sonnet-20241022", session_type: str = "interactive", notes: str = "") -> Dict[str, Any]:
+def record_usage_session(input_tokens: int, output_tokens: int, model: str = "claude-3-5-haiku-20241022", session_type: str = "interactive", notes: str = "", user_id: str = None) -> Dict[str, Any]:
     try:
-        cost = record_usage(input_tokens, output_tokens, model, session_type, notes)
-        return {"recorded": True, "estimated_cost": cost, "updated_status": get_budget_status_from_tracker()}
+        cost = record_usage(input_tokens, output_tokens, model, session_type, notes, user_id)
+        return {"recorded": True, "estimated_cost": cost, "updated_status": usage_tracker.get_budget_status(user_id)}
     except Exception as e:
         logger.error(f"Failed to record usage: {e}")
         return {"error": f"Failed to record usage: {e}"}
 
 @mcp.tool(description="Record Claude Code CLI usage specifically.")
-def record_claude_code_usage(input_tokens: int, output_tokens: int, model: str = "claude-3-5-sonnet-20241022", notes: str = "") -> Dict[str, Any]:
+def record_claude_code_usage(input_tokens: int, output_tokens: int, model: str = "claude-3- Haiku", notes: str = "", user_id: str = None) -> Dict[str, Any]:
     """Specific tool for Claude Code CLI to report its own usage."""
     try:
-        cost = record_usage(input_tokens, output_tokens, model, "claude-code", notes)
+        cost = record_usage(input_tokens, output_tokens, model, "claude-code", notes, user_id)
         return {
             "recorded": True, 
             "estimated_cost": cost, 
             "message": f"Recorded ${cost:.4f} usage for Claude Code session.",
-            "updated_status": get_budget_status_from_tracker()
+            "updated_status": usage_tracker.get_budget_status(user_id)
         }
     except Exception as e:
         logger.error(f"Failed to record Claude Code usage: {e}")
@@ -370,8 +371,8 @@ async def send_beeminder_alert() -> Dict[str, Any]:
         return {"error": f"Failed to send beeminder alert: {e}"}
 
 @mcp.tool(description="Check if daily activity was logged for a specific goal.")
-async def get_daily_activity(goal_slug: str = "bike") -> Dict[str, Any]:
-    return await get_cached_daily_activity(goal_slug)
+async def get_daily_activity(goal_slug: str = "bike", user_id: str = None) -> Dict[str, Any]:
+    return await get_cached_daily_activity(goal_slug, user_id)
 
 @mcp.tool(description="Get current weather and a recommendation for outdoor activity.")
 def get_weather_report() -> Dict[str, Any]:
@@ -398,50 +399,53 @@ async def trigger_language_sync() -> Dict[str, Any]:
     return result
 
 @mcp.tool(description="Add a new goal to the local database.")
-def add_goal(title: str, description: str = "", priority: str = "medium", due_date: Optional[str] = None) -> Dict[str, Any]:
-    return add_goal_from_tracker(title, description, priority, due_date)
+def add_goal(title: str, description: str = "", priority: str = "medium", due_date: Optional[str] = None, user_id: str = None) -> Dict[str, Any]:
+    return usage_tracker.add_goal(title, description, priority, due_date, user_id)
 
 @mcp.tool(description="Mark a goal as completed.")
-def complete_goal(goal_id: int) -> Dict[str, Any]:
-    return complete_goal_from_tracker(goal_id)
+def complete_goal(goal_id: int, user_id: str = None) -> Dict[str, Any]:
+    return usage_tracker.complete_goal(goal_id, user_id)
 
 @mcp.tool(description="Manually update budget information.")
-def update_budget(remaining_budget: float, total_budget: Optional[float] = None, period_end: Optional[str] = None) -> Dict[str, Any]:
-    return usage_tracker.update_budget(remaining_budget, total_budget, period_end)
+def update_budget(remaining_budget: float, total_budget: Optional[float] = None, period_end: Optional[str] = None, user_id: str = None) -> Dict[str, Any]:
+    return usage_tracker.update_budget(remaining_budget, total_budget, period_end, user_id)
 
 @mcp.tool(description="Record manual Groq odometer reading with cumulative cost.")
-def record_groq_reading(value: float, notes: str = "", month: Optional[str] = None) -> Dict[str, Any]:
-    return record_groq_reading_from_tracker(value, notes, month)
+def record_groq_reading(value: float, notes: str = "", month: Optional[str] = None, user_id: str = None) -> Dict[str, Any]:
+    from groq_odometer_tracker import record_groq_reading as record_groq
+    return record_groq(value, notes, month, user_id)
 
 @mcp.tool(description="Get Groq odometer status and usage reminders.")
-def get_groq_status() -> Dict[str, Any]:
-    return get_groq_reminder_status()
+def get_groq_status(user_id: str = None) -> Dict[str, Any]:
+    from groq_odometer_tracker import get_groq_reminder_status
+    return get_groq_reminder_status(user_id)
 
 @mcp.tool(description="Get Groq odometer context for narrator integration.")
-def get_groq_context() -> Dict[str, Any]:
-    return get_groq_context_for_narrator()
+def get_groq_context(user_id: str = None) -> Dict[str, Any]:
+    return get_groq_context_for_narrator(user_id)
 
 @mcp.tool(description="Get unified cost status combining Claude budget and Groq usage data.")
-async def get_unified_cost_status() -> Dict[str, Any]:
+async def get_unified_cost_status(user_id: str = None) -> Dict[str, Any]:
     try:
         from groq_odometer_tracker import _get_tracker
-        budget_data = await asyncio.to_thread(get_budget_status_from_tracker)
+        budget_data = await asyncio.to_thread(usage_tracker.get_budget_status, user_id)
         groq_tracker = _get_tracker()
-        groq_status = await asyncio.to_thread(groq_tracker.check_reminder_needs)
-        groq_usage = await asyncio.to_thread(groq_tracker.get_usage_for_virtual_budget)
+        groq_status = await asyncio.to_thread(groq_tracker.check_reminder_needs, user_id)
+        groq_usage = await asyncio.to_thread(groq_tracker.get_usage_for_virtual_budget, user_id)
         return {"claude": budget_data, "groq": {**groq_status, **groq_usage}}
     except Exception as e:
         logger.error(f"Failed to get unified cost status: {e}")
         return {"error": f"Failed to get unified cost status: {e}"}
-
 @mcp.tool(description="Check for needed reminders and send them intelligently.")
-async def trigger_reminder_check() -> Dict[str, Any]:
+async def trigger_reminder_check(user_id: str = None) -> Dict[str, Any]:
+    """Manually trigger the reminder logic."""
+    target_user_id = user_id or os.getenv("DEFAULT_USER_ID")
     try:
-        check_result = await check_reminder_needed()
+        check_result = await check_reminder_needed(target_user_id)
         if not check_result.get("should_send"):
             return {"triggered": False, "reason": check_result.get("reason")}
-        
-        send_result = await send_reminder_message(check_result)
+
+        send_result = await send_reminder_message(check_result, target_user_id)
         return {"triggered": True, "check": check_result, "send": send_result}
     except Exception as e:
         logger.error(f"Reminder trigger failed: {e}")
@@ -468,7 +472,7 @@ def get_scheduler_queue() -> Dict[str, Any]:
 from services.coaching_service import CoachingService
 
 @mcp.tool(description="Get a personalized coaching insight based on momentum and current needs.")
-async def get_coaching_insight() -> Dict[str, Any]:
+async def get_coaching_insight(user_id: str = None) -> Dict[str, Any]:
     """Analyze current state and provide a momentum-aware coaching pivot."""
     try:
         # Dependency Injection for the Service
@@ -477,7 +481,7 @@ async def get_coaching_insight() -> Dict[str, Any]:
             return await obsidian_client.get_daily_note(today)
 
         service = CoachingService(
-            context_provider=get_narrator_context,
+            context_provider=lambda: get_narrator_context(user_id),
             goal_provider=get_cached_beeminder_goals,
             obsidian_provider=_get_obsidian_context
         )
@@ -488,6 +492,12 @@ async def get_coaching_insight() -> Dict[str, Any]:
     except Exception as e:
         logger.error(f"Failed to generate coaching insight: {e}")
         return {"error": str(e)}
+
+from services.reminder_service import ReminderService
+reminder_service = ReminderService(
+    context_provider=get_narrator_context,
+    coaching_provider=get_coaching_insight
+)
 
 @mcp.tool(description="Set the Review Pump intensity multiplier (1.0, 2.0, 4.0, 10.0).")
 async def set_review_pump_lever(language: str, multiplier: float, user_id: str = None) -> Dict[str, Any]:
@@ -551,12 +561,13 @@ async def get_language_velocity_stats(user_id: str = None) -> Dict[str, Any]:
         logger.error(f"Failed to calculate Review Pump stats: {e}")
         return {"error": str(e)}
 
-async def check_reminder_needed() -> Dict[str, Any]:
-    return await reminder_service.check_reminder_needed()
+async def check_reminder_needed(user_id: str = None) -> Dict[str, Any]:
+    return await reminder_service.check_reminder_needed(user_id)
 
-async def send_reminder_message(message_data: Dict[str, Any]) -> Dict[str, Any]:
+async def send_reminder_message(message_data: Dict[str, Any], user_id: str = None) -> Dict[str, Any]:
     msg_type = message_data.get("type")
     use_template = message_data.get("template_sid") is not None
+    target_user_id = user_id or os.getenv("DEFAULT_USER_ID")
     
     neon_url = os.getenv("NEON_DB_URL")
     if not neon_url:
@@ -570,7 +581,7 @@ async def send_reminder_message(message_data: Dict[str, Any]) -> Dict[str, Any]:
         import psycopg2
         with psycopg2.connect(neon_url) as conn:
             with conn.cursor() as cur:
-                cur.execute("SELECT 1 FROM message_log WHERE date = %s AND type = %s", (today, msg_type))
+                cur.execute("SELECT 1 FROM message_log WHERE date = %s AND type = %s AND user_id = %s", (today, msg_type, target_user_id))
                 return cur.fetchone() is not None
 
     try:
@@ -601,8 +612,8 @@ async def send_reminder_message(message_data: Dict[str, Any]) -> Dict[str, Any]:
             import psycopg2
             with psycopg2.connect(neon_url) as conn:
                 with conn.cursor() as cur:
-                    cur.execute("INSERT INTO message_log (date, type, sent_at) VALUES (%s, %s, %s)", (today, msg_type, now))
-                    
+                    cur.execute("INSERT INTO message_log (date, type, sent_at, user_id) VALUES (%s, %s, %s, %s)", (today, msg_type, now, target_user_id))
+
         try:
             await asyncio.to_thread(_write_log)
         except Exception as e:

@@ -6,7 +6,7 @@
 
 ## 🏛️ Phase 1: Security Foundations (Steps 1-10)
 
-1.  **JWT Signature Verification (High Priority)**
+1.  **JWT Signature Verification (Complete)**
     - Replace the insecure `extract_user_id` in `sync-service/src/lib.rs` with a robust `verify_jwt` function.
     - Implement fetching and caching OIDC public keys (JWKS) via `spin_sdk`.
     - Validate `iss` (issuer), `aud` (audience), and `exp` (expiration) claims.
@@ -50,10 +50,10 @@
 
 ## 👥 Phase 2: Architectural Multi-Tenancy (Steps 11-30)
 
-11. **Strict Row-Level Isolation (Application Layer)**
-    - (In Progress) Every record in `language_stats` and `budget_tracking` now includes a `user_id`.
+11. **Strict Row-Level Isolation (Complete)**
+    - Every record in `language_stats`, `budget_tracking`, `walk_inferences`, `scheduler_election`, `usage_sessions`, `goals`, `groq_odometer_readings`, `alert_log`, and `message_log` now includes a `user_id`.
     - **Goal Funnel**: The `language_stats` table now includes a `beeminder_slug` column. Languages without a slug are automatically deprioritized in the UI, creating a natural "funnel" for users to connect their learning progress to Beeminder goals.
-    - Update all Python and Rust backend queries to include mandatory `WHERE user_id = :verified_sub`.
+    - Updated all Python and Rust backend queries to include mandatory `WHERE user_id = :verified_sub`.
 
 12. **User-Scoped Secrets API**
     - Add authenticated endpoints to allow users to update their own Beeminder and Clozemaster credentials.

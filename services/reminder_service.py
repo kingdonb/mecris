@@ -14,10 +14,10 @@ class ReminderService:
         self.walk_template_sid = "HX9e6692d8a5689ee3c0b855f43092563a" # activity_check_v2
         self.urgency_template_sid = "HX638b7f9403e04c8fa880370f1b7a9ba1" # urgency_alert_v2
 
-    async def check_reminder_needed(self) -> Dict[str, Any]:
+    async def check_reminder_needed(self, user_id: str = None) -> Dict[str, Any]:
         """Core logic for proactive nudges."""
-        context = await self.context_provider()
-        insight = await self.coaching_provider()
+        context = await self.context_provider(user_id)
+        insight = await self.coaching_provider(user_id)
         
         current_hour = datetime.now().hour
         walk_status = context.get("daily_walk_status", {})
@@ -41,8 +41,8 @@ class ReminderService:
                 "fallback_message": insight.get("message")
             }
 
-        # 2. Walk Reminders (Afternoon window: 2 PM - 5 PM)
-        if 14 <= current_hour <= 17:
+        # 2. Walk Reminders (Afternoon window: 1 PM - 5 PM)
+        if 13 <= current_hour <= 17:
             if not has_walked:
                 # Format variables for mecris_activity_check_v2
                 # {{1}} = Record Name, {{2}} = Status, {{3}} = Entity, {{4}} = Entity Status, {{5}} = Time
