@@ -89,3 +89,20 @@ def test_update_pump_multiplier_with_user_id(mock_connect, neon_checker):
     assert "AND user_id = %s" in args[0]
     assert user_id in args[1]
     assert 3.0 in args[1]
+
+@patch("psycopg2.connect")
+def test_get_latest_walk_with_user_id(mock_connect, neon_checker):
+    mock_conn = MagicMock()
+    mock_cur = MagicMock()
+    mock_connect.return_value = mock_conn
+    mock_conn.cursor.return_value = mock_cur
+    mock_cur.fetchone.return_value = (time.time(), 1000, 800.0, "google_fit")
+    
+    user_id = "test-user-walk"
+    walk = neon_checker.get_latest_walk(user_id=user_id)
+    
+    assert walk["step_count"] == 1000
+    # Verify user_id was used in query
+    args, kwargs = mock_cur.execute.call_args
+    assert "WHERE user_id = %s" in args[0]
+    assert user_id in args[1]
