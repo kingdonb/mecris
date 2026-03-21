@@ -709,7 +709,9 @@ fun ReviewPumpWidget(
                       else Color.White
 
     Surface(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .then(if (!stat.has_goal) Modifier.alpha(0.6f) else Modifier),
         color = Color(0xFF1E1E1E),
         shape = RoundedCornerShape(12.dp),
         border = androidx.compose.foundation.BorderStroke(1.dp, accentColor.copy(alpha = 0.3f))
@@ -721,13 +723,30 @@ fun ReviewPumpWidget(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column {
-                    Text(
-                        text = stat.name.uppercase(),
-                        style = MaterialTheme.typography.titleMedium,
-                        color = accentColor,
-                        fontWeight = FontWeight.Black,
-                        letterSpacing = 1.sp
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = stat.name.uppercase(),
+                            style = MaterialTheme.typography.titleMedium,
+                            color = accentColor,
+                            fontWeight = FontWeight.Black,
+                            letterSpacing = 1.sp
+                        )
+                        if (!stat.has_goal) {
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Surface(
+                                color = Color.DarkGray,
+                                shape = RoundedCornerShape(4.dp)
+                            ) {
+                                Text(
+                                    text = "NO GOAL",
+                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = Color.LightGray,
+                                    fontSize = 8.sp
+                                )
+                            }
+                        }
+                    }
                     Text(
                         text = "DEBT: ${stat.current} CARDS",
                         style = MaterialTheme.typography.labelSmall,

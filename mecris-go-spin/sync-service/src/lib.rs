@@ -371,7 +371,7 @@ async fn handle_languages_get(req: Request) -> anyhow::Result<Response> {
     let db_url = variables::get("db_url")?;
     let connection = Connection::open(&db_url)?;
     
-    let query = "SELECT language_name, current_reviews, tomorrow_reviews, next_7_days_reviews, daily_rate, safebuf, derail_risk, pump_multiplier FROM language_stats WHERE user_id = $1";
+    let query = "SELECT language_name, current_reviews, tomorrow_reviews, next_7_days_reviews, daily_rate, safebuf, derail_risk, pump_multiplier, beeminder_slug FROM language_stats WHERE user_id = $1";
     let row_set = connection.query(query, &[ParameterValue::Str(user_id)])?;
 
     #[derive(Serialize)]
@@ -384,6 +384,7 @@ async fn handle_languages_get(req: Request) -> anyhow::Result<Response> {
         safebuf: i32,
         derail_risk: String,
         pump_multiplier: f64,
+        has_goal: bool,
     }
 
     #[derive(Serialize)]
@@ -392,6 +393,7 @@ async fn handle_languages_get(req: Request) -> anyhow::Result<Response> {
     }
 
     let mut languages: Vec<LanguageStat> = row_set.rows.iter().map(|row| {
+        let slug = match &row[8] { DbValue::Str(s) => Some(s.clone()), _ => None };
         LanguageStat {
             name: match &row[0] { DbValue::Str(s) => s.clone(), _ => "".to_string() },
             current: match &row[1] { DbValue::Int32(i) => *i, _ => 0 },
@@ -401,11 +403,21 @@ async fn handle_languages_get(req: Request) -> anyhow::Result<Response> {
             safebuf: match &row[5] { DbValue::Int32(i) => *i, _ => 0 },
             derail_risk: match &row[6] { DbValue::Str(s) => s.clone(), _ => "SAFE".to_string() },
             pump_multiplier: match &row[7] { DbValue::Floating64(f) => *f, DbValue::Floating32(f) => *f as f64, DbValue::Int32(i) => *i as f64, _ => 1.0 },
+            has_goal: slug.as_ref().map_or(false, |s| !s.is_empty()),
         }
     }).collect();
 
-    // Filter out languages with 0 reviews to keep dashboard focused
+    // Filter out languages with 0 reviews
     languages.retain(|l| l.current > 0);
+
+    // Sort: Languages with goals first, then by review count descending
+    languages.sort_by(|a, b| {
+        if a.has_goal != b.has_goal {
+            b.has_goal.cmp(&a.has_goal) // true comes before false
+        } else {
+            b.current.cmp(&a.current)
+        }
+    });
 
     let resp = LanguagesResponse { languages };
     Ok(Response::builder().status(200).header("content-type", "application/json").body(serde_json::to_string(&resp).unwrap()).build())

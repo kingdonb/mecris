@@ -60,8 +60,8 @@ class LanguageSyncService:
                             pump_multiplier = float(row[0])
                         
                         cur.execute("""
-                            INSERT INTO language_stats (language_name, current_reviews, tomorrow_reviews, next_7_days_reviews, daily_rate, safebuf, derail_risk, pump_multiplier)
-                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                            INSERT INTO language_stats (language_name, current_reviews, tomorrow_reviews, next_7_days_reviews, daily_rate, safebuf, derail_risk, pump_multiplier, beeminder_slug)
+                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                             ON CONFLICT (language_name) DO UPDATE SET
                                 current_reviews = EXCLUDED.current_reviews,
                                 tomorrow_reviews = EXCLUDED.tomorrow_reviews,
@@ -70,8 +70,9 @@ class LanguageSyncService:
                                 safebuf = EXCLUDED.safebuf,
                                 derail_risk = EXCLUDED.derail_risk,
                                 pump_multiplier = EXCLUDED.pump_multiplier,
+                                beeminder_slug = EXCLUDED.beeminder_slug,
                                 last_updated = CURRENT_TIMESTAMP
-                        """, (name, count, tomorrow, next_7, daily_rate, safebuf, derail_risk, pump_multiplier))
+                        """, (name, count, tomorrow, next_7, daily_rate, safebuf, derail_risk, pump_multiplier, slug))
                         
                         summary[lang] = {
                             "count": count,

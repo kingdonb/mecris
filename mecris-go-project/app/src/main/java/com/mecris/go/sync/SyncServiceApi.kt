@@ -85,7 +85,8 @@ data class LanguageStatDto(
     val daily_rate: Double,
     val safebuf: Int,
     val derail_risk: String,
-    val pump_multiplier: Double? = 1.0
+    val pump_multiplier: Double? = 1.0,
+    val has_goal: Boolean = true
 )
 
 data class HealthResponseDto(
