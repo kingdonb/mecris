@@ -2,6 +2,7 @@ from enum import Enum
 from typing import Dict, Any, List, Optional
 from dataclasses import dataclass
 import logging
+import random
 
 logger = logging.getLogger("mecris.services.coaching")
 
@@ -11,6 +12,7 @@ class InsightType(Enum):
     WALK_PROMPT = "walk_prompt"
     OBSIDIAN_PIVOT = "obsidian_pivot"
     CELEBRATION = "celebration"
+    LEVER_PUSH = "lever_push"
 
 @dataclass
 class CoachingInsight:
@@ -45,18 +47,55 @@ class CoachingService:
             warning_goals = [g for g in beeminder_goals if g.get("derail_risk") in ["WARNING", "CAUTION"]]
             critical_goals = [g for g in beeminder_goals if g.get("derail_risk") == "CRITICAL"]
             
-            # Priority 1: High Momentum (Already walked/active)
-            if has_walked:
-                return await self._handle_high_momentum(critical_goals, warning_goals, vacation_mode)
+            # Fetch Language Stats for Lever Awareness
+            from services.neon_sync_checker import NeonSyncChecker
+            neon = NeonSyncChecker()
+            lang_stats = neon.get_language_stats()
             
-            # Priority 2: Low Momentum (Needs activity)
+            # Priority 1: High Pressure Arabic (Lever Aware)
+            arabic = lang_stats.get("ARABIC", {})
+            if arabic.get("current", 0) > 0 and arabic.get("multiplier", 1.0) >= 3.0:
+                return self._handle_arabic_pressure(arabic)
+
+            # Priority 2: High Momentum (Already walked/active)
+            if has_walked:
+                return await self._handle_high_momentum(critical_goals, warning_goals, vacation_mode, lang_stats)
+            
+            # Priority 3: Low Momentum (Needs activity)
             return self._handle_low_momentum(critical_goals, vacation_mode)
             
         except Exception as e:
             logger.error(f"Error generating coaching insight: {e}")
             raise
 
-    async def _handle_high_momentum(self, critical: List[Dict], warning: List[Dict], vacation_mode: bool) -> CoachingInsight:
+    def _handle_arabic_pressure(self, arabic: Dict) -> CoachingInsight:
+        multiplier = arabic.get("multiplier", 1.0)
+        debt = arabic.get("current", 0)
+        
+        messages = [
+            f"📈 You've got the Arabic lever set to {multiplier}x. That's a lot of talk for someone with {debt} reviews due. Log in and clear it. 😤",
+            f"💀 {debt} Arabic cards are waiting. You set the pressure to {multiplier}x yourself. Don't make me remind you again. 🔪",
+            f"⚖️ Arabic Debt: {debt}. Lever: {multiplier}x. The math doesn't add up until you do the work. Move it! 🏃‍♂️"
+        ]
+        
+        return CoachingInsight(
+            type=InsightType.LEVER_PUSH,
+            momentum="low",
+            message=random.choice(messages),
+            target_slug="reviewstack"
+        )
+
+    async def _handle_high_momentum(self, critical: List[Dict], warning: List[Dict], vacation_mode: bool, lang_stats: Dict) -> CoachingInsight:
+        # Check Greek "PLAY" Driver
+        greek = lang_stats.get("GREEK", {})
+        if greek.get("current", 0) < 50 and greek.get("multiplier", 1.0) >= 2.0:
+            return CoachingInsight(
+                type=InsightType.LEVER_PUSH,
+                momentum="high",
+                message=f"🇬🇷 You're active and Greek is looking too safe (only {greek.get('current')} reviews). Time to PLAY some new cards and build that backlog! ⚡",
+                target_slug="ellinika"
+            )
+
         if critical:
             target = critical[0]
             success_msg = "Great job on the walk!" if not vacation_mode else "Nice work staying active!"

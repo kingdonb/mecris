@@ -8,6 +8,7 @@ import com.mecris.go.auth.PocketIdAuth
 import com.mecris.go.sync.HeartbeatRequestDto
 import com.mecris.go.sync.SyncServiceApi
 import com.mecris.go.sync.WalkDataSummaryDto
+import com.mecris.go.sync.NagNotificationManager
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -60,6 +61,41 @@ class WalkHeuristicsWorker @JvmOverloads constructor(
             }
         } catch (e: Exception) {
             Log.e("WalkHeuristicsWorker", "Cooperative check failed: ${e.message}")
+        }
+
+        // --- Arabic Pressure & Nag Phase ---
+        try {
+            if (token != null) {
+                val langResponse = syncApi.getLanguages("Bearer $token")
+                val arabicStat = langResponse.languages.find { it.name.equals("ARABIC", ignoreCase = true) }
+                
+                if (arabicStat != null && arabicStat.current > 0) {
+                    val multiplier = arabicStat.pump_multiplier ?: 1.0
+                    val targetFlowRate = com.mecris.go.sync.ReviewPumpCalculator.calculateTargetFlowRate(
+                        multiplier, arabicStat.current, arabicStat.tomorrow
+                    )
+                    
+                    // NEURAL BEHIND: Only nag if you haven't hit your target pace for the day
+                    if (arabicStat.daily_completions < targetFlowRate) {
+                        val lastNagTime = prefs.getLong("last_arabic_nag_timestamp", 0L)
+                        val fourHoursAgo = Instant.now().minusSeconds(14400).toEpochMilli()
+                        
+                        if (lastNagTime < fourHoursAgo) {
+                            Log.i("WalkHeuristicsWorker", "Triggering Arabic Pressure notification. Progress: ${arabicStat.daily_completions}/$targetFlowRate")
+                            val nagManager = NagNotificationManager(applicationContext)
+                            nagManager.showNag(
+                                title = "ARABIC PRESSURE",
+                                message = "Pace: ${arabicStat.daily_completions}/$targetFlowRate cards. Lever: ${multiplier}x. You are behind your neural goal. Clear the debt. 📈"
+                            )
+                            prefs.edit().putLong("last_arabic_nag_timestamp", Instant.now().toEpochMilli()).apply()
+                        }
+                    } else {
+                        Log.d("WalkHeuristicsWorker", "Arabic Goal LAMINAR (${arabicStat.daily_completions}/$targetFlowRate). Nag engine cold.")
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("WalkHeuristicsWorker", "Nag check failed: ${e.message}")
         }
 
         val healthManager = HealthConnectManager(applicationContext)
