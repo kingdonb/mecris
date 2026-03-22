@@ -55,7 +55,7 @@ make test
 make deploy
 
 # OR manually:
-spin deploy
+spin cloud deploy
 ```
 
 ### **Step 3: Configure Environment Variables**

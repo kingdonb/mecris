@@ -5,7 +5,6 @@ use spin_sdk::{
     pg::{Connection, ParameterValue, DbValue},
     variables,
 };
-use spin_sdk::key_value::Store;
 use spin_cron_sdk::{cron_component, Metadata};
 
 #[cron_component]
@@ -315,11 +314,58 @@ async fn run_clozemaster_scraper(db_url: &str, user_id: &str) -> anyhow::Result<
     Ok(())
 }
 
-async fn handle_health_get(_req: Request) -> anyhow::Result<Response> {
-    Ok(Response::builder().status(200).body("{\"status\":\"ok\"}").build())
+async fn handle_health_get(req: Request) -> anyhow::Result<Response> {
+    let auth_header = req.header("authorization");
+    let user_id = match extract_user_id(auth_header).await {
+        Some(id) => id,
+        None => return Ok(Response::builder().status(401).body("Unauthorized").build()),
+    };
+
+    let db_url = variables::get("db_url")?;
+    let connection = Connection::open(&db_url)?;
+    
+    #[derive(Serialize)]
+    struct HealthResponse {
+        status: String,
+        home_server_active: bool,
+        leader_pid: String,
+        last_seen: String,
+    }
+
+    let mut home_active = false;
+    let mut pid = "none".to_string();
+    let mut last_seen = "never".to_string();
+
+    let query = "SELECT (heartbeat > CURRENT_TIMESTAMP - INTERVAL '90 seconds') as is_fresh, heartbeat::TEXT, process_id FROM scheduler_election WHERE user_id = $1 AND role = 'leader'";
+    let row_set = connection.query(query, &[ParameterValue::Str(user_id)])?;
+
+    if !row_set.rows.is_empty() {
+        home_active = match &row_set.rows[0][0] { DbValue::Boolean(b) => *b, _ => false };
+        last_seen = match &row_set.rows[0][1] { DbValue::Str(s) => s.clone(), _ => "unknown".to_string() };
+        pid = match &row_set.rows[0][2] { DbValue::Str(s) => s.clone(), _ => "unknown".to_string() };
+    }
+
+    let resp = HealthResponse {
+        status: "ok".to_string(),
+        home_server_active: home_active,
+        leader_pid: pid,
+        last_seen: last_seen,
+    };
+
+    Ok(Response::builder()
+        .status(200)
+        .header("content-type", "application/json")
+        .body(serde_json::to_string(&resp).unwrap())
+        .build())
 }
 
 async fn handle_heartbeat_post(req: Request) -> anyhow::Result<Response> {
+    let auth_header = req.header("authorization");
+    let user_id = match extract_user_id(auth_header).await {
+        Some(id) => id,
+        None => return Ok(Response::builder().status(401).body("Unauthorized").build()),
+    };
+
     let body_bytes = req.into_body();
     let body: serde_json::Value = serde_json::from_slice(&body_bytes)?;
     let pid = body.get("process_id").and_then(|v| v.as_str()).unwrap_or("unknown");
@@ -327,18 +373,30 @@ async fn handle_heartbeat_post(req: Request) -> anyhow::Result<Response> {
     let db_url = variables::get("db_url")?;
     let connection = Connection::open(&db_url)?;
     
-    connection.execute(
-        "INSERT INTO scheduler_election (role, process_id, heartbeat) VALUES ('leader', $1, CURRENT_TIMESTAMP) ON CONFLICT (role) DO UPDATE SET process_id = EXCLUDED.process_id, heartbeat = CURRENT_TIMESTAMP",
-        &[ParameterValue::Str(pid.to_string())]
-    )?;
+    // Atomic leadership claim with user scoping
+    let update_query = "
+        INSERT INTO scheduler_election (user_id, role, process_id, heartbeat) 
+        VALUES ($1, 'leader', $2, CURRENT_TIMESTAMP) 
+        ON CONFLICT (user_id, role) DO UPDATE SET 
+            process_id = EXCLUDED.process_id, 
+            heartbeat = CURRENT_TIMESTAMP 
+        WHERE scheduler_election.process_id = $2 
+           OR scheduler_election.heartbeat < CURRENT_TIMESTAMP - INTERVAL '90 seconds'
+           OR scheduler_election.process_id IS NULL";
     
-    // Determine if MCP is active (just updated it, so yes)
+    let result = connection.execute(update_query, &[ParameterValue::Str(user_id), ParameterValue::Str(pid.to_string())])?;
+    
+    let claimed = result > 0;
+
     #[derive(Serialize)]
     struct HeartbeatResponse {
         status: String,
-        mcp_server_active: bool,
+        is_leader: bool,
     }
-    let resp = HeartbeatResponse { status: "ok".to_string(), mcp_server_active: true };
+    let resp = HeartbeatResponse { 
+        status: "ok".to_string(), 
+        is_leader: claimed 
+    };
 
     Ok(Response::builder()
         .status(200)
@@ -367,10 +425,23 @@ async fn handle_multiplier_post(req: Request) -> anyhow::Result<Response> {
     let db_url = variables::get("db_url")?;
     let connection = Connection::open(&db_url)?;
 
-    let query = "UPDATE language_stats SET pump_multiplier = $1 WHERE user_id = $2 AND language_name = $3";
-    connection.execute(query, &[ParameterValue::Floating64(req_data.multiplier), ParameterValue::Str(user_id), ParameterValue::Str(req_data.name.to_uppercase())])?;
-    
-    Ok(Response::builder().status(200).body("Multiplier updated").build())
+    println!("Updating multiplier for user {}: {} -> {}", user_id, req_data.name, req_data.multiplier);
+
+    // Explicit cast string to NUMERIC
+    let query = "UPDATE language_stats SET pump_multiplier = $1::FLOAT8::NUMERIC WHERE user_id = $2 AND language_name = $3";
+    match connection.execute(query, &[
+        ParameterValue::Floating64(req_data.multiplier), 
+        ParameterValue::Str(user_id), 
+        ParameterValue::Str(req_data.name.to_uppercase())
+    ]) {
+        Ok(_) => Ok(Response::builder().status(200).body("Multiplier updated").build()),
+        Err(e) => {
+            let error_msg = format!("DB Error: {}", e);
+            eprintln!("{}", error_msg);
+            let resp = StatusResponse { status: "error".to_string(), message: error_msg };
+            Ok(Response::builder().status(500).header("content-type", "application/json").body(serde_json::to_string(&resp).unwrap()).build())
+        }
+    }
 }
 
 async fn handle_languages_get(req: Request) -> anyhow::Result<Response> {
@@ -383,7 +454,7 @@ async fn handle_languages_get(req: Request) -> anyhow::Result<Response> {
     let db_url = variables::get("db_url")?;
     let connection = Connection::open(&db_url)?;
     
-    let query = "SELECT language_name, current_reviews, tomorrow_reviews, next_7_days_reviews, daily_rate::FLOAT8, safebuf, derail_risk, pump_multiplier::FLOAT8, beeminder_slug FROM language_stats WHERE user_id = $1";
+    let query = "SELECT language_name, current_reviews, tomorrow_reviews, next_7_days_reviews, daily_rate::FLOAT8, safebuf, derail_risk, pump_multiplier::FLOAT8, beeminder_slug, daily_completions FROM language_stats WHERE user_id = $1";
     let row_set = connection.query(query, &[ParameterValue::Str(user_id)])?;
 
     #[derive(Serialize)]
@@ -397,6 +468,7 @@ async fn handle_languages_get(req: Request) -> anyhow::Result<Response> {
         derail_risk: String,
         pump_multiplier: f64,
         has_goal: bool,
+        daily_completions: i32,
     }
 
     #[derive(Serialize)]
@@ -416,18 +488,21 @@ async fn handle_languages_get(req: Request) -> anyhow::Result<Response> {
             derail_risk: match &row[6] { DbValue::Str(s) => s.clone(), _ => "SAFE".to_string() },
             pump_multiplier: match &row[7] { DbValue::Floating64(f) => *f, _ => 1.0 },
             has_goal: slug.as_ref().map_or(false, |s| !s.is_empty()),
+            daily_completions: match &row[9] { DbValue::Int32(i) => *i, _ => 0 },
         }
     }).collect();
 
-    // Filter out languages with 0 reviews
-    languages.retain(|l| l.current > 0);
+    // Filter out languages with 0 reviews AND 0 completions (don't show empty/unused languages)
+    languages.retain(|l| l.current > 0 || l.daily_completions > 0);
 
-    // Sort: Languages with goals first, then by review count descending
+    // Sort: Languages with goals first, then by shortest runway (safebuf)
     languages.sort_by(|a, b| {
         if a.has_goal != b.has_goal {
             b.has_goal.cmp(&a.has_goal) // true comes before false
+        } else if a.has_goal {
+            a.safebuf.cmp(&b.safebuf) // shortest runway first
         } else {
-            b.current.cmp(&a.current)
+            b.current.cmp(&a.current) // for non-goal items, highest debt first
         }
     });
 

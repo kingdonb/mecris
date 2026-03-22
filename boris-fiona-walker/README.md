@@ -64,7 +64,7 @@ TWILIO_TO_NUMBER=+1234567890
 
 ```bash
 # Deploy to Spin Cloud
-spin deploy
+spin cloud deploy
 
 # The app will be available at:
 # https://boris-fiona-walker-xxx.fermyon.app/check

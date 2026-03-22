@@ -13,7 +13,7 @@ async def main():
     db_stats = neon.get_language_stats()
     
     # 2. Get today's completions
-    lang_goals = {"arabic": "reviewstack", "greek": "reviewstack-greek"}
+    lang_goals = {"arabic": "reviewstack", "greek": "ellinika"}
     completions = {}
     for lang, slug in lang_goals.items():
         try:

@@ -257,7 +257,7 @@ fn test_spin_cloud_deployment() {
     // In a real test, we would:
     // 1. Test local `spin build` succeeds
     // 2. Test local `spin up` serves endpoints
-    // 3. Test `spin deploy` works
+    // 3. Test `spin cloud deploy` works
     // 4. Test deployed endpoints respond correctly
 }
 

@@ -535,7 +535,7 @@ async def get_language_velocity_stats(user_id: str = None) -> Dict[str, Any]:
 
         # 2. Get today's completions from Beeminder for "Flow Rate" monitoring
         # We look for the last datapoint for the relevant goals
-        lang_goals = {"arabic": "reviewstack", "greek": "reviewstack-greek"}
+        lang_goals = {"arabic": "reviewstack", "greek": "ellinika"}
         completions = {}
         for lang, slug in lang_goals.items():
             datapoints = await beeminder_client.get_goal_datapoints(slug)
