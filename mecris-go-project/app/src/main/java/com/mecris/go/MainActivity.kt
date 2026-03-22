@@ -31,6 +31,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -107,6 +108,11 @@ class MainActivity : ComponentActivity() {
             refreshTrigger++
         }
 
+        val requestNotificationPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+            Log.d("MainActivity", "Notification Permission Result: $granted")
+            refreshTrigger++
+        }
+
         setContent {
             MecrisTheme {
                 MecrisDashboard(
@@ -142,6 +148,11 @@ class MainActivity : ComponentActivity() {
                         } catch (e: Exception) {
                             Log.e("MainActivity", "Failed to launch background request: ${e.message}")
                             Toast.makeText(this@MainActivity, "Could not open permission dialog. Please check Health Connect settings.", Toast.LENGTH_LONG).show()
+                        }
+                    },
+                    onGrantNotification = {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                            requestNotificationPermission.launch(android.Manifest.permission.POST_NOTIFICATIONS)
                         }
                     },
                     onOpenSettings = {
@@ -205,11 +216,13 @@ fun MecrisDashboard(
     onRequestForeground: () -> Unit,
     onRequestRoute: (String) -> Unit,
     onRequestBackground: () -> Unit,
+    onGrantNotification: () -> Unit,
     onOpenSettings: () -> Unit
 ) {
     val authState by auth.authState.collectAsState()
     val scope = rememberCoroutineScope()
     val cache = remember { persistenceManager.loadDashboard() }
+    val context = LocalContext.current
     
     var walkData by remember { mutableStateOf<WalkDataSummary?>(cache?.walkData) }
     var budgetAmount by remember { mutableStateOf<Double?>(cache?.budgetAmount) }
@@ -267,34 +280,37 @@ fun MecrisDashboard(
             val currentWalk = healthManager.fetchRecentWalkData()
             walkData = currentWalk
             
-            auth.getValidAccessToken { token ->
+            try {
+                val token = auth.getAccessTokenSuspend()
                 if (token != null) {
-                    scope.launch {
-                        try {
-                            val dto = WalkDataSummaryDto(
-                                start_time = currentWalk.startTime.toString(),
-                                end_time = Instant.now().toString(),
-                                step_count = currentWalk.totalSteps.toInt(),
-                                distance_meters = if (collectDistance) currentWalk.totalDistanceMeters else 0.0,
-                                distance_source = if (collectDistance) currentWalk.distanceSource else "Opt-out",
-                                confidence_score = 0.9,
-                                gps_route_points = if (collectGpsRoutes) currentWalk.routePointCount else 0,
-                                timezone = ZoneId.of("America/New_York").id
-                            )
-                            syncApi.uploadWalk("Bearer $token", dto)
-                            syncStatus = "Success"
-                            lastSyncTime = LocalDateTime.now().format(DateTimeFormatter.ofPattern("HH:mm"))
-                        } catch (e: Exception) {
-                            syncStatus = "Error"
-                            Log.e("MecrisDashboard", "Sync failed: ${e.message}")
-                        } finally {
-                            isLoading = false
-                        }
+                    try {
+                        val dto = WalkDataSummaryDto(
+                            start_time = currentWalk.startTime.toString(),
+                            end_time = Instant.now().toString(),
+                            step_count = currentWalk.totalSteps.toInt(),
+                            distance_meters = if (collectDistance) currentWalk.totalDistanceMeters else 0.0,
+                            distance_source = if (collectDistance) currentWalk.distanceSource else "Opt-out",
+                            confidence_score = 0.9,
+                            gps_route_points = if (collectGpsRoutes) currentWalk.routePointCount else 0,
+                            timezone = ZoneId.of("America/New_York").id
+                        )
+                        syncApi.uploadWalk("Bearer $token", dto)
+                        syncStatus = "Success"
+                        lastSyncTime = LocalDateTime.now().format(DateTimeFormatter.ofPattern("HH:mm"))
+                    } catch (e: Exception) {
+                        syncStatus = "Error"
+                        Log.e("MecrisDashboard", "Sync failed: ${e.message}")
+                    } finally {
+                        isLoading = false
                     }
                 } else {
                     syncStatus = "Auth Required"
                     isLoading = false
                 }
+            } catch (e: Exception) {
+                syncStatus = "Auth Error"
+                isLoading = false
+                Log.e("MecrisDashboard", "Auth failed during force sync: ${e.message}")
             }
         }
     }
@@ -317,67 +333,69 @@ fun MecrisDashboard(
         fetchError = null
         walkData = healthManager.fetchRecentWalkData()
         
-        auth.getValidAccessToken { token ->
+        try {
+            val token = auth.getAccessTokenSuspend()
             if (token != null) {
-                scope.launch {
+                try {
+                    val response = syncApi.getBudget("Bearer $token")
+                    budgetAmount = response.remaining_budget
+
+                    val healthResponse = syncApi.getHealth("Bearer $token")
+                    homeServerActive = healthResponse.home_server_active
+                    
+                    // Proactively trigger failover sync (Spin will skip if Home is active)
                     try {
-                        val response = syncApi.getBudget("Bearer $token")
-                        budgetAmount = response.remaining_budget
-
-                        val healthResponse = syncApi.getHealth("Bearer $token")
-                        homeServerActive = healthResponse.home_server_active
-                        
-                        // Proactively trigger failover sync (Spin will skip if Home is active)
-                        try {
-                            syncApi.triggerFailoverSync("Bearer $token")
-                        } catch (se: HttpException) {
-                            val errorBody = se.response()?.errorBody()?.string()
-                            val detail = try {
-                                Gson().fromJson(errorBody, SyncResponse::class.java).message
-                            } catch (e: Exception) {
-                                errorBody ?: se.message()
-                            }
-                            Log.w("MecrisDashboard", "Failover sync trigger failed ($detail)")
-                        } catch (se: Exception) {
-                            Log.w("MecrisDashboard", "Failover sync trigger skipped/failed: ${se.message}")
-                        }
-
-                        val langResponse = syncApi.getLanguages("Bearer $token")
-                        
-                        // Only update if no surgical update is fighting us
-                        if (!surgicalUpdateInProgress) {
-                            languageStats = langResponse.languages
-                        }
-                        
-                        // Save to cache
-                        val now = LocalDateTime.now().format(DateTimeFormatter.ofPattern("HH:mm"))
-                        lastSyncTime = now
-                        persistenceManager.saveDashboard(DashboardCache(
-                            walkData = walkData,
-                            budgetAmount = budgetAmount,
-                            languageStats = languageStats,
-                            homeServerActive = homeServerActive,
-                            lastSyncTime = now
-                        ))
-                    } catch (e: HttpException) {
-                        val errorBody = e.response()?.errorBody()?.string()
+                        syncApi.triggerFailoverSync("Bearer $token")
+                    } catch (se: HttpException) {
+                        val errorBody = se.response()?.errorBody()?.string()
                         val detail = try {
                             Gson().fromJson(errorBody, SyncResponse::class.java).message
-                        } catch (ex: Exception) {
-                            errorBody ?: e.message()
+                        } catch (e: Exception) {
+                            errorBody ?: se.message()
                         }
-                        Log.e("MecrisDashboard", "Failed to fetch remote data: $detail")
-                        fetchError = detail
-                    } catch (e: Exception) {
-                        Log.e("MecrisDashboard", "Failed to fetch remote data: ${e.message}")
-                        fetchError = e.message ?: "Unknown error"
-                    } finally {
-                        isFetching = false
+                        Log.w("MecrisDashboard", "Failover sync trigger failed ($detail)")
+                    } catch (se: Exception) {
+                        Log.w("MecrisDashboard", "Failover sync trigger skipped/failed: ${se.message}")
                     }
+
+                    val langResponse = syncApi.getLanguages("Bearer $token")
+                    
+                    // Only update if no surgical update is fighting us
+                    if (!surgicalUpdateInProgress) {
+                        languageStats = langResponse.languages
+                    }
+                    
+                    // Save to cache
+                    val now = LocalDateTime.now().format(DateTimeFormatter.ofPattern("HH:mm"))
+                    lastSyncTime = now
+                    persistenceManager.saveDashboard(DashboardCache(
+                        walkData = walkData,
+                        budgetAmount = budgetAmount,
+                        languageStats = languageStats,
+                        homeServerActive = homeServerActive,
+                        lastSyncTime = now
+                    ))
+                } catch (e: HttpException) {
+                    val errorBody = e.response()?.errorBody()?.string()
+                    val detail = try {
+                        Gson().fromJson(errorBody, SyncResponse::class.java).message
+                    } catch (ex: Exception) {
+                        errorBody ?: e.message()
+                    }
+                    Log.e("MecrisDashboard", "Failed to fetch remote data: $detail")
+                    fetchError = detail
+                } catch (e: Exception) {
+                    Log.e("MecrisDashboard", "Failed to fetch remote data: ${e.message}")
+                    fetchError = e.message ?: "Unknown error"
+                } finally {
+                    isFetching = false
                 }
             } else {
                 isFetching = false
             }
+        } catch (e: Exception) {
+            Log.e("MecrisDashboard", "Auth refresh failed: ${e.message}")
+            isFetching = false
         }
     }
 
@@ -442,23 +460,36 @@ fun MecrisDashboard(
                     onForceSync = { forceSync() },
                     onOpenSystemHealth = { showSystemHealth = true },
                     onRequestRoute = onRequestRoute,
+                    surgicalUpdateInProgress = surgicalUpdateInProgress,
                     onMultiplierChange = { name, multiplier ->
+                        val oldStats = languageStats
+                        // 1. Optimistic UI update
+                        languageStats = languageStats.map {
+                            if (it.name.equals(name, ignoreCase = true)) {
+                                it.copy(pump_multiplier = multiplier)
+                            } else it
+                        }
+                        
                         scope.launch {
+                            surgicalUpdateInProgress = true
                             try {
                                 val token = auth.getAccessTokenSuspend()
                                 if (token != null) {
-                                    surgicalUpdateInProgress = true
-                                    syncApi.updateMultiplier(
+                                    val response = syncApi.updateMultiplier(
                                         "Bearer $token",
                                         com.mecris.go.sync.MultiplierRequestDto(name, multiplier)
                                     )
-                                    
-                                    // Update local state and cache immediately
-                                    languageStats = languageStats.map {
-                                        if (it.name.equals(name, ignoreCase = true)) {
-                                            it.copy(pump_multiplier = multiplier)
-                                        } else it
+                                    if (!response.isSuccessful) {
+                                        val errorBody = response.errorBody()?.string()
+                                        val detail = try {
+                                            Gson().fromJson(errorBody, SyncResponse::class.java).message
+                                        } catch (e: Exception) {
+                                            errorBody ?: "Code ${response.code()}"
+                                        }
+                                        throw Exception(detail)
                                     }
+                                    
+                                    // Save the optimistic state to cache on success
                                     persistenceManager.saveDashboard(DashboardCache(
                                         walkData = walkData,
                                         budgetAmount = budgetAmount,
@@ -469,11 +500,17 @@ fun MecrisDashboard(
                                     
                                     // Give the backend a moment to settle
                                     kotlinx.coroutines.delay(2000)
-                                    surgicalUpdateInProgress = false
+                                } else {
+                                    Toast.makeText(context, "Authentication required", Toast.LENGTH_SHORT).show()
+                                    languageStats = oldStats
                                 }
                             } catch (e: Exception) {
-                                surgicalUpdateInProgress = false
                                 Log.e("MecrisApp", "Failed to update multiplier: ${e.message}")
+                                Toast.makeText(context, "Link failure: ${e.message}", Toast.LENGTH_SHORT).show()
+                                // 2. Revert on failure
+                                languageStats = oldStats
+                            } finally {
+                                surgicalUpdateInProgress = false
                             }
                         }
                     }
@@ -499,6 +536,7 @@ fun MainNeuralDashboard(
     onForceSync: () -> Unit,
     onOpenSystemHealth: () -> Unit,
     onRequestRoute: (String) -> Unit,
+    surgicalUpdateInProgress: Boolean,
     onMultiplierChange: (String, Double) -> Unit
 ) {
     Text(
@@ -708,9 +746,10 @@ fun MainNeuralDashboard(
             color = if (fetchError != null) Color(0xFFFF1744) else Color.DarkGray
         )
     } else {
-        languageStats.forEach { stat ->
+        languageStats.sortedBy { if (it.has_goal) it.safebuf else 999 }.forEach { stat ->
             ReviewPumpWidget(
                 stat = stat,
+                surgicalUpdateInProgress = surgicalUpdateInProgress,
                 onMultiplierChange = onMultiplierChange
             )
             Spacer(modifier = Modifier.height(16.dp))
@@ -721,6 +760,7 @@ fun MainNeuralDashboard(
 @Composable
 fun ReviewPumpWidget(
     stat: com.mecris.go.sync.LanguageStatDto,
+    surgicalUpdateInProgress: Boolean,
     onMultiplierChange: (String, Double) -> Unit
 ) {
     val currentMultiplier = stat.pump_multiplier ?: 1.0
@@ -886,7 +926,7 @@ fun ReviewPumpWidget(
                                     if (isSelected) accentColor else Color(0xFF333333),
                                     RoundedCornerShape(6.dp)
                                 )
-                                .clickable { 
+                                .clickable(enabled = !surgicalUpdateInProgress) { 
                                     onMultiplierChange(stat.name, i.toDouble()) 
                                 },
                             contentAlignment = Alignment.Center
@@ -921,6 +961,7 @@ fun SystemHealthScreen(
     onRequestForeground: () -> Unit,
     onRequestRoute: (String) -> Unit,
     onRequestBackground: () -> Unit,
+    onGrantNotification: () -> Unit,
     onOpenSettings: () -> Unit
 ) {
     Text(
@@ -981,11 +1022,20 @@ fun SystemHealthScreen(
     var hasForeground by remember { mutableStateOf(false) }
     var hasRoute by remember { mutableStateOf(false) }
     var hasBackground by remember { mutableStateOf(false) }
+    var hasNotification by remember { mutableStateOf(true) }
+
+    val context = LocalContext.current
 
     LaunchedEffect(Unit) {
         hasForeground = healthManager.hasForegroundPermissions()
         hasRoute = healthManager.hasRoutePermission()
         hasBackground = healthManager.hasBackgroundPermission()
+        
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            hasNotification = androidx.core.content.ContextCompat.checkSelfPermission(
+                context, android.Manifest.permission.POST_NOTIFICATIONS
+            ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        }
     }
 
     if (!hasForeground) {
@@ -1039,6 +1089,21 @@ fun SystemHealthScreen(
         )
     } else {
         IntegrationCard("BACKGROUND WORKER", "Active", "Periodic heuristic polling enabled")
+    }
+
+    Spacer(modifier = Modifier.height(8.dp))
+
+    if (!hasNotification && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        PermissionCard(
+            title = "Notification Access",
+            description = "Arabic Pressure & Urgent Nag system",
+            buttonText = "Grant",
+            onGrant = onGrantNotification,
+            onOpenSettings = onOpenSettings,
+            isWarning = true
+        )
+    } else {
+        IntegrationCard("NAG ENGINE", "Armed", "Sovereign local notifications enabled")
     }
 }
 
