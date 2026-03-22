@@ -20,7 +20,7 @@ def migrate():
         # Populate existing known mappings
         known_mappings = {
             "ARABIC": "reviewstack",
-            "GREEK": "reviewstack-greek"
+            "GREEK": "ellinika"
         }
         
         for lang, slug in known_mappings.items():

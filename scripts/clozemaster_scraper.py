@@ -13,7 +13,7 @@ import asyncio
 import html
 import re
 from bs4 import BeautifulSoup
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 from typing import Dict, Optional, List
 from dotenv import load_dotenv
 
@@ -92,16 +92,16 @@ class ClozemasterScraper:
             logger.error(f"Error during Clozemaster login: {e}")
             return False
 
-    async def get_review_forecast(self, lang_slug: str) -> Dict[str, int]:
-        """Scrape the review forecast for a specific language from React props."""
-        forecast = {"today": 0, "tomorrow": 0, "next_7_days": 0}
+    async def get_review_forecast(self, lang_slug: str) -> Dict[str, Any]:
+        """Scrape the review forecast and progress for a specific language from React props."""
+        data_out = {"today": 0, "tomorrow": 0, "next_7_days": 0, "points": 0, "mastery": 0.0}
         
         try:
             # The dashboard contains all the data in a React prop
             resp = await self.client.get(f"{self.base_url}/dashboard", cookies=self.cookies)
             if resp.status_code != 200:
                 logger.error(f"Could not load dashboard (Status: {resp.status_code})")
-                return forecast
+                return data_out
                 
             soup = BeautifulSoup(resp.text, 'html.parser')
             
@@ -114,7 +114,7 @@ class ClozemasterScraper:
             dashboard_div = soup.find('div', {'data-react-class': 'DashboardV5'})
             if not dashboard_div:
                 logger.error("Could not find DashboardV5 React component")
-                return forecast
+                return data_out
                 
             props_json = html.unescape(dashboard_div['data-react-props'])
             data = json.loads(props_json)
@@ -122,22 +122,26 @@ class ClozemasterScraper:
             pairings = data.get("languagePairings", [])
             for pair in pairings:
                 if pair.get("slug") == lang_slug:
-                    forecast["today"] = pair.get("numReadyForReview", 0)
-                    logger.info(f"Found {lang_slug} count in React props: {forecast['today']}")
+                    data_out["today"] = pair.get("numReadyForReview", 0)
+                    data_out["points"] = pair.get("points", 0)
+                    # Mastery is usually a percentage (0.0 to 1.0)
+                    data_out["mastery"] = pair.get("mastery", 0.0)
+                    
+                    logger.info(f"Found {lang_slug}: count={data_out['today']}, points={data_out['points']}")
                     
                     # LP ID for future API calls
                     lp_id = pair.get("id")
                     if lp_id:
-                        await self._enrich_with_api_forecast(lp_id, forecast, lang_slug)
+                        await self._enrich_with_api_forecast(lp_id, data_out, lang_slug)
                     
-                    return forecast
+                    return data_out
             
-            return forecast
+            return data_out
         except Exception as e:
-            logger.warning(f"Could not retrieve forecast for {lang_slug}: {e}")
-            return forecast
+            logger.warning(f"Could not retrieve data for {lang_slug}: {e}")
+            return data_out
 
-    async def _enrich_with_api_forecast(self, lp_id: int, forecast: Dict[str, int], lang_slug: str):
+    async def _enrich_with_api_forecast(self, lp_id: int, forecast: Dict[str, Any], lang_slug: str):
         """Call the private API to get the tomorrow/7day forecast with proper headers."""
         try:
             # Precise headers from successful browser curl
@@ -195,38 +199,73 @@ async def sync_clozemaster_to_beeminder(dry_run: bool = False):
             # Language configuration
             languages = {
                 "arabic": {"slug": "ara-eng", "goal": "reviewstack"},
-                "greek": {"slug": "ell-eng", "goal": "reviewstack-greek"}
+                "greek": {"slug": "ell-eng", "goal": "ellinika"}
             }
             
+            # Fetch today's date in Eastern Time for Beeminder datapoint checks
+            import zoneinfo
+            eastern = zoneinfo.ZoneInfo("US/Eastern")
+            today_eastern = datetime.now(eastern).replace(hour=0, minute=0, second=0, microsecond=0)
+            today_timestamp = int(today_eastern.timestamp())
+
             # Pre-fetch all goals to check existence
             all_goals = await beeminder.get_all_goals()
             existing_slugs = {g["slug"] for g in all_goals}
             
             results = {}
             for name, config in languages.items():
-                forecast = await scraper.get_review_forecast(config["slug"])
-                count = forecast["today"]
+                scraper_data = await scraper.get_review_forecast(config["slug"])
+                count = scraper_data["today"]
                 goal_slug = config["goal"]
                 
-                results[name] = {"count": count, "forecast": forecast}
-                logger.info(f"Scraped {name}: {count} reviews ready")
+                results[name] = {
+                    "count": count, 
+                    "forecast": scraper_data,
+                    "points": scraper_data.get("points", 0),
+                    "mastery": scraper_data.get("mastery", 0.0)
+                }
+                logger.info(f"Scraped {name}: {count} reviews ready, {results[name]['points']} points")
                 
                 if dry_run:
                     logger.info(f"[DRY RUN] Would push {count} to {goal_slug}")
                     continue
 
                 if goal_slug not in existing_slugs:
-                    logger.warning(f"⚠️ Goal {goal_slug} does not exist on Beeminder. Skipping push.")
+                    logger.warning(f"⚠️ Goal {goal_slug} does not exist on Beeminder. Skipping push for {name}.")
                     continue
+                
+                # Idempotency Check: Only push if the value has changed for today
+                try:
+                    # Fetch today's datapoints for this goal
+                    datapoints_today = await beeminder.get_goal_datapoints(goal_slug, since=today_eastern, count=10)
+                    
+                    # Check if a datapoint with today's timestamp already exists and has the same value
+                    datapoint_exists_today = False
+                    for dp in datapoints_today:
+                        # Beeminder timestamps are Unix timestamps (seconds since epoch)
+                        dp_timestamp = dp.get("timestamp", 0)
+                        if dp_timestamp >= today_timestamp:
+                            dp_value = float(dp.get("value", 0.0))
+                            if dp_value == float(count):
+                                datapoint_exists_today = True
+                                logger.info(f"Skipping push for {name}: Datapoint with value {count} already exists today for {goal_slug}.")
+                                break
+                    
+                    if datapoint_exists_today:
+                        continue # Skip push if value already recorded today
+
+                except Exception as e:
+                    logger.error(f"Error checking existing Beeminder datapoints for {goal_slug}: {e}. Proceeding with push.")
+                    # Continue with the push if check fails, to avoid missing data
 
                 logger.info(f"Pushing {name} count ({count}) to Beeminder goal {goal_slug}...")
                 
                 # Predictable Liabilities note
                 comment = f"Auto-synced from Clozemaster ({datetime.now().strftime('%Y-%m-%d %H:%M')})"
-                if forecast.get("tomorrow", 0) > 0:
-                    comment += f" | Tomorrow liability: {forecast['tomorrow']}"
-                if forecast.get("next_7_days", 0) > 0:
-                    comment += f" | 7-day liability: {forecast['next_7_days']}"
+                if scraper_data.get("tomorrow", 0) > 0:
+                    comment += f" | Tomorrow liability: {scraper_data['tomorrow']}"
+                if scraper_data.get("next_7_days", 0) > 0:
+                    comment += f" | 7-day liability: {scraper_data['next_7_days']}"
 
                 success = await beeminder.add_datapoint(
                     goal_slug, 
