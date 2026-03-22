@@ -14,7 +14,7 @@ import html
 import re
 from bs4 import BeautifulSoup
 from datetime import datetime, timedelta, date
-from typing import Dict, Optional, List
+from typing import Dict, Optional, List, Any
 from dotenv import load_dotenv
 
 # Add project root to path for local imports
@@ -123,11 +123,12 @@ class ClozemasterScraper:
             for pair in pairings:
                 if pair.get("slug") == lang_slug:
                     data_out["today"] = pair.get("numReadyForReview", 0)
-                    data_out["points"] = pair.get("points", 0)
-                    # Mastery is usually a percentage (0.0 to 1.0)
-                    data_out["mastery"] = pair.get("mastery", 0.0)
+                    # 'score' is cumulative total points
+                    data_out["points"] = pair.get("score", 0)
+                    # 'numPointsToday' is a direct activity metric
+                    data_out["points_today"] = pair.get("numPointsToday", 0)
                     
-                    logger.info(f"Found {lang_slug}: count={data_out['today']}, points={data_out['points']}")
+                    logger.info(f"Found {lang_slug}: count={data_out['today']}, score={data_out['points']}, today={data_out['points_today']}")
                     
                     # LP ID for future API calls
                     lp_id = pair.get("id")

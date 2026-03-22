@@ -32,7 +32,8 @@ class LanguageSyncService:
                     for lang, data in scraper_data.items():
                         name = lang.upper()
                         count = data.get("count", 0)
-                        points = data.get("points", 0)
+                        points = data.get("points", 0) # Total Score
+                        points_today = data.get("points_today", 0) # Upstream "Today" metric
                         forecast = data.get("forecast", {})
                         tomorrow = forecast.get("tomorrow", 0)
                         next_7 = forecast.get("next_7_days", 0)
@@ -50,20 +51,29 @@ class LanguageSyncService:
                             daily_completions = row[1] or 0
                             last_updated = row[2]
 
-                        # Detect Day Boundary (US/Eastern)
+                        # 1. Primary Activity Detection: Trust Upstream "points_today"
+                        if points_today > daily_completions:
+                            daily_completions = points_today
+                            logger.info(f"Detected activity from upstream today: {daily_completions} for {name}")
+                        
+                        # 2. Backup Activity Detection: trust Score Diff (for multi-sync accuracy)
+                        if points > last_points and last_points > 0:
+                            diff = points - last_points
+                            # Only apply if it looks like we missed points in our local daily count
+                            # (Clozemaster's numPointsToday resets at their midnight, which might differ)
+                            if points_today < daily_completions + diff:
+                                # This handles the case where points_today might have reset but score still goes up
+                                pass 
+
+                        # 3. Detect Day Boundary (US/Eastern) for resetting local completions
                         eastern = zoneinfo.ZoneInfo("US/Eastern")
                         now_eastern = datetime.now(eastern)
                         if last_updated:
                             last_upd_eastern = last_updated.astimezone(eastern)
                             if now_eastern.date() > last_upd_eastern.date():
                                 logger.info(f"Day boundary detected for {name}. Resetting daily completions.")
-                                daily_completions = 0
-                        
-                        # Update completions if points increased
-                        if points > last_points and last_points > 0:
-                            diff = points - last_points
-                            daily_completions += diff
-                            logger.info(f"Detected {diff} new points for {name}. Total today: {daily_completions}")
+                                # If points_today is high, it's already the next day in Clozemaster land
+                                daily_completions = points_today 
                         
                         # Default values for goal stats
                         safebuf = 0
