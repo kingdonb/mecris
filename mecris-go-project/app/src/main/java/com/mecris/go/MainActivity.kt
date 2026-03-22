@@ -1,7 +1,9 @@
 package com.mecris.go
 
 import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
+import android.os.Build
 import android.util.Log
 import android.widget.Toast
 import androidx.activity.ComponentActivity
@@ -163,6 +165,25 @@ class MainActivity : ComponentActivity() {
                             Log.e("MainActivity", "Failed to open settings: ${e.message}")
                             Toast.makeText(this@MainActivity, "Could not open Health Connect settings", Toast.LENGTH_SHORT).show()
                         }
+                    },
+                    onOpenNotificationSettings = {
+                        val intent = Intent().apply {
+                            when {
+                                Build.VERSION.SDK_INT >= Build.VERSION_CODES.O -> {
+                                    action = android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS
+                                    putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, packageName)
+                                }
+                                else -> {
+                                    action = android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS
+                                    data = Uri.fromParts("package", packageName, null)
+                                }
+                            }
+                        }
+                        try {
+                            startActivity(intent)
+                        } catch (e: Exception) {
+                            Log.e("MainActivity", "Failed to open notification settings: ${e.message}")
+                        }
                     }
                 )
             }
@@ -217,7 +238,8 @@ fun MecrisDashboard(
     onRequestRoute: (String) -> Unit,
     onRequestBackground: () -> Unit,
     onGrantNotification: () -> Unit,
-    onOpenSettings: () -> Unit
+    onOpenSettings: () -> Unit,
+    onOpenNotificationSettings: () -> Unit
 ) {
     val authState by auth.authState.collectAsState()
     val scope = rememberCoroutineScope()
@@ -442,7 +464,9 @@ fun MecrisDashboard(
                     },
                     onRequestRoute = onRequestRoute,
                     onRequestBackground = onRequestBackground,
-                    onOpenSettings = onOpenSettings
+                    onGrantNotification = onGrantNotification,
+                    onOpenSettings = onOpenSettings,
+                    onOpenNotificationSettings = onOpenNotificationSettings
                 )
             } else {
                 MainNeuralDashboard(
@@ -962,7 +986,8 @@ fun SystemHealthScreen(
     onRequestRoute: (String) -> Unit,
     onRequestBackground: () -> Unit,
     onGrantNotification: () -> Unit,
-    onOpenSettings: () -> Unit
+    onOpenSettings: () -> Unit,
+    onOpenNotificationSettings: () -> Unit
 ) {
     Text(
         text = "SYSTEM HEALTH & AUTH",
@@ -1099,7 +1124,7 @@ fun SystemHealthScreen(
             description = "Arabic Pressure & Urgent Nag system",
             buttonText = "Grant",
             onGrant = onGrantNotification,
-            onOpenSettings = onOpenSettings,
+            onOpenSettings = onOpenNotificationSettings,
             isWarning = true
         )
     } else {
