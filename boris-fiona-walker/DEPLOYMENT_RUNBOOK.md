@@ -36,7 +36,7 @@ spin cloud variables set longitude "-86.2520"
 Push the new code to Fermyon Spin.
 
 ```bash
-spin deploy
+spin cloud deploy
 ```
 
 **Verification**:
@@ -74,6 +74,6 @@ The Python logic (`mcp_server.py`, `services/coaching_service.py`) is loaded int
 
 Mark this PR as merged ONLY when these are true:
 
-- [ ] **WASM**: `spin deploy` successful.
+- [ ] **WASM**: `spin cloud deploy` successful.
 - [ ] **WASM Logic**: You received a context-appropriate SMS (or silence) during the 2 PM - 6 PM window.
 - [ ] **Python Logic**: `get_coaching_insight` tool call works locally.

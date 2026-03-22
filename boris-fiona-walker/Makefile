@@ -182,7 +182,7 @@ deploy: check-env build
 		exit 1; \
 	fi
 	@echo "   App Name: $(SPIN_CLOUD_APP_NAME)"
-	spin deploy
+	spin cloud deploy
 
 ## Setup: Install development dependencies
 install-deps:

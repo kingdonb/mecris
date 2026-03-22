@@ -21,7 +21,7 @@ Ensure you have the [Spin CLI](https://developer.fermyon.com/spin/v2/install) in
 2.  **Build & Deploy**:
     ```bash
     cd mecris-go-spin/sync-service
-    spin deploy
+    spin cloud deploy
     ```
 3.  **Set Variables**:
     After deployment, you must provide the database connection string. You can do this in the Fermyon Cloud dashboard under your app's variables, or via the CLI:
