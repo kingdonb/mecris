@@ -32,8 +32,8 @@ async def _global_reminder_job(trigger_func_name: str, user_id: str):
 
 async def _global_language_sync_job(user_id: str):
     """
-    Background job that syncs Clozemaster stats to Beeminder and Neon DB, 
-    then dynamically reschedules itself based on Beeminder urgency.
+    Background job that syncs Clozemaster stats to Beeminder and Neon DB.
+    Now uses a fixed interval for reliability.
     """
     try:
         from mcp_server import scheduler, language_sync_service
@@ -45,37 +45,10 @@ async def _global_language_sync_job(user_id: str):
         # Perform sync
         result = await language_sync_service.sync_all(dry_run=False, user_id=user_id)
         min_safebuf = result.get("min_safebuf", 999)
-                    
-        # Dynamic rescheduling logic
-        next_run_minutes = 240 # Default 4 hours
-        if min_safebuf <= 0:
-            next_run_minutes = 15 # Danger zone
-        elif min_safebuf == 1:
-            next_run_minutes = 60 # Derails tomorrow
-            
-        run_time = datetime.now(timezone.utc) + timedelta(minutes=next_run_minutes)
-        scheduler.scheduler.add_job(
-            _global_language_sync_job,
-            trigger=DateTrigger(run_date=run_time),
-            id=f'auto_language_sync_{user_id}',
-            args=[user_id],
-            replace_existing=True
-        )
-        logger.info(f"Rescheduled language sync for {user_id} at {run_time.isoformat()} (min safebuf: {min_safebuf})")
+        logger.info(f"Language sync completed for {user_id} (min safebuf: {min_safebuf})")
                     
     except Exception as e:
         logger.error(f"Clozemaster sync job failed for {user_id}: {e}")
-        # Ensure it runs again even if it failed
-        from mcp_server import scheduler
-        if scheduler.is_leader:
-            run_time = datetime.now(timezone.utc) + timedelta(minutes=60)
-            scheduler.scheduler.add_job(
-                _global_language_sync_job,
-                trigger=DateTrigger(run_date=run_time),
-                id=f'auto_language_sync_{user_id}',
-                args=[user_id],
-                replace_existing=True
-            )
 
 async def _global_walk_sync_job(user_id: str):
     """
@@ -348,10 +321,10 @@ class MecrisScheduler:
                     )
                 
                 if not self.scheduler.get_job(lang_sync_job_id):
-                    run_time = datetime.now(timezone.utc) + timedelta(seconds=10)
                     self.scheduler.add_job(
                         _global_language_sync_job,
-                        trigger=DateTrigger(run_date=run_time),
+                        'interval',
+                        minutes=60, # Regular interval instead of self-rescheduling
                         id=lang_sync_job_id,
                         args=[self.user_id],
                         replace_existing=True
