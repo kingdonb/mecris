@@ -52,10 +52,17 @@ class CoachingService:
             neon = NeonSyncChecker()
             lang_stats = neon.get_language_stats()
             
-            # Priority 1: High Pressure Arabic (Lever Aware)
+            # Priority 1: High Pressure Arabic (Lever Aware + Neural Behind)
             arabic = lang_stats.get("ARABIC", {})
             if arabic.get("current", 0) > 0 and arabic.get("multiplier", 1.0) >= 3.0:
-                return self._handle_arabic_pressure(arabic)
+                # Calculate if we are "Neural Behind"
+                from services.review_pump import ReviewPump
+                pump = ReviewPump(multiplier=arabic.get("multiplier", 1.0))
+                target = pump.calculate_target(arabic.get("current", 0), arabic.get("tomorrow", 0))
+                
+                # Only nag if we haven't hit the target flow rate for the day
+                if arabic.get("daily_completions", 0) < target:
+                    return self._handle_arabic_pressure(arabic, target)
 
             # Priority 2: High Momentum (Already walked/active)
             if has_walked:
@@ -68,14 +75,14 @@ class CoachingService:
             logger.error(f"Error generating coaching insight: {e}")
             raise
 
-    def _handle_arabic_pressure(self, arabic: Dict) -> CoachingInsight:
+    def _handle_arabic_pressure(self, arabic: Dict, target: int) -> CoachingInsight:
         multiplier = arabic.get("multiplier", 1.0)
-        debt = arabic.get("current", 0)
+        done = arabic.get("daily_completions", 0)
         
         messages = [
-            f"📈 You've got the Arabic lever set to {multiplier}x. That's a lot of talk for someone with {debt} reviews due. Log in and clear it. 😤",
-            f"💀 {debt} Arabic cards are waiting. You set the pressure to {multiplier}x yourself. Don't make me remind you again. 🔪",
-            f"⚖️ Arabic Debt: {debt}. Lever: {multiplier}x. The math doesn't add up until you do the work. Move it! 🏃‍♂️"
+            f"📈 Arabic Pace: {done}/{target}. You've got the lever at {multiplier}x. Time to close the gap. 😤",
+            f"💀 {done}/{target} reviews done. You set the pressure to {multiplier}x yourself. Don't make me remind you again. 🔪",
+            f"⚖️ Arabic Progress: {done}/{target}. Lever: {multiplier}x. The math doesn't add up until you do the work. Move it! 🏃‍♂️"
         ]
         
         return CoachingInsight(

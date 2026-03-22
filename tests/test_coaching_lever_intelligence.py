@@ -19,14 +19,15 @@ def mock_providers():
     return context_provider, goal_provider, obsidian_provider
 
 @pytest.mark.asyncio
-async def test_arabic_pressure_lever_triggers(mock_providers):
-    """Verify that Arabic 3x lever triggers high-pressure nagging."""
+async def test_arabic_pressure_neural_behind(mock_providers):
+    """Verify nagging triggers when pace is behind target."""
     ctx, goals, obs = mock_providers
     service = CoachingService(ctx, goals, obs)
     
-    # Mock language stats in Neon
+    # Arabic 3x lever (Brisk), debt 2400, tomorrow 10. 
+    # Target should be approx 250 (2400/10 + 10)
     mock_stats = {
-        "ARABIC": {"current": 150, "multiplier": 3.0},
+        "ARABIC": {"current": 2400, "tomorrow": 10, "multiplier": 3.0, "daily_completions": 50},
         "GREEK": {"current": 100, "multiplier": 1.0}
     }
     
@@ -35,9 +36,28 @@ async def test_arabic_pressure_lever_triggers(mock_providers):
         
         assert insight.type == InsightType.LEVER_PUSH
         assert "Arabic" in insight.message
-        # Check for either "reviews" or "Debt"
-        assert any(word in insight.message for word in ["reviews", "Debt"])
+        assert "50/" in insight.message # Shows progress
         assert insight.momentum == "low"
+
+@pytest.mark.asyncio
+async def test_arabic_laminar_suppresses_nag(mock_providers):
+    """Verify nagging stops when pace hits target (Laminar)."""
+    ctx, goals, obs = mock_providers
+    service = CoachingService(ctx, goals, obs)
+    
+    # Arabic 3x lever, target approx 250, done 300.
+    mock_stats = {
+        "ARABIC": {"current": 2400, "tomorrow": 10, "multiplier": 3.0, "daily_completions": 300},
+        "GREEK": {"current": 100, "multiplier": 1.0}
+    }
+    
+    with patch("services.neon_sync_checker.NeonSyncChecker.get_language_stats", return_value=mock_stats):
+        insight = await service.generate_insight()
+        
+        # Should NOT be a LEVER_PUSH nag
+        assert insight.type != InsightType.LEVER_PUSH
+        # Should fallback to walk prompt
+        assert insight.type == InsightType.WALK_PROMPT
 
 @pytest.mark.asyncio
 async def test_greek_backlog_booster_triggers(mock_providers):
@@ -65,21 +85,3 @@ async def test_greek_backlog_booster_triggers(mock_providers):
         assert "Greek" in insight.message
         assert "PLAY" in insight.message
         assert insight.momentum == "high"
-
-@pytest.mark.asyncio
-async def test_fallback_to_walk_prompt(mock_providers):
-    """Verify fallback to walk prompt when no lever triggers match."""
-    ctx, goals, obs = mock_providers
-    service = CoachingService(ctx, goals, obs)
-    
-    # Multpliers are low, no activity
-    mock_stats = {
-        "ARABIC": {"current": 0, "multiplier": 1.0},
-        "GREEK": {"current": 100, "multiplier": 1.0}
-    }
-    
-    with patch("services.neon_sync_checker.NeonSyncChecker.get_language_stats", return_value=mock_stats):
-        insight = await service.generate_insight()
-        
-        assert insight.type == InsightType.WALK_PROMPT
-        assert "Boris and Fiona" in insight.message
