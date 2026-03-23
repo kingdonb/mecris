@@ -301,18 +301,18 @@ async fn run_clozemaster_scraper(db_url: &str, user_id: &str) -> anyhow::Result<
             };
 
             // 1. Fetch existing stats to detect changes for Beeminder sync
-            let select_query = "SELECT current_reviews, last_updated::TEXT FROM language_stats WHERE user_id = $1 AND language_name = $2";
+            let select_query = "SELECT current_reviews, beeminder_last_sync::TEXT FROM language_stats WHERE user_id = $1 AND language_name = $2";
             let row_set = connection.query(select_query, &[
                 ParameterValue::Str(user_id.to_string()),
                 ParameterValue::Str(lang_name.to_uppercase())
             ])?;
 
             let mut prev_reviews = -1;
-            let mut last_updated_str = String::new();
+            let mut beeminder_last_sync_str = String::new();
 
             if !row_set.rows.is_empty() {
                 prev_reviews = match &row_set.rows[0][0] { DbValue::Int32(i) => *i, _ => -1 };
-                last_updated_str = match &row_set.rows[0][1] { DbValue::Str(s) => s.clone(), _ => String::new() };
+                beeminder_last_sync_str = match &row_set.rows[0][1] { DbValue::Str(s) => s.clone(), _ => String::new() };
             }
 
             // 2. completions from points_today
@@ -345,9 +345,9 @@ async fn run_clozemaster_scraper(db_url: &str, user_id: &str) -> anyhow::Result<
             // 4. Beeminder Push Logic
             // Force push if:
             // a) Review count changed (prev_reviews != current)
-            // b) It's a new day (last_updated_str doesn't contain today's date in New York)
+            // b) It's a new day since last Beeminder sync (beeminder_last_sync_str doesn't contain today's date in New York)
             let today_ny = chrono::Utc::now().with_timezone(&chrono_tz::America::New_York).format("%Y-%m-%d").to_string();
-            let is_new_day = !last_updated_str.contains(&today_ny);
+            let is_new_day = !beeminder_last_sync_str.contains(&today_ny);
             
             if !beeminder_slug.is_empty() && (current != prev_reviews || is_new_day) {
                 let now = chrono::Local::now().format("%Y-%m-%d %H:%M").to_string();
@@ -355,7 +355,16 @@ async fn run_clozemaster_scraper(db_url: &str, user_id: &str) -> anyhow::Result<
                 if tomorrow > 0 { comment += &format!(" | Tomorrow: {}", tomorrow); }
                 if next_7 > 0 { comment += &format!(" | 7-day: {}", next_7); }
                 
-                let _ = push_to_beeminder(user_id, beeminder_slug, current as f64, &comment, &connection).await;
+                match push_to_beeminder(user_id, beeminder_slug, current as f64, &comment, &connection).await {
+                    Ok(_) => {
+                        // Update beeminder_last_sync on success
+                        let _ = connection.execute(
+                            "UPDATE language_stats SET beeminder_last_sync = CURRENT_TIMESTAMP WHERE user_id = $1 AND language_name = $2",
+                            &[ParameterValue::Str(user_id.to_string()), ParameterValue::Str(lang_name.to_uppercase())]
+                        );
+                    },
+                    Err(e) => eprintln!("Beeminder push error: {}", e)
+                }
             }
         }
     }
