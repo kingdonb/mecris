@@ -304,24 +304,20 @@ async fn run_clozemaster_scraper(db_url: &str, user_id: &str) -> anyhow::Result<
             };
 
             // 1. Fetch existing stats to detect changes for Beeminder sync and completion tracking
-            let select_query = "SELECT current_reviews, daily_completions, last_points, last_updated FROM language_stats WHERE user_id = $1 AND language_name = $2";
+            let select_query = "SELECT current_reviews FROM language_stats WHERE user_id = $1 AND language_name = $2";
             let row_set = connection.query(select_query, &[
                 ParameterValue::Str(user_id.to_string()),
                 ParameterValue::Str(lang_name.to_uppercase())
             ])?;
 
             let mut prev_reviews = -1;
-            let mut prev_completions = 0;
-            let mut last_points = 0;
 
             if !row_set.rows.is_empty() {
                 prev_reviews = match &row_set.rows[0][0] { DbValue::Int32(i) => *i, _ => -1 };
-                prev_completions = match &row_set.rows[0][1] { DbValue::Int32(i) => *i, _ => 0 };
-                last_points = match &row_set.rows[0][2] { DbValue::Int32(i) => *i, _ => 0 };
             }
 
-            // 2. Update completions: Trust Upstream points_today
-            let mut completions = points_today;
+            // 2. completions from points_today
+            let completions = points_today;
             
             // 3. Update Neon DB
             let query = "INSERT INTO language_stats (user_id, language_name, current_reviews, tomorrow_reviews, next_7_days_reviews, beeminder_slug, daily_completions, last_points, total_points, last_updated) 
@@ -389,8 +385,9 @@ async fn push_to_beeminder(user_id: &str, slug: &str, value: f64, tomorrow: i32,
         .build();
     
     let res: Response = spin_sdk::http::send(req).await?;
-    if !res.status().is_success() {
-        eprintln!("Beeminder push failed for {}: {}", slug, res.status());
+    let status = *res.status();
+    if !(200..300).contains(&status) {
+        eprintln!("Beeminder push failed for {}: {}", slug, status);
     }
     
     Ok(())
