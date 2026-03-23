@@ -370,8 +370,16 @@ async fn push_to_beeminder(user_id: &str, slug: &str, value: f64, tomorrow: i32,
         _ => return Err(anyhow::anyhow!("Token missing")),
     };
 
-    let token = if encrypted_token.contains(':') || encrypted_token.len() > 60 {
-        decrypt_token(&encrypted_token).await?
+    let master_key = variables::get("master_encryption_key").unwrap_or_default();
+    
+    let token = if !master_key.is_empty() && (encrypted_token.contains(':') || encrypted_token.len() > 60) {
+        match decrypt_token(&encrypted_token).await {
+            Ok(t) => t,
+            Err(e) => {
+                eprintln!("Decryption failed, falling back to raw token: {}", e);
+                encrypted_token
+            }
+        }
     } else {
         encrypted_token // Fallback for plain tokens
     };
@@ -382,8 +390,8 @@ async fn push_to_beeminder(user_id: &str, slug: &str, value: f64, tomorrow: i32,
     if next_7 > 0 { comment += &format!(" | 7-day: {}", next_7); }
 
     let url = format!("https://www.beeminder.com/api/v1/users/me/goals/{}/datapoints.json", slug);
-    let body = format!("access_token={}&value={}&comment={}", 
-        token, value, urlencoding::encode(&comment));
+    let body = format!("access_token={}&auth_token={}&value={}&comment={}", 
+        token, token, value, urlencoding::encode(&comment));
     
     let req = Request::post(url, body)
         .header("content-type", "application/x-www-form-urlencoded")
@@ -392,7 +400,7 @@ async fn push_to_beeminder(user_id: &str, slug: &str, value: f64, tomorrow: i32,
     let res: Response = spin_sdk::http::send(req).await?;
     let status = *res.status();
     if !(200..300).contains(&status) {
-        eprintln!("Beeminder push failed for {}: {}", slug, status);
+        eprintln!("Beeminder push failed for {}: {} - Value: {}", slug, status, value);
     }
     
     Ok(())
@@ -669,13 +677,20 @@ async fn handle_walks_post(req: Request) -> anyhow::Result<Response> {
 
     if !token_rs.rows.is_empty() {
         let token_raw = match &token_rs.rows[0][0] { DbValue::Str(s) => s.clone(), _ => "".to_string() };
-        let token = decrypt_token(&token_raw).await.unwrap_or(token_raw);
+        
+        let master_key = variables::get("master_encryption_key").unwrap_or_default();
+        let token = if !master_key.is_empty() && (token_raw.contains(':') || token_raw.len() > 60) {
+            decrypt_token(&token_raw).await.unwrap_or(token_raw)
+        } else {
+            token_raw
+        };
+
         let goal = match &token_rs.rows[0][1] { DbValue::Str(s) => s.clone(), _ => "bike".to_string() };
         let user = match &token_rs.rows[0][2] { DbValue::Str(s) => s.clone(), _ => "me".to_string() };
 
         let miles = walk.distance_meters / 1609.34;
         let beeminder_url = format!("https://www.beeminder.com/api/v1/users/{}/goals/{}/datapoints.json", user, goal);
-        let beeminder_body = format!("auth_token={}&value={:.2}&comment=Synced via Spin", token, miles);
+        let beeminder_body = format!("access_token={}&auth_token={}&value={:.2}&comment=Synced via Spin", token, token, miles);
 
         let beeminder_req = Request::post(&beeminder_url, beeminder_body).header("content-type", "application/x-www-form-urlencoded").build();
         let _: Response = spin_sdk::http::send(beeminder_req).await?;
