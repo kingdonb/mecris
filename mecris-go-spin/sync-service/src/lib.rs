@@ -279,6 +279,13 @@ async fn run_clozemaster_scraper(db_url: &str, user_id: &str) -> anyhow::Result<
         .map(|m| m.as_str())
         .ok_or_else(|| anyhow::anyhow!("Could not find data-react-props"))?;
     
+    // Extract fresh CSRF token from dashboard meta tag
+    let csrf_re = regex::Regex::new(r#"<meta name="csrf-token" content="([^"]*)""#)?;
+    let fresh_csrf = csrf_re.captures(&body_str)
+        .and_then(|cap| cap.get(1))
+        .map(|m| m.as_str())
+        .unwrap_or(csrf_token);
+    
     let props_json = html_escape::decode_html_entities(props_escaped);
     let props: serde_json::Value = serde_json::from_str(&props_json)?;
     
@@ -307,8 +314,9 @@ async fn run_clozemaster_scraper(db_url: &str, user_id: &str) -> anyhow::Result<
                 let api_req = Request::get(api_url)
                     .header("User-Agent", user_agent)
                     .header("Cookie", session_cookie)
-                    .header("X-CSRF-Token", csrf_token)
+                    .header("X-CSRF-Token", fresh_csrf)
                     .header("Referer", &format!("https://www.clozemaster.com/l/{}", name))
+                    .header("X-Requested-With", "XMLHttpRequest")
                     .build();
                 if let Ok(api_res) = spin_sdk::http::send::<Request, Response>(api_req).await {
                     let status = *api_res.status();
@@ -331,7 +339,7 @@ async fn run_clozemaster_scraper(db_url: &str, user_id: &str) -> anyhow::Result<
                             }
                         }
                     } else {
-                        eprintln!("Scraper: API call for {} failed with status {}", name, status);
+                        eprintln!("Scraper: API call for {} (LP {}) failed with status {}", name, lp_id, status);
                     }
                 }
             }
