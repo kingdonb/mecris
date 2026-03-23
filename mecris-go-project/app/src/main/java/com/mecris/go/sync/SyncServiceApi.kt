@@ -1,11 +1,13 @@
 package com.mecris.go.sync
 
+import okhttp3.OkHttpClient
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 import retrofit2.http.Body
 import retrofit2.http.GET
 import retrofit2.http.Header
 import retrofit2.http.POST
+import java.util.concurrent.TimeUnit
 
 interface SyncServiceApi {
     @POST("walks")
@@ -48,8 +50,15 @@ interface SyncServiceApi {
 
     companion object {
         fun create(baseUrl: String): SyncServiceApi {
+            val client = OkHttpClient.Builder()
+                .connectTimeout(30, TimeUnit.SECONDS)
+                .readTimeout(60, TimeUnit.SECONDS)
+                .writeTimeout(30, TimeUnit.SECONDS)
+                .build()
+
             return Retrofit.Builder()
                 .baseUrl(baseUrl)
+                .client(client)
                 .addConverterFactory(GsonConverterFactory.create())
                 .build()
                 .create(SyncServiceApi::class.java)
