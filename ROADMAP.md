@@ -24,10 +24,23 @@
 - [ ] **Mandatory Encryption**: Remove all plaintext token fallbacks in the Rust and Python backends. The system must fail fast if `MASTER_ENCRYPTION_KEY` is not present.
 - [ ] **The Wipe Test**: Validate the end-to-end bootstrap flow for a completely fresh user.
 
-**Future SLSA Trajectory**:
-- *Target v0.3.0 (Beta):* SLSA Level 2 (Hosted & Authenticated via OIDC/Sigstore)
-- *Target v0.5.0 (RC):* SLSA Level 3 (Isolated build environments)
-- *Target v1.0.0 (GA):* SLSA Level 4 (Hermetic, offline, reproducible builds + 2-person reviews)
+### **⚠️ Forward-Looking Statements: Path to v1.0.0 (Subject to Change)**
+*The following defines the long-term convergence of our security posture (SLSA) and feature development (Autonomy & RAG).*
+
+**Target v0.3.0 (Beta): The Autonomous Shift**
+*   **Feature Focus:** The Proactive "Wake-Up" Engine (Goal 1). Mecris begins running as a background daemon, using heuristics to send unprompted SMS/WhatsApp notifications when walking goals are at risk.
+*   **Security Focus:** **SLSA Build Level 2 (Hosted & Authenticated)**. We upgrade the CI pipeline to use short-lived OIDC tokens and Sigstore. This cryptographically proves that the build artifacts originated from our GitHub Actions runners and were not forged on a developer's local machine.
+
+**Target v0.5.0 (Release Candidate): Contextual Awareness**
+*   **Feature Focus:** Knowledge Base & RAG Integration (Goal 2). Mecris can now converse with your Obsidian vault and `/docs`. The Android app interface expands beyond a dashboard into a conversational AI client.
+*   **Security Focus:** **SLSA Build Level 3 (Hardened)**. Transition to isolated, ephemeral build environments using officially vetted builders (e.g., `slsa-github-generator`). This ensures the build process itself cannot be tampered with to inject malicious code into the artifacts or the `.intoto.jsonl` provenance files.
+
+**Target v1.0.0 (General Availability): The Hermetic System**
+*   **Feature Focus:** Complete contextual integration (Goal 3) and multi-user polish. Settings pages allow any user to bring their own API keys (encrypted on-device) to leverage the Mecris engine.
+*   **Security Focus:** **SLSA Build Level 4 (Hermetic & Reproducible)**. The highest level of software supply chain security. 
+    *   *Two-Person Reviews:* Enforced branch protection requiring multiple approvals for code changes.
+    *   *Hermeticity:* Builds run entirely offline. All Rust crates and Android Gradle dependencies are pre-fetched, hashed, and vendored. 
+    *   *Reproducibility:* Compiling the source code twice guarantees a byte-for-byte identical binary, proving absolute build integrity before any App Store submission.
 
 ---
 
