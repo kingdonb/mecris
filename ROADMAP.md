@@ -11,6 +11,26 @@
 
 ## 🎯 Four Core Goals
 
+### **GOAL 0: Alpha Hardening & SLSA Security (Target: v0.1.0)** 🛡️
+**Priority**: CRITICAL | **Timeline**: 1-2 weeks | **Budget Impact**: $0
+
+**Current Problem**: Mecris is transitioning from a single-user local prototype to a multi-tenant ecosystem. We need synchronized versioning across Android, Spin, and Python, alongside strict security controls, before letting additional users on board.
+
+**Solution**: The "Alpha Hardening" phase focuses on securing data isolation and creating a reproducible, SLSA-compliant build pipeline.
+
+**Deliverables**:
+- [ ] **SLSA Build Level 1**: Automated GitHub Actions CI pipeline for Android APK, Spin Wasm, and Python packages, featuring `actions/attest-build-provenance` to generate `.intoto.jsonl` files.
+- [ ] **Strict Multi-Tenancy**: Audit all SQL queries to ensure `user_id` bounds. Ensure integrations (like Clozemaster) use *per-user* encrypted credentials stored in the DB, rather than global environment variables.
+- [ ] **Mandatory Encryption**: Remove all plaintext token fallbacks in the Rust and Python backends. The system must fail fast if `MASTER_ENCRYPTION_KEY` is not present.
+- [ ] **The Wipe Test**: Validate the end-to-end bootstrap flow for a completely fresh user.
+
+**Future SLSA Trajectory**:
+- *Target v0.3.0 (Beta):* SLSA Level 2 (Hosted & Authenticated via OIDC/Sigstore)
+- *Target v0.5.0 (RC):* SLSA Level 3 (Isolated build environments)
+- *Target v1.0.0 (GA):* SLSA Level 4 (Hermetic, offline, reproducible builds + 2-person reviews)
+
+---
+
 ### **GOAL 1: Autonomous Deployment & Nagging System** 🚨
 **Priority**: HIGHEST | **Timeline**: 2-3 weeks | **Budget Impact**: ~$2-3
 
@@ -100,7 +120,13 @@
 
 ## 📅 Implementation Timeline
 
-**Weeks 1-3: Autonomous Deployment** (CRITICAL PATH)
+**Weeks 1-2: Phase 0 - Alpha Hardening** (CRITICAL PATH TO v0.1.0)
+- Audit SQL queries for multi-tenant data boundaries.
+- Strip all plaintext token logic and enforce strict `MASTER_ENCRYPTION_KEY` presence.
+- Refactor Clozemaster credentials from global env vars to encrypted per-user DB rows.
+- Set up GitHub Actions CI for SLSA Build Level 1 (Automated builds & `.intoto.jsonl` provenance).
+
+**Weeks 3-5: Autonomous Deployment** (Goal 1)
 - Week 1: Design autonomous scheduler architecture
 - Week 2: Implement core nagging system with Twilio integration  
 - Week 3: Deploy, test, and refine heuristic decision making
