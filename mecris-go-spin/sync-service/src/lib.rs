@@ -350,16 +350,21 @@ async fn run_clozemaster_scraper(db_url: &str, user_id: &str) -> anyhow::Result<
             let is_new_day = !last_updated_str.contains(&today_ny);
             
             if !beeminder_slug.is_empty() && (current != prev_reviews || is_new_day) {
-                let _ = push_to_beeminder(user_id, beeminder_slug, current as f64, tomorrow, next_7, &connection).await;
+                let now = chrono::Local::now().format("%Y-%m-%d %H:%M").to_string();
+                let mut comment = format!("Auto-synced from Clozemaster (Failover) at {}", now);
+                if tomorrow > 0 { comment += &format!(" | Tomorrow: {}", tomorrow); }
+                if next_7 > 0 { comment += &format!(" | 7-day: {}", next_7); }
+                
+                let _ = push_to_beeminder(user_id, beeminder_slug, current as f64, &comment, &connection).await;
             }
         }
     }
     Ok(())
 }
 
-async fn push_to_beeminder(user_id: &str, slug: &str, value: f64, tomorrow: i32, next_7: i32, connection: &Connection) -> anyhow::Result<()> {
+async fn push_to_beeminder(user_id: &str, slug: &str, value: f64, comment: &str, connection: &Connection) -> anyhow::Result<()> {
     // Fetch user's Beeminder token (encrypted) from Neon
-    let query = "SELECT beeminder_token_encrypted FROM users WHERE pocket_id_sub = $1";
+    let query = "SELECT beeminder_token_encrypted, beeminder_user FROM users WHERE pocket_id_sub = $1";
     let row_set = connection.query(query, &[ParameterValue::Str(user_id.to_string())])?;
     if row_set.rows.is_empty() {
         return Err(anyhow::anyhow!("User not found for Beeminder sync"));
@@ -368,6 +373,11 @@ async fn push_to_beeminder(user_id: &str, slug: &str, value: f64, tomorrow: i32,
     let encrypted_token = match &row_set.rows[0][0] {
         DbValue::Str(s) => s.clone(),
         _ => return Err(anyhow::anyhow!("Token missing")),
+    };
+    
+    let beeminder_user = match &row_set.rows[0][1] {
+        DbValue::Str(s) if !s.is_empty() => s.clone(),
+        _ => "me".to_string(),
     };
 
     let master_key = variables::get("master_encryption_key").unwrap_or_default();
@@ -384,14 +394,9 @@ async fn push_to_beeminder(user_id: &str, slug: &str, value: f64, tomorrow: i32,
         encrypted_token // Fallback for plain tokens
     };
 
-    let now = chrono::Local::now().format("%Y-%m-%d %H:%M").to_string();
-    let mut comment = format!("Auto-synced from Clozemaster (Failover) at {}", now);
-    if tomorrow > 0 { comment += &format!(" | Tomorrow: {}", tomorrow); }
-    if next_7 > 0 { comment += &format!(" | 7-day: {}", next_7); }
-
-    let url = format!("https://www.beeminder.com/api/v1/users/me/goals/{}/datapoints.json", slug);
+    let url = format!("https://www.beeminder.com/api/v1/users/{}/goals/{}/datapoints.json", beeminder_user, slug);
     let body = format!("auth_token={}&value={}&comment={}", 
-        token, value, urlencoding::encode(&comment));
+        token, value, urlencoding::encode(comment));
     
     let req = Request::post(url, body)
         .header("content-type", "application/x-www-form-urlencoded")
@@ -671,29 +676,14 @@ async fn handle_walks_post(req: Request) -> anyhow::Result<Response> {
 
     // Restore Beeminder Sync
     let token_rs = connection.query(
-        "SELECT beeminder_token_encrypted, beeminder_goal, beeminder_user FROM users WHERE pocket_id_sub = $1",
+        "SELECT beeminder_goal FROM users WHERE pocket_id_sub = $1",
         &[ParameterValue::Str(user_id.clone())]
     )?;
 
     if !token_rs.rows.is_empty() {
-        let token_raw = match &token_rs.rows[0][0] { DbValue::Str(s) => s.clone(), _ => "".to_string() };
-        
-        let master_key = variables::get("master_encryption_key").unwrap_or_default();
-        let token = if !master_key.is_empty() && (token_raw.contains(':') || token_raw.len() > 60) {
-            decrypt_token(&token_raw).await.unwrap_or(token_raw)
-        } else {
-            token_raw
-        };
-
-        let goal = match &token_rs.rows[0][1] { DbValue::Str(s) => s.clone(), _ => "bike".to_string() };
-        let user = match &token_rs.rows[0][2] { DbValue::Str(s) => s.clone(), _ => "me".to_string() };
-
+        let goal = match &token_rs.rows[0][0] { DbValue::Str(s) if !s.is_empty() => s.clone(), _ => "bike".to_string() };
         let miles = walk.distance_meters / 1609.34;
-        let beeminder_url = format!("https://www.beeminder.com/api/v1/users/{}/goals/{}/datapoints.json", user, goal);
-        let beeminder_body = format!("auth_token={}&value={:.2}&comment=Synced via Spin", token, miles);
-
-        let beeminder_req = Request::post(&beeminder_url, beeminder_body).header("content-type", "application/x-www-form-urlencoded").build();
-        let _: Response = spin_sdk::http::send(beeminder_req).await?;
+        let _ = push_to_beeminder(&user_id, &goal, miles, "Synced via Spin", &connection).await;
     }
 
     let resp = StatusResponse { status: "success".to_string(), message: "Walk ingested".to_string() };
