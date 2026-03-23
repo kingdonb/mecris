@@ -342,33 +342,90 @@ async fn run_clozemaster_scraper(db_url: &str, user_id: &str) -> anyhow::Result<
                 ParameterValue::Int32(points_total)
             ]);
 
-            // 4. Beeminder Push Logic
-            // Force push if:
-            // a) Review count changed (prev_reviews != current)
-            // b) It's a new day since last Beeminder sync (beeminder_last_sync_str doesn't contain today's date in New York)
-            let today_ny = chrono::Utc::now().with_timezone(&chrono_tz::America::New_York).format("%Y-%m-%d").to_string();
-            let is_new_day = !beeminder_last_sync_str.contains(&today_ny);
-            
-            if !beeminder_slug.is_empty() && (current != prev_reviews || is_new_day) {
-                let now = chrono::Local::now().format("%Y-%m-%d %H:%M").to_string();
-                let mut comment = format!("Auto-synced from Clozemaster (Failover) at {}", now);
-                if tomorrow > 0 { comment += &format!(" | Tomorrow: {}", tomorrow); }
-                if next_7 > 0 { comment += &format!(" | 7-day: {}", next_7); }
+            // 4. Beeminder Sync
+            if !beeminder_slug.is_empty() {
+                // a) Push data if needed
+                let today_ny = chrono::Utc::now().with_timezone(&chrono_tz::America::New_York).format("%Y-%m-%d").to_string();
+                let is_new_day = !beeminder_last_sync_str.contains(&today_ny);
                 
-                match push_to_beeminder(user_id, beeminder_slug, current as f64, &comment, &connection).await {
-                    Ok(_) => {
-                        // Update beeminder_last_sync on success
-                        let _ = connection.execute(
-                            "UPDATE language_stats SET beeminder_last_sync = CURRENT_TIMESTAMP WHERE user_id = $1 AND language_name = $2",
-                            &[ParameterValue::Str(user_id.to_string()), ParameterValue::Str(lang_name.to_uppercase())]
-                        );
-                    },
-                    Err(e) => eprintln!("Beeminder push error: {}", e)
+                let force_push = current != prev_reviews || is_new_day;
+                if force_push {
+                    let now = chrono::Local::now().format("%Y-%m-%d %H:%M").to_string();
+                    let mut comment = format!("Auto-synced from Clozemaster (Failover) at {}", now);
+                    if tomorrow > 0 { comment += &format!(" | Tomorrow: {}", tomorrow); }
+                    if next_7 > 0 { comment += &format!(" | 7-day: {}", next_7); }
+                    
+                    match push_to_beeminder(user_id, beeminder_slug, current as f64, &comment, &connection).await {
+                        Ok(_) => {
+                            let _ = connection.execute(
+                                "UPDATE language_stats SET beeminder_last_sync = CURRENT_TIMESTAMP WHERE user_id = $1 AND language_name = $2",
+                                &[ParameterValue::Str(user_id.to_string()), ParameterValue::Str(lang_name.to_uppercase())]
+                            );
+                        },
+                        Err(e) => eprintln!("Beeminder push error: {}", e)
+                    }
+                }
+
+                // b) Fetch fresh status (safebuf, derail_risk, rate) from Beeminder
+                if let Ok((safebuf, risk, rate)) = fetch_from_beeminder(user_id, beeminder_slug, &connection).await {
+                    let _ = connection.execute(
+                        "UPDATE language_stats SET safebuf = $1, derail_risk = $2, daily_rate = $3::FLOAT8::NUMERIC WHERE user_id = $4 AND language_name = $5",
+                        &[
+                            ParameterValue::Int32(safebuf),
+                            ParameterValue::Str(risk),
+                            ParameterValue::Floating64(rate),
+                            ParameterValue::Str(user_id.to_string()),
+                            ParameterValue::Str(lang_name.to_uppercase())
+                        ]
+                    );
                 }
             }
         }
     }
     Ok(())
+}
+
+async fn fetch_from_beeminder(user_id: &str, slug: &str, connection: &Connection) -> anyhow::Result<(i32, String, f64)> {
+    // 1. Fetch encrypted token
+    let query = "SELECT beeminder_token_encrypted, beeminder_user FROM users WHERE pocket_id_sub = $1";
+    let row_set = connection.query(query, &[ParameterValue::Str(user_id.to_string())])?;
+    if row_set.rows.is_empty() {
+        return Err(anyhow::anyhow!("User not found"));
+    }
+    
+    let token_raw = match &row_set.rows[0][0] { DbValue::Str(s) => s.clone(), _ => return Err(anyhow::anyhow!("No token")) };
+    let beeminder_user = match &row_set.rows[0][1] { DbValue::Str(s) if !s.is_empty() => s.clone(), _ => "me".to_string() };
+
+    let master_key = variables::get("master_encryption_key").unwrap_or_default();
+    let token = if !master_key.is_empty() && (token_raw.contains(':') || token_raw.len() > 60) {
+        decrypt_token(&token_raw).await.unwrap_or(token_raw)
+    } else {
+        token_raw
+    };
+
+    // 2. GET goal details
+    let url = format!("https://www.beeminder.com/api/v1/users/{}/goals/{}.json?auth_token={}", beeminder_user, slug, token);
+    let req = Request::get(url).build();
+    let res: Response = spin_sdk::http::send(req).await?;
+    
+    let status = *res.status();
+    if !(200..300).contains(&status) {
+        return Err(anyhow::anyhow!("Beeminder fetch failed: {}", status));
+    }
+
+    let body_bytes = res.body();
+    let goal_data: serde_json::Value = serde_json::from_slice(body_bytes)?;
+
+    let safebuf = goal_data.get("safebuf").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
+    let rate = goal_data.get("rate").and_then(|v| v.as_f64()).unwrap_or(0.0);
+    
+    // Classify risk (mimic Python BeeminderClient logic)
+    let risk = if safebuf <= 0 { "CRITICAL" } 
+               else if safebuf == 1 { "WARNING" }
+               else if safebuf <= 3 { "CAUTION" }
+               else { "SAFE" };
+
+    Ok((safebuf, risk.to_string(), rate))
 }
 
 async fn push_to_beeminder(user_id: &str, slug: &str, value: f64, comment: &str, connection: &Connection) -> anyhow::Result<()> {
