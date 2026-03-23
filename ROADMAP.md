@@ -11,6 +11,39 @@
 
 ## 🎯 Four Core Goals
 
+### **GOAL 0: Alpha Hardening & SLSA Security (Target: v0.1.0)** 🛡️
+**Priority**: CRITICAL | **Timeline**: 1-2 weeks | **Budget Impact**: $0
+
+**Current Problem**: Mecris is transitioning from a single-user local prototype to a multi-tenant ecosystem. We need synchronized versioning across Android, Spin, and Python, alongside strict security controls, before letting additional users on board.
+
+**Solution**: The "Alpha Hardening" phase focuses on securing data isolation and creating a reproducible, SLSA-compliant build pipeline.
+
+**Deliverables**:
+- [ ] **SLSA Build Level 1**: Automated GitHub Actions CI pipeline for Android APK, Spin Wasm, and Python packages, featuring `actions/attest-build-provenance` to generate `.intoto.jsonl` files.
+- [ ] **Strict Multi-Tenancy**: Audit all SQL queries to ensure `user_id` bounds. Ensure integrations (like Clozemaster) use *per-user* encrypted credentials stored in the DB, rather than global environment variables.
+- [ ] **Mandatory Encryption**: Remove all plaintext token fallbacks in the Rust and Python backends. The system must fail fast if `MASTER_ENCRYPTION_KEY` is not present.
+- [ ] **The Wipe Test**: Validate the end-to-end bootstrap flow for a completely fresh user.
+
+### **⚠️ Forward-Looking Statements: Path to v1.0.0 (Subject to Change)**
+*The following defines the long-term convergence of our security posture (SLSA) and feature development (Autonomy & RAG).*
+
+**Target v0.3.0 (Beta): The Autonomous Shift**
+*   **Feature Focus:** The Proactive "Wake-Up" Engine (Goal 1). Mecris begins running as a background daemon, using heuristics to send unprompted SMS/WhatsApp notifications when walking goals are at risk.
+*   **Security Focus:** **SLSA Build Level 2 (Hosted & Authenticated)**. We upgrade the CI pipeline to use short-lived OIDC tokens and Sigstore. This cryptographically proves that the build artifacts originated from our GitHub Actions runners and were not forged on a developer's local machine.
+
+**Target v0.5.0 (Release Candidate): Contextual Awareness**
+*   **Feature Focus:** Knowledge Base & RAG Integration (Goal 2). Mecris can now converse with your Obsidian vault and `/docs`. The Android app interface expands beyond a dashboard into a conversational AI client.
+*   **Security Focus:** **SLSA Build Level 3 (Hardened)**. Transition to isolated, ephemeral build environments using officially vetted builders (e.g., `slsa-github-generator`). This ensures the build process itself cannot be tampered with to inject malicious code into the artifacts or the `.intoto.jsonl` provenance files.
+
+**Target v1.0.0 (General Availability): The Hermetic System**
+*   **Feature Focus:** Complete contextual integration (Goal 3) and multi-user polish. Settings pages allow any user to bring their own API keys (encrypted on-device) to leverage the Mecris engine.
+*   **Security Focus:** **SLSA Build Level 4 (Hermetic & Reproducible)**. The highest level of software supply chain security. 
+    *   *Two-Person Reviews:* Enforced branch protection requiring multiple approvals for code changes.
+    *   *Hermeticity:* Builds run entirely offline. All Rust crates and Android Gradle dependencies are pre-fetched, hashed, and vendored. 
+    *   *Reproducibility:* Compiling the source code twice guarantees a byte-for-byte identical binary, proving absolute build integrity before any App Store submission.
+
+---
+
 ### **GOAL 1: Autonomous Deployment & Nagging System** 🚨
 **Priority**: HIGHEST | **Timeline**: 2-3 weeks | **Budget Impact**: ~$2-3
 
@@ -100,7 +133,13 @@
 
 ## 📅 Implementation Timeline
 
-**Weeks 1-3: Autonomous Deployment** (CRITICAL PATH)
+**Weeks 1-2: Phase 0 - Alpha Hardening** (CRITICAL PATH TO v0.1.0)
+- Audit SQL queries for multi-tenant data boundaries.
+- Strip all plaintext token logic and enforce strict `MASTER_ENCRYPTION_KEY` presence.
+- Refactor Clozemaster credentials from global env vars to encrypted per-user DB rows.
+- Set up GitHub Actions CI for SLSA Build Level 1 (Automated builds & `.intoto.jsonl` provenance).
+
+**Weeks 3-5: Autonomous Deployment** (Goal 1)
 - Week 1: Design autonomous scheduler architecture
 - Week 2: Implement core nagging system with Twilio integration  
 - Week 3: Deploy, test, and refine heuristic decision making
