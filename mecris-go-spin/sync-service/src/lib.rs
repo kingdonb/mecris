@@ -286,11 +286,10 @@ async fn run_clozemaster_scraper(db_url: &str, user_id: &str) -> anyhow::Result<
     
     if let Some(pairings) = props.get("languagePairings").and_then(|l| l.as_array()) {
         for pair in pairings {
+            let lp_id = pair.get("id").and_then(|id| id.as_i64()).unwrap_or(0);
             let name = pair.get("slug").and_then(|n| n.as_str()).unwrap_or("UNKNOWN");
             let current = pair.get("numReadyForReview").and_then(|c| c.as_i64()).unwrap_or(0) as i32;
-            let tomorrow = pair.get("numTomorrow").and_then(|c| c.as_i64()).unwrap_or(0) as i32;
-            let next_7 = pair.get("numNext7Days").and_then(|c| c.as_i64()).unwrap_or(0) as i32;
-            let points_total = pair.get("numPoints").and_then(|c| c.as_i64()).unwrap_or(0) as i32;
+            let points_total = pair.get("score").and_then(|c| c.as_i64()).unwrap_or(0) as i32;
             let points_today = pair.get("numPointsToday").and_then(|c| c.as_i64()).unwrap_or(0) as i32;
             
             // Map slugs to standard names and Beeminder goals
@@ -300,7 +299,35 @@ async fn run_clozemaster_scraper(db_url: &str, user_id: &str) -> anyhow::Result<
                 _ => (name, ""),
             };
 
-            // 1. Fetch existing stats to detect changes for Beeminder sync
+            // 1. Fetch Tomorrow/7-day forecast from private API
+            let mut tomorrow = 0;
+            let mut next_7 = 0;
+            if lp_id > 0 {
+                let api_url = format!("https://www.clozemaster.com/api/v1/lp/{}/more-stats", lp_id);
+                let api_req = Request::get(api_url)
+                    .header("User-Agent", user_agent)
+                    .header("Cookie", session_cookie)
+                    .header("X-CSRF-Token", csrf_token)
+                    .build();
+                if let Ok(api_res) = spin_sdk::http::send::<Request, Response>(api_req).await {
+                    let status = *api_res.status();
+                    if (200..300).contains(&status) {
+                        if let Ok(api_json) = serde_json::from_slice::<serde_json::Value>(api_res.body()) {
+                            if let Some(forecast) = api_json.get("reviewForecast").and_then(|f| f.as_array()) {
+                                if !forecast.is_empty() {
+                                    tomorrow = forecast[0].get("count").and_then(|c| c.as_i64()).unwrap_or(0) as i32;
+                                    next_7 = forecast.iter().take(7).map(|d| d.get("count").and_then(|c| c.as_i64()).unwrap_or(0)).sum::<i64>() as i32;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            println!("DEBUG Scraper: slug={}, current={}, tomorrow={}, next_7={}, total={}, today={}", 
+                     name, current, tomorrow, next_7, points_total, points_today);
+
+            // 2. Fetch existing stats to detect changes for Beeminder sync
             let select_query = "SELECT current_reviews, beeminder_last_sync::TEXT FROM language_stats WHERE user_id = $1 AND language_name = $2";
             let row_set = connection.query(select_query, &[
                 ParameterValue::Str(user_id.to_string()),
@@ -315,10 +342,10 @@ async fn run_clozemaster_scraper(db_url: &str, user_id: &str) -> anyhow::Result<
                 beeminder_last_sync_str = match &row_set.rows[0][1] { DbValue::Str(s) => s.clone(), _ => String::new() };
             }
 
-            // 2. completions from points_today
+            // 3. completions from points_today
             let completions = points_today;
             
-            // 3. Update Neon DB
+            // 4. Update Neon DB
             let query = "INSERT INTO language_stats (user_id, language_name, current_reviews, tomorrow_reviews, next_7_days_reviews, beeminder_slug, daily_completions, last_points, total_points, last_updated) 
                          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, CURRENT_TIMESTAMP) 
                          ON CONFLICT (user_id, language_name) DO UPDATE SET 
@@ -342,7 +369,7 @@ async fn run_clozemaster_scraper(db_url: &str, user_id: &str) -> anyhow::Result<
                 ParameterValue::Int32(points_total)
             ]);
 
-            // 4. Beeminder Sync
+            // 5. Beeminder Sync
             if !beeminder_slug.is_empty() {
                 // a) Push data if needed
                 let today_ny = chrono::Utc::now().with_timezone(&chrono_tz::America::New_York).format("%Y-%m-%d").to_string();
@@ -367,7 +394,13 @@ async fn run_clozemaster_scraper(db_url: &str, user_id: &str) -> anyhow::Result<
                 }
 
                 // b) Fetch fresh status (safebuf, derail_risk, rate) from Beeminder
-                if let Ok((safebuf, risk, rate)) = fetch_from_beeminder(user_id, beeminder_slug, &connection).await {
+                if let Ok((mut safebuf, mut risk, rate)) = fetch_from_beeminder(user_id, beeminder_slug, &connection).await {
+                    // Override for 0 debt: If absolutely nothing is due in 7 days, it's SAFE with 999 runway
+                    if current == 0 && tomorrow == 0 && next_7 == 0 {
+                        safebuf = 999;
+                        risk = "SAFE".to_string();
+                    }
+
                     let _ = connection.execute(
                         "UPDATE language_stats SET safebuf = $1, derail_risk = $2, daily_rate = $3::FLOAT8::NUMERIC WHERE user_id = $4 AND language_name = $5",
                         &[
