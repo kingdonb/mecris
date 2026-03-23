@@ -251,7 +251,7 @@ fun MecrisDashboard(
     var languageStats by remember { mutableStateOf<List<com.mecris.go.sync.LanguageStatDto>>(cache?.languageStats ?: emptyList()) }
     var homeServerActive by remember { mutableStateOf<Boolean?>(cache?.homeServerActive) }
     var isLoading by remember { mutableStateOf(false) }
-    var isFetching by remember { mutableStateOf(persistenceManager.isCacheStale()) }
+    var isFetching by remember { mutableStateOf(cache?.languageStats.isNullOrEmpty() && cache?.budgetAmount == null) }
     var surgicalUpdateInProgress by remember { mutableStateOf(false) }
 
     var fetchError by remember { mutableStateOf<String?>(null) }
@@ -351,7 +351,12 @@ fun MecrisDashboard(
         }
 
         Log.d("MecrisDashboard", "Refreshing walk data (Trigger: $refreshTrigger, Stale: $isStale)")
-        isFetching = true
+        // Only show full-screen "FETCHING..." if we have no cached data at all
+        isFetching = languageStats.isEmpty() && budgetAmount == null
+        isLoading = true
+        if (syncStatus == "Ready" || syncStatus == "Success" || syncStatus == "Error") {
+            syncStatus = "Fetching..."
+        }
         fetchError = null
         walkData = healthManager.fetchRecentWalkData()
         
@@ -365,9 +370,24 @@ fun MecrisDashboard(
                     val healthResponse = syncApi.getHealth("Bearer $token")
                     homeServerActive = healthResponse.home_server_active
                     
-                    // Proactively trigger failover sync (Spin will skip if Home is active)
+                    // 1. QUICK FETCH: Get currently known languages first
+                    var langResponse = syncApi.getLanguages("Bearer $token")
+                    if (!surgicalUpdateInProgress) {
+                        languageStats = langResponse.languages
+                    }
+                    
+                    // We have DB data, so release the UI block immediately
+                    isFetching = false
+
+                    // 2. SLOW SYNC: Proactively trigger failover sync (Spin will skip if Home is active)
                     try {
                         syncApi.triggerFailoverSync("Bearer $token")
+                        
+                        // 3. FRESH FETCH: Grab the updated stats after the sync completes
+                        langResponse = syncApi.getLanguages("Bearer $token")
+                        if (!surgicalUpdateInProgress) {
+                            languageStats = langResponse.languages
+                        }
                     } catch (se: HttpException) {
                         val errorBody = se.response()?.errorBody()?.string()
                         val detail = try {
@@ -380,13 +400,6 @@ fun MecrisDashboard(
                         Log.w("MecrisDashboard", "Failover sync trigger skipped/failed: ${se.message}")
                     }
 
-                    val langResponse = syncApi.getLanguages("Bearer $token")
-                    
-                    // Only update if no surgical update is fighting us
-                    if (!surgicalUpdateInProgress) {
-                        languageStats = langResponse.languages
-                    }
-                    
                     // Save to cache
                     val now = LocalDateTime.now().format(DateTimeFormatter.ofPattern("HH:mm"))
                     lastSyncTime = now
@@ -397,6 +410,7 @@ fun MecrisDashboard(
                         homeServerActive = homeServerActive,
                         lastSyncTime = now
                     ))
+                    if (syncStatus == "Fetching...") syncStatus = "Success"
                 } catch (e: HttpException) {
                     val errorBody = e.response()?.errorBody()?.string()
                     val detail = try {
@@ -406,18 +420,25 @@ fun MecrisDashboard(
                     }
                     Log.e("MecrisDashboard", "Failed to fetch remote data: $detail")
                     fetchError = detail
+                    syncStatus = "Error"
                 } catch (e: Exception) {
                     Log.e("MecrisDashboard", "Failed to fetch remote data: ${e.message}")
                     fetchError = e.message ?: "Unknown error"
+                    syncStatus = "Error"
                 } finally {
                     isFetching = false
+                    isLoading = false
                 }
             } else {
                 isFetching = false
+                isLoading = false
+                syncStatus = "Auth Required"
             }
         } catch (e: Exception) {
             Log.e("MecrisDashboard", "Auth refresh failed: ${e.message}")
             isFetching = false
+            isLoading = false
+            syncStatus = "Auth Error"
         }
     }
 
