@@ -291,26 +291,108 @@ async fn run_clozemaster_scraper(db_url: &str, user_id: &str) -> anyhow::Result<
         for pair in pairings {
             let name = pair.get("slug").and_then(|n| n.as_str()).unwrap_or("UNKNOWN");
             let current = pair.get("numReadyForReview").and_then(|c| c.as_i64()).unwrap_or(0) as i32;
+            let tomorrow = pair.get("numTomorrow").and_then(|c| c.as_i64()).unwrap_or(0) as i32;
+            let next_7 = pair.get("numNext7Days").and_then(|c| c.as_i64()).unwrap_or(0) as i32;
+            let points_total = pair.get("numPoints").and_then(|c| c.as_i64()).unwrap_or(0) as i32;
+            let points_today = pair.get("numPointsToday").and_then(|c| c.as_i64()).unwrap_or(0) as i32;
             
-            // Map slugs to standard names if possible
-            let lang_name = match name {
-                "ara-eng" => "ARABIC",
-                "ell-eng" => "GREEK",
-                _ => name,
+            // Map slugs to standard names and Beeminder goals
+            let (lang_name, beeminder_slug) = match name {
+                "ara-eng" => ("ARABIC", "reviewstack"),
+                "ell-eng" => ("GREEK", "ellinika"),
+                _ => (name, ""),
             };
 
-            let query = "INSERT INTO language_stats (user_id, language_name, current_reviews, last_updated) 
-                         VALUES ($1, $2, $3, CURRENT_TIMESTAMP) 
+            // 1. Fetch existing stats to detect changes for Beeminder sync and completion tracking
+            let select_query = "SELECT current_reviews, daily_completions, last_points, last_updated FROM language_stats WHERE user_id = $1 AND language_name = $2";
+            let row_set = connection.query(select_query, &[
+                ParameterValue::Str(user_id.to_string()),
+                ParameterValue::Str(lang_name.to_uppercase())
+            ])?;
+
+            let mut prev_reviews = -1;
+            let mut prev_completions = 0;
+            let mut last_points = 0;
+
+            if !row_set.rows.is_empty() {
+                prev_reviews = match &row_set.rows[0][0] { DbValue::Int32(i) => *i, _ => -1 };
+                prev_completions = match &row_set.rows[0][1] { DbValue::Int32(i) => *i, _ => 0 };
+                last_points = match &row_set.rows[0][2] { DbValue::Int32(i) => *i, _ => 0 };
+            }
+
+            // 2. Update completions: Trust Upstream points_today
+            let mut completions = points_today;
+            
+            // 3. Update Neon DB
+            let query = "INSERT INTO language_stats (user_id, language_name, current_reviews, tomorrow_reviews, next_7_days_reviews, beeminder_slug, daily_completions, last_points, total_points, last_updated) 
+                         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, CURRENT_TIMESTAMP) 
                          ON CONFLICT (user_id, language_name) DO UPDATE SET 
                          current_reviews = EXCLUDED.current_reviews, 
+                         tomorrow_reviews = EXCLUDED.tomorrow_reviews,
+                         next_7_days_reviews = EXCLUDED.next_7_days_reviews,
+                         beeminder_slug = EXCLUDED.beeminder_slug,
+                         daily_completions = EXCLUDED.daily_completions,
+                         last_points = EXCLUDED.last_points,
+                         total_points = EXCLUDED.total_points,
                          last_updated = CURRENT_TIMESTAMP";
             let _ = connection.execute(query, &[
                 ParameterValue::Str(user_id.to_string()),
                 ParameterValue::Str(lang_name.to_uppercase()), 
-                ParameterValue::Int32(current)
+                ParameterValue::Int32(current),
+                ParameterValue::Int32(tomorrow),
+                ParameterValue::Int32(next_7),
+                ParameterValue::Str(beeminder_slug.to_string()),
+                ParameterValue::Int32(completions),
+                ParameterValue::Int32(points_total),
+                ParameterValue::Int32(points_total)
             ]);
+
+            // 4. Beeminder Push (Odometer Logic): Only if value changed and we have a slug
+            if !beeminder_slug.is_empty() && current != prev_reviews {
+                let _ = push_to_beeminder(user_id, beeminder_slug, current as f64, tomorrow, next_7, &connection).await;
+            }
         }
     }
+    Ok(())
+}
+
+async fn push_to_beeminder(user_id: &str, slug: &str, value: f64, tomorrow: i32, next_7: i32, connection: &Connection) -> anyhow::Result<()> {
+    // Fetch user's Beeminder token (encrypted) from Neon
+    let query = "SELECT beeminder_token_encrypted FROM users WHERE pocket_id_sub = $1";
+    let row_set = connection.query(query, &[ParameterValue::Str(user_id.to_string())])?;
+    if row_set.rows.is_empty() {
+        return Err(anyhow::anyhow!("User not found for Beeminder sync"));
+    }
+    
+    let encrypted_token = match &row_set.rows[0][0] {
+        DbValue::Str(s) => s.clone(),
+        _ => return Err(anyhow::anyhow!("Token missing")),
+    };
+
+    let token = if encrypted_token.contains(':') || encrypted_token.len() > 60 {
+        decrypt_token(&encrypted_token).await?
+    } else {
+        encrypted_token // Fallback for plain tokens
+    };
+
+    let now = chrono::Local::now().format("%Y-%m-%d %H:%M").to_string();
+    let mut comment = format!("Auto-synced from Clozemaster (Failover) at {}", now);
+    if tomorrow > 0 { comment += &format!(" | Tomorrow: {}", tomorrow); }
+    if next_7 > 0 { comment += &format!(" | 7-day: {}", next_7); }
+
+    let url = format!("https://www.beeminder.com/api/v1/users/me/goals/{}/datapoints.json", slug);
+    let body = format!("access_token={}&value={}&comment={}", 
+        token, value, urlencoding::encode(&comment));
+    
+    let req = Request::post(url, body)
+        .header("content-type", "application/x-www-form-urlencoded")
+        .build();
+    
+    let res: Response = spin_sdk::http::send(req).await?;
+    if !res.status().is_success() {
+        eprintln!("Beeminder push failed for {}: {}", slug, res.status());
+    }
+    
     Ok(())
 }
 

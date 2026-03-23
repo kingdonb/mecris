@@ -38,7 +38,8 @@ CREATE INDEX IF NOT EXISTS idx_walk_start_time ON walk_inferences (start_time);
 
 -- 4. Language Stats Table
 CREATE TABLE IF NOT EXISTS language_stats (
-    language_name VARCHAR(50) PRIMARY KEY,
+    user_id VARCHAR(255) REFERENCES users(pocket_id_sub) ON DELETE CASCADE,
+    language_name VARCHAR(50),
     current_reviews INTEGER DEFAULT 0,
     tomorrow_reviews INTEGER DEFAULT 0,
     next_7_days_reviews INTEGER DEFAULT 0,
@@ -46,7 +47,12 @@ CREATE TABLE IF NOT EXISTS language_stats (
     safebuf INTEGER DEFAULT 0,
     derail_risk VARCHAR(50) DEFAULT 'SAFE',
     pump_multiplier NUMERIC(4, 1) DEFAULT 1.0,
-    last_updated TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    beeminder_slug VARCHAR(255),
+    daily_completions INTEGER DEFAULT 0,
+    last_points INTEGER DEFAULT 0,
+    total_points INTEGER DEFAULT 0,
+    last_updated TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (user_id, language_name)
 );
 
 -- 5. Scheduler Election Table
