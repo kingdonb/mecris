@@ -390,8 +390,8 @@ async fn push_to_beeminder(user_id: &str, slug: &str, value: f64, tomorrow: i32,
     if next_7 > 0 { comment += &format!(" | 7-day: {}", next_7); }
 
     let url = format!("https://www.beeminder.com/api/v1/users/me/goals/{}/datapoints.json", slug);
-    let body = format!("access_token={}&auth_token={}&value={}&comment={}", 
-        token, token, value, urlencoding::encode(&comment));
+    let body = format!("auth_token={}&value={}&comment={}", 
+        token, value, urlencoding::encode(&comment));
     
     let req = Request::post(url, body)
         .header("content-type", "application/x-www-form-urlencoded")
@@ -690,7 +690,7 @@ async fn handle_walks_post(req: Request) -> anyhow::Result<Response> {
 
         let miles = walk.distance_meters / 1609.34;
         let beeminder_url = format!("https://www.beeminder.com/api/v1/users/{}/goals/{}/datapoints.json", user, goal);
-        let beeminder_body = format!("access_token={}&auth_token={}&value={:.2}&comment=Synced via Spin", token, token, miles);
+        let beeminder_body = format!("auth_token={}&value={:.2}&comment=Synced via Spin", token, miles);
 
         let beeminder_req = Request::post(&beeminder_url, beeminder_body).header("content-type", "application/x-www-form-urlencoded").build();
         let _: Response = spin_sdk::http::send(beeminder_req).await?;
