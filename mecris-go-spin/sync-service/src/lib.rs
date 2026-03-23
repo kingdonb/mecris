@@ -95,6 +95,19 @@ async fn decrypt_token(encrypted_hex: &str) -> anyhow::Result<String> {
 }
 
 async fn extract_user_id(auth_header: Option<&spin_sdk::http::HeaderValue>) -> Option<String> {
+    // Allows local E2E testing without a full OAuth pipeline
+    if let Ok(bypass) = variables::get("auth_bypass") {
+        if bypass == "true" {
+            if let Some(h) = auth_header {
+                if let Ok(val) = std::str::from_utf8(h.as_ref()) {
+                    if val.starts_with("TestUser ") {
+                        return Some(val[9..].to_string());
+                    }
+                }
+            }
+        }
+    }
+
     let header_val = std::str::from_utf8(auth_header?.as_ref()).ok()?;
     if !header_val.starts_with("Bearer ") {
         return None;
@@ -317,6 +330,10 @@ async fn run_clozemaster_scraper(db_url: &str, user_id: &str) -> anyhow::Result<
                     .header("X-CSRF-Token", fresh_csrf)
                     .header("Referer", &format!("https://www.clozemaster.com/l/{}", name))
                     .header("X-Requested-With", "XMLHttpRequest")
+                    .header("Time-Zone-Offset-Hours", "-4")
+                    .header("sec-ch-ua-platform", "\"macOS\"")
+                    .header("sec-ch-ua", "\"Chromium\";v=\"146\", \"Not-A.Brand\";v=\"24\", \"Google Chrome\";v=\"146\"")
+                    .header("sec-ch-ua-mobile", "?0")
                     .build();
                 if let Ok(api_res) = spin_sdk::http::send::<Request, Response>(api_req).await {
                     let status = *api_res.status();
