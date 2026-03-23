@@ -29,7 +29,7 @@ interface SyncServiceApi {
         @Header("Authorization") authHeader: String
     ): HealthResponseDto
 
-    @GET("internal/failover-sync")
+    @POST("internal/failover-sync")
     suspend fun triggerFailoverSync(
         @Header("Authorization") authHeader: String
     ): SyncResponse

@@ -163,6 +163,9 @@ async fn handle_sync_service(req: Request) -> anyhow::Result<impl IntoResponse> 
         }
         return handle_heartbeat_post(req).await;
     } else if path == "/internal/failover-sync" {
+        if req.method() != &spin_sdk::http::Method::Post {
+            return Ok(Response::builder().status(405).body("Method Not Allowed").build());
+        }
         return handle_failover_sync(req).await;
     }
     
@@ -177,13 +180,7 @@ async fn handle_failover_sync(req: Request) -> anyhow::Result<Response> {
     };
 
     let db_url = variables::get("db_url").map_err(|e| anyhow::anyhow!("db_url fetch failed: {:?}", e))?;
-    let connection = Connection::open(&db_url).map_err(|e| anyhow::anyhow!("DB connection failed: {:?}", e))?;
-
-    let _ = connection.execute(
-        "INSERT INTO users (pocket_id_sub, beeminder_token_encrypted, beeminder_goal) VALUES ($1, '', 'bike') ON CONFLICT DO NOTHING",
-        &[ParameterValue::Str(user_id.clone())]
-    );
-
+    
     match run_clozemaster_scraper(&db_url, &user_id).await {
         Ok(_) => {
             let resp = StatusResponse { status: "success".to_string(), message: "Failover sync complete".to_string() };
@@ -303,17 +300,19 @@ async fn run_clozemaster_scraper(db_url: &str, user_id: &str) -> anyhow::Result<
                 _ => (name, ""),
             };
 
-            // 1. Fetch existing stats to detect changes for Beeminder sync and completion tracking
-            let select_query = "SELECT current_reviews FROM language_stats WHERE user_id = $1 AND language_name = $2";
+            // 1. Fetch existing stats to detect changes for Beeminder sync
+            let select_query = "SELECT current_reviews, last_updated::TEXT FROM language_stats WHERE user_id = $1 AND language_name = $2";
             let row_set = connection.query(select_query, &[
                 ParameterValue::Str(user_id.to_string()),
                 ParameterValue::Str(lang_name.to_uppercase())
             ])?;
 
             let mut prev_reviews = -1;
+            let mut last_updated_str = String::new();
 
             if !row_set.rows.is_empty() {
                 prev_reviews = match &row_set.rows[0][0] { DbValue::Int32(i) => *i, _ => -1 };
+                last_updated_str = match &row_set.rows[0][1] { DbValue::Str(s) => s.clone(), _ => String::new() };
             }
 
             // 2. completions from points_today
@@ -343,8 +342,14 @@ async fn run_clozemaster_scraper(db_url: &str, user_id: &str) -> anyhow::Result<
                 ParameterValue::Int32(points_total)
             ]);
 
-            // 4. Beeminder Push (Odometer Logic): Only if value changed and we have a slug
-            if !beeminder_slug.is_empty() && current != prev_reviews {
+            // 4. Beeminder Push Logic
+            // Force push if:
+            // a) Review count changed (prev_reviews != current)
+            // b) It's a new day (last_updated_str doesn't contain today's date in New York)
+            let today_ny = chrono::Utc::now().with_timezone(&chrono_tz::America::New_York).format("%Y-%m-%d").to_string();
+            let is_new_day = !last_updated_str.contains(&today_ny);
+            
+            if !beeminder_slug.is_empty() && (current != prev_reviews || is_new_day) {
                 let _ = push_to_beeminder(user_id, beeminder_slug, current as f64, tomorrow, next_7, &connection).await;
             }
         }
