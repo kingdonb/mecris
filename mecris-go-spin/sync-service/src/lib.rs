@@ -308,6 +308,7 @@ async fn run_clozemaster_scraper(db_url: &str, user_id: &str) -> anyhow::Result<
                     .header("User-Agent", user_agent)
                     .header("Cookie", session_cookie)
                     .header("X-CSRF-Token", csrf_token)
+                    .header("Referer", &format!("https://www.clozemaster.com/l/{}", name))
                     .build();
                 if let Ok(api_res) = spin_sdk::http::send::<Request, Response>(api_req).await {
                     let status = *api_res.status();
@@ -315,11 +316,22 @@ async fn run_clozemaster_scraper(db_url: &str, user_id: &str) -> anyhow::Result<
                         if let Ok(api_json) = serde_json::from_slice::<serde_json::Value>(api_res.body()) {
                             if let Some(forecast) = api_json.get("reviewForecast").and_then(|f| f.as_array()) {
                                 if !forecast.is_empty() {
-                                    tomorrow = forecast[0].get("count").and_then(|c| c.as_i64()).unwrap_or(0) as i32;
-                                    next_7 = forecast.iter().take(7).map(|d| d.get("count").and_then(|c| c.as_i64()).unwrap_or(0)).sum::<i64>() as i32;
+                                    // Handle both { "count": N } and raw N
+                                    let get_count = |v: &serde_json::Value| -> i32 {
+                                        if let Some(c) = v.get("count").and_then(|c| c.as_i64()) {
+                                            c as i32
+                                        } else {
+                                            v.as_i64().unwrap_or(0) as i32
+                                        }
+                                    };
+
+                                    tomorrow = get_count(&forecast[0]);
+                                    next_7 = forecast.iter().take(7).map(|d| get_count(d)).sum();
                                 }
                             }
                         }
+                    } else {
+                        eprintln!("Scraper: API call for {} failed with status {}", name, status);
                     }
                 }
             }
