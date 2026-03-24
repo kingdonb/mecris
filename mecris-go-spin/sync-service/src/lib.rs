@@ -76,11 +76,14 @@ use aes_gcm::{
 };
 
 async fn decrypt_token(encrypted_hex: &str) -> anyhow::Result<String> {
-    let key_str = variables::get("master_encryption_key")?;
-    let key_bytes = hex::decode(key_str)?;
+    let key_str = variables::get("master_encryption_key")
+        .map_err(|e| anyhow::anyhow!("Failed to get master_encryption_key: {:?}", e))?;
+    let key_bytes = hex::decode(&key_str)
+        .map_err(|e| anyhow::anyhow!("Hex decode failed for master_encryption_key (len={}): {}", key_str.len(), e))?;
     let cipher = Aes256Gcm::new_from_slice(&key_bytes)?;
 
-    let encrypted_bytes = hex::decode(encrypted_hex)?;
+    let encrypted_bytes = hex::decode(encrypted_hex)
+        .map_err(|e| anyhow::anyhow!("Hex decode failed for encrypted data (len={}): {}", encrypted_hex.len(), e))?;
     if encrypted_bytes.len() < 12 {
         return Err(anyhow::anyhow!("Invalid encrypted token length"));
     }
