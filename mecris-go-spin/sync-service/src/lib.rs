@@ -209,8 +209,35 @@ async fn handle_failover_sync(req: Request) -> anyhow::Result<Response> {
 }
 
 async fn run_clozemaster_scraper(db_url: &str, user_id: &str) -> anyhow::Result<()> {
-    let email = variables::get("clozemaster_email")?;
-    let password = variables::get("clozemaster_password")?;
+    // ENFORCE ENCRYPTION SECURITY
+    let master_key = variables::get("master_encryption_key")
+        .map_err(|_| anyhow::anyhow!("MASTER_ENCRYPTION_KEY missing from environment"))?;
+    if master_key.is_empty() {
+        return Err(anyhow::anyhow!("MASTER_ENCRYPTION_KEY is empty; encryption is required"));
+    }
+
+    let connection = Connection::open(db_url)?;
+    
+    // Fetch encrypted Clozemaster credentials from Neon
+    let query = "SELECT clozemaster_email_encrypted, clozemaster_password_encrypted FROM users WHERE pocket_id_sub = $1";
+    let row_set = connection.query(query, &[ParameterValue::Str(user_id.to_string())])?;
+    if row_set.rows.is_empty() {
+        return Err(anyhow::anyhow!("User not found in database"));
+    }
+
+    let email_enc = match &row_set.rows[0][0] {
+        DbValue::Str(s) if !s.is_empty() => s.clone(),
+        _ => return Err(anyhow::anyhow!("Clozemaster email not set for user")),
+    };
+    
+    let password_enc = match &row_set.rows[0][1] {
+        DbValue::Str(s) if !s.is_empty() => s.clone(),
+        _ => return Err(anyhow::anyhow!("Clozemaster password not set for user")),
+    };
+
+    let email = decrypt_token(&email_enc).await?;
+    let password = decrypt_token(&password_enc).await?;
+
     let user_agent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36";
     
     // 1. Fetch login page to get CSRF token and session cookie
@@ -301,8 +328,6 @@ async fn run_clozemaster_scraper(db_url: &str, user_id: &str) -> anyhow::Result<
     
     let props_json = html_escape::decode_html_entities(props_escaped);
     let props: serde_json::Value = serde_json::from_str(&props_json)?;
-    
-    let connection = Connection::open(db_url)?;
     
     if let Some(pairings) = props.get("languagePairings").and_then(|l| l.as_array()) {
         for pair in pairings {
@@ -466,12 +491,13 @@ async fn fetch_from_beeminder(user_id: &str, slug: &str, connection: &Connection
     let token_raw = match &row_set.rows[0][0] { DbValue::Str(s) => s.clone(), _ => return Err(anyhow::anyhow!("No token")) };
     let beeminder_user = match &row_set.rows[0][1] { DbValue::Str(s) if !s.is_empty() => s.clone(), _ => "me".to_string() };
 
-    let master_key = variables::get("master_encryption_key").unwrap_or_default();
-    let token = if !master_key.is_empty() && (token_raw.contains(':') || token_raw.len() > 60) {
-        decrypt_token(&token_raw).await.unwrap_or(token_raw)
-    } else {
-        token_raw
-    };
+    let master_key = variables::get("master_encryption_key")
+        .map_err(|_| anyhow::anyhow!("MASTER_ENCRYPTION_KEY missing from environment"))?;
+    if master_key.is_empty() {
+        return Err(anyhow::anyhow!("MASTER_ENCRYPTION_KEY is empty; encryption is required"));
+    }
+
+    let token = decrypt_token(&token_raw).await?;
 
     // 2. GET goal details
     let url = format!("https://www.beeminder.com/api/v1/users/{}/goals/{}.json?auth_token={}", beeminder_user, slug, token);
@@ -516,19 +542,13 @@ async fn push_to_beeminder(user_id: &str, slug: &str, value: f64, comment: &str,
         _ => "me".to_string(),
     };
 
-    let master_key = variables::get("master_encryption_key").unwrap_or_default();
-    
-    let token = if !master_key.is_empty() && (encrypted_token.contains(':') || encrypted_token.len() > 60) {
-        match decrypt_token(&encrypted_token).await {
-            Ok(t) => t,
-            Err(e) => {
-                eprintln!("Decryption failed, falling back to raw token: {}", e);
-                encrypted_token
-            }
-        }
-    } else {
-        encrypted_token // Fallback for plain tokens
-    };
+    let master_key = variables::get("master_encryption_key")
+        .map_err(|_| anyhow::anyhow!("MASTER_ENCRYPTION_KEY missing from environment"))?;
+    if master_key.is_empty() {
+        return Err(anyhow::anyhow!("MASTER_ENCRYPTION_KEY is empty; encryption is required"));
+    }
+
+    let token = decrypt_token(&encrypted_token).await?;
 
     let url = format!("https://www.beeminder.com/api/v1/users/{}/goals/{}/datapoints.json", beeminder_user, slug);
     let body = format!("auth_token={}&value={}&comment={}", 
