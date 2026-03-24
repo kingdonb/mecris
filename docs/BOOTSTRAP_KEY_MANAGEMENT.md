@@ -1,6 +1,6 @@
 # 🔐 Bootstrap Key Management & Encryption
 
-This document outlines the secure "Dark-Pipe" workflow for initializing the Mecris Master Encryption Key and securing user credentials. This process ensures that sensitive keys never touch the terminal screen or shell history.
+This document outlines the secure "Dark-Pipe" workflow for initializing the Mecris Master Encryption Key and securing user credentials. This process ensures that sensitive keys never touch the terminal screen or shell history by using subshell expansion.
 
 ## 1. Prerequisites
 - `op` (1Password CLI v2.x)
@@ -12,24 +12,21 @@ This document outlines the secure "Dark-Pipe" workflow for initializing the Mecr
 Generate a 32-byte hex key and store it directly in a 1Password "Mecris Master Key" item.
 
 ```bash
-# Note the leading space to prevent history logging!
- op item create --category "Password" --title "Mecris Master Key" --vault "Private" "password=$(openssl rand -hex 32 | tr -d '\n')"
+op item create --category "Password" --title "Mecris Master Key" --vault "Private" "password=$(openssl rand -hex 32 | tr -d '\n')"
 ```
 
 ## 3. Provisioning the Cloud Environment
-Fetch the key from 1Password and set it as a Spin Cloud variable.
+Fetch the key from 1Password and set it as a Spin Cloud variable. Use `tr -d '\n'` to ensure no trailing newline is included in the secret value.
 
 ```bash
-# Note the leading space!
- spin cloud variables set master_encryption_key="$(op item get "Mecris Master Key" --fields label=password)" --app mecris-sync-v2
+spin cloud variables set master_encryption_key="$(op item get "Mecris Master Key" --fields label=password --reveal | tr -d '\n')" --app mecris-sync-v2
 ```
 
 ## 4. Local Environment Setup
 Append the key to your local `.env` file for the Python MCP and local diagnostics.
 
 ```bash
-# Note the leading space!
-printf "\nMASTER_ENCRYPTION_KEY=%s\n" "$(op item get "Mecris Master Key" --fields label=password --reveal)" >> .env
+printf "\nMASTER_ENCRYPTION_KEY=%s\n" "$(op item get "Mecris Master Key" --fields label=password --reveal | tr -d '\n')" >> .env
 ```
 
 ## 5. Encrypting User Credentials
@@ -77,9 +74,14 @@ with psycopg2.connect(db_url) as conn:
         print("✅ Production user repaired with encrypted credentials!")
 ```
 
-## 6. Verification
+## 6. Verification & Troubleshooting
 Trigger a "FORCE SYNC" in the Android app. Check the Spin Cloud logs to verify:
 1. `MASTER_ENCRYPTION_KEY` is successfully loaded.
 2. Credentials are successfully decrypted.
 3. Clozemaster login succeeds.
 4. Beeminder push succeeds.
+
+### Common Pitfalls
+- **Odd number of digits:** This usually indicates a trailing newline in the `master_encryption_key` or encrypted DB field. Rust's `hex::decode` is very strict. Always use `tr -d '\n'` when setting cloud variables via subshell.
+- **Unauthorized (401):** Ensure the `beeminder_token_encrypted` field is actually encrypted. The system now refuses plaintext tokens.
+- **Last Sync Timestamp False Positives:** Ensure the system propagates errors correctly so `beeminder_last_sync` isn't updated on a failed push.
