@@ -566,7 +566,9 @@ async fn push_to_beeminder(user_id: &str, slug: &str, value: f64, comment: &str,
     let res: Response = spin_sdk::http::send(req).await?;
     let status = *res.status();
     if !(200..300).contains(&status) {
-        eprintln!("Beeminder push failed for {}: {} - Value: {}", slug, status, value);
+        let error_msg = format!("Beeminder push failed for {}: {} - Value: {}", slug, status, value);
+        eprintln!("{}", error_msg);
+        return Err(anyhow::anyhow!(error_msg));
     }
     
     Ok(())
