@@ -51,15 +51,18 @@
 
 **The Ground Truth**: We will develop the **Mecris CLI (`mecris` command)** to serve as the authoritative interface for both humans and agents. This CLI will underpin the autonomous system, providing explicit handles for all system operations.
 
+**Agent Agenda**: Implement the **Autonomous Continuum** design (`docs/AGENT_AGENDA_DESIGN.md`) enabling headless "Ghost Sessions" via Gemini and Copilot CLIs.
+
 **Solution**: Deploy autonomous scheduler that:
 - Runs periodic health checks (cron-based or containerized scheduler)
 - Evaluates narrator context using heuristic functions
-- Makes autonomous decisions about when to send Twilio notifications
-- Uses the `mecris` CLI handles for all internal state transitions and "private entrypoints" (diagnostic maintenance not exposed to the LLM).
+- Spawns autonomous agents (Archivist, Auditor, Narrator) using a TTY-aware loopback.
+- Uses the `mecris` CLI handles for all internal state transitions and "private entrypoints".
 
 **Deliverables**:
 - [ ] **The `mecris` CLI**: A Python-based CLI entry point with subcommands for `budget`, `goals`, `sync`, and `internal`.
-- [ ] Containerized periodic check system (Docker + scheduler)
+- [ ] **Headless Loopback**: Subprocess wrapper for `gemini --yolo` and `gh copilot`.
+- [ ] **Secret Manager Integration**: Hardened token injection for autonomous turns.
 - [ ] Heuristic decision engine for notification triggers
 - [ ] Smart nagging algorithms (time-of-day, goal urgency, success patterns)
 - [ ] Web dashboard for check-in status (optional, lightweight)
