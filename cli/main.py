@@ -39,7 +39,12 @@ async def run_nag_trigger(args):
         # But we still need the data of what *would* have been sent.
         check_result = await check_reminder_needed(args.user_id)
         if not check_result.get("should_send"):
-            print("⚠️ The heuristic didn't want to send anything. We will attempt to force send the payload anyway, but it may lack context.")
+            print("⚠️ The heuristic didn't want to send anything. We are forcing a test payload.")
+            check_result = {
+                "type": "forced_test",
+                "message": "This is a forced test message from the Mecris CLI.",
+                "should_send": True
+            }
             print(f"Payload: {json.dumps(check_result, indent=2)}")
         
         send_result = await send_reminder_message(check_result, args.user_id)
