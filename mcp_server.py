@@ -204,14 +204,20 @@ async def get_narrator_context(user_id: str = None) -> Dict[str, Any]:
             if isinstance(latest_cloud_walk.get("start_time"), datetime):
                 latest_cloud_walk["start_time"] = latest_cloud_walk["start_time"].isoformat()
         
-        # Fetch user preferences for vacation_mode
+        # Fetch user preferences for vacation_mode and time windows
         target_phone = os.getenv('TWILIO_TO_NUMBER')
         vacation_mode = False
+        time_window_start = 13
+        time_window_end = 17
+        
         if target_phone:
             from sms_consent_manager import consent_manager
             user_prefs = await asyncio.to_thread(consent_manager.get_user_preferences, target_phone)
             if user_prefs:
-                vacation_mode = user_prefs.get("preferences", {}).get("vacation_mode", False)
+                prefs = user_prefs.get("preferences", {})
+                vacation_mode = prefs.get("vacation_mode", False)
+                time_window_start = prefs.get("time_window_start", 13)
+                time_window_end = prefs.get("time_window_end", 17)
 
         # Weather-aware logic
         weather = await asyncio.to_thread(weather_service.get_weather)
@@ -262,7 +268,10 @@ async def get_narrator_context(user_id: str = None) -> Dict[str, Any]:
                 "is_leader": scheduler.is_leader,
                 "process_id": scheduler.process_id
             },
-            "vacation_mode": vacation_mode, "last_updated": datetime.now().isoformat()
+            "vacation_mode": vacation_mode, 
+            "time_window_start": time_window_start,
+            "time_window_end": time_window_end,
+            "last_updated": datetime.now().isoformat()
         }
     except Exception as e:
         logger.error(f"Failed to build narrator context: {e}")

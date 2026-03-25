@@ -62,8 +62,11 @@ class ReminderService:
             else:
                 logger.info(f"Emergency reminder suppressed by cooldown ({hours_since_emergency:.1f}h since last)")
 
-        # 2. Walk Reminders (Afternoon window: 1 PM - 5 PM)
-        if 13 <= current_hour <= 17:
+        # 2. Walk Reminders (Dynamic window based on user preferences)
+        time_window_start = context.get("time_window_start", 13)
+        time_window_end = context.get("time_window_end", 17)
+        
+        if time_window_start <= current_hour <= time_window_end:
             if not has_walked:
                 # Cooldown: 2.5 hours between walk nags
                 hours_since_walk = await self._get_hours_since_last("walk_reminder", user_id)
