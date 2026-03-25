@@ -1,7 +1,6 @@
 import logging
 import asyncio
 import os
-import sqlite3
 import uuid
 import psycopg2
 from datetime import datetime, timedelta, timezone
@@ -149,7 +148,6 @@ async def _global_cooperative_monitor_job(user_id: str):
 class MecrisScheduler:
     def __init__(self, trigger_reminder_func: Optional[Callable] = None, user_id: str = None):
         self.neon_url = os.getenv("NEON_DB_URL")
-        self.db_path = os.getenv("MECRIS_DB_PATH", "mecris_usage.db")
         self.user_id = user_id or os.getenv("DEFAULT_USER_ID")
         
         # Configure jobstore
@@ -161,12 +159,8 @@ class MecrisScheduler:
                 'default': SQLAlchemyJobStore(url=db_url)
             }
         else:
-            jobstores = {
-                'default': SQLAlchemyJobStore(
-                    url=f'sqlite:///{self.db_path}',
-                    engine_options={'connect_args': {'timeout': 15}}
-                )
-            }
+            logger.error("MecrisScheduler: NEON_DB_URL not found. Scheduler will not persist jobs.")
+            raise EnvironmentError("NEON_DB_URL must be set for persistent scheduler operation.")
             
         job_defaults = {
             'misfire_grace_time': 3600
@@ -205,22 +199,10 @@ class MecrisScheduler:
                             cur.execute("INSERT INTO scheduler_election (user_id, role) VALUES (%s, 'leader') ON CONFLICT DO NOTHING", (self.user_id,))
                 return
             except Exception as e:
-                logger.error(f"Neon scheduler init failed: {e}. Falling back to SQLite.")
-
-        conn = sqlite3.connect(self.db_path, timeout=15)
-        try:
-            with conn:
-                conn.execute("PRAGMA journal_mode=WAL")
-                conn.execute("""
-                    CREATE TABLE IF NOT EXISTS scheduler_election (
-                        role TEXT PRIMARY KEY,
-                        process_id TEXT,
-                        heartbeat TIMESTAMP
-                    )
-                """)
-                conn.execute("INSERT OR IGNORE INTO scheduler_election VALUES ('leader', NULL, NULL)")
-        finally:
-            conn.close()
+                logger.error(f"Neon scheduler init failed: {e}. SQLite fallback is disabled.")
+                raise ConnectionError(f"Critical error: Neon database is required but unreachable: {e}")
+        else:
+            raise EnvironmentError("NEON_DB_URL must be set. SQLite fallback is no longer supported.")
 
     async def _election_loop(self):
         """Continuous leader election and heartbeat."""
@@ -271,34 +253,7 @@ class MecrisScheduler:
             except Exception as e:
                 logger.error(f"Neon leadership attempt failed for {self.user_id}: {e}")
 
-        # Fallback to SQLite
-        conn = sqlite3.connect(self.db_path, timeout=20)
-        try:
-            with conn:
-                cursor = conn.execute(
-                    "UPDATE scheduler_election SET process_id = ?, heartbeat = ? "
-                    "WHERE role = 'leader' AND (process_id = ? OR heartbeat < ? OR process_id IS NULL)",
-                    (self.process_id, now.isoformat(), self.process_id, timeout.isoformat())
-                )
-                
-                if cursor.rowcount > 0:
-                    if not self.is_leader:
-                        logger.info(f"🏆 Process {self.process_id} ELECTED as Leader (SQLite).")
-                        self.is_leader = True
-                else:
-                    cursor = conn.execute("SELECT process_id FROM scheduler_election WHERE role = 'leader'")
-                    row = cursor.fetchone()
-                    if self.is_leader and (not row or row[0] != self.process_id):
-                        logger.warning(f"🏳️ Process {self.process_id} lost leadership (SQLite).")
-                        self.is_leader = False
-                        self._stop_leader_jobs()
-        except Exception as e:
-            logger.error(f"Leadership attempt failed: {e}")
-        finally:
-            conn.close()
-
-        if self.is_leader:
-            await self._start_leader_jobs()
+        raise RuntimeError("MecrisScheduler: Neon connection not active. Cannot attempt leadership.")
 
     async def _start_leader_jobs(self):
         """Register recurring jobs that only the leader should run."""
@@ -420,13 +375,6 @@ class MecrisScheduler:
                     with psycopg2.connect(self.neon_url) as conn:
                         with conn.cursor() as cur:
                             cur.execute("UPDATE scheduler_election SET process_id = NULL WHERE user_id = %s AND process_id = %s", (self.user_id, self.process_id))
-                except: pass
-            else:
-                try:
-                    conn = sqlite3.connect(self.db_path, timeout=5)
-                    with conn:
-                        conn.execute("UPDATE scheduler_election SET process_id = NULL WHERE process_id = ?", (self.process_id,))
-                    conn.close()
                 except: pass
         
         if self.scheduler.running:

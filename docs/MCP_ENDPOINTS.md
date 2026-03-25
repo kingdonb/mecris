@@ -60,7 +60,7 @@ Mecris exposes 10 MCP (Model Context Protocol) endpoints that provide Claude wit
 - **Purpose**: Current Claude usage budget status with burn rate analysis
 - **Returns**: Total/remaining budget, days left, daily burn rate, health status
 - **Current Status**: $22.37 remaining of $24.96, 41 days until Sept 30, GOOD health
-- **Integration**: Local SQLite database with detailed usage tracking
+- **Integration**: Neon (Postgres) database with detailed usage tracking
 - **Why 10/10**: Comprehensive budget data, clearly functional local tracking system
 
 #### `record_usage_session`
@@ -68,7 +68,7 @@ Mecris exposes 10 MCP (Model Context Protocol) endpoints that provide Claude wit
 
 - **Purpose**: Logs Claude token usage with cost calculations for budget tracking
 - **Parameters**: `input_tokens`, `output_tokens`, `model`, `session_type`, `notes`
-- **Integration**: Token cost calculation + SQLite logging
+- **Integration**: Token cost calculation + Neon (Postgres) logging
 - **Why 9/10**: Well-structured logging system, slight uncertainty on cost accuracy
 
 #### `update_budget`
@@ -88,7 +88,7 @@ Mecris exposes 10 MCP (Model Context Protocol) endpoints that provide Claude wit
 
 - **Purpose**: Creates new goals in local database
 - **Parameters**: `title` (required), `description`, `priority` (high/medium/low), `due_date`
-- **Integration**: Local SQLite database with goal management
+- **Integration**: Neon (Postgres) database with goal management
 - **Why 7/10**: Standard CRUD operation, but untested in this session
 
 #### `complete_goal`
@@ -118,7 +118,7 @@ Mecris exposes 10 MCP (Model Context Protocol) endpoints that provide Claude wit
 
 ### High Confidence (9-10/10)
 - **Beeminder Integration**: Live API connections working perfectly
-- **Budget Tracking**: Comprehensive local database system
+- **Budget Tracking**: Comprehensive Neon (Postgres) database system
 - **Context Aggregation**: Successfully combines multiple data sources
 
 ### Medium-High Confidence (7-8/10)  

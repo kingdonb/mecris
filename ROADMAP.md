@@ -49,13 +49,16 @@
 
 **Current Problem**: You're "doing very poorly" at daily walks despite having all the tracking infrastructure in place. Mecris has Twilio, it knows your goals, but it doesn't autonomously wake up to check on you.
 
+**The Ground Truth**: We will develop the **Mecris CLI (`mecris` command)** to serve as the authoritative interface for both humans and agents. This CLI will underpin the autonomous system, providing explicit handles for all system operations.
+
 **Solution**: Deploy autonomous scheduler that:
 - Runs periodic health checks (cron-based or containerized scheduler)
 - Evaluates narrator context using heuristic functions
 - Makes autonomous decisions about when to send Twilio notifications
-- Implements intelligent nagging logic (frequency, urgency, context-aware messaging)
+- Uses the `mecris` CLI handles for all internal state transitions and "private entrypoints" (diagnostic maintenance not exposed to the LLM).
 
 **Deliverables**:
+- [ ] **The `mecris` CLI**: A Python-based CLI entry point with subcommands for `budget`, `goals`, `sync`, and `internal`.
 - [ ] Containerized periodic check system (Docker + scheduler)
 - [ ] Heuristic decision engine for notification triggers
 - [ ] Smart nagging algorithms (time-of-day, goal urgency, success patterns)
@@ -180,6 +183,7 @@
 
 ## 🚧 Future Considerations
 
+- **Secure SSE Mode**: Re-enable the FastAPI/SSE server once hardened with OIDC authentication for secure remote access.
 - **AWS Account Terraform Module**: Mentioned but deferred — security-first cloud infrastructure for eventual scaling
 - **Multi-user Support**: Architected for single-user but considering friend/neighbor sharing
 - **Advanced Scheduling**: Beyond daily nagging — project deadline management, goal sprint planning

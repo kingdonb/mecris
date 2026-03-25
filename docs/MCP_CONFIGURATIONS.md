@@ -14,6 +14,7 @@ Mecris utilizes MCP to safely expose tools and context to both Gemini CLI and Cl
 - `.gemini/settings.json`: Where Gemini CLI may invoke or map MCP endpoints.
 - `.mcp/mecris.json`: Specific configuration for the Mecris system MCP servers.
 - **GitHub MCP Server**: Documented and managed via the `github-mcp-setup` skill.
-- **Local SQLite / Data Endpoints**: Run through the Python-based MCP servers (e.g., `mcp_server.py`, `mcp_stdio_server.py`).
+- **Neon / Data Endpoints**: Integrated via `mcp_stdio_server.py` for direct CLI agent use.
+- **FastAPI / SSE Mode**: (Deprecated/Inactive) Standalone server mode is currently disabled until OIDC security is implemented.
 
 *(Details to be expanded in upcoming sessions based on `.gemini/skills/README.md` reference.)*

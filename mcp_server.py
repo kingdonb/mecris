@@ -116,7 +116,7 @@ async def get_cached_beeminder_goals() -> List[Dict[str, Any]]:
 
 async def get_cached_daily_activity(goal_slug: str = "bike", user_id: str = None) -> Dict[str, Any]:
     """Get daily activity status with 15-minute cache (refreshed for Cloud sync)."""
-    target_user_id = user_id or os.getenv("DEFAULT_USER_ID")
+    target_user_id = usage_tracker.resolve_user_id(user_id)
     import zoneinfo
     eastern = zoneinfo.ZoneInfo("US/Eastern")
     local_now = datetime.now(eastern)
@@ -181,7 +181,7 @@ async def get_cached_daily_activity(goal_slug: str = "bike", user_id: str = None
 @mcp.tool(description="Get unified strategic context with goals, budget, and recommendations.")
 async def get_narrator_context(user_id: str = None) -> Dict[str, Any]:
     """Get unified strategic context with goals, budget, and recommendations."""
-    target_user_id = user_id or os.getenv("DEFAULT_USER_ID")
+    target_user_id = usage_tracker.resolve_user_id(user_id)
     try:
         goals = usage_tracker.get_goals(target_user_id)
         active_goals = [g for g in goals if g.get("status") == "active"]
