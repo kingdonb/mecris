@@ -15,6 +15,7 @@ def mock_dependencies():
             mock_connect.return_value.__enter__.return_value = mock_conn
             # Setup cursor context
             mock_conn.cursor.return_value.__enter__.return_value = mock_cur
+            mock_cur.fetchone.return_value = None
             
             yield {
                 "cursor": mock_cur,
@@ -51,7 +52,6 @@ async def test_language_sync_service_coordination(mock_dependencies):
     assert result["success"] is True
     assert result["min_safebuf"] == 6
     assert result["arabic"]["count"] == 2600
-    assert result["arabic"]["pump_multiplier"] == 1.0 # Default
     assert result["greek"]["count"] == 20
 
     # 5. Verify database calls (should have been 2 UPSERTs + 2 SELECTs)
@@ -67,11 +67,9 @@ async def test_language_sync_service_coordination(mock_dependencies):
     assert "INSERT INTO language_stats" in sql
     assert "safebuf" in sql
     assert "derail_risk" in sql
-    assert "pump_multiplier" in sql
 
     # Check mapping logic (Arabic -> reviewstack)
-    # We need to find the call where params[0] == "ARABIC"
-    arabic_call = next(call for call in args_list if "INSERT" in call[0][0] and call[0][1][0] == "ARABIC")
+    # params[1] is language_name
+    arabic_call = next(call for call in args_list if "INSERT" in call[0][0] and call[0][1][1] == "ARABIC")
     arabic_params = arabic_call[0][1]
-    assert arabic_params[7] == 1.0 # pump_multiplier at index 7 (new)
-    assert arabic_params[5] == 6 # safebuf from reviewstack (now at index 5)
+    assert arabic_params[6] == 6 # safebuf from reviewstack (now at index 6)

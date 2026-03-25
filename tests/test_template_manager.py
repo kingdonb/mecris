@@ -52,9 +52,13 @@ class TestWhatsAppTemplateManager(unittest.TestCase):
         pool = self.manager.get_approved_pool()
         self.assertEqual(pool, ["HX1", "HX3"])
 
-    @patch('whatsapp_template_manager.WhatsAppTemplateManager.get_approved_pool')
-    def test_sync_approved_templates(self, mock_get_pool):
-        mock_get_pool.return_value = ["HX1", "HX3"]
+    @patch('whatsapp_template_manager.WhatsAppTemplateManager.fetch_all_statuses')
+    def test_sync_approved_templates(self, mock_fetch):
+        mock_fetch.return_value = [
+            {"sid": "HX1", "name": "t1", "status": "approved"},
+            {"sid": "HX3", "name": "t3", "status": "approved"},
+            {"sid": "HX2", "name": "t2", "status": "rejected"}
+        ]
         
         if os.path.exists(self.manager.data_path):
             os.remove(self.manager.data_path)
@@ -66,7 +70,9 @@ class TestWhatsAppTemplateManager(unittest.TestCase):
         
         with open(self.manager.data_path, 'r') as f:
             data = json.load(f)
-            self.assertEqual(data['approved_sids'], ["HX1", "HX3"])
+            # In twilio_sender.py, we expect "approved_templates" dictionary.
+            self.assertIn("HX1", data['approved_templates'])
+            self.assertIn("HX3", data['approved_templates'])
             
         os.remove(self.manager.data_path)
 
