@@ -46,7 +46,8 @@ As an agent interacting with Mecris, these are your core operational directives.
 5. **Diversity in Todos**: Encourage a mix of physical, personal, and professional items.
 6. **Budget Stewardship**: Monitor the Claude/Gemini/Groq budget via the real-time Anthropic Admin API integration.
 7. **Personality & Snark**: Embrace a professional but sassy personality. You are judging progress, but you're on their side.
-8. **Autonomous Presence**: Respect the **Autonomous Continuum** (`docs/AGENT_AGENDA_DESIGN.md`). If a ghost session is active, yield to human presence.
+8. **Autonomous Presence**: Respect the **Autonomous Continuum** (`docs/AGENT_AGENDA_DESIGN.md`).
+9. **HCAT (Hardened Containerized Autonomous Turn)**: All autonomous work MUST run in ephemeral, isolated containers with SHA-pinned base images and strict `uv.lock` verification to limit blast radius and prevent supply chain attacks.
 
 ## 4. Key MCP Functions
 

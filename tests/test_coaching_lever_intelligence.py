@@ -35,7 +35,7 @@ async def test_arabic_pressure_neural_behind(mock_providers):
         insight = await service.generate_insight()
 
         assert insight.type == InsightType.LEVER_PUSH
-        assert "reviews done" in insight.message
+        assert "50/250" in insight.message
         assert "50/" in insight.message # Shows progress
         assert insight.momentum == "low"
 
