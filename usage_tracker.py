@@ -4,7 +4,6 @@ Since Anthropic doesn't provide programmatic credit balance API,
 we maintain local estimates and allow manual budget updates.
 """
 
-import sqlite3
 import json
 from datetime import datetime, timedelta, date
 from typing import Dict, List, Optional, Tuple, Any
@@ -27,8 +26,7 @@ class UsageSession:
     notes: str = ""
 
 class UsageTracker:
-    def __init__(self, db_path: str = "mecris_usage.db", user_id: str = None):
-        self.db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), db_path)
+    def __init__(self, user_id: str = None):
         self.neon_url = os.getenv("NEON_DB_URL")
         self.user_id = user_id or os.getenv("DEFAULT_USER_ID")
         self.use_neon = False
@@ -56,10 +54,11 @@ class UsageTracker:
                 logger.info("UsageTracker: Neon database initialized successfully.")
                 return
             except Exception as e:
-                logger.error(f"UsageTracker: Neon init failed: {e}. Fallback to SQLite is available but might be empty.")
-
-        logger.warning(f"UsageTracker: Using SQLite fallback at {self.db_path}")
-        self._init_sqlite()
+                logger.error(f"UsageTracker: Neon init failed: {e}. SQLite fallback is disabled.")
+                raise ConnectionError(f"Critical error: Neon database is required but unreachable: {e}")
+        else:
+            logger.error("UsageTracker: NEON_DB_URL not found. System is in read-only or limited mode.")
+            raise EnvironmentError("NEON_DB_URL must be set. SQLite fallback is no longer supported.")
 
     def _init_neon(self):
         """Initialize Neon PostgreSQL database."""
@@ -123,65 +122,22 @@ class UsageTracker:
                             VALUES (%s, 24.96, 24.95, '2025-08-06', '2025-09-30', %s)
                         """, (self.user_id, datetime.now()))
 
-    def _init_sqlite(self):
-        """Initialize SQLite database for usage tracking."""
-        with sqlite3.connect(self.db_path) as conn:
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS usage_sessions (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    timestamp TEXT NOT NULL,
-                    model TEXT NOT NULL,
-                    input_tokens INTEGER NOT NULL,
-                    output_tokens INTEGER NOT NULL,
-                    estimated_cost REAL NOT NULL,
-                    session_type TEXT NOT NULL,
-                    notes TEXT DEFAULT ''
-                )
-            """)
+    def resolve_user_id(self, user_id: str) -> str:
+        """Resolve familiar_id to pocket_id_sub."""
+        if not self.use_neon or not user_id:
+            return user_id or self.user_id
             
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS budget_tracking (
-                    id INTEGER PRIMARY KEY,
-                    total_budget REAL NOT NULL,
-                    remaining_budget REAL NOT NULL,
-                    budget_period_start TEXT NOT NULL,
-                    budget_period_end TEXT NOT NULL,
-                    last_updated TEXT NOT NULL
-                )
-            """)
+        try:
+            with psycopg2.connect(self.neon_url) as conn:
+                with conn.cursor() as cur:
+                    cur.execute("SELECT pocket_id_sub FROM users WHERE familiar_id = %s", (user_id,))
+                    row = cur.fetchone()
+                    if row:
+                        return row[0]
+        except Exception as e:
+            logger.error(f"UsageTracker: resolve_user_id failed: {e}")
             
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS goals (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    title TEXT NOT NULL,
-                    description TEXT DEFAULT '',
-                    priority TEXT DEFAULT 'medium',
-                    status TEXT DEFAULT 'active',
-                    created_at TEXT NOT NULL,
-                    completed_at TEXT DEFAULT NULL,
-                    due_date TEXT DEFAULT NULL
-                )
-            """)
-            
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS alert_log (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    alert_type TEXT NOT NULL,
-                    alert_level TEXT NOT NULL,
-                    message TEXT NOT NULL,
-                    sent_at TEXT NOT NULL,
-                    context TEXT DEFAULT ''
-                )
-            """)
-            
-            # Initialize default budget if table is empty
-            cursor = conn.execute("SELECT COUNT(*) FROM budget_tracking")
-            if cursor.fetchone()[0] == 0:
-                conn.execute("""
-                    INSERT INTO budget_tracking 
-                    (id, total_budget, remaining_budget, budget_period_start, budget_period_end, last_updated)
-                    VALUES (1, 24.96, 24.95, '2025-08-06', '2025-09-30', ?)
-                """, (datetime.now().isoformat(),))
+        return user_id
 
     def calculate_cost(self, model: str, input_tokens: int, output_tokens: int) -> float:
         """Calculate estimated cost for a session."""
@@ -197,7 +153,7 @@ class UsageTracker:
     def record_session(self, model: str, input_tokens: int, output_tokens: int, 
                       session_type: str = "interactive", notes: str = "", user_id: str = None) -> float:
         """Record a usage session and return estimated cost."""
-        target_user_id = user_id or self.user_id
+        target_user_id = self.resolve_user_id(user_id)
         cost = self.calculate_cost(model, input_tokens, output_tokens)
         now = datetime.now()
         
@@ -222,26 +178,11 @@ class UsageTracker:
                 logger.error(f"UsageTracker: Neon record_session failed: {e}")
                 raise
 
-        timestamp = now.isoformat()
-        with sqlite3.connect(self.db_path) as conn:
-            conn.execute("""
-                INSERT INTO usage_sessions 
-                (timestamp, model, input_tokens, output_tokens, estimated_cost, session_type, notes)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-            """, (timestamp, model, input_tokens, output_tokens, cost, session_type, notes))
-            
-            # Update remaining budget
-            conn.execute("""
-                UPDATE budget_tracking 
-                SET remaining_budget = remaining_budget - ?, last_updated = ?
-                WHERE id = 1
-            """, (cost, timestamp))
-        
-        return cost
+        raise RuntimeError("UsageTracker: Neon connection not active. Cannot record session.")
 
     def get_budget_status(self, user_id: str = None) -> Dict:
         """Get current budget status with alerts."""
-        target_user_id = user_id or self.user_id
+        target_user_id = self.resolve_user_id(user_id)
         if self.use_neon:
             try:
                 with psycopg2.connect(self.neon_url) as conn:
@@ -298,60 +239,11 @@ class UsageTracker:
                 logger.error(f"UsageTracker: Neon get_budget_status failed: {e}")
                 raise
 
-        with sqlite3.connect(self.db_path) as conn:
-            cursor = conn.execute("SELECT * FROM budget_tracking WHERE id = 1")
-            budget_info = cursor.fetchone()
-            
-            if not budget_info:
-                return {"error": "No budget information found"}
-            
-            total, remaining = budget_info[1], budget_info[2]
-            period_end = datetime.fromisoformat(budget_info[4])
-            days_remaining = (period_end - datetime.now()).days
-            
-            # Calculate burn rate
-            cursor = conn.execute("""
-                SELECT SUM(estimated_cost) FROM usage_sessions 
-                WHERE DATE(timestamp) = DATE('now')
-            """)
-            today_spend = cursor.fetchone()[0] or 0
-            
-            cursor = conn.execute("""
-                SELECT SUM(estimated_cost) FROM usage_sessions 
-                WHERE timestamp > datetime('now', '-7 days')
-            """)
-            week_spend = cursor.fetchone()[0] or 0
-            
-            daily_burn_rate = week_spend / 7 if week_spend > 0 else 0
-            projected_spend = daily_burn_rate * days_remaining
-            
-            # Generate alerts
-            alerts = []
-            if remaining < 5:
-                alerts.append("LOW_BUDGET")
-            if projected_spend > remaining:
-                alerts.append("BURN_RATE_HIGH")
-            if days_remaining <= 1:
-                alerts.append("PERIOD_ENDING")
-            if today_spend > 2:
-                alerts.append("DAILY_LIMIT_EXCEEDED")
-        
-        return {
-            "total_budget": total,
-            "remaining_budget": remaining,
-            "used_budget": round(total - remaining, 2),
-            "days_remaining": days_remaining,
-            "today_spend": round(today_spend, 4),
-            "daily_burn_rate": round(daily_burn_rate, 4),
-            "projected_spend": round(projected_spend, 4),
-            "period_end": budget_info[4],
-            "alerts": alerts,
-            "budget_health": "GOOD" if not alerts else "WARNING" if len(alerts) < 3 else "CRITICAL"
-        }
+        raise RuntimeError("UsageTracker: Neon connection not active. Cannot get budget status.")
 
     def get_recent_sessions(self, limit: int = 10, user_id: str = None) -> List[Dict]:
         """Get the most recent usage sessions."""
-        target_user_id = user_id or self.user_id
+        target_user_id = self.resolve_user_id(user_id)
         if self.use_neon:
             try:
                 with psycopg2.connect(self.neon_url) as conn:
@@ -371,33 +263,13 @@ class UsageTracker:
                 logger.error(f"UsageTracker: Neon get_recent_sessions failed: {e}")
                 raise
 
-        with sqlite3.connect(self.db_path) as conn:
-            cursor = conn.execute("""
-                SELECT timestamp, model, input_tokens, output_tokens, estimated_cost, session_type, notes 
-                FROM usage_sessions 
-                ORDER BY timestamp DESC 
-                LIMIT ?
-            """, (limit,))
-            
-            return [
-                {
-                    "timestamp": row[0],
-                    "model": row[1],
-                    "input_tokens": row[2],
-                    "output_tokens": row[3],
-                    "estimated_cost": row[4],
-                    "session_type": row[5],
-                    "notes": row[6]
-                }
-                for row in cursor.fetchall()
-            ]
+        raise RuntimeError("UsageTracker: Neon connection not active. Cannot get recent sessions.")
 
     def update_budget(self, remaining_budget: float, total_budget: Optional[float] = None, 
                      period_end: Optional[str] = None, user_id: str = None) -> Dict:
         """Manually update budget information."""
-        target_user_id = user_id or self.user_id
+        target_user_id = self.resolve_user_id(user_id)
         now = datetime.now()
-        timestamp = now.isoformat()
         
         if self.use_neon:
             try:
@@ -429,34 +301,11 @@ class UsageTracker:
                 logger.error(f"UsageTracker: Neon update_budget failed: {e}")
                 raise
 
-        with sqlite3.connect(self.db_path) as conn:
-            if total_budget and period_end:
-                conn.execute("""
-                    UPDATE budget_tracking 
-                    SET total_budget = ?, remaining_budget = ?, budget_period_end = ?, last_updated = ?
-                    WHERE id = 1
-                """, (total_budget, remaining_budget, period_end, timestamp))
-            else:
-                conn.execute("""
-                    UPDATE budget_tracking 
-                    SET remaining_budget = ?, last_updated = ?
-                    WHERE id = 1
-                """, (remaining_budget, timestamp))
-            
-            cursor = conn.execute("SELECT * FROM budget_tracking WHERE id = 1")
-            budget_info = cursor.fetchone()
-        
-        return {
-            "total": budget_info[1],
-            "remaining": budget_info[2],
-            "period_start": budget_info[3],
-            "period_end": budget_info[4],
-            "last_updated": budget_info[5]
-        }
+        raise RuntimeError("UsageTracker: Neon connection not active. Cannot update budget.")
 
     def get_goals(self, user_id: str = None) -> List[Dict]:
         """Get all goals with their status."""
-        target_user_id = user_id or self.user_id
+        target_user_id = self.resolve_user_id(user_id)
         if self.use_neon:
             try:
                 with psycopg2.connect(self.neon_url) as conn:
@@ -482,41 +331,11 @@ class UsageTracker:
                 logger.error(f"UsageTracker: Neon get_goals failed: {e}")
                 raise
 
-        with sqlite3.connect(self.db_path) as conn:
-            cursor = conn.execute("""
-                SELECT id, title, description, priority, status, created_at, completed_at, due_date
-                FROM goals 
-                ORDER BY 
-                    CASE priority 
-                        WHEN 'high' THEN 1 
-                        WHEN 'medium' THEN 2 
-                        WHEN 'low' THEN 3 
-                    END,
-                    CASE status
-                        WHEN 'active' THEN 1
-                        WHEN 'completed' THEN 2
-                    END,
-                    created_at
-            """)
-            
-            return [
-                {
-                    "id": row[0],
-                    "title": row[1],
-                    "description": row[2],
-                    "priority": row[3],
-                    "status": row[4],
-                    "created_at": row[5],
-                    "completed_at": row[6],
-                    "did_date": row[7],
-                    "completed": row[4] == 'completed'
-                }
-                for row in cursor.fetchall()
-            ]
+        raise RuntimeError("UsageTracker: Neon connection not active. Cannot get goals.")
 
     def complete_goal(self, goal_id: int, user_id: str = None) -> Dict:
         """Mark a goal as completed."""
-        target_user_id = user_id or self.user_id
+        target_user_id = self.resolve_user_id(user_id)
         now = datetime.now()
         timestamp = now.isoformat()
         
@@ -539,20 +358,11 @@ class UsageTracker:
                 logger.error(f"UsageTracker: Neon complete_goal failed: {e}")
                 raise
 
-        with sqlite3.connect(self.db_path) as conn:
-            cursor = conn.execute("SELECT title FROM goals WHERE id = ?", (goal_id,))
-            goal = cursor.fetchone()
-            if not goal: return {"error": f"Goal {goal_id} not found"}
-            conn.execute("""
-                UPDATE goals 
-                SET status = 'completed', completed_at = ? 
-                WHERE id = ?
-            """, (timestamp, goal_id))
-            return {"completed": True, "goal_id": goal_id, "title": goal[0], "completed_at": timestamp}
+        raise RuntimeError("UsageTracker: Neon connection not active. Cannot complete goal.")
 
     def add_goal(self, title: str, description: str = "", priority: str = 'medium', due_date: Optional[str] = None, user_id: str = None) -> Dict:
         """Add a new goal."""
-        target_user_id = user_id or self.user_id
+        target_user_id = self.resolve_user_id(user_id)
         now = datetime.now()
         timestamp = now.isoformat()
         
@@ -574,17 +384,11 @@ class UsageTracker:
                 logger.error(f"UsageTracker: Neon add_goal failed: {e}")
                 raise
 
-        with sqlite3.connect(self.db_path) as conn:
-            cursor = conn.execute("""
-                INSERT INTO goals (title, description, priority, status, created_at, due_date)
-                VALUES (?, ?, ?, 'active', ?, ?)
-            """, (title, description, priority, timestamp, due_date))
-            goal_id = cursor.lastrowid
-            return {"added": True, "goal_id": goal_id, "title": title, "priority": priority, "created_at": timestamp}
+        raise RuntimeError("UsageTracker: Neon connection not active. Cannot add goal.")
 
     def should_send_alert(self, alert_type: str, alert_level: str, cooldown_minutes: int = 60, user_id: str = None) -> bool:
         """Check if an alert should be sent based on cooldown."""
-        target_user_id = user_id or self.user_id
+        target_user_id = self.resolve_user_id(user_id)
         cutoff = datetime.now() - timedelta(minutes=cooldown_minutes)
         
         if self.use_neon:
@@ -600,16 +404,11 @@ class UsageTracker:
                 logger.error(f"UsageTracker: Neon should_send_alert failed: {e}")
                 raise
 
-        with sqlite3.connect(self.db_path) as conn:
-            cursor = conn.execute("""
-                SELECT COUNT(*) FROM alert_log 
-                WHERE alert_type = ? AND alert_level = ? AND sent_at > ?
-            """, (alert_type, alert_level, cutoff.isoformat()))
-            return cursor.fetchone()[0] == 0
+        return True # Default to True if can't check log
 
     def log_alert(self, alert_type: str, alert_level: str, message: str, context: str = "", user_id: str = None):
         """Log a sent alert."""
-        target_user_id = user_id or self.user_id
+        target_user_id = self.resolve_user_id(user_id)
         now = datetime.now()
         
         if self.use_neon:
@@ -625,15 +424,9 @@ class UsageTracker:
                 logger.error(f"UsageTracker: Neon log_alert failed: {e}")
                 raise
 
-        with sqlite3.connect(self.db_path) as conn:
-            conn.execute("""
-                INSERT INTO alert_log (alert_type, alert_level, message, sent_at, context)
-                VALUES (?, ?, ?, ?, ?)
-            """, (alert_type, alert_level, message, now.isoformat(), context))
-
     def get_usage_summary(self, days: int = 7, user_id: str = None) -> Dict:
         """Get usage summary for the last N days."""
-        target_user_id = user_id or self.user_id
+        target_user_id = self.resolve_user_id(user_id)
         cutoff_date = (datetime.now() - timedelta(days=days))
         
         if self.use_neon:
@@ -684,44 +477,7 @@ class UsageTracker:
                 logger.error(f"UsageTracker: Neon get_usage_summary failed: {e}")
                 raise
 
-        with sqlite3.connect(self.db_path) as conn:
-            cursor = conn.execute("""
-                SELECT DATE(timestamp) as date, SUM(estimated_cost)
-                FROM usage_sessions 
-                WHERE timestamp > ?
-                GROUP BY DATE(timestamp)
-                ORDER BY date DESC
-            """, (cutoff_date.isoformat(),))
-            
-            daily_usage = [{"date": row[0], "cost": row[1]} for row in cursor.fetchall()]
-            
-            # Usage by session type
-            cursor = conn.execute("""
-                SELECT session_type, SUM(estimated_cost), COUNT(*)
-                FROM usage_sessions 
-                WHERE timestamp > ?
-                GROUP BY session_type
-            """, (cutoff_date.isoformat(),))
-            type_usage = {row[0]: {"cost": row[1], "count": row[2]} for row in cursor.fetchall()}
-            
-            # Model breakdown
-            cursor = conn.execute("""
-                SELECT model, SUM(estimated_cost), COUNT(*)
-                FROM usage_sessions 
-                WHERE timestamp > ?
-                GROUP BY model
-            """, (cutoff_date.isoformat(),))
-            model_usage = {row[0]: {"cost": row[1], "count": row[2]} for row in cursor.fetchall()}
-            
-            total_cost = sum(d["cost"] for d in daily_usage)
-        
-        return {
-            "period_days": days,
-            "total_cost": round(total_cost, 4),
-            "daily_usage": daily_usage,
-            "type_breakdown": type_usage,
-            "model_breakdown": model_usage
-        }
+        raise RuntimeError("UsageTracker: Neon connection not active. Cannot get usage summary.")
 
 # Global singleton instance
 _tracker_instance = None
@@ -757,21 +513,3 @@ def add_goal(title: str, description: str = "", priority: str = "medium", due_da
 def complete_goal(goal_id: int, user_id: str = None) -> Dict:
     tracker = get_tracker()
     return tracker.complete_goal(goal_id, user_id)
-
-if __name__ == "__main__":
-    # Configure logging for standalone test
-    logging.basicConfig(level=logging.INFO)
-    
-    tracker = UsageTracker()
-    
-    # Test recording
-    cost = tracker.record_session("claude-3-5-sonnet-20241022", 1000, 500, notes="Standalone test")
-    print(f"Recorded test session, estimated cost: ${cost:.4f}")
-    
-    # Get status
-    status = tracker.get_budget_status()
-    print(f"Budget status: {json.dumps(status, indent=2)}")
-    
-    # Get usage summary
-    summary = tracker.get_usage_summary(7)
-    print(f"Usage summary: {json.dumps(summary, indent=2)}")
