@@ -10,6 +10,10 @@ import logging
 def setup_logging(verbose: bool):
     level = logging.DEBUG if verbose else logging.INFO
     logging.basicConfig(level=level, format="%(levelname)s: %(message)s")
+    
+    # Silence third-party loggers that leak credentials in URLs
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("urllib3").setLevel(logging.WARNING)
 
 async def run_nag_eval(args):
     """Evaluate the reminder heuristics without triggering a send."""
