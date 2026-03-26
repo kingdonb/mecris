@@ -43,7 +43,6 @@ jobs:
           ANTHROPIC_BASE_URL: ${{ secrets.MECRIS_BOT_ANTHROPIC_BASE_URL }}
           GITHUB_TOKEN: ${{ secrets.MECRIS_BOT_PAT }}
           PROMPT: ${{ github.event.inputs.prompt || '' }}
-        env:
           MODEL: ${{ github.event.inputs.model || 'claude-haiku-4-5' }}
         run: |
           DEFAULT_PROMPT="$(cat scripts/bot-prompt.txt)"
