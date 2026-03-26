@@ -7,7 +7,7 @@ on:
         description: 'PR number on kingdonb/mecris to test'
         required: true
       upstream_repo:
-        description: 'Upstream repo (default: kingdonb/mecris)'
+        description: 'Upstream repo'
         required: false
         default: 'kingdonb/mecris'
 
@@ -17,8 +17,23 @@ jobs:
     permissions:
       contents: write
 
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: mecrisdb
+          POSTGRES_USER: mecris
+          POSTGRES_PASSWORD: mecris
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
     steps:
-      - name: Checkout yebyen/mecris main
+      - name: Checkout yebyen/mecris
         uses: actions/checkout@v4
         with:
           token: ${{ secrets.MECRIS_BOT_PAT }}
@@ -50,51 +65,89 @@ jobs:
           curl -LsSf https://astral.sh/uv/install.sh | sh
           echo "$HOME/.local/bin" >> $GITHUB_PATH
 
-      - name: Install dependencies
+      - name: Install Python dependencies
         run: |
           uv venv
           uv pip install -r requirements.txt pytest-cov pytest-asyncio
 
-      - name: Run tests
-        id: tests
+      - name: Init database schema
         env:
-          NEON_DB_URL: ${{ secrets.NEON_DB_URL }}
+          NEON_DB_URL: postgresql://mecris:mecris@localhost:5432/mecrisdb
+        run: |
+          # Run schema init if the script exists
+          if [ -f scripts/initialize_neon.py ]; then
+            PYTHONPATH=. .venv/bin/python scripts/initialize_neon.py || true
+          fi
+          # Also try any migration scripts present
+          for f in scripts/migrate_*.py; do
+            [ -f "$f" ] && PYTHONPATH=. .venv/bin/python "$f" || true
+          done
+
+      - name: Run Python tests
+        id: python_tests
+        env:
+          NEON_DB_URL: postgresql://mecris:mecris@localhost:5432/mecrisdb
           PYTHONPATH: .
         run: |
           set +e
-          .venv/bin/pytest tests/ -v --tb=short 2>&1 | tee /tmp/test-output.txt
+          .venv/bin/pytest tests/ -v --tb=short 2>&1 | tee /tmp/pytest-output.txt
           echo "exit_code=$?" >> $GITHUB_OUTPUT
           set -e
 
-      - name: Comment on upstream PR
+      - name: Set up JDK for Android
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Run Android unit tests
+        id: android_tests
+        working-directory: mecris-go-project
+        run: |
+          set +e
+          chmod +x gradlew
+          ./gradlew testDebugUnitTest 2>&1 | tee /tmp/gradle-output.txt
+          echo "exit_code=$?" >> $GITHUB_OUTPUT
+          set -e
+
+      - name: Post review comment on upstream PR
         env:
           UPSTREAM: ${{ github.event.inputs.upstream_repo || 'kingdonb/mecris' }}
           PR: ${{ github.event.inputs.pr_number }}
-          EXIT_CODE: ${{ steps.tests.outputs.exit_code }}
+          PY_EXIT: ${{ steps.python_tests.outputs.exit_code }}
+          AND_EXIT: ${{ steps.android_tests.outputs.exit_code }}
           CLASSIC_PAT: ${{ secrets.MECRIS_BOT_CLASSIC_PAT }}
         run: |
-          if [ "$EXIT_CODE" = "0" ]; then
-            ICON="✅"
-            VERDICT="All tests passed on yebyen/mecris."
-          else
-            ICON="❌"
-            VERDICT="Some tests failed on yebyen/mecris."
-          fi
-          OUTPUT=$(tail -50 /tmp/test-output.txt | sed 's/`/'"'"'/g')
-          BODY="${ICON} **mecris-bot PR test report**
+          PY_ICON=$( [ "$PY_EXIT"  = "0" ] && echo "✅" || echo "❌" )
+          AND_ICON=$( [ "$AND_EXIT" = "0" ] && echo "✅" || echo "❌" )
 
-${VERDICT}
+          PY_OUT=$(tail -30 /tmp/pytest-output.txt 2>/dev/null | sed 's/`/'"'"'/g')
+          AND_OUT=$(tail -20 /tmp/gradle-output.txt 2>/dev/null | sed 's/`/'"'"'/g')
 
+          BODY="## 🤖 mecris-bot PR test report
+
+${PY_ICON} **Python tests** (local postgres, no Neon credentials needed)
 \`\`\`
-${OUTPUT}
+${PY_OUT}
 \`\`\`
 
-_Tested by merging \`${UPSTREAM}#${PR}\` into \`yebyen/mecris:main\` and running \`pytest tests/\`_"
+${AND_ICON} **Android unit tests** (JDK 17, no emulator)
+\`\`\`
+${AND_OUT}
+\`\`\`
 
-          curl -sf -X POST \
-            -H "Authorization: Bearer ${CLASSIC_PAT}" \
-            -H "Accept: application/vnd.github+json" \
-            -H "Content-Type: application/json" \
-            -d "$(python3 -c "import json,sys; print(json.dumps({'body': sys.argv[1]}))" "$BODY")" \
-            "https://api.github.com/repos/${UPSTREAM}/pulls/${PR}/reviews" \
-            | python3 -c "import sys,json; r=json.load(sys.stdin); print('Commented:', r.get('id','err'), r.get('state',''))"
+_Tested by merging \`${UPSTREAM}#${PR}\` into \`yebyen/mecris:main\`_"
+
+          python3 - "$BODY" "$PR" "$UPSTREAM" "$CLASSIC_PAT" <<'PYEOF'
+          import sys, json, urllib.request
+          body, pr, upstream, pat = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
+          data = json.dumps({"body": body}).encode()
+          req = urllib.request.Request(
+            f"https://api.github.com/repos/{upstream}/issues/{pr}/comments",
+            data=data,
+            headers={"Authorization": f"Bearer {pat}", "Accept": "application/vnd.github+json",
+                     "Content-Type": "application/json", "User-Agent": "mecris-bot"})
+          resp = urllib.request.urlopen(req)
+          r = json.loads(resp.read())
+          print("Comment posted:", r['html_url'])
+          PYEOF
