@@ -10,7 +10,7 @@ on:
         description: 'Override the default autonomous prompt'
         required: false
       model:
-        description: 'Model override (leave blank for openai/gpt-4.1)'
+        description: 'Model override (leave blank for claude-sonnet-4-6)'
         required: false
 
 jobs:
@@ -56,8 +56,9 @@ jobs:
           ANTHROPIC_BASE_URL: ${{ secrets.MECRIS_BOT_ANTHROPIC_BASE_URL }}
           GITHUB_TOKEN: ${{ secrets.MECRIS_BOT_PAT }}
           PROMPT: ${{ github.event.inputs.prompt || '' }}
-          MODEL: ${{ github.event.inputs.model || 'openai/gpt-4.1' }}
+          MODEL: ${{ github.event.inputs.model || 'claude-sonnet-4-6' }}
           CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1"
+          CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS: "1"
           GITHUB_CLASSIC_PAT: ${{ secrets.MECRIS_BOT_CLASSIC_PAT }}
         run: |
           DEFAULT_PROMPT="$(cat scripts/bot-prompt.txt)"
