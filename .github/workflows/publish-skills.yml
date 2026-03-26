@@ -1,0 +1,70 @@
+name: publish-skills
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/skills/**'
+      - '.claude-plugin/**'
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Install oras
+        uses: oras-project/setup-oras@v1
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Prepare tags
+        id: prep
+        run: |
+          SHA="${GITHUB_SHA::8}"
+          REF="${GITHUB_REF_NAME}"
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            echo "version=${REF}" >> $GITHUB_OUTPUT
+            echo "tag=latest" >> $GITHUB_OUTPUT
+          else
+            echo "version=${REF}-${SHA}" >> $GITHUB_OUTPUT
+            echo "tag=${REF}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Package and push skills
+        run: |
+          IMAGE="ghcr.io/${{ github.repository }}/skills"
+          VERSION="${{ steps.prep.outputs.version }}"
+          TAG="${{ steps.prep.outputs.tag }}"
+
+          # Push skills as OCI artifact with both version and branch tags
+          oras push "${IMAGE}:${VERSION}" \
+            --annotation "org.opencontainers.image.description=Mecris AI agent skills" \
+            --annotation "org.opencontainers.image.source=https://github.com/${{ github.repository }}" \
+            --annotation "org.opencontainers.image.revision=${{ github.sha }}" \
+            .github/skills/:application/vnd.mecris.skills.v1.tar+gzip
+
+          oras tag "${IMAGE}:${VERSION}" "${IMAGE}:${TAG}"
+
+      - name: Sign the artifact
+        run: |
+          IMAGE="ghcr.io/${{ github.repository }}/skills"
+          VERSION="${{ steps.prep.outputs.version }}"
+          DIGEST=$(oras manifest fetch "${IMAGE}:${VERSION}" --descriptor | jq -r '.digest')
+          cosign sign --yes "${IMAGE}@${DIGEST}"
