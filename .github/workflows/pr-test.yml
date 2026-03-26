@@ -124,30 +124,16 @@ jobs:
           PY_OUT=$(tail -30 /tmp/pytest-output.txt 2>/dev/null | sed 's/`/'"'"'/g')
           AND_OUT=$(tail -20 /tmp/gradle-output.txt 2>/dev/null | sed 's/`/'"'"'/g')
 
-          BODY="## 🤖 mecris-bot PR test report
+          BODY=$(printf '## 🤖 mecris-bot PR test report\n\n%s **Python tests** (local postgres, no Neon credentials needed)\n```\n%s\n```\n\n%s **Android unit tests** (JDK 17, no emulator)\n```\n%s\n```\n\n_Tested by merging `%s#%s` into `yebyen/mecris:main`_' \
+            "$PY_ICON" "$PY_OUT" "$AND_ICON" "$AND_OUT" "$UPSTREAM" "$PR")
 
-${PY_ICON} **Python tests** (local postgres, no Neon credentials needed)
-\`\`\`
-${PY_OUT}
-\`\`\`
-
-${AND_ICON} **Android unit tests** (JDK 17, no emulator)
-\`\`\`
-${AND_OUT}
-\`\`\`
-
-_Tested by merging \`${UPSTREAM}#${PR}\` into \`yebyen/mecris:main\`_"
-
-          python3 - "$BODY" "$PR" "$UPSTREAM" "$CLASSIC_PAT" <<'PYEOF'
-          import sys, json, urllib.request
-          body, pr, upstream, pat = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
-          data = json.dumps({"body": body}).encode()
-          req = urllib.request.Request(
-            f"https://api.github.com/repos/{upstream}/issues/{pr}/comments",
-            data=data,
-            headers={"Authorization": f"Bearer {pat}", "Accept": "application/vnd.github+json",
-                     "Content-Type": "application/json", "User-Agent": "mecris-bot"})
-          resp = urllib.request.urlopen(req)
-          r = json.loads(resp.read())
-          print("Comment posted:", r['html_url'])
-          PYEOF
+          BODY_JSON=$(python3 -c "import json,sys; print(json.dumps({'body': sys.argv[1]}))" "$BODY")
+          COMMENT_URL=$(curl -sf \
+            -X POST \
+            -H "Authorization: Bearer $CLASSIC_PAT" \
+            -H "Accept: application/vnd.github+json" \
+            -H "Content-Type: application/json" \
+            -d "$BODY_JSON" \
+            "https://api.github.com/repos/${UPSTREAM}/issues/${PR}/comments" \
+            | python3 -c "import sys,json; print(json.load(sys.stdin)['html_url'])")
+          echo "Comment posted: $COMMENT_URL"
