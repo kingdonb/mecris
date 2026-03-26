@@ -65,8 +65,17 @@ jobs:
           [ -n "${MODEL}" ] && MODEL_FLAG="--model ${MODEL}"
           claude --dangerously-skip-permissions \
             ${MODEL_FLAG} \
-            --max-turns 10 \
-            -p "${PROMPT:-$DEFAULT_PROMPT}"
+            --max-turns 20 \
+            -p "${PROMPT:-$DEFAULT_PROMPT}" 2>&1 | tee /tmp/mecris-bot-run.log
+          echo "exit_code=${PIPESTATUS[0]}" >> $GITHUB_OUTPUT
+
+      - name: Upload run log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mecris-bot-log-${{ github.run_id }}
+          path: /tmp/mecris-bot-run.log
+          retention-days: 14
 
       - name: Push any commits the bot made
         env:
