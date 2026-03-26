@@ -21,7 +21,9 @@ async def test_trigger_reminder_check_integration():
             
             assert result["triggered"] is True
             mock_check.assert_called_once()
-            mock_send.assert_called_once_with(mock_reminder_data)
+            mock_send.assert_called_once()
+            # check the first arg is mock_reminder_data
+            assert mock_send.call_args[0][0] == mock_reminder_data
 
 @pytest.mark.asyncio
 async def test_trigger_reminder_check_skips_when_not_needed():

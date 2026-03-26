@@ -3,10 +3,12 @@ import sys, os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from usage_tracker import UsageTracker
 
+from unittest.mock import patch
+
 @pytest.fixture
 def tracker():
-    # Use in-memory db to avoid side effects
-    return UsageTracker(db_path=":memory:")
+    with patch("usage_tracker.UsageTracker.init_database"):
+        return UsageTracker()
 
 def test_calculate_cost_sonnet(tracker):
     # Sonnet pricing: input $3/million, output $15/million

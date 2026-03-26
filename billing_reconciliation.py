@@ -38,6 +38,10 @@ class BillingReconciliation:
         self.budget_manager = VirtualBudgetManager()
         self.neon_url = os.getenv("NEON_DB_URL")
         self.user_id = user_id or os.getenv("DEFAULT_USER_ID")
+        
+        if not self.neon_url:
+            logger.error("BillingReconciliation: NEON_DB_URL not found. System will not be able to perform reconciliation.")
+            raise EnvironmentError("NEON_DB_URL must be set. SQLite fallback is no longer supported.")
     
     def reconcile_anthropic(self, target_date: date, user_id: str = None) -> ReconciliationResult:
         """Reconcile Anthropic usage for a specific date."""
@@ -79,11 +83,11 @@ class BillingReconciliation:
             
             # Update usage records with actual costs
             records_updated = self._update_usage_records_with_actual_costs(
-                Provider.ANTHROPIC, target_date, usage_records, actual_total
+                Provider.ANTHROPIC, target_date, usage_records, actual_total, target_user_id
             )
             
             # Log reconciliation job
-            self._log_reconciliation_job("anthropic", target_date, estimated_total, actual_total, drift_percentage, records_updated)
+            self._log_reconciliation_job("anthropic", target_date, estimated_total, actual_total, drift_percentage, records_updated, target_user_id)
             
             logger.info(f"Anthropic reconciliation complete: {drift_percentage:.2f}% drift")
             
@@ -150,11 +154,11 @@ class BillingReconciliation:
             
             # Update usage records with actual costs
             records_updated = self._update_usage_records_with_actual_costs(
-                Provider.GROQ, target_date, usage_records, actual_total
+                Provider.GROQ, target_date, usage_records, actual_total, target_user_id
             )
             
             # Log reconciliation job
-            self._log_reconciliation_job("groq", target_date, estimated_total, actual_total, drift_percentage, records_updated)
+            self._log_reconciliation_job("groq", target_date, estimated_total, actual_total, drift_percentage, records_updated, target_user_id)
             
             logger.info(f"Groq reconciliation complete: {drift_percentage:.2f}% drift")
             
@@ -225,19 +229,9 @@ class BillingReconciliation:
                         return total_estimated, usage_records
             except Exception as e:
                 logger.error(f"Neon _get_estimated_costs failed: {e}")
-
-        import sqlite3
-        with sqlite3.connect(self.budget_manager.db_path) as conn:
-            cursor = conn.execute("""
-                SELECT id, estimated_cost FROM provider_usage 
-                WHERE provider = ? AND DATE(timestamp) = ? AND reconciled = FALSE
-            """, (provider.value, target_date.isoformat()))
-            
-            records = cursor.fetchall()
-            total_estimated = sum(row[1] for row in records)
-            usage_records = [{"id": row[0], "estimated_cost": row[1]} for row in records]
-            
-            return total_estimated, usage_records
+                raise
+        
+        raise RuntimeError("BillingReconciliation: Neon connection not active. Cannot get estimated costs.")
     
     def _get_anthropic_actual_costs(self, target_date: date) -> Optional[float]:
         """Get actual costs from Anthropic API for a specific date."""
@@ -342,19 +336,9 @@ class BillingReconciliation:
                 return records_updated
             except Exception as e:
                 logger.error(f"Neon _update_usage_records_with_actual_costs failed: {e}")
-
-        import sqlite3
-        with sqlite3.connect(self.budget_manager.db_path) as conn:
-            for record in usage_records:
-                actual_cost = record["estimated_cost"] * scale_factor
-                conn.execute("""
-                    UPDATE provider_usage 
-                    SET actual_cost = ?, reconciled = TRUE 
-                    WHERE id = ?
-                """, (actual_cost, record["id"]))
-                records_updated += 1
+                raise
         
-        return records_updated
+        raise RuntimeError("BillingReconciliation: Neon connection not active. Cannot update records.")
     
     def _log_reconciliation_job(self, provider: str, target_date: date, estimated_total: float,
                                actual_total: float, drift_percentage: float, records_reconciled: int, user_id: str):
@@ -373,22 +357,9 @@ class BillingReconciliation:
                 return
             except Exception as e:
                 logger.error(f"Neon _log_reconciliation_job failed: {e}")
-
-        import sqlite3
-        with sqlite3.connect(self.budget_manager.db_path) as conn:
-            conn.execute("""
-                INSERT INTO reconciliation_jobs 
-                (provider, job_date, estimated_total, actual_total, drift_percentage, records_reconciled, reconciled_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-            """, (
-                provider, 
-                target_date.isoformat(),
-                estimated_total,
-                actual_total,
-                drift_percentage,
-                records_reconciled,
-                now.isoformat()
-            ))
+                raise
+        
+        raise RuntimeError("BillingReconciliation: Neon connection not active. Cannot log job.")
     
     def get_reconciliation_summary(self, days: int = 7, user_id: str = None) -> Dict:
         """Get reconciliation accuracy summary for recent days."""
@@ -445,62 +416,9 @@ class BillingReconciliation:
                         }
             except Exception as e:
                 logger.error(f"Neon get_reconciliation_summary failed: {e}")
-
-        cutoff_date = (date.today() - timedelta(days=days)).isoformat()
-        import sqlite3
-        with sqlite3.connect(self.budget_manager.db_path) as conn:
-            # Summary by provider
-            cursor = conn.execute("""
-                SELECT 
-                    provider,
-                    COUNT(*) as jobs_count,
-                    AVG(ABS(drift_percentage)) as avg_abs_drift,
-                    AVG(drift_percentage) as avg_drift,
-                    SUM(estimated_total) as total_estimated,
-                    SUM(actual_total) as total_actual
-                FROM reconciliation_jobs 
-                WHERE job_date > ?
-                GROUP BY provider
-            """, (cutoff_date,))
-            
-            provider_summary = {}
-            for row in cursor.fetchall():
-                provider_summary[row[0]] = {
-                    "jobs_count": row[1],
-                    "avg_abs_drift_pct": round(row[2] or 0, 2),
-                    "avg_drift_pct": round(row[3] or 0, 2),
-                    "total_estimated": round(row[4] or 0, 4),
-                    "total_actual": round(row[5] or 0, 4)
-                }
-            
-            # Recent jobs
-            cursor = conn.execute("""
-                SELECT provider, job_date, drift_percentage, records_reconciled, reconciled_at
-                FROM reconciliation_jobs 
-                WHERE job_date > ?
-                ORDER BY reconciled_at DESC
-                LIMIT 20
-            """, (cutoff_date,))
-            
-            recent_jobs = [
-                {
-                    "provider": row[0],
-                    "job_date": row[1],
-                    "drift_percentage": round(row[2], 2),
-                    "records_reconciled": row[3],
-                    "reconciled_at": row[4]
-                }
-                for row in cursor.fetchall()
-            ]
+                raise
         
-        return {
-            "period_days": days,
-            "provider_summary": provider_summary,
-            "recent_jobs": recent_jobs,
-            "overall_accuracy": {
-                "avg_abs_drift": sum(p["avg_abs_drift_pct"] for p in provider_summary.values()) / len(provider_summary) if provider_summary else 0
-            }
-        }
+        raise RuntimeError("BillingReconciliation: Neon connection not active. Cannot get summary.")
 
 def run_daily_reconciliation():
     """Main function for running daily reconciliation."""

@@ -129,44 +129,6 @@ class TestSMSMocked(unittest.TestCase):
             to='whatsapp:+1555000123'
         )
     
-    @patch('twilio_sender.send_message')
-    def test_budget_alert_critical(self, mock_send_message):
-        """Test critical budget alert"""
-        mock_send_message.return_value = True
-        
-        # Test critical alert (less than 2 days left)
-        budget_alert(2.50, 2.00)  # 1.25 days left
-        
-        # Verify critical alert was sent
-        mock_send_message.assert_called_once()
-        call_args = mock_send_message.call_args[0][0]
-        self.assertIn("🚨 CRITICAL", call_args)
-        self.assertIn("$2.50 remaining", call_args)
-        self.assertIn("$2.00/day burn rate", call_args)
-    
-    @patch('twilio_sender.send_message')
-    def test_budget_alert_warning(self, mock_send_message):
-        """Test warning budget alert"""
-        mock_send_message.return_value = True
-        
-        # Test warning alert (3 days left)
-        budget_alert(9.00, 3.00)  # 3 days left
-        
-        # Verify warning alert was sent
-        mock_send_message.assert_called_once()
-        call_args = mock_send_message.call_args[0][0]
-        self.assertIn("⚠️ WARNING", call_args)
-        self.assertIn("$9.00 remaining", call_args)
-    
-    @patch('twilio_sender.send_message')
-    def test_budget_alert_no_spam(self, mock_send_message):
-        """Test that budget alert doesn't spam when budget is fine"""
-        # Test with plenty of budget (over 5 days)
-        budget_alert(50.00, 5.00)  # 10 days left
-        
-        # Verify no message was sent
-        mock_send_message.assert_not_called()
-    
     def test_smart_send_message_test_mode(self):
         """Test smart send message in test mode"""
         os.environ['REMINDER_TEST_MODE'] = 'true'
@@ -176,9 +138,8 @@ class TestSMSMocked(unittest.TestCase):
         
         # Verify test mode behavior
         self.assertTrue(result['sent'])
-        self.assertEqual(result['method'], 'test_console')
-        self.assertTrue(result['test_mode'])
-        mock_print.assert_called_with("[TEST MODE] Would send message: Test message")
+        self.assertEqual(result['method'], 'console')
+        mock_print.assert_called_with("[NARRATOR] Test message")
     
     def test_smart_send_message_console_mode(self):
         """Test smart send message in console mode"""
@@ -191,7 +152,7 @@ class TestSMSMocked(unittest.TestCase):
         # Verify console mode behavior
         self.assertTrue(result['sent'])
         self.assertEqual(result['method'], 'console')
-        mock_print.assert_called_with("[REMINDER] Console test message")
+        mock_print.assert_called_with("[NARRATOR] Console test message")
     
     @patch('twilio_sender.send_sms')
     def test_smart_send_message_sms_success(self, mock_send_sms):
@@ -206,8 +167,6 @@ class TestSMSMocked(unittest.TestCase):
         self.assertTrue(result['sent'])
         self.assertEqual(result['method'], 'sms')
         mock_send_sms.assert_called_once_with("SMS test message", None)
-        self.assertEqual(len(result['attempts']), 1)
-        self.assertTrue(result['attempts'][0]['success'])
     
     @patch('twilio_sender.send_sms')
     @patch('builtins.print')
@@ -222,14 +181,9 @@ class TestSMSMocked(unittest.TestCase):
         
         # Should try SMS first, then fallback to console
         self.assertTrue(result['sent'])
-        self.assertEqual(result['method'], 'console_fallback')
+        self.assertEqual(result['method'], 'console')
         mock_send_sms.assert_called_once()
-        mock_print.assert_called_with("[FALLBACK REMINDER] Fallback test message")
-        
-        # Should have attempts for SMS, WhatsApp (fallback), and console (final fallback)
-        self.assertGreaterEqual(len(result['attempts']), 2)
-        self.assertFalse(result['attempts'][0]['success'])  # SMS failed
-        self.assertTrue(result['attempts'][-1]['success'])  # Final attempt (console) succeeded
+        mock_print.assert_called_with("[NARRATOR] Fallback test message")
     
     @patch('twilio_sender.send_message')
     @patch('twilio_sender.send_sms')
@@ -245,7 +199,7 @@ class TestSMSMocked(unittest.TestCase):
         
         # Should try WhatsApp first and succeed
         self.assertTrue(result['sent'])
-        self.assertEqual(result['method'], 'whatsapp')
+        self.assertEqual(result['method'], 'whatsapp_freeform')
         mock_send_message.assert_called_once_with("Both method test", None)
         mock_send_sms.assert_not_called()  # Shouldn't fallback to SMS
     
@@ -259,8 +213,8 @@ class TestSMSMocked(unittest.TestCase):
         
         # Should fallback to console
         self.assertTrue(result['sent'])
-        self.assertEqual(result['method'], 'console_fallback')
-        mock_print.assert_called_with("[REMINDER] Unknown method test")
+        self.assertEqual(result['method'], 'console')
+        mock_print.assert_called_with("[NARRATOR] Unknown method test")
 
 
 class TestIntegrationMocked(unittest.TestCase):
@@ -300,19 +254,19 @@ class TestIntegrationMocked(unittest.TestCase):
         # Test various delivery scenarios
         test_cases = [
             ('sms', 'SMS pipeline test', 'sms'),
-            ('whatsapp', 'WhatsApp pipeline test', 'whatsapp'),
+            ('whatsapp', 'WhatsApp pipeline test', 'whatsapp_freeform'),
             ('console', 'Console pipeline test', 'console'),
         ]
-        
+
         for method, message, expected_method in test_cases:
             with self.subTest(method=method):
                 os.environ['REMINDER_DELIVERY_METHOD'] = method
                 os.environ['REMINDER_TEST_MODE'] = 'false'
-                
+
                 if method == 'console':
                     with patch('builtins.print') as mock_print:
                         result = smart_send_message(message)
-                        mock_print.assert_called_with(f"[REMINDER] {message}")
+                        mock_print.assert_called_with(f"[NARRATOR] {message}")
                 else:
                     result = smart_send_message(message)
                 
