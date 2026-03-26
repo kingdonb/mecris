@@ -10,7 +10,7 @@ on:
         description: 'Override the default autonomous prompt'
         required: false
       model:
-        description: 'Claude model override (leave blank to use Helix default)'
+        description: 'Model override (leave blank for openai/gpt-4.1)'
         required: false
 
 jobs:
@@ -56,28 +56,15 @@ jobs:
           ANTHROPIC_BASE_URL: ${{ secrets.MECRIS_BOT_ANTHROPIC_BASE_URL }}
           GITHUB_TOKEN: ${{ secrets.MECRIS_BOT_PAT }}
           PROMPT: ${{ github.event.inputs.prompt || '' }}
-          MODEL: ${{ github.event.inputs.model || '' }}
+          MODEL: ${{ github.event.inputs.model || 'openai/gpt-4.1' }}
           CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1"
           GITHUB_CLASSIC_PAT: ${{ secrets.MECRIS_BOT_CLASSIC_PAT }}
         run: |
           DEFAULT_PROMPT="$(cat scripts/bot-prompt.txt)"
-          MODEL_FLAG=""
-          [ -n "${MODEL}" ] && MODEL_FLAG="--model ${MODEL}"
           claude --dangerously-skip-permissions \
-            ${MODEL_FLAG} \
+            --model "${MODEL}" \
             --max-turns 20 \
-            --output-format stream-json \
-            --verbose \
-            -p "${PROMPT:-$DEFAULT_PROMPT}" 2>&1 | tee /tmp/mecris-bot-run.log
-          echo "exit_code=${PIPESTATUS[0]}" >> $GITHUB_OUTPUT
-
-      - name: Upload run log
-        if: always()
-        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f  # v7.0.0
-        with:
-          name: mecris-bot-log-${{ github.run_id }}
-          path: /tmp/mecris-bot-run.log
-          retention-days: 14
+            -p "${PROMPT:-$DEFAULT_PROMPT}"
 
       - name: Push any commits the bot made
         env:
