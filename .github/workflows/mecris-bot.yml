@@ -43,6 +43,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.MECRIS_BOT_PAT }}
           PROMPT: ${{ github.event.inputs.prompt || '' }}
           MODEL: ${{ github.event.inputs.model || '' }}
+          CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1"
         run: |
           DEFAULT_PROMPT="$(cat scripts/bot-prompt.txt)"
           MODEL_FLAG=""
