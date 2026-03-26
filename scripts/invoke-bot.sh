@@ -13,9 +13,16 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 DEPLOY_KEY="${HOME}/.ssh/mecris_bot_deploy_key"
+BOT_SECRETS="${HOME}/.mecris-bot.env"
 FORK_REMOTE="${MECRIS_BOT_FORK_REMOTE:-git@github.com:yebyen/mecris.git}"
 BOT_NAME="mecris-bot"
 BOT_EMAIL="mecris-bot@noreply"
+
+# --- Load bot secrets (GITHUB_TOKEN etc) ---
+if [[ -f "${BOT_SECRETS}" ]]; then
+  # shellcheck source=/dev/null
+  set -a; source "${BOT_SECRETS}"; set +a
+fi
 
 # --- Validate ---
 if [[ ! -f "${DEPLOY_KEY}" ]]; then
