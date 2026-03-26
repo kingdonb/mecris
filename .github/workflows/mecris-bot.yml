@@ -33,8 +33,22 @@ jobs:
       - name: Install Node + Claude CLI
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
       - run: npm install -g @anthropic-ai/claude-code@1.0.128
+
+      - name: Validate Helix API key
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.MECRIS_BOT_ANTHROPIC_KEY }}
+          ANTHROPIC_BASE_URL: ${{ secrets.MECRIS_BOT_ANTHROPIC_BASE_URL }}
+        run: |
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            -H "Authorization: Bearer $ANTHROPIC_API_KEY" \
+            "${ANTHROPIC_BASE_URL}/v1/models")
+          echo "Helix key validation status: $STATUS"
+          if [ "$STATUS" != "200" ]; then
+            echo "::error::Helix API key is invalid or expired (HTTP $STATUS). Update MECRIS_BOT_ANTHROPIC_KEY secret."
+            exit 1
+          fi
 
       - name: Run mecris-bot
         env:
