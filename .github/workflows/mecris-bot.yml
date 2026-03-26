@@ -67,6 +67,7 @@ jobs:
             ${MODEL_FLAG} \
             --max-turns 20 \
             --output-format stream-json \
+            --verbose \
             -p "${PROMPT:-$DEFAULT_PROMPT}" 2>&1 | tee /tmp/mecris-bot-run.log
           echo "exit_code=${PIPESTATUS[0]}" >> $GITHUB_OUTPUT
 
