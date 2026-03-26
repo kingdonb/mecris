@@ -1,0 +1,139 @@
+name: pr-test
+
+on:
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: 'PR number on kingdonb/mecris to test'
+        required: true
+      upstream_repo:
+        description: 'Upstream repo'
+        required: false
+        default: 'kingdonb/mecris'
+
+jobs:
+  test-pr:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: mecrisdb
+          POSTGRES_USER: mecris
+          POSTGRES_PASSWORD: mecris
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout yebyen/mecris
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.MECRIS_BOT_PAT }}
+          fetch-depth: 0
+
+      - name: Set bot git identity
+        run: |
+          git config user.name "mecris-bot"
+          git config user.email "mecris-bot@noreply"
+
+      - name: Fetch and merge upstream PR branch
+        env:
+          UPSTREAM: ${{ github.event.inputs.upstream_repo || 'kingdonb/mecris' }}
+          PR: ${{ github.event.inputs.pr_number }}
+        run: |
+          git remote add upstream https://github.com/${UPSTREAM}.git
+          git fetch upstream
+          PR_BRANCH=$(curl -sf \
+            -H "Authorization: Bearer ${{ secrets.MECRIS_BOT_CLASSIC_PAT }}" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${UPSTREAM}/pulls/${PR}" \
+            | python3 -c "import sys,json; print(json.load(sys.stdin)['head']['ref'])")
+          echo "PR branch: $PR_BRANCH"
+          git checkout -b pr-test-${PR}
+          git merge upstream/${PR_BRANCH} --no-edit
+
+      - name: Set up Python with uv
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+
+      - name: Install Python dependencies
+        run: |
+          uv venv
+          uv pip install -r requirements.txt pytest-cov pytest-asyncio
+
+      - name: Init database schema
+        env:
+          NEON_DB_URL: postgresql://mecris:mecris@localhost:5432/mecrisdb
+        run: |
+          # Run schema init if the script exists
+          if [ -f scripts/initialize_neon.py ]; then
+            PYTHONPATH=. .venv/bin/python scripts/initialize_neon.py || true
+          fi
+          # Also try any migration scripts present
+          for f in scripts/migrate_*.py; do
+            [ -f "$f" ] && PYTHONPATH=. .venv/bin/python "$f" || true
+          done
+
+      - name: Run Python tests
+        id: python_tests
+        env:
+          NEON_DB_URL: postgresql://mecris:mecris@localhost:5432/mecrisdb
+          PYTHONPATH: .
+        run: |
+          set +e
+          .venv/bin/pytest tests/ -v --tb=short 2>&1 | tee /tmp/pytest-output.txt
+          echo "exit_code=$?" >> $GITHUB_OUTPUT
+          set -e
+
+      - name: Set up JDK for Android
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Run Android unit tests
+        id: android_tests
+        working-directory: mecris-go-project
+        run: |
+          set +e
+          chmod +x gradlew
+          ./gradlew testDebugUnitTest 2>&1 | tee /tmp/gradle-output.txt
+          echo "exit_code=$?" >> $GITHUB_OUTPUT
+          set -e
+
+      - name: Post review comment on upstream PR
+        env:
+          UPSTREAM: ${{ github.event.inputs.upstream_repo || 'kingdonb/mecris' }}
+          PR: ${{ github.event.inputs.pr_number }}
+          PY_EXIT: ${{ steps.python_tests.outputs.exit_code }}
+          AND_EXIT: ${{ steps.android_tests.outputs.exit_code }}
+          CLASSIC_PAT: ${{ secrets.MECRIS_BOT_CLASSIC_PAT }}
+        run: |
+          PY_ICON=$( [ "$PY_EXIT"  = "0" ] && echo "✅" || echo "❌" )
+          AND_ICON=$( [ "$AND_EXIT" = "0" ] && echo "✅" || echo "❌" )
+
+          PY_OUT=$(tail -30 /tmp/pytest-output.txt 2>/dev/null | sed 's/`/'"'"'/g')
+          AND_OUT=$(tail -20 /tmp/gradle-output.txt 2>/dev/null | sed 's/`/'"'"'/g')
+
+          BODY=$(printf '## 🤖 mecris-bot PR test report\n\n%s **Python tests** (local postgres, no Neon credentials needed)\n```\n%s\n```\n\n%s **Android unit tests** (JDK 17, no emulator)\n```\n%s\n```\n\n_Tested by merging `%s#%s` into `yebyen/mecris:main`_' \
+            "$PY_ICON" "$PY_OUT" "$AND_ICON" "$AND_OUT" "$UPSTREAM" "$PR")
+
+          BODY_JSON=$(python3 -c "import json,sys; print(json.dumps({'body': sys.argv[1]}))" "$BODY")
+          COMMENT_URL=$(curl -sf \
+            -X POST \
+            -H "Authorization: Bearer $CLASSIC_PAT" \
+            -H "Accept: application/vnd.github+json" \
+            -H "Content-Type: application/json" \
+            -d "$BODY_JSON" \
+            "https://api.github.com/repos/${UPSTREAM}/issues/${PR}/comments" \
+            | python3 -c "import sys,json; print(json.load(sys.stdin)['html_url'])")
+          echo "Comment posted: $COMMENT_URL"

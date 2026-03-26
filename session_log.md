@@ -52,3 +52,31 @@ This document summarizes the collaborative debugging session to establish a func
 *   The `input_schema` argument was removed from all `@mcp.tool()` decorators across all 14 tool functions.
 
 **Outcome:** With these iterative fixes, the Mecris MCP server should now correctly initialize, register its tools, and communicate effectively with the Gemini CLI.
+---
+
+## 2026-03-26 — mecris-bot goes live, skills loop designed
+
+**Planned**: Get the autonomous bot working end-to-end and test it against a real upstream PR.
+
+**Done**:
+
+- Fixed YAML parse error in `pr-test.yml` — multi-line `BODY` string had unindented lines that terminated the YAML block scalar prematurely. Replaced with `printf` format string + `curl`. Workflow went from instant failure to `conclusion: success`.
+- Triggered `pr-test` against `kingdonb/mecris#141` ("Unified Sprint - Autonomous Nagging Foundation"). Python tests ✅, Android unit tests ✅. Comment posted to upstream PR by `yebyen`.
+- PR #141 was approved and merged upstream. All our bot infrastructure (mecris-bot.yml, pr-test.yml, bot-prompt.txt, invoke-bot.sh) is now in `kingdonb/mecris:main`.
+- Explored repo architecture: understood the three-tier shape (Python MCP server, Rust/Spin scraper, Android app), the pending verification items in NEXT_SESSION.md, and the SLSA/autonomy roadmap.
+- Synced `yebyen/mecris` from upstream (18 commits behind, clean merge). New CLI landed: `bin/mecris`, `cli/`.
+- Designed a four-skill autonomous agent loop modeled on Urbit's Gall agent pattern:
+  - `/mecris-orient` — `on-peek` — read-only situation report, the battery
+  - `/mecris-plan` — `on-poke` — writes spec as GitHub issue before acting
+  - `/mecris-archive` — `on-save` — closes spec, rewrites NEXT_SESSION.md, appends log
+  - `/mecris-pr-test` — `on-agent` — dispatches + polls test pipeline
+- Replaced monolith `bot-prompt.txt` with five-line loop that invokes skills.
+- Added OCI publish workflow (`publish-skills.yml`) + `.claude-plugin/marketplace.json` + `AGENTS.md` following the `fluxcd/agent-skills` pattern. Skills publishable to GHCR, installable via `/plugin install mecris-skills@mecris`.
+- Opened PR #143 to contribute all of this back to `kingdonb/mecris`.
+
+**Skipped**: Skills discoverability test in a real Claude Code install (Helix environment doesn't surface project SKILL.md files via the Skill tool). Left as an open question in the PR review comment.
+
+**Next**: 
+- Merge PR #143 after skills discoverability is confirmed in a standard Claude Code install
+- Close yebyen/mecris issue #1 (smoke test, can be closed)
+- Update NEXT_SESSION.md pending verification items (Android failover sync, multiplier lever) — still unverified from 2026-03-23

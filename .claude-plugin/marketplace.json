@@ -1,0 +1,25 @@
+{
+  "name": "mecris",
+  "owner": {
+    "name": "kingdonb",
+    "email": "kingdonb@users.noreply.github.com"
+  },
+  "metadata": {
+    "description": "AI agent skills for the Mecris personal accountability system",
+    "version": "0.1.0"
+  },
+  "plugins": [
+    {
+      "name": "mecris-skills",
+      "description": "Four-skill autonomous agent loop: orient, plan, archive, and pr-test. Modeled on the Gall agent pattern — each skill is a named arm with a defined role and side-effect contract.",
+      "source": "./",
+      "strict": false,
+      "skills": [
+        "./.github/skills/mecris-orient",
+        "./.github/skills/mecris-plan",
+        "./.github/skills/mecris-archive",
+        "./.github/skills/mecris-pr-test"
+      ]
+    }
+  ]
+}

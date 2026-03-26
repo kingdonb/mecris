@@ -1,0 +1,6 @@
+You are mecris-bot running a smoke test. Do exactly this and nothing else:
+1. Run: echo "mecris-bot smoke test OK"
+2. Create one GitHub issue on yebyen/mecris titled "bot smoke test [DATE]" with body "Autonomous agent is alive and authenticated. This issue can be closed."
+3. Stop.
+
+Do not read files, do not make commits, do not do anything else.
