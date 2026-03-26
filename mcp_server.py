@@ -116,7 +116,7 @@ async def get_cached_beeminder_goals() -> List[Dict[str, Any]]:
 
 async def get_cached_daily_activity(goal_slug: str = "bike", user_id: str = None) -> Dict[str, Any]:
     """Get daily activity status with 15-minute cache (refreshed for Cloud sync)."""
-    target_user_id = user_id or os.getenv("DEFAULT_USER_ID")
+    target_user_id = usage_tracker.resolve_user_id(user_id)
     import zoneinfo
     eastern = zoneinfo.ZoneInfo("US/Eastern")
     local_now = datetime.now(eastern)
@@ -181,7 +181,7 @@ async def get_cached_daily_activity(goal_slug: str = "bike", user_id: str = None
 @mcp.tool(description="Get unified strategic context with goals, budget, and recommendations.")
 async def get_narrator_context(user_id: str = None) -> Dict[str, Any]:
     """Get unified strategic context with goals, budget, and recommendations."""
-    target_user_id = user_id or os.getenv("DEFAULT_USER_ID")
+    target_user_id = usage_tracker.resolve_user_id(user_id)
     try:
         goals = usage_tracker.get_goals(target_user_id)
         active_goals = [g for g in goals if g.get("status") == "active"]
@@ -204,14 +204,20 @@ async def get_narrator_context(user_id: str = None) -> Dict[str, Any]:
             if isinstance(latest_cloud_walk.get("start_time"), datetime):
                 latest_cloud_walk["start_time"] = latest_cloud_walk["start_time"].isoformat()
         
-        # Fetch user preferences for vacation_mode
+        # Fetch user preferences for vacation_mode and time windows
         target_phone = os.getenv('TWILIO_TO_NUMBER')
         vacation_mode = False
+        time_window_start = 13
+        time_window_end = 17
+        
         if target_phone:
             from sms_consent_manager import consent_manager
             user_prefs = await asyncio.to_thread(consent_manager.get_user_preferences, target_phone)
             if user_prefs:
-                vacation_mode = user_prefs.get("preferences", {}).get("vacation_mode", False)
+                prefs = user_prefs.get("preferences", {})
+                vacation_mode = prefs.get("vacation_mode", False)
+                time_window_start = prefs.get("time_window_start", 13)
+                time_window_end = prefs.get("time_window_end", 17)
 
         # Weather-aware logic
         weather = await asyncio.to_thread(weather_service.get_weather)
@@ -262,7 +268,10 @@ async def get_narrator_context(user_id: str = None) -> Dict[str, Any]:
                 "is_leader": scheduler.is_leader,
                 "process_id": scheduler.process_id
             },
-            "vacation_mode": vacation_mode, "last_updated": datetime.now().isoformat()
+            "vacation_mode": vacation_mode, 
+            "time_window_start": time_window_start,
+            "time_window_end": time_window_end,
+            "last_updated": datetime.now().isoformat()
         }
     except Exception as e:
         logger.error(f"Failed to build narrator context: {e}")
@@ -564,10 +573,32 @@ async def get_language_velocity_stats(user_id: str = None) -> Dict[str, Any]:
 async def check_reminder_needed(user_id: str = None) -> Dict[str, Any]:
     return await reminder_service.check_reminder_needed(user_id)
 
+async def get_last_sent_time(msg_type: str, user_id: str = None) -> Optional[datetime]:
+    target_user_id = usage_tracker.resolve_user_id(user_id)
+    neon_url = os.getenv("NEON_DB_URL")
+    if not neon_url:
+        return None
+    
+    def _fetch():
+        import psycopg2
+        with psycopg2.connect(neon_url) as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT sent_at FROM message_log WHERE type = %s AND user_id = %s ORDER BY sent_at DESC LIMIT 1", 
+                    (msg_type, target_user_id)
+                )
+                row = cur.fetchone()
+                return row[0] if row else None
+    try:
+        return await asyncio.to_thread(_fetch)
+    except Exception as e:
+        logger.error(f"Failed to fetch last sent time: {e}")
+        return None
+
 async def send_reminder_message(message_data: Dict[str, Any], user_id: str = None) -> Dict[str, Any]:
     msg_type = message_data.get("type")
     use_template = message_data.get("template_sid") is not None
-    target_user_id = user_id or os.getenv("DEFAULT_USER_ID")
+    target_user_id = usage_tracker.resolve_user_id(user_id)
     
     neon_url = os.getenv("NEON_DB_URL")
     if not neon_url:
@@ -576,21 +607,8 @@ async def send_reminder_message(message_data: Dict[str, Any], user_id: str = Non
     today = date.today()
     now = datetime.now()
     
-    # Check if already sent today
-    def _check_log():
-        import psycopg2
-        with psycopg2.connect(neon_url) as conn:
-            with conn.cursor() as cur:
-                cur.execute("SELECT 1 FROM message_log WHERE date = %s AND type = %s AND user_id = %s", (today, msg_type, target_user_id))
-                return cur.fetchone() is not None
-
-    try:
-        already_sent = await asyncio.to_thread(_check_log)
-        if already_sent:
-            return {"sent": False, "reason": f"Already sent {msg_type} today (Neon coordinated)"}
-    except Exception as e:
-        logger.error(f"Neon message_log check failed: {e}")
-        return {"sent": False, "reason": f"Database check failed: {e}"}
+    # Cooldown logic is now handled by the ReminderService heuristics.
+    # We trust the engine.
 
     if use_template:
         from twilio_sender import send_whatsapp_template
@@ -623,7 +641,7 @@ async def send_reminder_message(message_data: Dict[str, Any], user_id: str = Non
 
 
 
-reminder_service = ReminderService(get_narrator_context, get_coaching_insight)
+reminder_service = ReminderService(get_narrator_context, get_coaching_insight, get_last_sent_time)
 
 if __name__ == "__main__":
     import sys

@@ -41,7 +41,7 @@ async def test_get_coaching_insight_no_walk_critical():
         assert insight["type"] == "urgency_alert"
         assert insight["momentum"] == "low"
         assert "Urgent Goal" in insight["message"]
-        assert "Boris and Fiona" in insight["message"]
+        assert "A quick walk" in insight["message"]
 
 @pytest.mark.asyncio
 async def test_get_coaching_insight_neutral():

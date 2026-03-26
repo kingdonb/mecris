@@ -69,9 +69,9 @@ curl http://127.0.0.1:8000/health
 - **No mock data** - verified via comprehensive test suite
 
 #### ✅ Usage Tracking - **PRODUCTION READY**
-- **SQLite database** for session storage
+- **Neon (Postgres)** for cloud-native persistence and multi-tenant isolation.
 - **Accurate cost calculation** using official Anthropic pricing
-- **Budget management** with manual updates
+- **Real-time budget tracking** via Anthropic Admin API and Neon.
 - **Alert system** via Twilio for critical budget states
 - **Historical analysis** and burn rate projection
 
@@ -93,11 +93,11 @@ curl http://127.0.0.1:8000/health
 ## Current State
 
 ### ✅ Production Ready
-- **MCP Server**: Secure, robust, health-monitored
+- **MCP Server**: Secure, robust, stdio-integrated
 - **Beeminder Integration**: Live API, comprehensive testing
-- **Budget Tracking**: Local SQLite with manual updates
+- **Budget Tracking**: Real-time via Anthropic Admin API and Neon (Postgres)
 - **Alert System**: Twilio SMS for critical notifications
-- **Server Management**: Professional startup/shutdown scripts
+- **Coordination**: Distributed leader election across instances
 
 ### 🚧 In Progress  
 - **Obsidian Integration**: Vault parsing and goal extraction
@@ -136,48 +136,29 @@ mecris/
 └── [data clients]           # beeminder_client.py, usage_tracker.py, etc.
 ```
 
-## Server Management
+## Operation Mode
 
-### Start Server
+Mecris currently operates in **Stdio Mode**, integrated directly with CLI agents (Gemini CLI, Claude Code).
+
+### Running in Stdio Mode
+The server is invoked automatically by your agent using:
 ```bash
-./scripts/launch_server.sh
-# Server starts on http://127.0.0.1:8000
-# Includes health checks and background monitoring
+python mcp_stdio_server.py
 ```
 
-### Stop Server
-```bash
-./scripts/shutdown_server.sh        # Graceful shutdown
-./scripts/shutdown_server.sh --force # Force kill if needed
-./scripts/shutdown_server.sh --status # Check server status
-```
-
-### Health Check
-```bash
-curl http://127.0.0.1:8000/health
-# Returns service status and dependency health
-```
+### Future: Secure SSE Mode
+Standalone FastAPI/SSE mode is currently disabled and will be reintroduced once secured with OIDC authentication.
 
 ## Testing
 
 ### Run All Tests
 ```bash
-source venv/bin/activate
-python tests/test_mecris.py        # Full system test
-python tests/test_beeminder_live.py # Beeminder integration test
+source .venv/bin/activate
+PYTHONPATH=. pytest
 ```
 
-### Manual API Testing
-```bash
-# Get narrator context
-curl http://127.0.0.1:8000/narrator/context
-
-# Check budget status  
-curl http://127.0.0.1:8000/usage
-
-# Beeminder emergency check
-curl -X POST http://127.0.0.1:8000/beeminder/alert
-```
+### Manual Tool Testing
+You can test the MCP tools directly via your agent's command interface (e.g., `/get_narrator_context`).
 
 ## Configuration
 

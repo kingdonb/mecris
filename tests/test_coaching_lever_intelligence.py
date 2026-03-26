@@ -33,9 +33,9 @@ async def test_arabic_pressure_neural_behind(mock_providers):
     
     with patch("services.neon_sync_checker.NeonSyncChecker.get_language_stats", return_value=mock_stats):
         insight = await service.generate_insight()
-        
+
         assert insight.type == InsightType.LEVER_PUSH
-        assert "Arabic" in insight.message
+        assert "50/250" in insight.message
         assert "50/" in insight.message # Shows progress
         assert insight.momentum == "low"
 

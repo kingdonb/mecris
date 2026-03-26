@@ -7,7 +7,7 @@ from services.reminder_service import ReminderService
 
 # A helper to create async mock providers
 def make_async_mock(return_value):
-    async def mock_coro():
+    async def mock_coro(*args, **kwargs):
         return return_value
     return mock_coro
 

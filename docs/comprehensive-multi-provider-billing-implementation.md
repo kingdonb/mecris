@@ -107,7 +107,7 @@ expires_at = datetime.now() + timedelta(minutes=15)
 │   └────────────────┬────────────────┘  │
 │                    │                   │
 │                    │  ┌────────────────▼──┐
-│                    │  │ SQLite Database   │
+│                    │  │ Neon (Postgres)   │
 │                    │  │ • provider_usage  │
 │                    │  │ • reconciliation  │
 │                    │  │ • budget_tracking │
@@ -286,7 +286,7 @@ CREATE TABLE reconciliation_jobs (
 - **Backup systems**: Multiple cost estimation strategies
 
 ### Scalability
-- **SQLite database**: Handles 10K+ usage records efficiently  
+- **Neon (Postgres) database**: Handles usage records efficiently with multi-tenant isolation.  
 - **Caching layer**: Minimizes API calls and scraping frequency
 - **Batch processing**: Daily reconciliation jobs handle large datasets
 

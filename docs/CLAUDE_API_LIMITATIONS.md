@@ -16,7 +16,7 @@
 ### What Mecris Implements Instead
 
 #### 1. Local Usage Tracking (`usage_tracker.py`)
-- **SQLite database** stores usage sessions with token counts and cost estimates
+- **Neon (Postgres) database** stores usage sessions with token counts and cost estimates
 - **Accurate pricing** based on current Claude API rates
 - **Budget management** with manual updates and alerts
 - **Daily burn rate** calculation and projection

@@ -30,7 +30,7 @@ I analyzed the Mecris narrator context system after the migration to **Neon Post
 The "no active goals found - consider setting objectives" message was triggered because the Obsidian integration wasn't working, but the system fell back gracefully.
 
 ### Solution: Hybrid Architecture
-- **Local database goals**: Mock goals stored in SQLite for immediate functionality
+- **Neon goals**: Goals are stored in the Neon PostgreSQL `goals` table, scoped by `user_id`.
 - **Obsidian fallback**: System gracefully handles Obsidian being unavailable
 - **Script-based completion**: `complete_goal.sh` works like `update_budget.sh`
 

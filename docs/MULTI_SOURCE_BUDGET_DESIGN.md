@@ -1,12 +1,12 @@
 # Multi‑Source Budget Aggregation Design
 
-## Persistent Budget Model (SQLite)
+## Persistent Budget Model (Neon)
 
 | Table | Columns | Purpose |
 |-------|---------|---------|
-| `budget_cycle` | `id INTEGER PK`, `start_date DATE`, `end_date DATE`, `target_usd REAL`, `notes TEXT` | Defines a budgeting period (e.g., month). |
-| `budget_source` | `id INTEGER PK`, `cycle_id INTEGER → budget_cycle.id`, `name TEXT`, `type TEXT` (`realtime|manual`), `currency TEXT`, `amount_usd REAL`, `last_updated TIMESTAMP`, `raw_payload TEXT` | Stores a single cost snapshot from a source. |
-| `budget_discrepancy` | `id INTEGER PK`, `cycle_id INTEGER → budget_cycle.id`, `source_a_id INTEGER → budget_source.id`, `source_b_id INTEGER → budget_source.id`, `diff_usd REAL`, `percent_diff REAL`, `grade TEXT` (`EXCELLENT|GOOD|FAIR|POOR`), `analysis TEXT`, `generated_at TIMESTAMP` | Records pair‑wise comparison and grade. |
+| `budget_cycle` | `id SERIAL PRIMARY KEY`, `start_date DATE`, `end_date DATE`, `target_usd DOUBLE PRECISION`, `notes TEXT` | Defines a budgeting period (e.g., month). |
+| `budget_source` | `id SERIAL PRIMARY KEY`, `cycle_id INTEGER REFERENCES budget_cycle(id)`, `name TEXT`, `type TEXT` (`realtime|manual`), `currency TEXT`, `amount_usd DOUBLE PRECISION`, `last_updated TIMESTAMPTZ`, `raw_payload TEXT` | Stores a single cost snapshot from a source. |
+| `budget_discrepancy` | `id SERIAL PRIMARY KEY`, `cycle_id INTEGER REFERENCES budget_cycle(id)`, `source_a_id INTEGER REFERENCES budget_source(id)`, `source_b_id INTEGER REFERENCES budget_source(id)`, `diff_usd DOUBLE PRECISION`, `percent_diff DOUBLE PRECISION`, `grade TEXT` (`EXCELLENT|GOOD|FAIR|POOR`), `analysis TEXT`, `generated_at TIMESTAMPTZ` | Records pair‑wise comparison and grade. |
 
 *Indices*: `budget_source(cycle_id, name)`, `budget_discrepancy(cycle_id)`.
 
@@ -53,7 +53,7 @@ Manual entries are submitted via `POST /budget/source`; the UI/CLI can prompt th
 ## CLI / Monitor Integration
 
 - **`mecris budget status [--cycle <id>]`** – Shows start/end dates, target, summed realtime & manual totals, overall variance, and grade.
-- **`mecris budget add-source --cycle <id> --name <src> --type <realtime|manual> --amount <usd> [--raw <payload>]`** – Updates the SQLite `budget_source` table via the MCP endpoint.
+- **`mecris budget add-source --cycle <id> --name <src> --type <realtime|manual> --amount <usd> [--raw <payload>]`** – Updates the Neon `budget_source` table via the MCP endpoint.
 - **`mecris budget alert --threshold <percent>`** – Polls the latest discrepancy; if `percent_diff` exceeds the threshold, emits a console warning and optionally triggers a Twilio alert via `/beeminder/alert`.
 
 ## Workflow Example
@@ -82,7 +82,7 @@ Manual entries are submitted via `POST /budget/source`; the UI/CLI can prompt th
 
 ## Current Todo List (Status)
 
-- **Extend SQLite schema for persistent budget cycles and source tracking** – *pending*
+- **Extend Neon schema for persistent budget cycles and source tracking** – *pending*
 - **Design MCP endpoints: update source data, retrieve aggregated budget, get discrepancy report** – *pending*
 - **Define data ingestion format for real‑time usage sources (Claude, Groq) and manual entry source** – *pending*
 - **Specify discrepancy detection algorithm and grade calculation** – *pending*

@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+
+# Find the absolute path to the project root
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+# Activate virtual environment if it exists
+if [ -f "$PROJECT_ROOT/.venv/bin/activate" ]; then
+    source "$PROJECT_ROOT/.venv/bin/activate"
+fi
+
+# Set PYTHONPATH so the CLI can import from the root
+export PYTHONPATH="$PROJECT_ROOT:$PYTHONPATH"
+
+# Execute the CLI module
+exec python -m cli.main "$@"
