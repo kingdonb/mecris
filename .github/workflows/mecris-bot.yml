@@ -36,6 +36,7 @@ jobs:
       - name: Run mecris-bot
         env:
           ANTHROPIC_API_KEY: ${{ secrets.MECRIS_BOT_ANTHROPIC_KEY }}
+          ANTHROPIC_BASE_URL: ${{ secrets.MECRIS_BOT_ANTHROPIC_BASE_URL }}
           GITHUB_TOKEN: ${{ secrets.MECRIS_BOT_PAT }}
           PROMPT: ${{ github.event.inputs.prompt || '' }}
         run: |
