@@ -1,0 +1,100 @@
+name: pr-test
+
+on:
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: 'PR number on kingdonb/mecris to test'
+        required: true
+      upstream_repo:
+        description: 'Upstream repo (default: kingdonb/mecris)'
+        required: false
+        default: 'kingdonb/mecris'
+
+jobs:
+  test-pr:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout yebyen/mecris main
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.MECRIS_BOT_PAT }}
+          fetch-depth: 0
+
+      - name: Set bot git identity
+        run: |
+          git config user.name "mecris-bot"
+          git config user.email "mecris-bot@noreply"
+
+      - name: Fetch and merge upstream PR branch
+        env:
+          UPSTREAM: ${{ github.event.inputs.upstream_repo || 'kingdonb/mecris' }}
+          PR: ${{ github.event.inputs.pr_number }}
+        run: |
+          git remote add upstream https://github.com/${UPSTREAM}.git
+          git fetch upstream
+          PR_BRANCH=$(curl -sf \
+            -H "Authorization: Bearer ${{ secrets.MECRIS_BOT_CLASSIC_PAT }}" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${UPSTREAM}/pulls/${PR}" \
+            | python3 -c "import sys,json; print(json.load(sys.stdin)['head']['ref'])")
+          echo "PR branch: $PR_BRANCH"
+          git checkout -b pr-test-${PR}
+          git merge upstream/${PR_BRANCH} --no-edit
+
+      - name: Set up Python with uv
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+
+      - name: Install dependencies
+        run: |
+          uv venv
+          uv pip install -r requirements.txt pytest-cov pytest-asyncio
+
+      - name: Run tests
+        id: tests
+        env:
+          NEON_DB_URL: ${{ secrets.NEON_DB_URL }}
+          PYTHONPATH: .
+        run: |
+          set +e
+          .venv/bin/pytest tests/ -v --tb=short 2>&1 | tee /tmp/test-output.txt
+          echo "exit_code=$?" >> $GITHUB_OUTPUT
+          set -e
+
+      - name: Comment on upstream PR
+        env:
+          UPSTREAM: ${{ github.event.inputs.upstream_repo || 'kingdonb/mecris' }}
+          PR: ${{ github.event.inputs.pr_number }}
+          EXIT_CODE: ${{ steps.tests.outputs.exit_code }}
+          CLASSIC_PAT: ${{ secrets.MECRIS_BOT_CLASSIC_PAT }}
+        run: |
+          if [ "$EXIT_CODE" = "0" ]; then
+            ICON="✅"
+            VERDICT="All tests passed on yebyen/mecris."
+          else
+            ICON="❌"
+            VERDICT="Some tests failed on yebyen/mecris."
+          fi
+          OUTPUT=$(tail -50 /tmp/test-output.txt | sed 's/`/'"'"'/g')
+          BODY="${ICON} **mecris-bot PR test report**
+
+${VERDICT}
+
+\`\`\`
+${OUTPUT}
+\`\`\`
+
+_Tested by merging \`${UPSTREAM}#${PR}\` into \`yebyen/mecris:main\` and running \`pytest tests/\`_"
+
+          curl -sf -X POST \
+            -H "Authorization: Bearer ${CLASSIC_PAT}" \
+            -H "Accept: application/vnd.github+json" \
+            -H "Content-Type: application/json" \
+            -d "$(python3 -c "import json,sys; print(json.dumps({'body': sys.argv[1]}))" "$BODY")" \
+            "https://api.github.com/repos/${UPSTREAM}/pulls/${PR}/reviews" \
+            | python3 -c "import sys,json; r=json.load(sys.stdin); print('Commented:', r.get('id','err'), r.get('state',''))"
