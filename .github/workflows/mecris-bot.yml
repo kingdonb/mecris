@@ -10,9 +10,9 @@ on:
         description: 'Override the default autonomous prompt'
         required: false
       model:
-        description: 'Claude model (default: claude-haiku-4-5 to save cost)'
+        description: 'Claude model (default: claude-haiku-4-5-20251001 to save cost)'
         required: false
-        default: 'claude-haiku-4-5'
+        default: 'claude-haiku-4-5-20251001'
 
 jobs:
   run-bot:
@@ -43,7 +43,7 @@ jobs:
           ANTHROPIC_BASE_URL: ${{ secrets.MECRIS_BOT_ANTHROPIC_BASE_URL }}
           GITHUB_TOKEN: ${{ secrets.MECRIS_BOT_PAT }}
           PROMPT: ${{ github.event.inputs.prompt || '' }}
-          MODEL: ${{ github.event.inputs.model || 'claude-haiku-4-5' }}
+          MODEL: ${{ github.event.inputs.model || 'claude-haiku-4-5-20251001' }}
         run: |
           DEFAULT_PROMPT="$(cat scripts/bot-prompt.txt)"
           claude --dangerously-skip-permissions \
