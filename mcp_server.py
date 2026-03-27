@@ -552,11 +552,23 @@ async def get_language_velocity_stats(user_id: str = None) -> Dict[str, Any]:
             current_debt = stats.get("current", 0)
             tomorrow_liability = stats.get("tomorrow", 0)
             multiplier = stats.get("multiplier", 1.0)
-            # daily_completions is points earned today (approximation for card-count goals)
+            
+            # Unit Handling:
+            # - Greek (ellinika) is tracked in points (goal value ~26k).
+            # - Arabic (reviewstack) is tracked in cards (goal value ~2k).
+            # - daily_completions from Neon is ALWAYS in points (numPointsToday).
+            
+            unit = "points"
             daily_done = stats.get("daily_completions", 0)
+            
+            if lang.lower() == "arabic":
+                unit = "cards"
+                # Heuristic: 1 card is approximately 12 points (average of 8 and 16).
+                # This normalizes the points earned into an estimated card count to match current_debt.
+                daily_done = int(daily_done / 12)
 
             pump = ReviewPump(multiplier=multiplier)
-            pump_status = pump.get_status(current_debt, tomorrow_liability, daily_done)
+            pump_status = pump.get_status(current_debt, tomorrow_liability, daily_done, unit=unit)
 
             results[lang] = pump_status
 
