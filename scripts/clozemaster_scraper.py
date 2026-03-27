@@ -127,8 +127,9 @@ class ClozemasterScraper:
                     data_out["points"] = pair.get("score", 0)
                     # 'numPointsToday' is a direct activity metric
                     data_out["points_today"] = pair.get("numPointsToday", 0)
-                    
+
                     logger.info(f"Found {lang_slug}: count={data_out['today']}, score={data_out['points']}, today={data_out['points_today']}")
+                    logger.debug(f"All available pairing keys for {lang_slug}: {sorted(pair.keys())}")
                     
                     # LP ID for future API calls
                     lp_id = pair.get("id")
@@ -162,6 +163,7 @@ class ClozemasterScraper:
             if resp.status_code == 200:
                 data = resp.json()
                 logger.info(f"Successfully retrieved more-stats for LP {lp_id}")
+                logger.debug(f"All top-level keys in more-stats response for LP {lp_id}: {sorted(data.keys())}")
                 
                 # Use the identified key
                 forecast_data = data.get("reviewForecast", [])
