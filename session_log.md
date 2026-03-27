@@ -155,3 +155,10 @@ This document summarizes the collaborative debugging session to establish a func
 **Done**: Opened kingdonb/mecris#149 — `yebyen:main` (83cc605) → `kingdonb:main` (defbd74). PR contains all 7 commits, no merge conflicts. Plan issue closed with evidence.
 **Skipped**: None.
 **Next**: Confirm kingdonb/mecris#149 is merged; if still open next session, follow up with kingdonb.
+
+## 2026-03-27 — Add field discovery logging to Clozemaster scraper
+
+**Planned**: Add `logger.debug` calls to log all available Clozemaster API pairing keys and more-stats response keys (yebyen/mecris#12).
+**Done**: Added two `logger.debug` lines — one in `get_review_forecast` logging `sorted(pair.keys())`, one in `_enrich_with_api_forecast` logging `sorted(data.keys())`. Confirmed kingdonb/mecris#149 was merged (repos in sync). Tests pass (`tests/test_clozemaster_idempotency.py` 2/2).
+**Skipped**: Full `numReviewsToday` implementation — cannot verify field existence without live Clozemaster credentials.
+**Next**: Run scraper with DEBUG logging enabled; inspect logs for `numReviewsToday` or similar field in pairing keys. If found, add `daily_cards` column to Neon DB and thread through language_sync_service and mcp_server.py.
