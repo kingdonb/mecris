@@ -118,3 +118,15 @@ This document summarizes the collaborative debugging session to establish a func
 - Drafted Issue #6: Audit and fix Review Pump's handling of Points vs. Cards units.
 **Skipped**: None.
 **Next**: Execute Issue #6 (Pump logic audit) to ensure unit consistency for card-based vs. point-based goals.
+
+## 2026-03-27 — Audit and fix Review Pump backlog-snapshot bug
+
+**Planned**: Audit MCP Review Pump logic for Points vs. Cards unit confusion (yebyen/mecris#10).
+**Done**:
+- Identified root cause: `get_language_velocity_stats` was fetching Beeminder datapoints for `reviewstack`/`ellinika`, which track current backlog size — not completions. Summing these as daily_done caused Pump to always report "turbulent" regardless of actual activity.
+- Extended `get_language_stats` (NeonSyncChecker) to return `daily_completions` column.
+- Fixed `get_language_velocity_stats` to use `daily_completions` from Neon (numPointsToday) instead of Beeminder snapshots.
+- All 5 review pump tests pass. Committed as `6304e40`.
+- Closed plan issue yebyen/mecris#10 with full audit findings.
+**Skipped**: Structural unit mismatch remains (daily_completions in points, debt in cards) — no "cards completed today" metric exists in current pipeline. Carried forward to NEXT_SESSION.md.
+**Next**: Decide how to surface or resolve residual unit mismatch for reviewstack. Open PR yebyen → kingdonb carrying the pump fix.

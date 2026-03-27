@@ -1,22 +1,24 @@
-# Next Session: Resolve Review Pump Calculation Accuracy (Issue #6)
+# Next Session: Resolve Review Pump unit mismatch (points vs. cards) for reviewstack
 
 ## Current Status (2026-03-27)
-- **Android Sync Verified**: Background and manual failover sync confirmed working via Beeminder (Issue #3) ✅
-- **Multiplier Persistence Verified**: App-set multipliers (2.0 Arabic, 5.0 Greek) persisted correctly in Neon (Issue #3) ✅
-- **Familiar ID Verified**: `resolve_user_id` added to all core services; `yebyen` maps correctly to UUID in MCP (Issue #3) ✅
-- **Bot Loop**: Four-skill loop (orient/plan/archive/pr-test) is stable and running 8x daily upstream.
+- **Pump Backlog Bug Fixed**: `get_language_velocity_stats` no longer sums Beeminder backlog snapshots as daily completions. Now uses `daily_completions` from Neon (numPointsToday). ✅
+- **Known Residual Mismatch**: For `reviewstack`, `current_debt` and `tomorrow_liability` are in **cards**, but `daily_completions` is in **points** (numPointsToday). The Pump state classification is now meaningful but units are inconsistent.
+- **Agent Loop Issue**: kingdonb/mecris#145 reports "401 error getting API key: not found" — the bot loop in both yebyen/mecris and kingdonb/mecris is broken. This is a key-management/infrastructure issue for humans, not the bot.
+- **Bot Loop**: Four-skill loop (orient/plan/work/archive) is operating correctly in this session.
 
 ## Verified This Session
-- [x] Android Failover Sync trigger (correct Beeminder comment format)
-- [x] Multiplier Lever persistence (Neon DB query confirm)
-- [x] MCP `familiar_id` resolution for `yebyen` across `NeonSyncChecker` and `GroqOdometerTracker`
-- [x] Multipliers correctly reflected in `get_language_velocity_stats`: 2.0x Arabic, 5.0x Greek
+- [x] Root cause of Pump "always turbulent" bug: Beeminder datapoints for reviewstack/ellinika track backlog size, not completions — summing them was meaningless
+- [x] Fix committed (`6304e40`): `daily_completions` from Neon used for flow rate instead of Beeminder
+- [x] `get_language_stats` extended to return `daily_completions` column
+- [x] All 5 review pump tests pass after fix
 
 ## Pending Verification (Next Session)
-- **Review Pump Calculation (Issue #6)**: Audit and fix the calculation logic to ensure it correctly handles the distinction between **Points** and **Cards**. The `reviewstack` goal must remain a card count (driving the physical backlog to zero), while parallel goals track points. Ensure the Pump's "Target Flow Rate" is expressed in the correct unit for the specific goal it's monitoring.
-- **Goal Alignment**: Ensure that for card-based goals like `reviewstack`, the Pump isn't inadvertently using point-based completion rates to signal a "Laminar" state.
+- **Residual Unit Mismatch**: For `reviewstack` (card-count goal), `daily_completions` is in points, not cards. Options: (a) add a `daily_cards` column tracked separately, (b) surface the unit difference in the MCP response so callers know, (c) accept the approximation. Needs a decision.
+- **Agent Loop (kingdonb/mecris#145)**: 401 API key error in both repo loops. Requires human intervention to rotate/re-configure API keys. Not actionable by bot.
+- **Upstream PR**: Consider opening a PR from yebyen/mecris → kingdonb/mecris carrying the pump fix (6304e40).
 
 ## Infrastructure Notes
-- Python MCP server now has internal `resolve_user_id` logic to handle familiar aliases.
 - Cloud Cron is still **DISABLED** in `spin.toml`.
-- Skills (orient/plan/archive/pr-test) now synchronized between local `.claude/skills` and upstream `.github/skills`.
+- `daily_completions` in Neon is derived from `numPointsToday` (Clozemaster API), which may reset at Clozemaster's midnight (not necessarily US Eastern midnight).
+- yebyen/mecris and kingdonb/mecris share no git common ancestor — sync is via PRs only, not git merge.
+- SESSION_LOG created this session at `session_log.md`.
