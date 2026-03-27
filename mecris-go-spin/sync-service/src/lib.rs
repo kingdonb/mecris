@@ -410,7 +410,12 @@ async fn run_clozemaster_scraper(db_url: &str, user_id: &str) -> anyhow::Result<
             }
 
             // 3. completions from points_today
-            let completions = points_today;
+            let mut completions = points_today;
+            if lang_name == "ARABIC" {
+                // Heuristic: 1 card is approximately 12 points.
+                // This normalizes points into an estimated card count to match current_reviews (debt).
+                completions = (points_today as f64 / 12.0) as i32;
+            }
             
             // 4. Update Neon DB
             let query = "INSERT INTO language_stats (user_id, language_name, current_reviews, tomorrow_reviews, next_7_days_reviews, beeminder_slug, daily_completions, last_points, total_points, last_updated) 

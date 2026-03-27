@@ -10,19 +10,21 @@ object ReviewPumpCalculator {
             5 -> "High Pressure"
             6 -> "Very High"
             7 -> "The Blitz"
+            10 -> "System Overdrive"
             else -> "Custom"
         }
     }
 
-    fun getClearanceDays(multiplier: Double): Int? {
+    fun getClearanceDays(multiplier: Double): Double? {
         return when (multiplier.toInt()) {
             1 -> null
-            2 -> 14
-            3 -> 10
-            4 -> 7
-            5 -> 5
-            6 -> 3
-            7 -> 2
+            2 -> 14.0
+            3 -> 10.0
+            4 -> 7.0
+            5 -> 5.0
+            6 -> 3.0
+            7 -> 2.0
+            10 -> 1.0
             else -> null
         }
     }

@@ -961,12 +961,12 @@ fun ReviewPumpWidget(
             ) {
                 Text("SHIFT LEVER", style = MaterialTheme.typography.labelSmall, color = Color.Gray)
                 Row {
-                    (1..7).forEach { i ->
+                    listOf(1, 2, 3, 4, 5, 6, 7, 10).forEach { i ->
                         val isSelected = currentMultiplier.toInt() == i
                         Box(
                             modifier = Modifier
                                 .padding(horizontal = 4.dp)
-                                .size(32.dp) // Larger tap target
+                                .size(30.dp) // Adjusted slightly to fit 8 buttons
                                 .background(
                                     if (isSelected) accentColor else Color(0xFF333333),
                                     RoundedCornerShape(6.dp)

@@ -10,8 +10,9 @@ class ReviewPump:
         3.0: {"name": "Brisk", "days": 10},
         4.0: {"name": "Aggressive", "days": 7}, # The Akrasia Horizon
         5.0: {"name": "High Pressure", "days": 5},
-        6.0: {"name": "Very High Pressure", "days": 3},
-        7.0: {"name": "The Blitz", "days": 2}
+        6.0: {"name": "Very High", "days": 3},
+        7.0: {"name": "The Blitz", "days": 2},
+        10.0: {"name": "System Overdrive", "days": 1}
     }
 
     def __init__(self, multiplier: float = 1.0):
