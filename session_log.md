@@ -199,3 +199,13 @@ Also, don't worry about `numReviewsToday` too much—my 12pts/card heuristic in 
 **Skipped**: Nothing — plan fully executed.
 
 **Next**: Check if kingdonb/mecris#150 was merged. If merged, both repos are in sync. Field discovery still requires live Clozemaster credentials (human action required).
+
+## 2026-03-27 — Fix 11 pre-existing test failures across 5 test files
+
+**Planned**: Survey codebase for available work while kingdonb/mecris#150 awaits merge; produce health report; attempt at least one improvement (yebyen/mecris#15).
+
+**Done**: Ran full test suite; found 11 failures across 5 test files — all caused by stale mocks and missing env patches, not production code bugs. Fixed all 11: added `NEON_DB_URL`/`DEFAULT_USER_ID` to fixtures, patched `resolve_user_id` to avoid context-manager mock interference, updated 5-element tuple mocks to 6 (after `daily_completions` column addition), and fixed `test_reminder_integration.py` to evict the cached failed `mcp_server` import. 78/78 non-integration tests now pass. Committed as `ccc472b`.
+
+**Skipped**: Health report issue (superseded by the actual fix work). Field discovery (blocked, no credentials). PR merge (awaiting kingdonb action).
+
+**Next**: Check if kingdonb/mecris#150 was merged. Fix `test_coaching.py` collection failure (same pattern as reminder integration — needs `sys.modules` eviction + psycopg2 mock).
