@@ -67,6 +67,9 @@ jobs:
             --max-turns 40 \
             -p "${PROMPT:-$DEFAULT_PROMPT}"
 
+      - name: Show commits made this run
+        run: git log --oneline -5
+
       - name: Push any commits the bot made
         env:
           GIT_AUTHOR_NAME: mecris-bot
