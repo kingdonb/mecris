@@ -34,6 +34,7 @@ jobs:
         run: |
           git config user.name "mecris-bot"
           git config user.email "mecris-bot@noreply"
+          git config --global submodule.recurse false
 
       - name: Install Node + Claude CLI
         uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f  # v6.3.0
