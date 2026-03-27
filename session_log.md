@@ -189,3 +189,13 @@ Also, don't worry about `numReviewsToday` too much—my 12pts/card heuristic in 
 **Skipped**: Full `numReviewsToday` implementation — blocked by missing live credentials; field existence still unconfirmed.
 
 **Next**: Field discovery requires live Clozemaster credentials (can't be done by mecris-bot in CI). Either run manually with `LOG_LEVEL=DEBUG`, or build a test fixture capturing a real API response. Sync PR yebyen→kingdonb needed for commit `9c9e8fc`.
+
+## 2026-03-27 — Open sync PR from yebyen/mecris to kingdonb/mecris
+
+**Planned**: Open a pull request from yebyen/mecris main to kingdonb/mecris main carrying 2 ahead commits (yebyen/mecris#14).
+
+**Done**: Opened kingdonb/mecris#150 with commits `9c9e8fc` (docs: Arabic `daily_completions` unit duality) and `3f150a4` (archive: field discovery investigation). Both commits visible in PR diff. Validation criteria met.
+
+**Skipped**: Nothing — plan fully executed.
+
+**Next**: Check if kingdonb/mecris#150 was merged. If merged, both repos are in sync. Field discovery still requires live Clozemaster credentials (human action required).
