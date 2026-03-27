@@ -35,7 +35,7 @@ class ReviewPump:
         backlog_portion = current_debt / days
         return int(tomorrow_liability + backlog_portion)
 
-    def get_status(self, current_debt: int, tomorrow_liability: int, daily_completions: int) -> Dict[str, Any]:
+    def get_status(self, current_debt: int, tomorrow_liability: int, daily_completions: int, unit: str = "points") -> Dict[str, Any]:
         """
         Returns a status dictionary for the pump including target and flow state.
         """
@@ -54,5 +54,6 @@ class ReviewPump:
             "target_flow_rate": target,
             "current_flow_rate": daily_completions,
             "status": status,
-            "debt_remaining": current_debt
+            "debt_remaining": current_debt,
+            "unit": unit
         }

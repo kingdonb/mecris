@@ -1,22 +1,23 @@
-# Next Session: Resolve Review Pump Calculation Accuracy (Issue #6)
+# Next Session: Review and merge kingdonb/mecris#149 (upstream sync)
 
 ## Current Status (2026-03-27)
-- **Android Sync Verified**: Background and manual failover sync confirmed working via Beeminder (Issue #3) ✅
-- **Multiplier Persistence Verified**: App-set multipliers (2.0 Arabic, 5.0 Greek) persisted correctly in Neon (Issue #3) ✅
-- **Familiar ID Verified**: `resolve_user_id` added to all core services; `yebyen` maps correctly to UUID in MCP (Issue #3) ✅
-- **Bot Loop**: Four-skill loop (orient/plan/archive/pr-test) is stable and running 8x daily upstream.
+- **Sync PR Open**: kingdonb/mecris#149 proposes merging 7 commits from yebyen/mecris including ReviewPump unit fix, Arabic heuristic (12 pts = 1 card), and session archives. Awaiting kingdonb's review/merge.
+- **Agent Loop Resolved**: kingdonb/mecris#145 closed as completed on 2026-03-27. Bot is running again.
+- **Repos**: yebyen/mecris is 7 commits ahead of kingdonb/mecris (PR#149 covers these); once merged, repos are in sync.
+- **No open bot issues**: yebyen/mecris has no open plan or bug issues post-archive.
 
 ## Verified This Session
-- [x] Android Failover Sync trigger (correct Beeminder comment format)
-- [x] Multiplier Lever persistence (Neon DB query confirm)
-- [x] MCP `familiar_id` resolution for `yebyen` across `NeonSyncChecker` and `GroqOdometerTracker`
-- [x] Multipliers correctly reflected in `get_language_velocity_stats`: 2.0x Arabic, 5.0x Greek
+- [x] Sync PR kingdonb/mecris#149 opened with no merge conflicts.
+- [x] All 7 commits from 2026-03-27 sessions are included in the PR.
+- [x] Plan issue yebyen/mecris#11 closed with completion evidence.
 
 ## Pending Verification (Next Session)
-- **Review Pump Calculation (Issue #6)**: Audit and fix the calculation logic to ensure it correctly handles the distinction between **Points** and **Cards**. The `reviewstack` goal must remain a card count (driving the physical backlog to zero), while parallel goals track points. Ensure the Pump's "Target Flow Rate" is expressed in the correct unit for the specific goal it's monitoring.
-- **Goal Alignment**: Ensure that for card-based goals like `reviewstack`, the Pump isn't inadvertently using point-based completion rates to signal a "Laminar" state.
+- **Upstream merge**: Confirm kingdonb/mecris#149 has been merged (or follow up if still open).
+- **Skills Discoverability**: Confirm if mecris-orient/plan/archive skills are discoverable in a standard Claude Code install (no action taken this session).
+- **Long-term**: Consider adding a `numReviewsToday` (cards) field to the Clozemaster scraper and Neon DB to replace the Arabic heuristic in `mcp_server.py`.
 
 ## Infrastructure Notes
-- Python MCP server now has internal `resolve_user_id` logic to handle familiar aliases.
 - Cloud Cron is still **DISABLED** in `spin.toml`.
-- Skills (orient/plan/archive/pr-test) now synchronized between local `.claude/skills` and upstream `.github/skills`.
+- yebyen/mecris is the bot's working fork; kingdonb/mecris is the upstream. Sync via PR.
+- Bot governor: 200 turns actual, 80 turns documented. Planning (mecris-plan) and TDG are mandatory before code changes.
+- SESSION_LOG updated this session at `session_log.md`.

@@ -118,3 +118,40 @@ This document summarizes the collaborative debugging session to establish a func
 - Drafted Issue #6: Audit and fix Review Pump's handling of Points vs. Cards units.
 **Skipped**: None.
 **Next**: Execute Issue #6 (Pump logic audit) to ensure unit consistency for card-based vs. point-based goals.
+
+## 2026-03-27 — Audit and fix Review Pump backlog-snapshot bug
+
+**Planned**: Audit MCP Review Pump logic for Points vs. Cards unit confusion (yebyen/mecris#10).
+**Done**:
+- Identified root cause: `get_language_velocity_stats` was fetching Beeminder datapoints for `reviewstack`/`ellinika`, which track current backlog size — not completions. Summing these as daily_done caused Pump to always report "turbulent" regardless of actual activity.
+- Extended `get_language_stats` (NeonSyncChecker) to return `daily_completions` column.
+- Fixed `get_language_velocity_stats` to use `daily_completions` from Neon (numPointsToday) instead of Beeminder snapshots.
+- All 5 review pump tests pass. Committed as `6304e40`.
+- Closed plan issue yebyen/mecris#10 with full audit findings.
+**Skipped**: Structural unit mismatch remains (daily_completions in points, debt in cards) — no "cards completed today" metric exists in current pipeline. Carried forward to NEXT_SESSION.md.
+**Next**: Decide how to surface or resolve residual unit mismatch for reviewstack. Open PR yebyen → kingdonb carrying the pump fix.
+
+## 2026-03-27 — Resolve Review Pump unit mismatch for card-based goals (reviewstack)
+
+**Planned**: Resolve residual unit mismatch for Arabic card-count goal (reviewstack) using heuristic conversion (points to cards) and surface units in status output. (Issue #148)
+
+**Done**:
+- Oriented: confirmed budget at 0.0 days (likely cause of 401 bot loop error in kingdonb/mecris#145). ✅
+- Designed heuristic: 1 Arabic card ≈ 12 points (conservative average of multiple choice (8) and text entry (16)). ✅
+- TDG: Added tests/test_review_pump_units.py to verify unit support and heuristic conversion. ✅
+- Code: Updated ReviewPump.get_status to support and return a unit field. ✅
+- Code: Updated mcp_server.py to identify goals by unit (Arabic='cards', Greek='points') and apply the 12-point heuristic to Arabic daily_done. ✅
+- Verified: All unit tests pass. Status output now correctly identifies the unit being used. ✅
+- Synced: Pushed all changes to both yebyen/main and kingdonb/mecris:mecris-bot-governor-upgrade. ✅
+
+**Skipped**: None.
+
+**Next**: Resolve the 401 API key error in the bot loop (requires human intervention to rotate keys or address budget status).
+
+
+## 2026-03-27 — Sync 7 commits from yebyen/mecris upstream to kingdonb/mecris
+
+**Planned**: Open sync PR from yebyen/mecris to kingdonb/mecris forwarding 7 commits (yebyen/mecris#11).
+**Done**: Opened kingdonb/mecris#149 — `yebyen:main` (83cc605) → `kingdonb:main` (defbd74). PR contains all 7 commits, no merge conflicts. Plan issue closed with evidence.
+**Skipped**: None.
+**Next**: Confirm kingdonb/mecris#149 is merged; if still open next session, follow up with kingdonb.

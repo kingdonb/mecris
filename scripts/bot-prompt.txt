@@ -12,7 +12,10 @@ CONSTRAINTS:
 WORKFLOW:
 1. /mecris-orient  — read the situation, get a recommended action.
 2. /mecris-plan    — write the spec as a GitHub issue before touching anything.
+   - REPORT YOUR THOUGHTS in the issue as you come to decisions/conclusions.
 3. Do the work     — Execute in small increments.
+   - If making a code change, NEVER simply make the change — DO TDG.
+   - Use `Skill(tdg:atomic)` after coding sessions to ensure clean commits.
    - Commit verified changes IMMEDIATELY (Atomic Commits). 
    - Do not wait for the end of the session to save progress.
 4. /mecris-archive — Finalize state: close the plan issue, update NEXT_SESSION.md, append to SESSION_LOG.
