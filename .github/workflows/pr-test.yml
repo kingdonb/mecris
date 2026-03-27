@@ -16,6 +16,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
 
     services:
       postgres:
@@ -38,6 +40,7 @@ jobs:
         with:
           token: ${{ secrets.MECRIS_BOT_PAT }}
           fetch-depth: 0
+          submodules: false
 
       - name: Set bot git identity
         run: |
