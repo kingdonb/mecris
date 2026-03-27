@@ -106,3 +106,15 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: Failover Sync and Multiplier Lever verification — these require Android app interaction (tracked in yebyen/mecris#3, still open).
 
 **Next**: Check if kingdonb/mecris#146 was merged. When Android app is available, execute manual tests from issue #3.
+
+## 2026-03-27 — Verify Android sync/multipliers, resolve familiar_id, and draft Pump Calculation fix
+
+**Planned**: Verify Issue #3 manual tests (Android app interaction).
+**Done**:
+- Verified Android Background/Manual Sync: correct Beeminder datapoints and comments ✅
+- Verified Multiplier Lever: 2x Arabic / 5x Greek persisted in Neon ✅
+- Fixed Familiar ID: added resolve_user_id to NeonSyncChecker and GroqOdometerTracker ✅
+- Reloaded MCP server: get_language_velocity_stats now reflects correct multipliers for 'yebyen' ✅
+- Drafted Issue #6: Audit and fix Review Pump's handling of Points vs. Cards units.
+**Skipped**: None.
+**Next**: Execute Issue #6 (Pump logic audit) to ensure unit consistency for card-based vs. point-based goals.

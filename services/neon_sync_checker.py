@@ -17,6 +17,23 @@ class NeonSyncChecker:
         if not self.db_url:
             logger.warning("NEON_DB_URL not configured. Cloud walk sync checks will be skipped.")
 
+    def resolve_user_id(self, user_id: str) -> str:
+        """Resolve familiar_id (e.g. 'yebyen') to pocket_id_sub (UUID)."""
+        if not self.db_url or not user_id:
+            return user_id or self.default_user_id
+            
+        try:
+            with psycopg2.connect(self.db_url) as conn:
+                with conn.cursor() as cur:
+                    cur.execute("SELECT pocket_id_sub FROM users WHERE familiar_id = %s", (user_id,))
+                    row = cur.fetchone()
+                    if row:
+                        return row[0]
+        except Exception as e:
+            logger.error(f"NeonSyncChecker: resolve_user_id failed: {e}")
+            
+        return user_id
+
     def has_walk_today(self, user_id: str = None) -> bool:
         """
         Queries the Neon walk_inferences table for any walk starting today.
@@ -26,7 +43,7 @@ class NeonSyncChecker:
         if not self.db_url:
             return False
             
-        target_user_id = user_id or self.default_user_id
+        target_user_id = self.resolve_user_id(user_id)
 
         try:
             # Connect to Neon
@@ -69,7 +86,7 @@ class NeonSyncChecker:
         if not self.db_url:
             return None
             
-        target_user_id = user_id or self.default_user_id
+        target_user_id = self.resolve_user_id(user_id)
 
         try:
             conn = psycopg2.connect(self.db_url)
@@ -108,7 +125,7 @@ class NeonSyncChecker:
         if not self.db_url:
             return {}
             
-        target_user_id = user_id or self.default_user_id
+        target_user_id = self.resolve_user_id(user_id)
 
         try:
             conn = psycopg2.connect(self.db_url)
@@ -139,7 +156,7 @@ class NeonSyncChecker:
         if not self.db_url:
             return False
             
-        target_user_id = user_id or self.default_user_id
+        target_user_id = self.resolve_user_id(user_id)
 
         try:
             conn = psycopg2.connect(self.db_url)

@@ -42,6 +42,23 @@ class GroqOdometerTracker:
         else:
             self.init_database()
         
+    def resolve_user_id(self, user_id: str) -> str:
+        """Resolve familiar_id (e.g. 'yebyen') to pocket_id_sub (UUID)."""
+        if not self.neon_url or not user_id:
+            return user_id or self.user_id
+            
+        try:
+            with psycopg2.connect(self.neon_url) as conn:
+                with conn.cursor() as cur:
+                    cur.execute("SELECT pocket_id_sub FROM users WHERE familiar_id = %s", (user_id,))
+                    row = cur.fetchone()
+                    if row:
+                        return row[0]
+        except Exception as e:
+            logger.error(f"GroqOdometerTracker: resolve_user_id failed: {e}")
+            
+        return user_id
+
     def init_database(self):
         """Initialize odometer tracking tables in Neon."""
         try:
@@ -88,7 +105,7 @@ class GroqOdometerTracker:
     
     def record_odometer_reading(self, value: float, notes: str = "", month: Optional[str] = None, user_id: str = None) -> Dict:
         """Record a new odometer reading, handling month boundaries intelligently."""
-        target_user_id = user_id or self.user_id
+        target_user_id = self.resolve_user_id(user_id)
         if not self.neon_url:
             return {"recorded": False, "reason": "No DB configured"}
             
@@ -144,7 +161,7 @@ class GroqOdometerTracker:
 
     def get_last_reading(self, user_id: str = None) -> Optional[Dict]:
         """Get the most recent odometer reading."""
-        target_user_id = user_id or self.user_id
+        target_user_id = self.resolve_user_id(user_id)
         if not self.neon_url: return None
         try:
             with psycopg2.connect(self.neon_url) as conn:
@@ -193,7 +210,7 @@ class GroqOdometerTracker:
     
     def check_reminder_needs(self, user_id: str = None) -> Dict:
         """Check if we need to remind the user about readings."""
-        target_user_id = user_id or self.user_id
+        target_user_id = self.resolve_user_id(user_id)
         now = datetime.now()
         status = OdometerStatus.NORMAL
         reminders_needed = []
@@ -242,7 +259,7 @@ class GroqOdometerTracker:
         return (last_day - now.date()).days
     
     def get_usage_for_virtual_budget(self, user_id: str = None) -> Dict:
-        target_user_id = user_id or self.user_id
+        target_user_id = self.resolve_user_id(user_id)
         if not self.neon_url: return {"has_data": False, "error": "No DB Configured"}
         now = datetime.now()
         current_month = now.strftime("%Y-%m")
@@ -267,7 +284,7 @@ class GroqOdometerTracker:
             return {"has_data": False, "error": str(e)}
     
     def generate_narrator_context(self, user_id: str = None) -> Dict:
-        target_user_id = user_id or self.user_id
+        target_user_id = self.resolve_user_id(user_id)
         reminder_status = self.check_reminder_needs(target_user_id)
         usage_data = self.get_usage_for_virtual_budget(target_user_id)
         context = {

@@ -1,25 +1,22 @@
-# Next Session: Monitor PR #146 & Manual Android Verification (issue #3)
+# Next Session: Resolve Review Pump Calculation Accuracy (Issue #6)
 
 ## Current Status (2026-03-27)
-- **PR #146 Open**: kingdonb/mecris#146 carries two infra fixes from yebyen (cron schedule to US Eastern, submodule exit-128 suppression) — awaiting review/merge
-- **Failover Sync / Beeminder**: Code merged and deployed; end-to-end test requires Android app trigger (issue #3, still open)
-- **Multiplier Lever**: SQL fix applied; persistence verification requires Android app + Neon query (issue #3)
-- **MCP ↔ Rust Sync**: Unverified — requires Python MCP to come back online after Rust changes
-- **Shared ancestor confirmed**: yebyen/mecris and kingdonb/mecris now share `66e6478` as common ancestor (NEXT_SESSION.md note about "no common ancestor" was stale — corrected this session)
+- **Android Sync Verified**: Background and manual failover sync confirmed working via Beeminder (Issue #3) ✅
+- **Multiplier Persistence Verified**: App-set multipliers (2.0 Arabic, 5.0 Greek) persisted correctly in Neon (Issue #3) ✅
+- **Familiar ID Verified**: `resolve_user_id` added to all core services; `yebyen` maps correctly to UUID in MCP (Issue #3) ✅
+- **Bot Loop**: Four-skill loop (orient/plan/archive/pr-test) is stable and running 8x daily upstream.
 
 ## Verified This Session
-- [x] PR kingdonb/mecris#146 created: cron schedule (EDT) + submodule warning fix
-- [x] Repos DO share a common git ancestor (`66e6478` — "add missing skills: mecris-orient, mecris-plan, mecris-pr-test"), merged in kingdonb via `0cebd88`
-- [x] All three missing skills (orient, plan, pr-test) are present in yebyen/mecris fork since last session
+- [x] Android Failover Sync trigger (correct Beeminder comment format)
+- [x] Multiplier Lever persistence (Neon DB query confirm)
+- [x] MCP `familiar_id` resolution for `yebyen` across `NeonSyncChecker` and `GroqOdometerTracker`
+- [x] Multipliers correctly reflected in `get_language_velocity_stats`: 2.0x Arabic, 5.0x Greek
 
 ## Pending Verification (Next Session)
-- **PR #146 merge status**: Check if kingdonb/mecris#146 was merged; if open, note any review feedback
-- **Failover Sync → Beeminder**: Trigger Android app "Failover Sync" button; confirm Beeminder datapoint created with comment `"Current: X | Tomorrow: Y | 7-day: Z"`. Tracked in yebyen/mecris#3.
-- **Multiplier Lever Persistence**: Set lever in Android app; verify with `SELECT pump_multiplier FROM language_stats WHERE user_id = '...' AND language_name = '...'`.
-- **MCP Coaching Persistence**: Python MCP server must reflect latest `daily_completions` and `pump_multiplier` when it comes back online after Rust changes.
+- **Review Pump Calculation (Issue #6)**: Audit and fix the calculation logic to ensure it correctly handles the distinction between **Points** and **Cards**. The `reviewstack` goal must remain a card count (driving the physical backlog to zero), while parallel goals track points. Ensure the Pump's "Target Flow Rate" is expressed in the correct unit for the specific goal it's monitoring.
+- **Goal Alignment**: Ensure that for card-based goals like `reviewstack`, the Pump isn't inadvertently using point-based completion rates to signal a "Laminar" state.
 
 ## Infrastructure Notes
-- Cloud Cron is still **DISABLED** in `spin.toml`. Android worker is the primary trigger for failover sync when MCP is dark.
-- `language_stats` table uses a composite primary key: `(user_id, language_name)`.
-- **yebyen/mecris and kingdonb/mecris share common ancestor `66e6478`**. PRs flow yebyen → kingdonb in the normal git way.
-- Skills loop (orient/plan/archive/pr-test) is now fully present in yebyen/mecris `.claude/skills/`.
+- Python MCP server now has internal `resolve_user_id` logic to handle familiar aliases.
+- Cloud Cron is still **DISABLED** in `spin.toml`.
+- Skills (orient/plan/archive/pr-test) now synchronized between local `.claude/skills` and upstream `.github/skills`.
