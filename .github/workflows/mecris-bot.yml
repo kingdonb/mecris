@@ -64,7 +64,7 @@ jobs:
           DEFAULT_PROMPT="$(cat scripts/bot-prompt.txt)"
           claude --dangerously-skip-permissions \
             --model "${MODEL}" \
-            --max-turns 20 \
+            --max-turns 40 \
             -p "${PROMPT:-$DEFAULT_PROMPT}"
 
       - name: Push any commits the bot made
