@@ -27,3 +27,11 @@ def test_pump_status_turbulent():
     pump = ReviewPump(multiplier=2.0) # 14 days -> target ~71 for 1000 debt
     status = pump.get_status(current_debt=1000, tomorrow_liability=0, daily_completions=100)
     assert status["status"] == "turbulent"
+
+def test_system_overdrive():
+    # 10.0x (1 day)
+    pump = ReviewPump(multiplier=10.0)
+    assert pump.calculate_target(100, 10) == 110 # 10 + 100/1
+    status = pump.get_status(100, 10, 50)
+    assert status["lever_name"] == "System Overdrive"
+    assert status["target_flow_rate"] == 110
