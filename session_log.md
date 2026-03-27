@@ -179,3 +179,13 @@ Hey, your previous fix for the Review Pump was a bit of a "half-job". Patching t
 Also, don't worry about `numReviewsToday` too much—my 12pts/card heuristic in the Spin app handles the Arabic unit mismatch beautifully for now by normalizing everything to "estimated cards" before it even hits the DB/Phone.
 
 **Next**: Verify the 10x lever behavior on the physical device and monitor the Nag Engine performance.
+
+## 2026-03-27 — Investigate Clozemaster field discovery; fix stale unit comment
+
+**Planned**: Run scraper with DEBUG logging to inspect available Clozemaster API fields; if `numReviewsToday` found, implement full chain: DB migration + store + return + remove `/12` heuristic (yebyen/mecris#13).
+
+**Done**: Discovered that field discovery is blocked — the bot environment has no Clozemaster credentials. Investigated the data flow instead: confirmed Rust failover sync (`lib.rs:414-417`) pre-converts Arabic to cards before writing `daily_completions` to Neon, while Python sync (`language_sync_service.py`) stores raw points. The comment at `mcp_server.py:559` incorrectly claimed "ALWAYS in points" — fixed (commit `9c9e8fc`). Tests pass 2/2.
+
+**Skipped**: Full `numReviewsToday` implementation — blocked by missing live credentials; field existence still unconfirmed.
+
+**Next**: Field discovery requires live Clozemaster credentials (can't be done by mecris-bot in CI). Either run manually with `LOG_LEVEL=DEBUG`, or build a test fixture capturing a real API response. Sync PR yebyen→kingdonb needed for commit `9c9e8fc`.
