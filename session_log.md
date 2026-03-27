@@ -93,3 +93,16 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: Failover Sync and Multiplier Lever verification — these require Android app interaction and are tracked in issue #3 (remains open).
 
 **Next**: Execute manual tests from issue #3 (Failover Sync → Beeminder, Multiplier Lever → Neon DB query) when Android app is available.
+
+## 2026-03-27 — Open PR to sync infra fixes upstream to kingdonb/mecris
+
+**Planned**: Create PR from yebyen/mecris main → kingdonb/mecris main with cron schedule (US Eastern) and submodule warning fixes (plan issue #6).
+
+**Done**:
+- Oriented: confirmed yebyen/mecris is 2 commits ahead of shared ancestor `66e6478` with commits `ff08f80` (cron EDT) and `0e6213b` (submodule warning suppression)
+- Corrected stale NEXT_SESSION.md note: repos DO share a common git ancestor (`66e6478`) since kingdonb merged from yebyen in `0cebd88`
+- Opened kingdonb/mecris#146 via `gh pr create` using classic PAT (fine-grained token lacks cross-repo PR scope)
+
+**Skipped**: Failover Sync and Multiplier Lever verification — these require Android app interaction (tracked in yebyen/mecris#3, still open).
+
+**Next**: Check if kingdonb/mecris#146 was merged. When Android app is available, execute manual tests from issue #3.
