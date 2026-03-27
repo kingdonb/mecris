@@ -131,7 +131,7 @@ class NeonSyncChecker:
             conn = psycopg2.connect(self.db_url)
             cur = conn.cursor()
 
-            cur.execute("SELECT language_name, current_reviews, tomorrow_reviews, next_7_days_reviews, pump_multiplier FROM language_stats WHERE user_id = %s", (target_user_id,))
+            cur.execute("SELECT language_name, current_reviews, tomorrow_reviews, next_7_days_reviews, pump_multiplier, daily_completions FROM language_stats WHERE user_id = %s", (target_user_id,))
             rows = cur.fetchall()
 
             cur.close()
@@ -143,7 +143,11 @@ class NeonSyncChecker:
                     "current": row[1],
                     "tomorrow": row[2],
                     "next_7_days": row[3],
-                    "multiplier": float(row[4]) if row[4] is not None else 1.0
+                    "multiplier": float(row[4]) if row[4] is not None else 1.0,
+                    # daily_completions is points earned today (numPointsToday from Clozemaster).
+                    # Note: for card-count goals like reviewstack this is in points, not cards —
+                    # but it is a genuine activity metric, unlike Beeminder backlog snapshots.
+                    "daily_completions": int(row[5]) if row[5] is not None else 0,
                 }
             return stats
 

@@ -542,22 +542,18 @@ async def get_language_velocity_stats(user_id: str = None) -> Dict[str, Any]:
                     "multiplier": 1.0
                 }
 
-        # 2. Get today's completions from Beeminder for "Flow Rate" monitoring
-        # We look for the last datapoint for the relevant goals
-        lang_goals = {"arabic": "reviewstack", "greek": "ellinika"}
-        completions = {}
-        for lang, slug in lang_goals.items():
-            datapoints = await beeminder_client.get_goal_datapoints(slug)
-            # sum all datapoints with today's date
-            today_str = datetime.now().strftime("%Y-%m-%d")
-            completions[lang] = sum(float(dp["value"]) for dp in datapoints if dp["daystamp"] == today_str)
-
+        # 2. Use daily_completions from Neon (numPointsToday) as the flow rate.
+        # Previously this fetched Beeminder datapoints for reviewstack/ellinika, but those
+        # goals track the current review *backlog* (not completions). Summing backlog
+        # snapshots as if they were completions caused the Pump to report "turbulent"
+        # whenever the backlog was large — even when zero reviews had been done that day.
         results = {}
         for lang, stats in db_stats.items():
             current_debt = stats.get("current", 0)
             tomorrow_liability = stats.get("tomorrow", 0)
             multiplier = stats.get("multiplier", 1.0)
-            daily_done = completions.get(lang, 0)
+            # daily_completions is points earned today (approximation for card-count goals)
+            daily_done = stats.get("daily_completions", 0)
 
             pump = ReviewPump(multiplier=multiplier)
             pump_status = pump.get_status(current_debt, tomorrow_liability, daily_done)
