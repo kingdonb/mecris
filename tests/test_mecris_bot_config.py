@@ -16,8 +16,8 @@ def test_mecris_bot_prompt_constraints():
     
     with open(prompt_path, "r") as f:
         content = f.read()
-        # Check turn limit
-        assert "STRICT LIMIT of 200 turns" in content
+        # Check turn limit (robot should believe it's 80)
+        assert "STRICT LIMIT of 80 turns" in content
         # Check planning requirement
         assert "REPORT YOUR THOUGHTS in the issue" in content
         # Check TDG requirement
