@@ -130,3 +130,21 @@ This document summarizes the collaborative debugging session to establish a func
 - Closed plan issue yebyen/mecris#10 with full audit findings.
 **Skipped**: Structural unit mismatch remains (daily_completions in points, debt in cards) — no "cards completed today" metric exists in current pipeline. Carried forward to NEXT_SESSION.md.
 **Next**: Decide how to surface or resolve residual unit mismatch for reviewstack. Open PR yebyen → kingdonb carrying the pump fix.
+
+## 2026-03-27 — Resolve Review Pump unit mismatch for card-based goals (reviewstack)
+
+**Planned**: Resolve residual unit mismatch for Arabic card-count goal (reviewstack) using heuristic conversion (points to cards) and surface units in status output. (Issue #148)
+
+**Done**:
+- Oriented: confirmed budget at 0.0 days (likely cause of 401 bot loop error in kingdonb/mecris#145). ✅
+- Designed heuristic: 1 Arabic card ≈ 12 points (conservative average of multiple choice (8) and text entry (16)). ✅
+- TDG: Added tests/test_review_pump_units.py to verify unit support and heuristic conversion. ✅
+- Code: Updated ReviewPump.get_status to support and return a unit field. ✅
+- Code: Updated mcp_server.py to identify goals by unit (Arabic='cards', Greek='points') and apply the 12-point heuristic to Arabic daily_done. ✅
+- Verified: All unit tests pass. Status output now correctly identifies the unit being used. ✅
+- Synced: Pushed all changes to both yebyen/main and kingdonb/mecris:mecris-bot-governor-upgrade. ✅
+
+**Skipped**: None.
+
+**Next**: Resolve the 401 API key error in the bot loop (requires human intervention to rotate keys or address budget status).
+
