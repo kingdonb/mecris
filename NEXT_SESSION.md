@@ -1,22 +1,25 @@
-# Next Session: Failover Sync & Lever Validation
+# Next Session: Manual Verification — Failover Sync & Multiplier Lever
 
-## Current Status (2026-03-23)
-- **Rust Scraper (Spin)**: Fully enriched to extract `numPointsToday`, `tomorrow`, and `next_7_days`.
-- **Beeminder Integration**: Rust service now pushes to Beeminder with an idempotency check (only if `numReadyForReview` changes).
-- **Daily Completions**: Neon now stores `daily_completions` derived from `numPointsToday`, fixing the "0/184" nag issue.
-- **Multiplier Lever**: Fixed the SQL query in the Rust service to handle the new `user_id` column in `language_stats`.
-- **Schema**: Updated `mecris-go-spin/schema.sql` to include all language metrics.
+## Current Status (2026-03-27)
+- **Bot Infrastructure**: Four-skill loop (orient/plan/archive/pr-test) merged to `kingdonb/mecris` via PR #143 ✅
+- **Smoke Tests**: Issues #1, #2 (smoke tests) closed; issue #4 (stale plan) closed ✅
+- **Failover Sync / Beeminder**: Code is merged and deployed; end-to-end test requires Android app trigger (issue #3, still open)
+- **Multiplier Lever**: SQL fix applied; persistence verification requires Android app + Neon query (issue #3)
+- **MCP ↔ Rust Sync**: Unverified — requires Python MCP to come back online after Rust changes
 
-## Verified
-- [x] Bug: Failover sync not pushing to Beeminder.
-- [x] Bug: Arabic Pressure nag stuck at 0.
-- [x] Bug: Multiplier lever inconsistent (SQL fix applied).
+## Verified This Session
+- [x] PR #143 merged to `kingdonb/mecris` (four-skill agent loop upstream)
+- [x] Issues #1, #2 (smoke tests) confirmed closed
+- [x] Issue #4 (stale plan) closed
+- [x] NEXT_SESSION.md updated from stale 2026-03-23 to current 2026-03-27
 
 ## Pending Verification (Next Session)
-- **Manual Trigger**: Verify that the Android app's "Failover Sync" results in a Beeminder datapoint with the correct comment.
-- **Multiplier Sync**: Set the lever in the app and verify it persists in Neon (`SELECT pump_multiplier FROM language_stats`).
-- **Coaching Persistence**: Ensure the Python MCP server reflects the changes made by the Rust service when it comes back online.
+- **Failover Sync → Beeminder**: Trigger Android "Failover Sync"; confirm Beeminder datapoint created with comment `"Current: X | Tomorrow: Y | 7-day: Z"`. Tracked in yebyen/mecris#3.
+- **Multiplier Lever Persistence**: Set lever in Android app; verify with `SELECT pump_multiplier FROM language_stats WHERE user_id = '...' AND language_name = '...'`.
+- **MCP Coaching Persistence**: Python MCP server must reflect latest `daily_completions` and `pump_multiplier` when it comes back online after Rust changes.
 
 ## Infrastructure Notes
-- Cloud Cron is still **DISABLED** in `spin.toml`. The Android worker is the primary trigger for failover sync when the MCP is dark.
-- `language_stats` table now uses a composite primary key: `(user_id, language_name)`.
+- Cloud Cron is still **DISABLED** in `spin.toml`. Android worker is the primary trigger for failover sync when MCP is dark.
+- `language_stats` table uses a composite primary key: `(user_id, language_name)`.
+- **`yebyen/mecris` and `kingdonb/mecris` share no common git ancestor** — git merge/sync is structurally impossible. Contributions flow via PR only (yebyen → kingdonb).
+- Skills loop (orient/plan/archive/pr-test) lives in `kingdonb/mecris`, not in `yebyen/mecris` local `.claude/skills/`. Only `mecris-archive` is locally available in this fork.
