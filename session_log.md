@@ -76,7 +76,20 @@ This document summarizes the collaborative debugging session to establish a func
 
 **Skipped**: Skills discoverability test in a real Claude Code install (Helix environment doesn't surface project SKILL.md files via the Skill tool). Left as an open question in the PR review comment.
 
-**Next**: 
+**Next**:
 - Merge PR #143 after skills discoverability is confirmed in a standard Claude Code install
 - Close yebyen/mecris issue #1 (smoke test, can be closed)
 - Update NEXT_SESSION.md pending verification items (Android failover sync, multiplier lever) — still unverified from 2026-03-23
+
+## 2026-03-27 — Update stale NEXT_SESSION.md to current reality
+
+**Planned**: Rewrite NEXT_SESSION.md from 2026-03-23 to 2026-03-27 state (plan issue #5).
+
+**Done**:
+- Oriented: confirmed PR #143 merged to kingdonb/mecris ✅; issues #1, #2, #4 all closed ✅
+- Rewrote NEXT_SESSION.md: date updated to 2026-03-27, verified items moved, infrastructure note added (no common git ancestor between yebyen/mecris and kingdonb/mecris)
+- Noted: only `mecris-archive` skill is locally available in yebyen/mecris fork; orient/plan/pr-test live in kingdonb/mecris
+
+**Skipped**: Failover Sync and Multiplier Lever verification — these require Android app interaction and are tracked in issue #3 (remains open).
+
+**Next**: Execute manual tests from issue #3 (Failover Sync → Beeminder, Multiplier Lever → Neon DB query) when Android app is available.

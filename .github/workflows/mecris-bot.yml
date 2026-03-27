@@ -10,7 +10,7 @@ on:
         description: 'Override the default autonomous prompt'
         required: false
       model:
-        description: 'Claude model override (leave blank to use Helix default)'
+        description: 'Model override (leave blank for claude-sonnet-4-6)'
         required: false
 
 jobs:
@@ -21,7 +21,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
         with:
           token: ${{ secrets.MECRIS_BOT_PAT }}
 
@@ -31,10 +31,24 @@ jobs:
           git config user.email "mecris-bot@noreply"
 
       - name: Install Node + Claude CLI
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f  # v6.3.0
         with:
-          node-version: '20'
-      - run: npm install -g @anthropic-ai/claude-code@1.0.128
+          node-version: '22'
+      - run: npm install -g @anthropic-ai/claude-code@2.1.85
+
+      - name: Validate Helix API key
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.MECRIS_BOT_ANTHROPIC_KEY }}
+          ANTHROPIC_BASE_URL: ${{ secrets.MECRIS_BOT_ANTHROPIC_BASE_URL }}
+        run: |
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            -H "Authorization: Bearer $ANTHROPIC_API_KEY" \
+            "${ANTHROPIC_BASE_URL}/v1/models")
+          echo "Helix key validation status: $STATUS"
+          if [ "$STATUS" != "200" ]; then
+            echo "::error::Helix API key is invalid or expired (HTTP $STATUS). Update MECRIS_BOT_ANTHROPIC_KEY secret."
+            exit 1
+          fi
 
       - name: Run mecris-bot
         env:
@@ -42,17 +56,19 @@ jobs:
           ANTHROPIC_BASE_URL: ${{ secrets.MECRIS_BOT_ANTHROPIC_BASE_URL }}
           GITHUB_TOKEN: ${{ secrets.MECRIS_BOT_PAT }}
           PROMPT: ${{ github.event.inputs.prompt || '' }}
-          MODEL: ${{ github.event.inputs.model || '' }}
+          MODEL: ${{ github.event.inputs.model || 'claude-sonnet-4-6' }}
           CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1"
+          CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS: "1"
           GITHUB_CLASSIC_PAT: ${{ secrets.MECRIS_BOT_CLASSIC_PAT }}
         run: |
           DEFAULT_PROMPT="$(cat scripts/bot-prompt.txt)"
-          MODEL_FLAG=""
-          [ -n "${MODEL}" ] && MODEL_FLAG="--model ${MODEL}"
           claude --dangerously-skip-permissions \
-            ${MODEL_FLAG} \
-            --max-turns 10 \
+            --model "${MODEL}" \
+            --max-turns 40 \
             -p "${PROMPT:-$DEFAULT_PROMPT}"
+
+      - name: Show commits made this run
+        run: git log --oneline -5
 
       - name: Push any commits the bot made
         env:
