@@ -2,8 +2,8 @@ name: mecris-bot
 
 on:
   schedule:
-    # 8 runs/day, every 2 hours, 7am–9pm UTC (adjust to your timezone)
-    - cron: '17 7,9,11,13,15,17,19,21 * * *'
+    # 8 runs/day, every 2 hours, 7am–9pm US Eastern (EDT=UTC-4; 1am UTC = 9pm EDT)
+    - cron: '17 1,11,13,15,17,19,21,23 * * *'
   workflow_dispatch:
     inputs:
       prompt:
