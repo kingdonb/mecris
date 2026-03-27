@@ -148,3 +148,10 @@ This document summarizes the collaborative debugging session to establish a func
 
 **Next**: Resolve the 401 API key error in the bot loop (requires human intervention to rotate keys or address budget status).
 
+
+## 2026-03-27 — Sync 7 commits from yebyen/mecris upstream to kingdonb/mecris
+
+**Planned**: Open sync PR from yebyen/mecris to kingdonb/mecris forwarding 7 commits (yebyen/mecris#11).
+**Done**: Opened kingdonb/mecris#149 — `yebyen:main` (83cc605) → `kingdonb:main` (defbd74). PR contains all 7 commits, no merge conflicts. Plan issue closed with evidence.
+**Skipped**: None.
+**Next**: Confirm kingdonb/mecris#149 is merged; if still open next session, follow up with kingdonb.

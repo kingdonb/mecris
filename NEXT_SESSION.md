@@ -1,23 +1,23 @@
-# Next Session: Resolve Agent Loop 401 Error and Publish Skills
+# Next Session: Review and merge kingdonb/mecris#149 (upstream sync)
 
 ## Current Status (2026-03-27)
-- **Review Pump Unit Mismatch Resolved**: `get_language_velocity_stats` now handles the card-to-points mismatch for `reviewstack`. 1 card ≈ 12 points heuristic applied for Arabic. ✅
-- **Pump Units Surfaced**: `ReviewPump` status now includes the unit ("cards" or "points"). ✅
-- **Agent Loop Issue**: kingdonb/mecris#145 reports "401 error getting API key: not found" — the bot loop in both yebyen/mecris and kingdonb/mecris is broken. Requires human intervention to rotate/re-configure API keys.
-- **Bot Governor**: Actual limit is 200 turns, documented limit is 80 turns. Planning and TDG are mandatory. ✅
+- **Sync PR Open**: kingdonb/mecris#149 proposes merging 7 commits from yebyen/mecris including ReviewPump unit fix, Arabic heuristic (12 pts = 1 card), and session archives. Awaiting kingdonb's review/merge.
+- **Agent Loop Resolved**: kingdonb/mecris#145 closed as completed on 2026-03-27. Bot is running again.
+- **Repos**: yebyen/mecris is 7 commits ahead of kingdonb/mecris (PR#149 covers these); once merged, repos are in sync.
+- **No open bot issues**: yebyen/mecris has no open plan or bug issues post-archive.
 
 ## Verified This Session
-- [x] `ReviewPump` unit support and status output.
-- [x] Heuristic conversion for Arabic (12 pts = 1 card) in `mcp_server.py`.
-- [x] TDG for all code changes (ReviewPump, mcp_server).
-- [x] Sync to both `yebyen` and `kingdonb` remotes.
+- [x] Sync PR kingdonb/mecris#149 opened with no merge conflicts.
+- [x] All 7 commits from 2026-03-27 sessions are included in the PR.
+- [x] Plan issue yebyen/mecris#11 closed with completion evidence.
 
 ## Pending Verification (Next Session)
-- **Agent Loop (kingdonb/mecris#145)**: 401 API key error in both repo loops. Requires human intervention to rotate/re-configure API keys.
-- **Skills Discoverability**: Confirm if skills are discoverable in a standard Claude Code install.
-- **Long-term**: Consider adding a `numReviewsToday` (cards) field to the scraper and Neon DB to replace the heuristic.
+- **Upstream merge**: Confirm kingdonb/mecris#149 has been merged (or follow up if still open).
+- **Skills Discoverability**: Confirm if mecris-orient/plan/archive skills are discoverable in a standard Claude Code install (no action taken this session).
+- **Long-term**: Consider adding a `numReviewsToday` (cards) field to the Clozemaster scraper and Neon DB to replace the Arabic heuristic in `mcp_server.py`.
 
 ## Infrastructure Notes
 - Cloud Cron is still **DISABLED** in `spin.toml`.
-- yebyen/mecris and kingdonb/mecris share a common git ancestor (`66e6478`). Sync is maintained via dual-pushes.
+- yebyen/mecris is the bot's working fork; kingdonb/mecris is the upstream. Sync via PR.
+- Bot governor: 200 turns actual, 80 turns documented. Planning (mecris-plan) and TDG are mandatory before code changes.
 - SESSION_LOG updated this session at `session_log.md`.
