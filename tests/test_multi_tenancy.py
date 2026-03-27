@@ -40,10 +40,11 @@ def test_has_walk_today_with_user_id(mock_connect, neon_checker):
     mock_connect.return_value = mock_conn
     mock_conn.cursor.return_value = mock_cur
     mock_cur.fetchone.return_value = (1,)
-    
+
     user_id = "test-user-123"
-    result = neon_checker.has_walk_today(user_id=user_id)
-    
+    with patch.object(neon_checker, 'resolve_user_id', return_value=user_id):
+        result = neon_checker.has_walk_today(user_id=user_id)
+
     assert result is True
     # Verify user_id was used in query
     args, kwargs = mock_cur.execute.call_args
@@ -57,17 +58,18 @@ def test_get_language_stats_with_user_id(mock_connect, neon_checker):
     mock_connect.return_value = mock_conn
     mock_conn.cursor.return_value = mock_cur
     mock_cur.fetchall.return_value = [
-        ("ARABIC", 10, 5, 50, 1.5),
-        ("GREEK", 20, 10, 100, 2.0)
+        ("ARABIC", 10, 5, 50, 1.5, 120),
+        ("GREEK", 20, 10, 100, 2.0, 240)
     ]
-    
+
     user_id = "test-user-456"
-    stats = neon_checker.get_language_stats(user_id=user_id)
-    
+    with patch.object(neon_checker, 'resolve_user_id', return_value=user_id):
+        stats = neon_checker.get_language_stats(user_id=user_id)
+
     assert "arabic" in stats
     assert stats["arabic"]["multiplier"] == 1.5
     assert "greek" in stats
-    
+
     # Verify user_id was used in query
     args, kwargs = mock_cur.execute.call_args
     assert "WHERE user_id = %s" in args[0]
@@ -79,10 +81,11 @@ def test_update_pump_multiplier_with_user_id(mock_connect, neon_checker):
     mock_cur = MagicMock()
     mock_connect.return_value = mock_conn
     mock_conn.cursor.return_value = mock_cur
-    
+
     user_id = "test-user-789"
-    success = neon_checker.update_pump_multiplier("ARABIC", 3.0, user_id=user_id)
-    
+    with patch.object(neon_checker, 'resolve_user_id', return_value=user_id):
+        success = neon_checker.update_pump_multiplier("ARABIC", 3.0, user_id=user_id)
+
     assert success is True
     # Verify user_id was used in query
     args, kwargs = mock_cur.execute.call_args
@@ -97,10 +100,11 @@ def test_get_latest_walk_with_user_id(mock_connect, neon_checker):
     mock_connect.return_value = mock_conn
     mock_conn.cursor.return_value = mock_cur
     mock_cur.fetchone.return_value = (time.time(), 1000, 800.0, "google_fit")
-    
+
     user_id = "test-user-walk"
-    walk = neon_checker.get_latest_walk(user_id=user_id)
-    
+    with patch.object(neon_checker, 'resolve_user_id', return_value=user_id):
+        walk = neon_checker.get_latest_walk(user_id=user_id)
+
     assert walk["step_count"] == 1000
     # Verify user_id was used in query
     args, kwargs = mock_cur.execute.call_args

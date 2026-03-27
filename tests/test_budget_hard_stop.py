@@ -5,19 +5,20 @@ from virtual_budget_manager import VirtualBudgetManager, Provider
 
 @pytest.fixture
 def mock_psycopg2():
-    with patch("virtual_budget_manager.psycopg2.connect") as mock_connect:
-        mock_conn = MagicMock()
-        mock_cur = MagicMock()
-        
-        # Connection context manager
-        mock_connect.return_value = mock_conn
-        mock_conn.__enter__.return_value = mock_conn
-        
-        # Cursor behavior: return our mock_cur regardless of factory args
-        mock_conn.cursor.return_value = mock_cur
-        mock_cur.__enter__.return_value = mock_cur
-        
-        yield mock_cur
+    with patch.dict("os.environ", {"NEON_DB_URL": "postgres://fake"}):
+        with patch("virtual_budget_manager.psycopg2.connect") as mock_connect:
+            mock_conn = MagicMock()
+            mock_cur = MagicMock()
+
+            # Connection context manager
+            mock_connect.return_value = mock_conn
+            mock_conn.__enter__.return_value = mock_conn
+
+            # Cursor behavior: return our mock_cur regardless of factory args
+            mock_conn.cursor.return_value = mock_cur
+            mock_cur.__enter__.return_value = mock_cur
+
+            yield mock_cur
 
 @pytest.mark.asyncio
 async def test_budget_status_exhausted_alert(mock_psycopg2):
