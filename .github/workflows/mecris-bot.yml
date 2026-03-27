@@ -2,7 +2,8 @@ name: mecris-bot
 
 on:
   schedule:
-    # 8 runs/day, every 2 hours, 7am–9pm US Eastern (EDT=UTC-4; 1am UTC = 9pm EDT)
+    # 8 runs/day, every 2 hours, 7:17am–9:17pm US Eastern (EDT=UTC-4)
+    # UTC hours: 11, 13, 15, 17, 19, 21, 23, 01
     - cron: '17 1,11,13,15,17,19,21,23 * * *'
   workflow_dispatch:
     inputs:
@@ -25,6 +26,7 @@ jobs:
         with:
           token: ${{ secrets.MECRIS_BOT_PAT }}
           submodules: false
+          fetch-depth: 0
 
       - name: Set bot git identity
         run: |
@@ -65,7 +67,7 @@ jobs:
           DEFAULT_PROMPT="$(cat scripts/bot-prompt.txt)"
           claude --dangerously-skip-permissions \
             --model "${MODEL}" \
-            --max-turns 40 \
+            --max-turns 80 \
             -p "${PROMPT:-$DEFAULT_PROMPT}"
 
       - name: Show commits made this run
@@ -78,4 +80,6 @@ jobs:
           GIT_COMMITTER_NAME: mecris-bot
           GIT_COMMITTER_EMAIL: mecris-bot@noreply
         run: |
+          # Pull before push to handle any race conditions or upstream changes during the run
+          git pull --rebase origin main
           git push origin main || echo "Nothing to push"
