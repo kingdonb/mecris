@@ -229,3 +229,13 @@ Also, don't worry about `numReviewsToday` too much—my 12pts/card heuristic in 
 **Skipped**: Field discovery (blocked, requires live Clozemaster credentials). PR #150 merge (awaiting kingdonb action).
 
 **Next**: Confirm kingdonb/mecris#150 merged. If not, wait. Field discovery requires manual run with live credentials.
+
+## 2026-03-28 — Fix Arabic early-switch bug: /12 → /16 heuristic (kingdonb/mecris#151)
+
+**Planned**: Read ReviewPump/Nag Engine code, write a failing test demonstrating the Arabic early-switch bug (premature "turbulent" due to /12 overestimation), fix the heuristic using /16 (max pts/card), verify 83+/83+ tests pass (yebyen/mecris#18).
+
+**Done**: Confirmed kingdonb/mecris#150 was merged. Found kingdonb/mecris#151 (new bug filed post-merge). Added `ARABIC_POINTS_PER_CARD = 16` constant to `services/review_pump.py`, imported it in `mcp_server.py` replacing magic number 12. Updated `test_arabic_heuristic_conversion` to assert /16 behavior (7 cards, not 10); added two new regression guard tests. TDG cycle: ImportError (RED) → constant added (GREEN). Full suite: **82/82 passed** (3 new tests counted in review_pump_units). Committed as `38dcd9d`.
+
+**Skipped**: Opening sync PR to kingdonb/mecris (next session — commit not yet propagated upstream). Commenting on kingdonb/mecris#151 with fix details (next session). Field discovery (blocked, requires live Clozemaster credentials).
+
+**Next**: Open sync PR from yebyen/mecris → kingdonb/mecris carrying `38dcd9d`. Comment on kingdonb/mecris#151 noting the /16 fix. Consider picking up kingdonb/mecris#128 or #122 from the backlog.
