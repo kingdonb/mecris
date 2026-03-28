@@ -219,3 +219,13 @@ Also, don't worry about `numReviewsToday` too much—my 12pts/card heuristic in 
 **Skipped**: Full `.venv` test run (environment lacks all deps — CI/`.venv` needed for execution verification). Field discovery (blocked, requires live Clozemaster credentials). PR #150 merge (awaiting kingdonb action).
 
 **Next**: Confirm kingdonb/mecris#150 merged. Verify `test_coaching.py` tests pass (not just collect) via CI run.
+
+## 2026-03-28 — Verify test_coaching.py tests pass; fix TDG.md build command
+
+**Planned**: Run `PYTHONPATH=. .venv/bin/pytest tests/test_coaching.py -v` to confirm 4 coaching tests pass, then post comment on kingdonb/mecris#150 (yebyen/mecris#17).
+
+**Done**: Created fresh `.venv`; discovered TDG.md build command omits `mcp[cli]`, `apscheduler`, and `sqlalchemy` which are in pyproject.toml but not requirements.txt. Installed missing deps. Full suite: **82/82 passed** including all 4 coaching tests. Fixed TDG.md build command (`7305a45`). Posted 82/82 green status comment on kingdonb/mecris#150.
+
+**Skipped**: Field discovery (blocked, requires live Clozemaster credentials). PR #150 merge (awaiting kingdonb action).
+
+**Next**: Confirm kingdonb/mecris#150 merged. If not, wait. Field discovery requires manual run with live credentials.
