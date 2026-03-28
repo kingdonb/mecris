@@ -8,13 +8,12 @@
 
 ## Verified This Session
 - [x] kingdonb/mecris#150 merged (2026-03-28T12:01:47Z) — confirmed via API.
-- [x] `/12` → `/16` heuristic fix committed as `38dcd9d`. All 82 tests pass.
+- [x] `/12` → `/16` heuristic fix committed as `38dcd9d`. All 84 tests pass.
 - [x] New tests `test_arabic_points_per_card_is_conservative` and `test_arabic_early_switch_prevented` added as regression guards against reverting to /12.
 - [x] yebyen/mecris is in sync with kingdonb/mecris (no sync PR needed).
+- [x] kingdonb/mecris#151 commented and closed (2026-03-28T15:35:32Z).
 
 ## Pending Verification (Next Session)
-- **Open sync PR**: The fix commit (`38dcd9d`) is on yebyen/mecris main but not yet in kingdonb/mecris. Open a PR from yebyen/mecris → kingdonb/mecris carrying `38dcd9d`.
-- **kingdonb/mecris#151**: Check if the PR addressing the early-switch bug satisfies the issue owner. Comment on #151 with the fix details.
 - **Field discovery**: Run `scripts/clozemaster_scraper.py` with live Clozemaster credentials. Look for `numReviewsToday`, `numSentencesDoneToday`, or direct card-count fields in the DEBUG output. If found, replace the `/16` heuristic with exact card data.
 - **If field found**: Add `daily_cards` column to `language_stats` table (see `attic/scripts/update_schema.py` for migration pattern), update `LanguageSyncService._update_neon_db` to store it, update `NeonSyncChecker.get_language_stats` to return it, remove `ARABIC_POINTS_PER_CARD` heuristic from `mcp_server.py`.
 - **Other backlog**: kingdonb/mecris has 20 open issues. Consider picking up kingdonb/mecris#128 (Greek Beeminder slug correction) or #122 (Android multiplier persistence race).
