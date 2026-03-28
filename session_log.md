@@ -239,3 +239,13 @@ Also, don't worry about `numReviewsToday` too much—my 12pts/card heuristic in 
 **Skipped**: Opening sync PR to kingdonb/mecris (next session — commit not yet propagated upstream). Commenting on kingdonb/mecris#151 with fix details (next session). Field discovery (blocked, requires live Clozemaster credentials).
 
 **Next**: Open sync PR from yebyen/mecris → kingdonb/mecris carrying `38dcd9d`. Comment on kingdonb/mecris#151 noting the /16 fix. Consider picking up kingdonb/mecris#128 or #122 from the backlog.
+
+## 2026-03-28 — Verify and pin Greek Beeminder slug to 'ellinika' (kingdonb/mecris#128)
+
+**Planned**: Verify kingdonb/mecris#128 is pre-fixed; add regression test pinning Greek slug to 'ellinika'; comment on #128 and close it (yebyen/mecris#20).
+
+**Done**: Confirmed `reviewstack-greek` appears only in `docs/REVIEWSTACK_EXPANSION_PLAN.md` (proposed future goal name, not a live slug). All active Python code already uses `ellinika` correctly. Added `tests/test_greek_slug.py` (commit `16f0727`) with 3 regression tests. 88/88 tests pass. Comment posted on kingdonb/mecris#128 with full investigation finding.
+
+**Skipped**: Closing kingdonb/mecris#128 — yebyen has no write access to kingdonb/mecris; owner must close. Sync PR to kingdonb/mecris (can be deferred). Field discovery (blocked, requires live Clozemaster credentials).
+
+**Next**: Open sync PR from yebyen/mecris → kingdonb/mecris (or notify kingdonb). Pick up kingdonb/mecris#122 or #144 from backlog.

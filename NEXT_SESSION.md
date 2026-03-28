@@ -1,28 +1,33 @@
-# Next Session: Field discovery or open next improvement issue from kingdonb/mecris backlog
+# Next Session: Close kingdonb/mecris#128 (awaiting owner) or pick up #122
 
 ## Current Status (2026-03-28)
-- **kingdonb/mecris#150 merged**: PR was merged on 2026-03-28T12:01:47Z. yebyen/mecris and kingdonb/mecris are in sync at `257df08`.
-- **Early-switch bug fixed**: `ARABIC_POINTS_PER_CARD = 16` constant added to `services/review_pump.py`; `mcp_server.py` now uses it instead of magic number `12`. Addresses kingdonb/mecris#151.
-- **82/82 tests pass**: Full suite including 5 review pump unit tests (3 new regression guards).
+- **kingdonb/mecris#128 commented**: Greek slug correction verified as pre-fixed. Comment posted at kingdonb/mecris#128 explaining the finding. Issue cannot be closed by yebyen (no write access) — owner must close.
+- **Regression test added**: `tests/test_greek_slug.py` (commit `16f0727`) pins `LanguageSyncService.lang_to_slug["GREEK"] == "ellinika"` and asserts no active Python source contains `reviewstack-greek` as a hardcoded value.
+- **88/88 tests pass**: Full suite (was 82/82 before this session; 3 new slug tests + 3 subtests).
 - **Field discovery still blocked**: `scripts/clozemaster_scraper.py` requires live Clozemaster credentials unavailable in the bot environment.
+- **kingdonb/mecris is 1 commit ahead of upstream**: Commit `16f0727` not yet in kingdonb/mecris (needs sync PR or direct merge).
 
 ## Verified This Session
-- [x] kingdonb/mecris#150 merged (2026-03-28T12:01:47Z) — confirmed via API.
-- [x] `/12` → `/16` heuristic fix committed as `38dcd9d`. All 84 tests pass.
-- [x] New tests `test_arabic_points_per_card_is_conservative` and `test_arabic_early_switch_prevented` added as regression guards against reverting to /12.
-- [x] yebyen/mecris is in sync with kingdonb/mecris (no sync PR needed).
-- [x] kingdonb/mecris#151 commented and closed (2026-03-28T15:35:32Z).
+- [x] kingdonb/mecris#128: `reviewstack-greek` appears ONLY in `docs/REVIEWSTACK_EXPANSION_PLAN.md` (planning doc for a future proposed goal, not a wrong slug in live code).
+- [x] All active Python code uses `ellinika` as the Greek Beeminder slug.
+- [x] `tests/test_greek_slug.py` 3/3 pass (committed `16f0727`).
+- [x] Full suite 88/88 pass.
+- [x] Comment posted on kingdonb/mecris#128 with full investigation findings.
 
 ## Pending Verification (Next Session)
-- **Field discovery**: Run `scripts/clozemaster_scraper.py` with live Clozemaster credentials. Look for `numReviewsToday`, `numSentencesDoneToday`, or direct card-count fields in the DEBUG output. If found, replace the `/16` heuristic with exact card data.
-- **If field found**: Add `daily_cards` column to `language_stats` table (see `attic/scripts/update_schema.py` for migration pattern), update `LanguageSyncService._update_neon_db` to store it, update `NeonSyncChecker.get_language_stats` to return it, remove `ARABIC_POINTS_PER_CARD` heuristic from `mcp_server.py`.
-- **Other backlog**: kingdonb/mecris has 20 open issues. Consider picking up kingdonb/mecris#128 (Greek Beeminder slug correction) or #122 (Android multiplier persistence race).
+- **Close kingdonb/mecris#128**: Awaiting kingdonb to close. If still open, just note it — no further action needed from bot.
+- **Sync PR**: Open a PR from yebyen/mecris → kingdonb/mecris carrying commit `16f0727` (or just notify kingdonb to pull).
+- **Other backlog**: kingdonb/mecris has ~20 open issues. Next candidates:
+  - kingdonb/mecris#122 (Android multiplier persistence race) — Android code, requires Kotlin/Rust context
+  - kingdonb/mecris#132 (Failover sync verification) — needs live Spin/Neon environment
+  - kingdonb/mecris#144 (Budget governor) — large feature, multi-session
+- **Field discovery**: Run `scripts/clozemaster_scraper.py` with live Clozemaster credentials. Cannot be done by bot.
 
 ## Infrastructure Notes
 - Cloud Cron is still **DISABLED** in `spin.toml`.
 - yebyen/mecris is the bot's working fork; kingdonb/mecris is the upstream. Sync via PR.
 - Bot governor: 80 turns documented limit. Planning (mecris-plan) and TDG are mandatory before code changes.
 - Session log at `session_log.md`.
-- Field discovery CANNOT be done by mecris-bot — requires live credentials. Consider running manually or building a fixture.
 - Full test suite requires pyproject.toml deps (including `mcp[cli]`, `apscheduler`, `sqlalchemy`, `beautifulsoup4`, `playwright`). TDG.md build command updated accordingly in `7305a45`.
-- `ARABIC_POINTS_PER_CARD = 16` is now the single source of truth for the Arabic points-per-card constant (in `services/review_pump.py`). Do not change without also checking `test_arabic_points_per_card_is_conservative`.
+- `ARABIC_POINTS_PER_CARD = 16` is the single source of truth for the Arabic points-per-card constant (in `services/review_pump.py`). Do not change without also checking `test_arabic_points_per_card_is_conservative`.
+- `"ellinika"` is the single source of truth for the Greek Beeminder slug (in `services/language_sync_service.py`). Do not change without also updating `tests/test_greek_slug.py`.
