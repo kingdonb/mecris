@@ -249,3 +249,13 @@ Also, don't worry about `numReviewsToday` too much—my 12pts/card heuristic in 
 **Skipped**: Closing kingdonb/mecris#128 — yebyen has no write access to kingdonb/mecris; owner must close. Sync PR to kingdonb/mecris (can be deferred). Field discovery (blocked, requires live Clozemaster credentials).
 
 **Next**: Open sync PR from yebyen/mecris → kingdonb/mecris (or notify kingdonb). Pick up kingdonb/mecris#122 or #144 from backlog.
+
+## 2026-03-28 — Open sync PR to kingdonb/mecris; spec kingdonb/mecris#129 backlog booster
+
+**Planned**: Open sync PR from yebyen/mecris → kingdonb/mecris carrying Greek slug fix commits; post spec body on empty kingdonb/mecris#129 (Greek Review Backlog Booster) (yebyen/mecris#21).
+
+**Done**: Opened kingdonb/mecris#152 (sync PR from yebyen:main → kingdonb:main, carrying `3ce536e` + `25de164`). Posted full design spec comment on kingdonb/mecris#129 including threshold constant (`GREEK_BACKLOG_THRESHOLD = 300`), `_greek_backlog_active()` method sketch, narrator flag design, priority override logic, and validation criteria. Plan: two unit tests (threshold above/below), narrator context field, priority loop change.
+
+**Skipped**: Implementing kingdonb/mecris#129 — spec-first was the right call; implementation should wait for #152 to merge so the fork is back in sync with upstream.
+
+**Next**: Check if kingdonb/mecris#152 merged. If merged, implement the Greek Review Backlog Booster per the spec at kingdonb/mecris#129. Verify `num_next_7_days` column exists in Neon language_stats (kingdonb/mecris#132 dependency) before touching the priority loop.
