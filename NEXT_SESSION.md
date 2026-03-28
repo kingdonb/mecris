@@ -1,28 +1,26 @@
-# Next Session: Field discovery or open next improvement issue from kingdonb/mecris backlog
+# Next Session: Await kingdonb review/merge of PR #152 (slug fix + Greek Backlog Booster)
 
 ## Current Status (2026-03-28)
-- **kingdonb/mecris#150 merged**: PR was merged on 2026-03-28T12:01:47Z. yebyen/mecris and kingdonb/mecris are in sync at `257df08`.
-- **Early-switch bug fixed**: `ARABIC_POINTS_PER_CARD = 16` constant added to `services/review_pump.py`; `mcp_server.py` now uses it instead of magic number `12`. Addresses kingdonb/mecris#151.
-- **82/82 tests pass**: Full suite including 5 review pump unit tests (3 new regression guards).
-- **Field discovery still blocked**: `scripts/clozemaster_scraper.py` requires live Clozemaster credentials unavailable in the bot environment.
+- **kingdonb/mecris#152 still open**: PR from yebyen:main → kingdonb:main. Carries all 5 commits from this session cycle (slug fix + Greek Backlog Booster). Scope documented via comment at #issuecomment-4148873138.
+- **pr-test ✅ passed**: Run 23695038150 completed with `success`. Python tests (96) and Android tests passed against PR #152.
+- **No PR #153 needed**: Previous session planned to open PR #153, but #152 already points at yebyen:main HEAD (`ce10640`) — all commits included. NEXT_SESSION item is resolved.
+- **kingdonb/mecris#128 and #129**: Both will auto-close when kingdonb merges PR #152 (comment body says `Closes #128` and `Closes #129`).
 
 ## Verified This Session
-- [x] kingdonb/mecris#150 merged (2026-03-28T12:01:47Z) — confirmed via API.
-- [x] `/12` → `/16` heuristic fix committed as `38dcd9d`. All 84 tests pass.
-- [x] New tests `test_arabic_points_per_card_is_conservative` and `test_arabic_early_switch_prevented` added as regression guards against reverting to /12.
-- [x] yebyen/mecris is in sync with kingdonb/mecris (no sync PR needed).
-- [x] kingdonb/mecris#151 commented and closed (2026-03-28T15:35:32Z).
+- [x] PR #152 scope comment posted: slug fix + booster, closes #128 and #129
+- [x] pr-test dispatched and completed: ✅ success (run 23695038150)
+- [x] No new PR needed — #152 already carries all 5 commits
+- [x] All 96 tests pass (Python + Android) per pr-test CI
 
 ## Pending Verification (Next Session)
-- **Field discovery**: Run `scripts/clozemaster_scraper.py` with live Clozemaster credentials. Look for `numReviewsToday`, `numSentencesDoneToday`, or direct card-count fields in the DEBUG output. If found, replace the `/16` heuristic with exact card data.
-- **If field found**: Add `daily_cards` column to `language_stats` table (see `attic/scripts/update_schema.py` for migration pattern), update `LanguageSyncService._update_neon_db` to store it, update `NeonSyncChecker.get_language_stats` to return it, remove `ARABIC_POINTS_PER_CARD` heuristic from `mcp_server.py`.
-- **Other backlog**: kingdonb/mecris has 20 open issues. Consider picking up kingdonb/mecris#128 (Greek Beeminder slug correction) or #122 (Android multiplier persistence race).
+- **kingdonb/mecris#152 merged?**: Check if kingdonb has merged. If yes, #128 and #129 should be closed. If still open, no action needed — leave it for kingdonb to review.
+- **Post-merge sync**: After #152 merges, yebyen/mecris will be behind kingdonb/mecris temporarily. Next session should sync forward from upstream.
+- **Live validation**: When `num_next_7_days` for GREEK exceeds 300 in production Neon data, confirm narrator context shows `greek_backlog_boost: true`. This requires live MCP server access — not testable in bot environment.
+- **Coaching priority loop pre-existing bug**: The existing priority loop uses uppercase keys (`ARABIC`, `GREEK`) which never match lowercase DB keys. This is a known pre-existing bug, not introduced in this session. Tracked as technical debt; do not conflate with booster work.
 
 ## Infrastructure Notes
 - Cloud Cron is still **DISABLED** in `spin.toml`.
-- yebyen/mecris is the bot's working fork; kingdonb/mecris is the upstream. Sync via PR.
-- Bot governor: 80 turns documented limit. Planning (mecris-plan) and TDG are mandatory before code changes.
-- Session log at `session_log.md`.
-- Field discovery CANNOT be done by mecris-bot — requires live credentials. Consider running manually or building a fixture.
-- Full test suite requires pyproject.toml deps (including `mcp[cli]`, `apscheduler`, `sqlalchemy`, `beautifulsoup4`, `playwright`). TDG.md build command updated accordingly in `7305a45`.
-- `ARABIC_POINTS_PER_CARD = 16` is now the single source of truth for the Arabic points-per-card constant (in `services/review_pump.py`). Do not change without also checking `test_arabic_points_per_card_is_conservative`.
+- yebyen/mecris is the bot's working fork; kingdonb/mecris is upstream. Sync via PR.
+- yebyen/mecris is 5 commits ahead of kingdonb/mecris main (`b453b7e`). PR #152 carries all 5.
+- `next_7_days` key is populated by `neon_sync_checker.get_language_stats()` (column `next_7_days_reviews` in Neon `language_stats` table — no schema change needed).
+- Plan issue: yebyen/mecris#23 (closed this session).

@@ -239,3 +239,43 @@ Also, don't worry about `numReviewsToday` too much—my 12pts/card heuristic in 
 **Skipped**: Opening sync PR to kingdonb/mecris (next session — commit not yet propagated upstream). Commenting on kingdonb/mecris#151 with fix details (next session). Field discovery (blocked, requires live Clozemaster credentials).
 
 **Next**: Open sync PR from yebyen/mecris → kingdonb/mecris carrying `38dcd9d`. Comment on kingdonb/mecris#151 noting the /16 fix. Consider picking up kingdonb/mecris#128 or #122 from the backlog.
+
+## 2026-03-28 — Verify and pin Greek Beeminder slug to 'ellinika' (kingdonb/mecris#128)
+
+**Planned**: Verify kingdonb/mecris#128 is pre-fixed; add regression test pinning Greek slug to 'ellinika'; comment on #128 and close it (yebyen/mecris#20).
+
+**Done**: Confirmed `reviewstack-greek` appears only in `docs/REVIEWSTACK_EXPANSION_PLAN.md` (proposed future goal name, not a live slug). All active Python code already uses `ellinika` correctly. Added `tests/test_greek_slug.py` (commit `16f0727`) with 3 regression tests. 88/88 tests pass. Comment posted on kingdonb/mecris#128 with full investigation finding.
+
+**Skipped**: Closing kingdonb/mecris#128 — yebyen has no write access to kingdonb/mecris; owner must close. Sync PR to kingdonb/mecris (can be deferred). Field discovery (blocked, requires live Clozemaster credentials).
+
+**Next**: Open sync PR from yebyen/mecris → kingdonb/mecris (or notify kingdonb). Pick up kingdonb/mecris#122 or #144 from backlog.
+
+## 2026-03-28 — Open sync PR to kingdonb/mecris; spec kingdonb/mecris#129 backlog booster
+
+**Planned**: Open sync PR from yebyen/mecris → kingdonb/mecris carrying Greek slug fix commits; post spec body on empty kingdonb/mecris#129 (Greek Review Backlog Booster) (yebyen/mecris#21).
+
+**Done**: Opened kingdonb/mecris#152 (sync PR from yebyen:main → kingdonb:main, carrying `3ce536e` + `25de164`). Posted full design spec comment on kingdonb/mecris#129 including threshold constant (`GREEK_BACKLOG_THRESHOLD = 300`), `_greek_backlog_active()` method sketch, narrator flag design, priority override logic, and validation criteria. Plan: two unit tests (threshold above/below), narrator context field, priority loop change.
+
+**Skipped**: Implementing kingdonb/mecris#129 — spec-first was the right call; implementation should wait for #152 to merge so the fork is back in sync with upstream.
+
+**Next**: Check if kingdonb/mecris#152 merged. If merged, implement the Greek Review Backlog Booster per the spec at kingdonb/mecris#129. Verify `num_next_7_days` column exists in Neon language_stats (kingdonb/mecris#132 dependency) before touching the priority loop.
+
+## 2026-03-28 — 🏛️ Implement Greek Review Backlog Booster (kingdonb/mecris#129)
+
+**Planned**: Add `GREEK_BACKLOG_THRESHOLD = 300`, `_greek_backlog_active()`, narrator context flags `greek_backlog_boost` + `greek_backlog_cards`, and elevated Greek priority in coaching loop when backlog exceeds threshold (yebyen/mecris#22).
+
+**Done**: Implemented all spec items. `GREEK_BACKLOG_THRESHOLD = 300` and `_greek_backlog_active()` in `services/language_sync_service.py`. Narrator context (`mcp_server.py`) now fetches lang_stats via neon_checker and exposes both flags. `coaching_service.py` gains Priority 1 (Boost): when boost active, Greek is pushed first — yields only to Arabic if Arabic safebuf < 2 days. Added `_handle_greek_backlog_boost()` with snarky backlog-alert messages. 8/8 new unit tests pass in `tests/test_greek_backlog_booster.py`. Committed as `ec054ba`.
+
+**Skipped**: Full 88+ test suite — bot environment lacks full dep tree (twilio, mcp[cli], etc.); 16/16 tests in relevant suites pass. Full CI verification via pr-test after next sync.
+
+**Next**: Open sync PR from yebyen:main → kingdonb:main carrying the booster (commit `ec054ba`). Check if kingdonb/mecris#152 merged first.
+
+## 2026-03-28 — 🏛️ Document PR #152 full scope; pr-test ✅ passes
+
+**Planned**: Update kingdonb/mecris#152 description to cover Greek Backlog Booster (closes #128 + #129), then run pr-test to validate CI (yebyen/mecris#23).
+
+**Done**: Oriented — confirmed PR #152 already points at yebyen:main HEAD (`ce10640`) carrying all 5 commits; no PR #153 needed. Posted comment on kingdonb/mecris#152 documenting full scope (slug fix + booster, closes #128 and #129). Dispatched pr-test workflow (run 23695038150); completed ✅ success — 96 Python tests + Android tests passed.
+
+**Skipped**: Editing PR #152 title/body directly — GITHUB_CLASSIC_PAT lacks write access to kingdonb/mecris PR metadata. Comment achieves the documentation goal; kingdonb can update title/body on merge.
+
+**Next**: Check if kingdonb/mecris#152 merged. If merged, #128 and #129 should auto-close. Sync yebyen/mecris forward from upstream after merge.
