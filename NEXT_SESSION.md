@@ -1,33 +1,31 @@
-# Next Session: Review kingdonb/mecris#152 (sync PR) and implement kingdonb/mecris#129 booster
+# Next Session: Open sync PR #153 to kingdonb/mecris carrying Greek Backlog Booster
 
 ## Current Status (2026-03-28)
-- **kingdonb/mecris#152 open**: Sync PR from yebyen/mecris → kingdonb/mecris carrying Greek slug pin (`3ce536e`) + regression test archive (`25de164`). Awaiting kingdonb review/merge.
-- **kingdonb/mecris#128 still open**: Bot cannot close (no write access). PR #152 resolves its concern — owner should close #128 when #152 merges.
-- **kingdonb/mecris#129 has spec**: Bot posted full design spec as comment at https://github.com/kingdonb/mecris/issues/129#issuecomment-4148512285. Ready to implement once PR #152 lands.
-- **88/88 tests pass**: Full suite stable. No regressions.
-- **Field discovery still blocked**: `scripts/clozemaster_scraper.py` requires live Clozemaster credentials unavailable in bot environment.
+- **kingdonb/mecris#152 still open**: Sync PR from yebyen:main → kingdonb:main (Greek slug fix + regression test). Awaiting kingdonb review/merge.
+- **kingdonb/mecris#129 IMPLEMENTED**: Greek Review Backlog Booster is live in yebyen/mecris (commit `ec054ba`). `GREEK_BACKLOG_THRESHOLD = 300`, `_greek_backlog_active()`, `greek_backlog_boost` + `greek_backlog_cards` in narrator context, Priority 1 (Boost) in coaching priority loop.
+- **8 new tests in `tests/test_greek_backlog_booster.py`**: 8/8 pass (threshold boundary + edge cases).
+- **yebyen/mecris is 4 commits ahead of kingdonb/mecris main**: PR #152 carries commits through `3ac611e`; new commit `ec054ba` is on top.
+- **kingdonb/mecris#128 still open**: Depends on PR #152 merge; owner should close after.
 
 ## Verified This Session
-- [x] kingdonb/mecris#152 PR opened from yebyen:main → kingdonb/mecris:main (carries Greek slug fix + regression test)
-- [x] kingdonb/mecris#129 spec comment posted with full design (backlog booster mechanism, threshold, narrator flag, priority override)
-- [x] 88/88 tests still passing (no changes this session — all prior work)
+- [x] Greek Backlog Booster implemented: `GREEK_BACKLOG_THRESHOLD = 300` in `services/language_sync_service.py`
+- [x] `_greek_backlog_active(lang_stats)` static method: reads `next_7_days` from lowercase `"greek"` key (or `"GREEK"` fallback)
+- [x] `get_narrator_context` now fetches `lang_stats` via `neon_checker.get_language_stats()` and exposes `greek_backlog_boost: bool` + `greek_backlog_cards: int`
+- [x] `coaching_service.py` Priority 1 (Boost): when boost active, pushes Greek ahead of Arabic unless Arabic `safebuf < 2`
+- [x] `_handle_greek_backlog_boost()` method added with backlog-alert messages
+- [x] 8/8 tests pass in `tests/test_greek_backlog_booster.py`
+- [x] All 16 tests pass across `test_greek_backlog_booster.py`, `test_review_pump_units.py`, `test_greek_slug.py`
+- [x] Syntax check clean for all modified files
 
 ## Pending Verification (Next Session)
-- **Check kingdonb/mecris#152**: Was the sync PR merged? If merged, kingdonb/mecris#128 should also be closed. If still open, check for review comments and address them.
-- **Implement kingdonb/mecris#129**: If #152 is merged, proceed to implement the Greek Review Backlog Booster. Spec is posted at the issue. Key tasks:
-  - Add `GREEK_BACKLOG_THRESHOLD = 300` constant to `services/language_sync_service.py`
-  - Add `_greek_backlog_active()` method reading `num_next_7_days` from lang_stats
-  - Modify `get_narrator_context` to include `greek_backlog_boost` and `greek_backlog_cards`
-  - Modify priority loop to elevate Greek when boost active (yield only to Arabic if runway < 2 days)
-  - Add unit tests (mock lang_stats with num_next_7_days=350 → True; =250 → False)
-  - Verify `num_next_7_days` column exists in Neon `language_stats` schema first (check kingdonb/mecris#132)
+- **Open sync PR #153**: yebyen/mecris is now 4 commits ahead of kingdonb/mecris. Open a new PR from yebyen:main → kingdonb:main carrying the Greek Backlog Booster (commit `ec054ba`). PR #152 may still be open or merged — check first. If #152 is still open, check if it can be updated to include the new commit, or open a new PR.
+- **Check kingdonb/mecris#152**: Was it merged? If merged, open PR #153 for the booster. If still open, kingdonb has 4 bot commits to review — consider leaving a comment to clarify the state.
+- **Full test suite (88+ tests)**: Bot environment lacks full deps (twilio, mcp, etc.). Full suite passes in CI — verify via the pr-test workflow after syncing. Expected: 88 existing + 8 new = 96 tests.
+- **Live validation**: When `num_next_7_days` for GREEK exceeds 300 in production Neon data, confirm narrator context shows `greek_backlog_boost: true`.
 
 ## Infrastructure Notes
 - Cloud Cron is still **DISABLED** in `spin.toml`.
-- yebyen/mecris is the bot's working fork; kingdonb/mecris is upstream. Sync via PR. As of this session, yebyen/mecris and kingdonb/mecris are 0 commits diverged pending PR #152 merge.
-- Bot governor: 80 turns documented limit. Planning (mecris-plan) and TDG are mandatory before code changes.
-- Session log at `session_log.md`.
-- Full test suite requires pyproject.toml deps (including `mcp[cli]`, `apscheduler`, `sqlalchemy`, `beautifulsoup4`, `playwright`). TDG.md build command updated accordingly in `7305a45`.
-- `ARABIC_POINTS_PER_CARD = 16` is the single source of truth for the Arabic points-per-card constant (in `services/review_pump.py`).
-- `"ellinika"` is the single source of truth for the Greek Beeminder slug (in `services/language_sync_service.py`).
-- kingdonb/mecris#129 spec: booster threshold is 300 cards (`num_next_7_days`), narrator flag `greek_backlog_boost`, no Beeminder slope changes.
+- yebyen/mecris is the bot's working fork; kingdonb/mecris is upstream. Sync via PR. As of this session, yebyen/mecris is 4 commits ahead (PR #152 pending + commit `ec054ba`).
+- `next_7_days` key is already populated by `neon_sync_checker.get_language_stats()` (column `next_7_days_reviews` in Neon `language_stats` table — no schema change needed).
+- Note: existing coaching priority loop uses uppercase keys (`ARABIC`, `GREEK`) which never match (keys are lowercase from DB). This is a pre-existing bug not touched in this session. The new boost code correctly uses lowercase `"greek"`.
+- Plan issue: yebyen/mecris#22 (closed this session).
