@@ -54,19 +54,22 @@ class CoachingService:
             
             # Priority 1: Multiplier-Driven Accountability (Arabic First)
             from services.review_pump import ReviewPump
-            for lang_name, slug in [("ARABIC", "reviewstack"), ("GREEK", "ellinika")]:
+            language_configs = [
+                ("ARABIC", "reviewstack", self._handle_arabic_pressure),
+                ("GREEK", "ellinika", self._handle_greek_pressure)
+            ]
+            
+            for lang_name, slug, handler in language_configs:
                 stats = lang_stats.get(lang_name, {})
-                multiplier = stats.get("multiplier", 1.0)
+                multiplier = float(stats.get("multiplier", 1.0) or 1.0)
+                
+                # If lever is set (> 1.0), we enforce the daily target
                 if stats.get("current", 0) > 0 and multiplier > 1.0:
                     pump = ReviewPump(multiplier=multiplier)
                     target = pump.calculate_target(stats.get("current", 0), stats.get("tomorrow", 0))
                     
-                    # Only nag if we haven't hit the target flow rate for the day
                     if stats.get("daily_completions", 0) < target:
-                        if lang_name == "ARABIC":
-                            return self._handle_arabic_pressure(stats, target)
-                        else:
-                            return self._handle_greek_pressure(stats, target)
+                        return handler(stats, target)
 
             # Priority 2: High Momentum (Already walked/active)
             if has_walked:
