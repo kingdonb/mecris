@@ -279,3 +279,13 @@ Also, don't worry about `numReviewsToday` too much—my 12pts/card heuristic in 
 **Skipped**: Editing PR #152 title/body directly — GITHUB_CLASSIC_PAT lacks write access to kingdonb/mecris PR metadata. Comment achieves the documentation goal; kingdonb can update title/body on merge.
 
 **Next**: Check if kingdonb/mecris#152 merged. If merged, #128 and #129 should auto-close. Sync yebyen/mecris forward from upstream after merge.
+
+## 2026-03-28 — 🏛️ Fix coaching priority loop uppercase key mismatch (ARABIC/GREEK → arabic/greek)
+
+**Planned**: Change uppercase lang keys to lowercase in `services/coaching_service.py` at lines 68, 69, and 144 to match `get_language_stats()` output; add regression tests (yebyen/mecris#24).
+
+**Done**: Fixed all 3 uppercase key references. Added 3 new tests in `test_coaching_service.py` verifying Arabic lever, Greek lever, and Greek play-mode each fire with lowercase keys. Updated existing tests in `test_coaching_lever_intelligence.py` (3 mocks) and `test_issue_151_repro.py` (1 mock) to use correct lowercase keys matching real DB output. 9/9 coaching tests pass, 90/90 full suite passes. Committed as `18bfc6b`.
+
+**Skipped**: Sync PR and pr-test — commit `18bfc6b` is local only; workflow pushes at end of run. PR and pr-test deferred to next session. kingdonb/mecris#129 not closed — no write token for kingdonb repo.
+
+**Next**: Open sync PR from yebyen:main → kingdonb:main once `18bfc6b` is on GitHub. Run pr-test against that PR.
