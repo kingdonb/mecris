@@ -65,8 +65,8 @@ class CoachingService:
             # Priority 2: Multiplier-Driven Accountability (Arabic First)
             from services.review_pump import ReviewPump
             language_configs = [
-                ("ARABIC", "reviewstack", self._handle_arabic_pressure),
-                ("GREEK", "ellinika", self._handle_greek_pressure)
+                ("arabic", "reviewstack", self._handle_arabic_pressure),
+                ("greek", "ellinika", self._handle_greek_pressure)
             ]
 
             for lang_name, slug, handler in language_configs:
@@ -141,7 +141,7 @@ class CoachingService:
 
     async def _handle_high_momentum(self, critical: List[Dict], warning: List[Dict], vacation_mode: bool, lang_stats: Dict) -> CoachingInsight:
         # Greek "PLAY" Driver (Only if safe and multiplier >= 2.0)
-        greek = lang_stats.get("GREEK", {})
+        greek = lang_stats.get("greek", {})
         if greek.get("current", 0) < 50 and greek.get("multiplier", 1.0) >= 2.0:
             return CoachingInsight(
                 type=InsightType.LEVER_PUSH,

@@ -22,13 +22,13 @@ async def test_repro_arabic_not_done_before_greek_play():
     # Greek: current=10, multiplier=2.0 (SAFE, triggers PLAY in current logic)
     
     mock_lang_stats = {
-        "ARABIC": {
+        "arabic": {
             "current": 100,
             "tomorrow": 10,
             "multiplier": 2.0,
             "daily_completions": 5
         },
-        "GREEK": {
+        "greek": {
             "current": 10,
             "multiplier": 2.0,
             "daily_completions": 0
