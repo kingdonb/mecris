@@ -269,3 +269,13 @@ Also, don't worry about `numReviewsToday` too much—my 12pts/card heuristic in 
 **Skipped**: Full 88+ test suite — bot environment lacks full dep tree (twilio, mcp[cli], etc.); 16/16 tests in relevant suites pass. Full CI verification via pr-test after next sync.
 
 **Next**: Open sync PR from yebyen:main → kingdonb:main carrying the booster (commit `ec054ba`). Check if kingdonb/mecris#152 merged first.
+
+## 2026-03-28 — 🏛️ Document PR #152 full scope; pr-test ✅ passes
+
+**Planned**: Update kingdonb/mecris#152 description to cover Greek Backlog Booster (closes #128 + #129), then run pr-test to validate CI (yebyen/mecris#23).
+
+**Done**: Oriented — confirmed PR #152 already points at yebyen:main HEAD (`ce10640`) carrying all 5 commits; no PR #153 needed. Posted comment on kingdonb/mecris#152 documenting full scope (slug fix + booster, closes #128 and #129). Dispatched pr-test workflow (run 23695038150); completed ✅ success — 96 Python tests + Android tests passed.
+
+**Skipped**: Editing PR #152 title/body directly — GITHUB_CLASSIC_PAT lacks write access to kingdonb/mecris PR metadata. Comment achieves the documentation goal; kingdonb can update title/body on merge.
+
+**Next**: Check if kingdonb/mecris#152 merged. If merged, #128 and #129 should auto-close. Sync yebyen/mecris forward from upstream after merge.
