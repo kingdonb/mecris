@@ -209,3 +209,13 @@ Also, don't worry about `numReviewsToday` too much—my 12pts/card heuristic in 
 **Skipped**: Health report issue (superseded by the actual fix work). Field discovery (blocked, no credentials). PR merge (awaiting kingdonb action).
 
 **Next**: Check if kingdonb/mecris#150 was merged. Fix `test_coaching.py` collection failure (same pattern as reminder integration — needs `sys.modules` eviction + psycopg2 mock).
+
+## 2026-03-28 — Fix test_coaching.py collection failure via sys.modules eviction
+
+**Planned**: Apply the same deferred-import pattern from `test_reminder_integration.py` to `tests/test_coaching.py` to fix the module-level `from mcp_server import get_coaching_insight` triggering `UsageTracker()` at collection time (yebyen/mecris#16).
+
+**Done**: Removed module-level import, added `_make_mcp_importable()` helper (patches `NEON_DB_URL`, `DEFAULT_USER_ID`, `psycopg2.connect`), and applied `sys.modules.pop("mcp_server", None)` + deferred import inside each test's patched context. `pytest --collect-only tests/test_coaching.py` now reports 4 tests, 0 errors (was: 1 import error). Committed as `6c6e1df`. Updated kingdonb/mecris#150 with a comment noting the new commit. Closed yebyen/mecris#16.
+
+**Skipped**: Full `.venv` test run (environment lacks all deps — CI/`.venv` needed for execution verification). Field discovery (blocked, requires live Clozemaster credentials). PR #150 merge (awaiting kingdonb action).
+
+**Next**: Confirm kingdonb/mecris#150 merged. Verify `test_coaching.py` tests pass (not just collect) via CI run.
