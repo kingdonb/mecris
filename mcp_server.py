@@ -27,7 +27,7 @@ from services.weather_service import WeatherService
 from services.neon_sync_checker import NeonSyncChecker
 from services.reminder_service import ReminderService
 from services.language_sync_service import LanguageSyncService
-from services.review_pump import ReviewPump
+from services.review_pump import ReviewPump, ARABIC_POINTS_PER_CARD
 
 # Load environment variables
 load_dotenv()
@@ -569,7 +569,7 @@ async def get_language_velocity_stats(user_id: str = None) -> Dict[str, Any]:
                 unit = "cards"
                 # Heuristic: 1 card is approximately 12 points (average of 8 and 16).
                 # This normalizes the points earned into an estimated card count to match current_debt.
-                daily_done = int(daily_done / 12)
+                daily_done = int(daily_done / ARABIC_POINTS_PER_CARD)
 
             pump = ReviewPump(multiplier=multiplier)
             pump_status = pump.get_status(current_debt, tomorrow_liability, daily_done, unit=unit)

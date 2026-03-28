@@ -1,5 +1,12 @@
 from typing import Dict, Any, Optional
 
+# Max points awarded per correctly answered Arabic hard card.
+# Using the max (16) rather than the average (8+16)/2=12 prevents
+# the Nag Engine from prematurely marking the Arabic goal "done"
+# when only easy/new cards were played (kingdonb/mecris#151).
+ARABIC_POINTS_PER_CARD = 16
+
+
 class ReviewPump:
     """
     ReviewPump logic for calculating daily language targets based on a multiplier lever.
