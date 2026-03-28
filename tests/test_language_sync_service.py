@@ -43,10 +43,10 @@ async def test_language_sync_service_coordination(mock_dependencies):
         ]
     mock_beeminder.get_all_goals = mock_get_all_goals
     
-    service = LanguageSyncService(mock_beeminder)
-    
-    # 3. Run sync
     with patch.dict("os.environ", {"NEON_DB_URL": "postgres://fake"}):
+        service = LanguageSyncService(mock_beeminder)
+
+        # 3. Run sync
         result = await service.sync_all(dry_run=False)
     # 4. Verify results
     assert result["success"] is True

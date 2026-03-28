@@ -179,3 +179,53 @@ Hey, your previous fix for the Review Pump was a bit of a "half-job". Patching t
 Also, don't worry about `numReviewsToday` too much—my 12pts/card heuristic in the Spin app handles the Arabic unit mismatch beautifully for now by normalizing everything to "estimated cards" before it even hits the DB/Phone.
 
 **Next**: Verify the 10x lever behavior on the physical device and monitor the Nag Engine performance.
+
+## 2026-03-27 — Investigate Clozemaster field discovery; fix stale unit comment
+
+**Planned**: Run scraper with DEBUG logging to inspect available Clozemaster API fields; if `numReviewsToday` found, implement full chain: DB migration + store + return + remove `/12` heuristic (yebyen/mecris#13).
+
+**Done**: Discovered that field discovery is blocked — the bot environment has no Clozemaster credentials. Investigated the data flow instead: confirmed Rust failover sync (`lib.rs:414-417`) pre-converts Arabic to cards before writing `daily_completions` to Neon, while Python sync (`language_sync_service.py`) stores raw points. The comment at `mcp_server.py:559` incorrectly claimed "ALWAYS in points" — fixed (commit `9c9e8fc`). Tests pass 2/2.
+
+**Skipped**: Full `numReviewsToday` implementation — blocked by missing live credentials; field existence still unconfirmed.
+
+**Next**: Field discovery requires live Clozemaster credentials (can't be done by mecris-bot in CI). Either run manually with `LOG_LEVEL=DEBUG`, or build a test fixture capturing a real API response. Sync PR yebyen→kingdonb needed for commit `9c9e8fc`.
+
+## 2026-03-27 — Open sync PR from yebyen/mecris to kingdonb/mecris
+
+**Planned**: Open a pull request from yebyen/mecris main to kingdonb/mecris main carrying 2 ahead commits (yebyen/mecris#14).
+
+**Done**: Opened kingdonb/mecris#150 with commits `9c9e8fc` (docs: Arabic `daily_completions` unit duality) and `3f150a4` (archive: field discovery investigation). Both commits visible in PR diff. Validation criteria met.
+
+**Skipped**: Nothing — plan fully executed.
+
+**Next**: Check if kingdonb/mecris#150 was merged. If merged, both repos are in sync. Field discovery still requires live Clozemaster credentials (human action required).
+
+## 2026-03-27 — Fix 11 pre-existing test failures across 5 test files
+
+**Planned**: Survey codebase for available work while kingdonb/mecris#150 awaits merge; produce health report; attempt at least one improvement (yebyen/mecris#15).
+
+**Done**: Ran full test suite; found 11 failures across 5 test files — all caused by stale mocks and missing env patches, not production code bugs. Fixed all 11: added `NEON_DB_URL`/`DEFAULT_USER_ID` to fixtures, patched `resolve_user_id` to avoid context-manager mock interference, updated 5-element tuple mocks to 6 (after `daily_completions` column addition), and fixed `test_reminder_integration.py` to evict the cached failed `mcp_server` import. 78/78 non-integration tests now pass. Committed as `ccc472b`.
+
+**Skipped**: Health report issue (superseded by the actual fix work). Field discovery (blocked, no credentials). PR merge (awaiting kingdonb action).
+
+**Next**: Check if kingdonb/mecris#150 was merged. Fix `test_coaching.py` collection failure (same pattern as reminder integration — needs `sys.modules` eviction + psycopg2 mock).
+
+## 2026-03-28 — Fix test_coaching.py collection failure via sys.modules eviction
+
+**Planned**: Apply the same deferred-import pattern from `test_reminder_integration.py` to `tests/test_coaching.py` to fix the module-level `from mcp_server import get_coaching_insight` triggering `UsageTracker()` at collection time (yebyen/mecris#16).
+
+**Done**: Removed module-level import, added `_make_mcp_importable()` helper (patches `NEON_DB_URL`, `DEFAULT_USER_ID`, `psycopg2.connect`), and applied `sys.modules.pop("mcp_server", None)` + deferred import inside each test's patched context. `pytest --collect-only tests/test_coaching.py` now reports 4 tests, 0 errors (was: 1 import error). Committed as `6c6e1df`. Updated kingdonb/mecris#150 with a comment noting the new commit. Closed yebyen/mecris#16.
+
+**Skipped**: Full `.venv` test run (environment lacks all deps — CI/`.venv` needed for execution verification). Field discovery (blocked, requires live Clozemaster credentials). PR #150 merge (awaiting kingdonb action).
+
+**Next**: Confirm kingdonb/mecris#150 merged. Verify `test_coaching.py` tests pass (not just collect) via CI run.
+
+## 2026-03-28 — Verify test_coaching.py tests pass; fix TDG.md build command
+
+**Planned**: Run `PYTHONPATH=. .venv/bin/pytest tests/test_coaching.py -v` to confirm 4 coaching tests pass, then post comment on kingdonb/mecris#150 (yebyen/mecris#17).
+
+**Done**: Created fresh `.venv`; discovered TDG.md build command omits `mcp[cli]`, `apscheduler`, and `sqlalchemy` which are in pyproject.toml but not requirements.txt. Installed missing deps. Full suite: **82/82 passed** including all 4 coaching tests. Fixed TDG.md build command (`7305a45`). Posted 82/82 green status comment on kingdonb/mecris#150.
+
+**Skipped**: Field discovery (blocked, requires live Clozemaster credentials). PR #150 merge (awaiting kingdonb action).
+
+**Next**: Confirm kingdonb/mecris#150 merged. If not, wait. Field discovery requires manual run with live credentials.

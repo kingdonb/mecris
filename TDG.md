@@ -6,7 +6,7 @@
 - Test Framework: pytest
 
 ## Build Command
-uv pip install -r requirements.txt pytest-cov pytest-asyncio
+uv pip install -e ".[dev]" pytest-cov 2>/dev/null || uv pip install -r requirements.txt "mcp[cli]>=1.26.0" "apscheduler>=3.11.0" "sqlalchemy>=2.0.48" pytest-cov pytest-asyncio
 
 ## Test Command
 PYTHONPATH=. .venv/bin/pytest

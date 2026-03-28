@@ -6,7 +6,7 @@ from unittest.mock import patch, MagicMock
 @pytest.fixture
 def test_scheduler():
     """Provides a fresh instance of MecrisScheduler."""
-    with patch.dict("os.environ", {"NEON_DB_URL": "postgres://fake"}):
+    with patch.dict("os.environ", {"NEON_DB_URL": "postgres://fake", "DEFAULT_USER_ID": "test-user"}):
         from scheduler import MecrisScheduler
         scheduler = MecrisScheduler()
         scheduler.scheduler = MagicMock()

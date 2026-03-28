@@ -1,23 +1,26 @@
-# Next Session: Inspect scraper DEBUG logs for numReviewsToday field, then implement if found
+# Next Session: Check if kingdonb/mecris#150 was merged; field discovery still requires human credentials
 
-## Current Status (2026-03-27)
-- **Repos in sync**: kingdonb/mecris#149 was merged (2026-03-27T17:58:47Z). Both repos share HEAD `9abbfd2`.
-- **Field discovery logging added**: `scripts/clozemaster_scraper.py` now logs `sorted(pair.keys())` and `sorted(data.keys())` at DEBUG level on each scraper run. Next live run with `logging.DEBUG` enabled will reveal available Clozemaster API fields.
-- **Arabic heuristic still in place**: `mcp_server.py:568` applies `daily_done = int(daily_done / 12)` to convert Arabic points to cards. This stays until `numReviewsToday` (or equivalent) is confirmed in the API.
-- **No open bot issues**: yebyen/mecris#12 closed with completion evidence.
+## Current Status (2026-03-28)
+- **Sync PR still open**: kingdonb/mecris#150 carries 7 commits (through `7305a45`). A status comment was posted 2026-03-28. Awaiting merge by kingdonb.
+- **Full test suite verified**: 82/82 tests pass including all 4 `test_coaching.py` tests. Confirmed with full `.venv` install from pyproject.toml deps.
+- **TDG.md build command fixed**: Old command (`uv pip install -r requirements.txt ...`) omitted `mcp[cli]`, `apscheduler`, `sqlalchemy`. Updated to include these (`7305a45`).
+- **Field discovery still blocked**: `scripts/clozemaster_scraper.py` requires live Clozemaster credentials unavailable in the bot environment.
 
 ## Verified This Session
-- [x] kingdonb/mecris#149 merged — repos now in sync (verified via GitHub API).
-- [x] `logger.debug` added in `get_review_forecast` and `_enrich_with_api_forecast` in `scripts/clozemaster_scraper.py` (commit `6135f95`).
-- [x] `tests/test_clozemaster_idempotency.py` passes (2/2) after the change.
+- [x] kingdonb/mecris#150 is still open (2026-03-28) — kingdonb has not yet merged it.
+- [x] `test_coaching.py` 4 tests execute and pass (not just collect). Full suite: 82/82 passed.
+- [x] Missing deps (`mcp[cli]`, `apscheduler`, `sqlalchemy`) identified and TDG.md fixed (`7305a45`).
+- [x] Status comment posted on kingdonb/mecris#150 with test results.
 
 ## Pending Verification (Next Session)
-- **Field discovery**: Run the Clozemaster scraper with `logging.DEBUG` enabled (set `logging.basicConfig(level=logging.DEBUG)` or `LOG_LEVEL=DEBUG`). Check the output for `"All available pairing keys for ara-eng: [...]"` — note whether `numReviewsToday`, `numSentencesDoneToday`, or similar card-count field appears.
+- **Check PR merge status**: Confirm kingdonb/mecris#150 was merged. If not, follow up again.
+- **Field discovery**: Run `scripts/clozemaster_scraper.py` with live Clozemaster credentials. Look for `"All available pairing keys for ara-eng: [...]"` in DEBUG output. Note whether `numReviewsToday`, `numSentencesDoneToday`, or similar direct card-count field appears.
 - **If field found**: Add `daily_cards` column to `language_stats` table (see `attic/scripts/update_schema.py` for migration pattern), update `LanguageSyncService._update_neon_db` to store it, update `NeonSyncChecker.get_language_stats` to return it, remove the `/12` heuristic from `mcp_server.py:568`.
-- **Skills Discoverability**: Still unverified — confirm if mecris-orient/plan/archive skills are discoverable in a standard Claude Code install (no action path identified yet).
 
 ## Infrastructure Notes
 - Cloud Cron is still **DISABLED** in `spin.toml`.
 - yebyen/mecris is the bot's working fork; kingdonb/mecris is the upstream. Sync via PR.
-- Bot governor: 80 turns documented limit, 200 turns actual. Planning (mecris-plan) and TDG are mandatory before code changes.
-- Session log updated at `session_log.md`.
+- Bot governor: 80 turns documented limit. Planning (mecris-plan) and TDG are mandatory before code changes.
+- Session log at `session_log.md`.
+- Field discovery CANNOT be done by mecris-bot — requires live credentials. Consider running manually or building a fixture.
+- Full test suite now requires pyproject.toml deps, not just requirements.txt. TDG.md build command updated accordingly.
