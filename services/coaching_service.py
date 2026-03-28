@@ -51,23 +51,33 @@ class CoachingService:
             from services.neon_sync_checker import NeonSyncChecker
             neon = NeonSyncChecker()
             lang_stats = neon.get_language_stats()
-            
-            # Priority 1: Multiplier-Driven Accountability (Arabic First)
+
+            greek_backlog_boost = context.get("greek_backlog_boost", False)
+            greek_backlog_cards = context.get("greek_backlog_cards", 0)
+
+            # Priority 1 (Boost): Greek Backlog Emergency — yield only if Arabic runway < 2 days
+            if greek_backlog_boost:
+                arabic_goal = next((g for g in beeminder_goals if g.get("slug") == "reviewstack"), {})
+                arabic_safebuf = arabic_goal.get("safebuf", 999)
+                if arabic_safebuf >= 2:
+                    return self._handle_greek_backlog_boost(lang_stats.get("greek", {}), greek_backlog_cards)
+
+            # Priority 2: Multiplier-Driven Accountability (Arabic First)
             from services.review_pump import ReviewPump
             language_configs = [
                 ("ARABIC", "reviewstack", self._handle_arabic_pressure),
                 ("GREEK", "ellinika", self._handle_greek_pressure)
             ]
-            
+
             for lang_name, slug, handler in language_configs:
                 stats = lang_stats.get(lang_name, {})
                 multiplier = float(stats.get("multiplier", 1.0) or 1.0)
-                
+
                 # If lever is set (> 1.0), we enforce the daily target
                 if stats.get("current", 0) > 0 and multiplier > 1.0:
                     pump = ReviewPump(multiplier=multiplier)
                     target = pump.calculate_target(stats.get("current", 0), stats.get("tomorrow", 0))
-                    
+
                     if stats.get("daily_completions", 0) < target:
                         return handler(stats, target)
 
@@ -81,6 +91,19 @@ class CoachingService:
         except Exception as e:
             logger.error(f"Error generating coaching insight: {e}")
             raise
+
+    def _handle_greek_backlog_boost(self, greek: Dict, backlog_cards: int) -> CoachingInsight:
+        messages = [
+            f"🏛️ Greek backlog alert: {backlog_cards} cards due in the next 7 days! Clear the queue before it becomes a crisis. 📚",
+            f"🇬🇷 {backlog_cards} Greek reviews incoming this week. Time to chip away now before the wave hits. ⚡",
+            f"📖 Greek backlog boost active — {backlog_cards} reviews on the horizon. A little work now prevents a lot of pain later. 🏛️"
+        ]
+        return CoachingInsight(
+            type=InsightType.LEVER_PUSH,
+            momentum="low",
+            message=random.choice(messages),
+            target_slug="ellinika"
+        )
 
     def _handle_arabic_pressure(self, arabic: Dict, target: int) -> CoachingInsight:
         multiplier = arabic.get("multiplier", 1.0)

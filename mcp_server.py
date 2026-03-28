@@ -197,6 +197,11 @@ async def get_narrator_context(user_id: str = None) -> Dict[str, Any]:
         daily_walk_status = await get_cached_daily_activity("bike", target_user_id)
         groq_context = await asyncio.to_thread(get_groq_context_for_narrator, target_user_id)
 
+        # Greek backlog boost: check if 7-day review forecast exceeds threshold
+        lang_stats = await asyncio.to_thread(neon_checker.get_language_stats, target_user_id)
+        greek_backlog_boost = language_sync_service._greek_backlog_active(lang_stats)
+        greek_backlog_cards = int(lang_stats.get("greek", lang_stats.get("GREEK", {})).get("next_7_days") or 0)
+
         # Add latest cloud walk info if available (use to_thread to avoid blocking event loop)
         latest_cloud_walk = await asyncio.to_thread(neon_checker.get_latest_walk, target_user_id)
         if latest_cloud_walk:
@@ -261,16 +266,18 @@ async def get_narrator_context(user_id: str = None) -> Dict[str, Any]:
             "summary": summary, "goals_status": {"total": len(active_goals)},
             "urgent_items": urgent_items, "beeminder_alerts": [e.get("message", "") for e in emergencies[:5]],
             "goal_runway": goal_runway, "budget_status": budget_status, "recommendations": recommendations,
-            "daily_walk_status": daily_walk_status, 
+            "daily_walk_status": daily_walk_status,
             "latest_cloud_walk": latest_cloud_walk,
             "system_pulse": {
                 "running": scheduler.running,
                 "is_leader": scheduler.is_leader,
                 "process_id": scheduler.process_id
             },
-            "vacation_mode": vacation_mode, 
+            "vacation_mode": vacation_mode,
             "time_window_start": time_window_start,
             "time_window_end": time_window_end,
+            "greek_backlog_boost": greek_backlog_boost,
+            "greek_backlog_cards": greek_backlog_cards,
             "last_updated": datetime.now().isoformat()
         }
     except Exception as e:

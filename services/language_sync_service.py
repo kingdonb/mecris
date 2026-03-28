@@ -9,6 +9,8 @@ from scripts.clozemaster_scraper import sync_clozemaster_to_beeminder
 
 logger = logging.getLogger("mecris.services.language_sync")
 
+GREEK_BACKLOG_THRESHOLD = 300  # num_next_7_days cards above which Greek backlog boost activates
+
 class LanguageSyncService:
     """
     Consolidated service for syncing Clozemaster stats to Beeminder and Neon DB.
@@ -23,6 +25,15 @@ class LanguageSyncService:
             "ARABIC": "reviewstack",
             "GREEK": "ellinika"
         }
+
+    @staticmethod
+    def _greek_backlog_active(lang_stats: Dict) -> bool:
+        """Return True if Greek next_7_days reviews exceeds GREEK_BACKLOG_THRESHOLD."""
+        greek = lang_stats.get("greek", lang_stats.get("GREEK", {}))
+        next_7 = greek.get("next_7_days")
+        if next_7 is None:
+            return False
+        return int(next_7) >= GREEK_BACKLOG_THRESHOLD
 
     def _update_neon_db(self, scraper_data: Dict, goal_map: Dict, summary: Dict, user_id: str) -> None:
         """Synchronous helper method to update Neon DB."""
