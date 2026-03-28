@@ -52,17 +52,21 @@ class CoachingService:
             neon = NeonSyncChecker()
             lang_stats = neon.get_language_stats()
             
-            # Priority 1: High Pressure Arabic (Lever Aware + Neural Behind)
-            arabic = lang_stats.get("ARABIC", {})
-            if arabic.get("current", 0) > 0 and arabic.get("multiplier", 1.0) >= 3.0:
-                # Calculate if we are "Neural Behind"
-                from services.review_pump import ReviewPump
-                pump = ReviewPump(multiplier=arabic.get("multiplier", 1.0))
-                target = pump.calculate_target(arabic.get("current", 0), arabic.get("tomorrow", 0))
-                
-                # Only nag if we haven't hit the target flow rate for the day
-                if arabic.get("daily_completions", 0) < target:
-                    return self._handle_arabic_pressure(arabic, target)
+            # Priority 1: Multiplier-Driven Accountability (Arabic First)
+            from services.review_pump import ReviewPump
+            for lang_name, slug in [("ARABIC", "reviewstack"), ("GREEK", "ellinika")]:
+                stats = lang_stats.get(lang_name, {})
+                multiplier = stats.get("multiplier", 1.0)
+                if stats.get("current", 0) > 0 and multiplier > 1.0:
+                    pump = ReviewPump(multiplier=multiplier)
+                    target = pump.calculate_target(stats.get("current", 0), stats.get("tomorrow", 0))
+                    
+                    # Only nag if we haven't hit the target flow rate for the day
+                    if stats.get("daily_completions", 0) < target:
+                        if lang_name == "ARABIC":
+                            return self._handle_arabic_pressure(stats, target)
+                        else:
+                            return self._handle_greek_pressure(stats, target)
 
             # Priority 2: High Momentum (Already walked/active)
             if has_walked:
@@ -81,7 +85,7 @@ class CoachingService:
         
         messages = [
             f"📈 Arabic Pace: {done}/{target}. You've got the lever at {multiplier}x. Time to close the gap. 😤",
-            f"💀 {done}/{target} reviews done. You set the pressure to {multiplier}x yourself. Don't make me remind you again. 🔪",
+            f"💀 Arabic: {done}/{target} reviews done. You set the pressure to {multiplier}x yourself. Don't make me remind you again. 🔪",
             f"⚖️ Arabic Progress: {done}/{target}. Lever: {multiplier}x. The math doesn't add up until you do the work. Move it! 🏃‍♂️"
         ]
         
@@ -92,8 +96,25 @@ class CoachingService:
             target_slug="reviewstack"
         )
 
+    def _handle_greek_pressure(self, greek: Dict, target: int) -> CoachingInsight:
+        multiplier = greek.get("multiplier", 1.0)
+        done = greek.get("daily_completions", 0)
+        
+        messages = [
+            f"📈 Greek Pace: {done}/{target}. Lever: {multiplier}x. You need to keep the flow up! 🇬🇷",
+            f"⚡ Greek Progress: {done}/{target}. You've set the pace to {multiplier}x. Time to hit the books. 🏛️",
+            f"🔥 Greek Momentum: {done}/{target}. Target is {target} today. Keep that flame alive! 🕯️"
+        ]
+        
+        return CoachingInsight(
+            type=InsightType.LEVER_PUSH,
+            momentum="low",
+            message=random.choice(messages),
+            target_slug="ellinika"
+        )
+
     async def _handle_high_momentum(self, critical: List[Dict], warning: List[Dict], vacation_mode: bool, lang_stats: Dict) -> CoachingInsight:
-        # Check Greek "PLAY" Driver
+        # Greek "PLAY" Driver (Only if safe and multiplier >= 2.0)
         greek = lang_stats.get("GREEK", {})
         if greek.get("current", 0) < 50 and greek.get("multiplier", 1.0) >= 2.0:
             return CoachingInsight(
