@@ -14,8 +14,17 @@ You have access to:
 *   `ANTHROPIC_BASE_URL` (Pointing to Helix)
 *   `ANTHROPIC_API_KEY` (Your Helix token)
 
+**API Reference (Extracted from Documentation):**
+*   **Base URL (SaaS):** `https://app.tryhelix.ai/api/v1`
+*   **Inference URL:** `https://app.tryhelix.ai/v1` (OpenAI/Anthropic compatible)
+*   **Headers:** Standard `Authorization: Bearer YOUR_API_KEY`
+*   **Key Discovery Endpoints:**
+    - `GET /api/v1/apps` - List agents/apps (may contain quota context)
+    - `GET /api/v1/sessions` - List past sessions for usage tracking
+    - **Interactive Reference:** `https://docs.helixml.tech/helix/api-reference/`
+
 **Your First Mission (Discovery):** Before building the logic, write a quick test script to hit the Helix API and see if you can retrieve the credit balance (e.g., `$97.83`). 
-Try hitting `${ANTHROPIC_BASE_URL}/v1/models` or look for a billing/usage endpoint. If you can fetch the live balance, the "Helix Inversion" logic becomes incredibly powerful. If you can't, you will need to rely on local usage counting.
+Try hitting `/api/v1/apps` or look for a billing/usage endpoint in the interactive docs. If you can fetch the live balance, the "Helix Inversion" logic becomes incredibly powerful. If you can't, you will need to rely on local usage counting.
 
 ## 3. Core Concepts to Implement
 
