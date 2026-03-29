@@ -367,3 +367,13 @@ Also, don't worry about `numReviewsToday` too much—my 12pts/card heuristic in 
 **Skipped**: "defer" status handling (budget_gate only blocks on "deny", not "defer" — intentional design decision to avoid disrupting normal rate-fluctuation). Helix balance live validation (no API access in CI). Arabic cards_today live verification (needs live sync run). Issue #122 (Android multiplier race — deferred again). 
 
 **Next**: Open sync PR from yebyen/mecris to kingdonb/mecris for `11ac980`. Then: Arabic cards_today live verification, or Issue #122 Android multiplier race.
+
+## 2026-03-29 — Sync PR #155 opened to kingdonb/mecris; pr-test ✅ 🏛️
+
+**Planned**: Open sync PR from yebyen/mecris → kingdonb/mecris with budget_gate enforcement commits (yebyen/mecris#32).
+
+**Done**: Confirmed yebyen/mecris was 2 commits ahead of kingdonb/mecris (`11ac980`, `f2a8aac`). PR opened at kingdonb/mecris#155 via gh CLI with GITHUB_CLASSIC_PAT. pr-test workflow dispatched and completed ✅ success (run #23717583068). Plan issue yebyen/mecris#32 closed with validation evidence.
+
+**Skipped**: Nothing — scope was minimal and fully completed.
+
+**Next**: kingdonb to review and merge kingdonb/mecris#155. After merge: pull from upstream into yebyen/mecris, then tackle Arabic cards_today live verification or Issue #122 (Android multiplier race).

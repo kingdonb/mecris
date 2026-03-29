@@ -1,21 +1,21 @@
-# Next Session: BudgetGovernor enforcement live; verify Arabic cards_today sync
+# Next Session: PR #155 awaiting kingdonb review and merge
 
 ## Current Status (2026-03-29)
-- **PR #153 MERGED**: kingdonb merged Budget Governor + Narrator Context integration today.
-- **Repos In Sync**: yebyen/mecris HEAD `11ac980` matches kingdonb/mecris HEAD `ea2eebb` + 1 new commit. Needs a PR sync to kingdonb.
-- **BudgetGovernor Active**: `budget_gate("anthropic_api")` now guards `trigger_language_sync`, `get_coaching_insight`, `get_real_anthropic_usage`. Blocks on hard "deny" (total spent ≥ limit), not on "defer".
-- **21 Unit Tests Pass**: `tests/test_budget_governor.py` — 21/21 green (19 original + 2 new gate tests).
-- **Clozemaster card count**: `scripts/clozemaster_scraper.py` extracts `cards_today` via `ttmNumPlayedByDate` API field; Arabic double-normalization guard in place.
+- **PR #155 OPEN**: kingdonb/mecris#155 carries `budget_gate()` enforcement commits — pr-test ✅ success (run #23717583068).
+- **yebyen/mecris in sync with PR**: HEAD `f2a8aac` is 2 commits ahead of kingdonb/mecris, exactly what's in the PR.
+- **BudgetGovernor Active**: `budget_gate("anthropic_api")` guards `trigger_language_sync`, `get_coaching_insight`, `get_real_anthropic_usage`. Blocks on hard "deny" only.
+- **21 Unit Tests Pass**: `tests/test_budget_governor.py` — 21/21 green (19 original + 2 gate tests).
+- **Clozemaster card count**: `scripts/clozemaster_scraper.py` extracts `cards_today` via `ttmNumPlayedByDate`; Arabic double-normalization guard in place.
 
 ## Verified This Session
 - [x] Identity Check: 🏛️ Canary active.
-- [x] PR #153 confirmed merged at 16:21 UTC (kingdonb/mecris#153).
-- [x] `BudgetGovernor.budget_gate()` implemented — returns `None` (allow) or error dict (deny).
-- [x] Guards added to `trigger_language_sync`, `get_real_anthropic_usage`, `get_coaching_insight`.
-- [x] All 21 budget governor tests pass (committed `11ac980`).
+- [x] yebyen/mecris was 2 commits ahead of kingdonb/mecris — confirmed via git fetch.
+- [x] PR opened: kingdonb/mecris#155 — `feat(budget-governor): wire budget_gate() enforcement to MCP handlers`.
+- [x] pr-test workflow dispatched and completed ✅ (run #23717583068, status: success).
+- [x] Plan issue yebyen/mecris#32 closed with validation evidence.
 
 ## Pending Verification (Next Session)
-- **Open PR to kingdonb**: yebyen/mecris has 1 new commit (`11ac980`) ahead of kingdonb/mecris. Open a sync PR.
+- **PR #155 merge**: kingdonb to review and merge kingdonb/mecris#155. After merge, yebyen/mecris will need to pull from upstream.
 - **Helix balance discovery**: `get_helix_balance()` still unvalidated against live Helix API.
 - **Live sync verification**: Verify next Clozemaster sync correctly records `cards_today` in `language_stats` for Arabic.
 - **Issue #122** (Android multiplier race) — still unaddressed.
