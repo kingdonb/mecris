@@ -1,122 +1,148 @@
 # Design: Isolated Autonomous Agent for Mecris
 
+## Executive Summary
+
+This design documents the **existing** mecris-bot implementation that provides identity-isolated autonomous agent capabilities for the Mecris accountability system. The bot operates on `yebyen/mecris` (the fork) with credentials completely separate from the personal identity (`kingdonb`), enabling safe autonomous operation with limited blast radius.
+
 ## Architecture Overview
 
-This design extends the existing HCAT (Hardened Containerized Autonomous Turn) pattern to ensure complete identity isolation between the autonomous agent and the personal user.
-
 ```
-┌─────────────────────────────────────────────────────────┐
-│                   GitHub Actions                         │
-│  ┌─────────────────────────────────────────────────┐    │
-│  │            mecris-autonomous-bot                 │    │
-│  │  ┌─────────────┐    ┌──────────────────────┐   │    │
-│  │  │ Bot PAT     │───▶│ kingdonb/mecris ONLY │   │    │
-│  │  │ (scoped)    │    │ contents: write      │   │    │
-│  │  └─────────────┘    └──────────────────────┘   │    │
-│  │                                                  │    │
-│  │  Git Identity: mecris-autonomous-bot             │    │
-│  │  Email: mecris-autonomous-bot@users.noreply...   │    │
-│  └─────────────────────────────────────────────────┘    │
-└─────────────────────────────────────────────────────────┘
-         │
-         │ No access to:
-         │ ✗ Personal SSH keys
-         │ ✗ Personal GPG keys  
-         │ ✗ Personal GitHub token
-         │ ✗ Other repositories
-         │
+┌─────────────────────────────────────────────────────────────────┐
+│                     kingdonb/mecris (upstream)                   │
+│                     Personal identity repo                       │
+│                     - Human reviews PRs                          │
+│                     - No bot credentials                         │
+│                     - mecris-bot.yml runs but skips (no secrets) │
+└───────────────────────────────▲──────────────────────────────────┘
+                                │ Pull Requests
+                                │ (public, anyone can open)
+┌───────────────────────────────┴──────────────────────────────────┐
+│                      yebyen/mecris (fork)                         │
+│                      Bot identity repo                            │
+│  ┌─────────────────────────────────────────────────────────────┐ │
+│  │                    mecris-bot workflow                       │ │
+│  │  • MECRIS_BOT_PAT (fine-grained, yebyen/mecris only)        │ │
+│  │  • MECRIS_BOT_CLASSIC_PAT (repo scope, for cross-repo PRs)  │ │
+│  │  • MECRIS_BOT_ANTHROPIC_KEY (Helix API token)               │ │
+│  │  • Git identity: mecris-bot / mecris-bot@noreply             │ │
+│  └─────────────────────────────────────────────────────────────┘ │
+└──────────────────────────────────────────────────────────────────┘
 ```
 
-## Key Decisions
+## Threat Model: Supply Chain Attacks (LiteLLM Incident)
 
-### Decision 1: Dedicated GitHub Machine Account vs Fine-Grained PAT
+The primary threat we're defending against is **supply chain compromise** of dependencies, as demonstrated by the March 2026 LiteLLM PyPI backdoor incident where a popular Python package was modified to steal credentials and auth tokens.
 
-**Chosen: Fine-Grained PAT on existing account (for now)**
+### Attack Scenario
 
-- **Rationale**: Creating a separate GitHub machine account requires managing a separate email/identity. GitHub's fine-grained PATs already support single-repo scoping with minimal permissions.
-- **Trade-off**: If the account is compromised at the account level (not just the PAT), other repos could be at risk. Acceptable for single-operator Mecris.
-- **Future**: Consider dedicated machine account for multi-tenancy.
+1. Developer runs `pip install` or `uv sync` on their personal machine
+2. A compromised package executes malicious code during install or import
+3. Malware exfiltrates SSH keys, API tokens, browser cookies, etc.
+4. Attacker gains access to all services the developer is authenticated to
 
-### Decision 2: Where Credentials Live
+### Why Identity Isolation Matters
 
-**Chosen: GitHub Actions Secrets only**
+If the autonomous agent (mecris-bot) runs with personal credentials:
+- Compromised dependency in CI could steal `kingdonb`'s GitHub token
+- Attacker could push to any repo `kingdonb` has access to
+- Personal identity (SSH keys, GPG keys) could be exfiltrated
 
-- `MECRIS_AUTONOMOUS_PAT` - Fine-grained PAT scoped to `kingdonb/mecris` with `contents: write`
-- `MECRIS_AUTONOMOUS_ANTHROPIC_KEY` - Separate Anthropic API key (optional, can share with existing)
+With isolated identity (`yebyen`):
+- Bot only has access to `yebyen/mecris`
+- Even if compromised, blast radius is limited to one fork
+- Personal repos, work repos remain protected
+- Human review gate (PR to `kingdonb/mecris`) catches malicious changes
 
-**Why not 1Password or external vault?**
-- Adds complexity for single-repo use case
-- GitHub Actions secrets are already encrypted and scoped to the repo
-- The existing `mecris-bot.yml` workflow already uses this pattern successfully
+## Current Implementation
 
-### Decision 3: Git Identity Configuration
+### Workflow: `.github/workflows/mecris-bot.yml`
 
-The workflow explicitly sets a synthetic git identity that cannot be confused with the personal user:
+The workflow runs on `yebyen/mecris` only and:
+
+1. **Validates Helix API key** before running Claude CLI
+2. **Sets bot git identity** (not linked to any real GitHub account)
+3. **Runs Claude Code CLI** with `--dangerously-skip-permissions`
+4. **Pushes directly to `yebyen/mecris:main`**
+5. **Opens PRs to `kingdonb/mecris`** using classic PAT (public action, no special access needed)
+
+### Credential Scoping
+
+| Secret | Type | Scope | Purpose |
+|--------|------|-------|---------|
+| `MECRIS_BOT_PAT` | Fine-grained PAT | `yebyen/mecris` only | Checkout, push |
+| `MECRIS_BOT_CLASSIC_PAT` | Classic PAT | `repo` scope | Open PRs cross-repo |
+| `MECRIS_BOT_ANTHROPIC_KEY` | Helix API key | Claude API access | Run Claude CLI |
+
+### Git Identity
 
 ```yaml
-git config user.name "mecris-autonomous-bot"
-git config user.email "mecris-autonomous-bot@users.noreply.github.com"
+git config user.name "mecris-bot"
+git config user.email "mecris-bot@noreply"
 ```
 
-This email does not correspond to any real GitHub account, making commits clearly attributable to the automation.
+This email is synthetic - it doesn't correspond to any GitHub account, making commits clearly attributable to automation.
 
-## Token Scoping
+## Key Design Decisions
 
-The fine-grained PAT requires exactly these permissions:
+### Decision 1: Fork-based isolation vs. Branch protection
 
-| Permission | Access | Reason |
-|------------|--------|--------|
-| `contents` | Read/Write | Push commits, read code |
-| `metadata` | Read | Required for all fine-grained PATs |
+**Chosen: Separate fork (yebyen/mecris)**
 
-**Explicitly NOT granted:**
-- `actions` - Cannot modify workflows
-- `administration` - Cannot change repo settings
-- `issues` - Use existing PAT for issue management if needed
-- `secrets` - Cannot read/modify repository secrets
+- Complete credential isolation - different GitHub account
+- No risk of accidental secret leakage to upstream
+- Clear audit trail (all bot commits come from fork)
+- Human review gate via PR process
 
-## Workflow Changes
+### Decision 2: Fine-grained PAT vs. Deploy key
 
-### Current: `mecris-bot.yml`
-Uses `MECRIS_BOT_PAT` which may have broader permissions.
+**Chosen: Fine-grained PAT scoped to single repo**
 
-### New: Isolated variant
+- GitHub fine-grained PATs can be scoped to exactly one repository
+- Easier to rotate than deploy keys
+- Works with standard `actions/checkout`
+
+### Decision 3: Prevent upstream workflow failures
+
+**Issue identified**: `mecris-bot.yml` runs on schedule in `kingdonb/mecris` but fails due to missing secrets (8 failures/day cluttering Actions history).
+
+**Fix**: Add job condition to skip on upstream:
+
 ```yaml
-- name: Checkout
-  uses: actions/checkout@v4
-  with:
-    token: ${{ secrets.MECRIS_AUTONOMOUS_PAT }}
-    
-- name: Set isolated bot identity
-  run: |
-    git config user.name "mecris-autonomous-bot"
-    git config user.email "mecris-autonomous-bot@users.noreply.github.com"
-    git config --global submodule.recurse false
+jobs:
+  run-bot:
+    if: github.repository == 'yebyen/mecris'
 ```
 
-## Existing Pattern Alignment
+## Alignment with HCAT Principles
 
-This design aligns with the HCAT principles from `docs/AGENT_AGENDA_DESIGN.md`:
+This implementation follows the HCAT (Hardened Containerized Autonomous Turn) principles from `docs/AGENT_AGENDA_DESIGN.md`:
 
-| HCAT Principle | How We Satisfy It |
-|----------------|-------------------|
-| No Private Key Access | PAT is injected, SSH keys not mounted |
-| Isolated Network | GitHub Actions runner is already sandboxed |
-| Just-In-Time Injection | Secrets injected only during workflow run |
+| Principle | Implementation |
+|-----------|----------------|
+| No Private Key Access | Bot has no access to `kingdonb`'s SSH/GPG keys |
+| Isolated Network | GitHub Actions runner is sandboxed |
+| Just-In-Time Injection | Secrets injected only during workflow |
 | Ephemeral Container | GitHub Actions runners are ephemeral |
-| Tool Restriction | Claude CLI is the only code-execution tool |
+| Blast Radius Limitation | Bot can only affect `yebyen/mecris` |
+| Human Yield | PRs require human review before merge |
 
-## Logging & Audit
+## Operational Flow
 
-All autonomous runs are captured via:
+```
+1. mecris-bot runs on schedule (8x/day) in yebyen/mecris
+2. Bot executes /mecris-orient → /mecris-plan → work → /mecris-archive
+3. Bot pushes commits directly to yebyen/mecris:main
+4. Bot opens PR from yebyen/mecris to kingdonb/mecris
+5. Kingdon (human) reviews PR using Gemini agent (GEMINI.md instructions)
+6. If approved, Kingdon merges to kingdonb/mecris
+7. Code is now in the "trusted" upstream repo
+```
 
-1. **GitHub Actions logs** - Full execution trace
-2. **Commit messages** - Prefixed with context (e.g., `[bot] Update session log`)
-3. **Neon DB** - `autonomous_turns` table (existing schema)
+## Security Properties
 
-## Migration Path
-
-1. **Create new fine-grained PAT** scoped to `kingdonb/mecris` only
-2. **Add as `MECRIS_AUTONOMOUS_PAT`** in repo secrets
-3. **Update workflow** to use new PAT and identity
-4. **Revoke old broader PAT** once verified working
+✅ **Identity Isolation**: Bot identity (`yebyen`) separate from personal (`kingdonb`)  
+✅ **Repository Isolation**: Bot can only push to `yebyen/mecris`  
+✅ **Credential Isolation**: Bot secrets stored only in fork, not upstream  
+✅ **Human Review Gate**: All changes require PR approval  
+✅ **Audit Trail**: Clear separation of bot vs. human commits  
+✅ **Limited Blast Radius**: Compromise of bot affects only fork  
