@@ -329,3 +329,13 @@ Also, don't worry about `numReviewsToday` too much—my 12pts/card heuristic in 
 **Skipped**: Merging the PR (requires kingdonb human review; bot token cannot merge cross-repo PRs).
 
 **Next**: Human (kingdonb) to review and merge kingdonb/mecris#153. Bot next session: address Issue #122 (Android multiplier race) or _spend_log persistence.
+
+## 2026-03-29 — _spend_log persistence: BudgetGovernor JSON durability 🏛️
+
+**Planned**: Migrate `BudgetGovernor._spend_log` from in-memory to JSON file for cross-restart durability (yebyen/mecris#29).
+
+**Done**: Added `spend_log_path: Optional[str]` parameter to `BudgetGovernor.__init__`. On startup, loads existing events from disk (ISO-deserialized timestamps). `record_spend()` now calls `_persist_spend_log()` after appending. Corrupt/missing file recovers gracefully with a warning log. 4 new TDG tests added (persist across restarts, accumulate across restarts, no-path backward compat, corrupt file recovery). 19/19 tests green. Committed as `dbad4d4`. Plan: yebyen/mecris#29.
+
+**Skipped**: Active enforcement (integrating governor into usage_tracker/mcp_server for live deny/defer). Kept scope small per plan spec.
+
+**Next**: Re-run pr-test for kingdonb/mecris#153 (new commit added since last CI run), then wait for human merge.
