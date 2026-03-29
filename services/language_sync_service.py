@@ -48,6 +48,7 @@ class LanguageSyncService:
                         forecast = data.get("forecast", {})
                         tomorrow = forecast.get("tomorrow", 0)
                         next_7 = forecast.get("next_7_days", 0)
+                        cards_today = forecast.get("cards_today", 0) # Actual Card Count
                         
                         # Fetch existing stats to calculate progress
                         cur.execute("SELECT last_points, daily_completions, last_updated FROM language_stats WHERE user_id = %s AND language_name = %s", (user_id, name))
@@ -62,9 +63,10 @@ class LanguageSyncService:
                             daily_completions = row[1] or 0
                             last_updated = row[2]
 
-                        # 1. Primary Activity Detection: Trust Upstream "points_today"
-                        if points_today > daily_completions:
-                            daily_completions = points_today
+                        # 1. Primary Activity Detection: Trust Upstream "cards_today" if available, else "points_today"
+                        activity_metric = cards_today if cards_today > 0 else points_today
+                        if activity_metric > daily_completions:
+                            daily_completions = activity_metric
                             logger.info(f"Detected activity from upstream today: {daily_completions} for {name}")
                         
                         # 2. Backup Activity Detection: trust Score Diff (for multi-sync accuracy)
@@ -72,8 +74,8 @@ class LanguageSyncService:
                             diff = points - last_points
                             # Only apply if it looks like we missed points in our local daily count
                             # (Clozemaster's numPointsToday resets at their midnight, which might differ)
-                            if points_today < daily_completions + diff:
-                                # This handles the case where points_today might have reset but score still goes up
+                            if activity_metric < daily_completions + diff:
+                                # This handles the case where activity_metric might have reset but score still goes up
                                 pass 
 
                         # 3. Detect Day Boundary (US/Eastern) for resetting local completions
@@ -83,8 +85,8 @@ class LanguageSyncService:
                             last_upd_eastern = last_updated.astimezone(eastern)
                             if now_eastern.date() > last_upd_eastern.date():
                                 logger.info(f"Day boundary detected for {name}. Resetting daily completions.")
-                                # If points_today is high, it's already the next day in Clozemaster land
-                                daily_completions = points_today 
+                                # If activity_metric is high, it's already the next day in Clozemaster land
+                                daily_completions = activity_metric 
                         
                         # Default values for goal stats
                         safebuf = 0

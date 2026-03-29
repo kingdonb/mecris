@@ -24,8 +24,12 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from beeminder_client import BeeminderClient
 
 load_dotenv()
+log_level = os.getenv("LOG_LEVEL", "INFO").upper()
 logger = logging.getLogger("mecris.clozemaster")
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=getattr(logging, log_level))
+
+# Suppress verbose httpx logging which can leak tokens in URLs
+logging.getLogger("httpx").setLevel(logging.WARNING)
 
 class ClozemasterScraper:
     def __init__(self):
@@ -167,6 +171,34 @@ class ClozemasterScraper:
                 
                 # Use the identified key
                 forecast_data = data.get("reviewForecast", [])
+                
+                # Extract actual card count for today from ttmNumPlayedByDate
+                ttm_played = data.get("ttmNumPlayedByDate", [])
+                stats_per_day = data.get("statsPerDay", [])
+                today_str = date.today().isoformat()
+                cards_today = 0
+
+                # Debug: Show today's entry in statsPerDay if it exists
+                for entry in stats_per_day:
+                    if entry.get("date") == today_str:
+                        logger.debug(f"[{lang_slug}] statsPerDay for today: {entry}")
+                        # If numCorrect is available, it might be the better metric
+                        # cards_today = entry.get("numCorrect", 0) 
+                        break
+
+                # Debug: Show the date we are looking for and the end of the list
+                if ttm_played:
+                    logger.debug(f"[{lang_slug}] Looking for cards on {today_str}")
+                
+                for entry in ttm_played:
+                    if entry.get("date") == today_str:
+                        cards_today = entry.get("numPlayed", 0)
+                        break
+                
+                # If we found a direct card count, we can store it
+                if cards_today > 0:
+                    forecast["cards_today"] = cards_today
+                    logger.info(f"[{lang_slug}] Found actual card count for today: {cards_today}")
                 
                 if forecast_data:
                     # Clozemaster reviewForecast starts with Tomorrow at index 0

@@ -582,20 +582,20 @@ async def get_language_velocity_stats(user_id: str = None) -> Dict[str, Any]:
             # Unit Handling:
             # - Greek (ellinika) is tracked in points (goal value ~26k).
             # - Arabic (reviewstack) is tracked in cards (goal value ~2k).
-            # - daily_completions from Neon: Python sync stores raw points (numPointsToday);
-            #   Rust failover sync pre-converts Arabic to cards before writing. Python is the
-            #   primary sync path (Spin cron disabled), so we divide by 12 here to normalize
-            #   Arabic to cards. If Rust failover ran last, this double-divides — acceptable
-            #   risk until numReviewsToday (direct card count) is confirmed in the API.
+            # - daily_completions from Neon: 
+            #   - Python sync now stores actual card count (cards_today) for Arabic if found.
+            #   - Fallback is raw points (numPointsToday).
+            #   - We divide by 12 only if the value looks like points (e.g. > 500) to normalize.
             
             unit = "points"
             daily_done = stats.get("daily_completions", 0)
             
             if lang.lower() == "arabic":
                 unit = "cards"
-                # Heuristic: 1 card is approximately 12 points (average of 8 and 16).
-                # This normalizes the points earned into an estimated card count to match current_debt.
-                daily_done = int(daily_done / ARABIC_POINTS_PER_CARD)
+                # If daily_done is very high, it's likely raw points and needs normalization.
+                # Actual card counts for a single day are typically < 500.
+                if daily_done > 500:
+                    daily_done = int(daily_done / ARABIC_POINTS_PER_CARD)
 
             pump = ReviewPump(multiplier=multiplier)
             pump_status = pump.get_status(current_debt, tomorrow_liability, daily_done, unit=unit)
