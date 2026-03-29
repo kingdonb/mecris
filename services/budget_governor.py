@@ -211,6 +211,24 @@ class BudgetGovernor:
         }
 
     # ------------------------------------------------------------------
+    # Narrator context summary
+    # ------------------------------------------------------------------
+
+    def get_narrator_summary(self) -> Dict[str, Any]:
+        """
+        Returns a slim dict suitable for embedding in get_narrator_context().
+
+        Keys:
+          - routing_recommendation: name of the best bucket to use now
+          - envelope_status: 'OK' or 'HALTED'
+        """
+        status = self.get_status()
+        return {
+            "routing_recommendation": status["recommendation"],
+            "envelope_status": status["envelope_status"],
+        }
+
+    # ------------------------------------------------------------------
     # Helix API discovery
     # ------------------------------------------------------------------
 

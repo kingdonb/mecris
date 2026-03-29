@@ -144,3 +144,40 @@ def test_get_helix_balance_returns_none_on_failure():
         mock_get.side_effect = Exception("Connection refused")
         balance = gov.get_helix_balance()
         assert balance is None
+
+
+# ---------------------------------------------------------------------------
+# get_narrator_summary — slim dict for narrator context embedding
+# ---------------------------------------------------------------------------
+
+def test_get_narrator_summary_returns_required_keys():
+    """get_narrator_summary() must return routing_recommendation and envelope_status."""
+    gov = BudgetGovernor()
+    summary = gov.get_narrator_summary()
+    assert "routing_recommendation" in summary
+    assert "envelope_status" in summary
+
+
+def test_get_narrator_summary_routing_recommendation_is_valid_bucket():
+    """routing_recommendation must be one of the configured bucket names."""
+    gov = BudgetGovernor()
+    summary = gov.get_narrator_summary()
+    assert summary["routing_recommendation"] in gov.buckets
+
+
+def test_get_narrator_summary_envelope_status_is_ok_when_fresh():
+    """envelope_status should be 'OK' when no spend has occurred."""
+    gov = BudgetGovernor()
+    summary = gov.get_narrator_summary()
+    assert summary["envelope_status"] == "OK"
+
+
+def test_get_narrator_summary_envelope_status_halted_when_all_denied():
+    """envelope_status should be 'HALTED' when all buckets are exhausted."""
+    gov = BudgetGovernor()
+    from datetime import datetime, timedelta
+    old_ts = datetime.utcnow() - timedelta(hours=2)
+    for name, cfg in gov.buckets.items():
+        gov._spend_log.append({"bucket": name, "cost": cfg["limit"], "ts": old_ts})
+    summary = gov.get_narrator_summary()
+    assert summary["envelope_status"] == "HALTED"
