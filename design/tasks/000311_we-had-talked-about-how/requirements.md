@@ -1,28 +1,59 @@
-# Requirements: Autonomous Mecris Agent (Identity-Isolated)
+# Requirements: Isolated Autonomous Agent for Mecris
 
 ## Overview
 
-Create a sandboxed autonomous agent that can operate on the Mecris repo without access to the user's personal identity, credentials, or data. The agent pushes code changes via a dedicated bot identity.
+Design an autonomous agent that operates with complete identity isolation from the personal user, with write access restricted to only the Mecris repository.
 
 ## User Stories
 
-**As the user,** I want an autonomous agent that can make commits to the Mecris repo independently, so that automated maintenance, refactors, or feature work can happen without exposing my personal git credentials or API tokens.
+### US-1: Identity Isolation
+**As** a Mecris system administrator,  
+**I want** autonomous agents to operate under a dedicated bot identity,  
+**so that** their commits and actions are clearly distinguishable from my personal work and cannot be attributed to me.
 
-**As the user,** I want the bot to have a clearly distinct git identity (name/email), so that I can always tell apart human commits from autonomous agent commits in the git log.
+**Acceptance Criteria:**
+- [ ] Agent commits appear as `mecris-autonomous-bot` (or similar), not as the personal user
+- [ ] Agent has no access to personal SSH keys or GPG signing keys
+- [ ] Agent's GitHub token is scoped to a dedicated machine account, not the user's account
 
-**As the user,** I want the agent to have the minimum permissions needed (push to Mecris only), so that a rogue or misbehaving agent cannot affect other repos or services.
+### US-2: Repository Scope Restriction
+**As** a security-conscious operator,  
+**I want** the autonomous agent to only have push access to `kingdonb/mecris`,  
+**so that** even if the agent is compromised, it cannot affect other repositories.
 
-## Acceptance Criteria
+**Acceptance Criteria:**
+- [ ] Fine-grained PAT scoped to single repository only
+- [ ] No access to other repos in the GitHub account
+- [ ] Agent cannot create/modify repos outside its scope
 
-- [ ] A dedicated git identity (bot name + email) is configured for the agent — not the user's personal identity
-- [ ] The agent uses a scoped deploy key or personal access token that grants push access to Mecris only
-- [ ] Commits made by the agent are visually distinguishable in `git log` (author name, email, or commit annotation)
-- [ ] The agent has no access to personal credentials (Twilio, Beeminder, Claude budget, etc.) unless explicitly granted per-task
-- [ ] A documented way to invoke the agent: a script or CLI command that runs it in isolation
-- [ ] The agent can open a Claude Code session (or equivalent) with the Mecris repo as workspace and produce commits
+### US-3: Credential Isolation
+**As** a Mecris operator,  
+**I want** agent credentials stored separately from personal credentials,  
+**so that** personal identity cannot be leaked through the autonomous workflow.
+
+**Acceptance Criteria:**
+- [ ] Agent credentials stored in GitHub Actions secrets or dedicated vault
+- [ ] No `.env` or local credential files accessible to the agent
+- [ ] Credentials injected at runtime only, never persisted in containers
+
+### US-4: Audit Trail
+**As** a system administrator,  
+**I want** all autonomous agent actions to be logged and traceable,  
+**so that** I can review what the agent did and when.
+
+**Acceptance Criteria:**
+- [ ] All commits include `[bot]` or similar marker in author/message
+- [ ] Agent runs are logged to the `autonomous_turns` table
+- [ ] Failed runs are captured with error context
+
+## Non-Functional Requirements
+
+- **NFR-1**: Agent must run in ephemeral containers (no persistent state on host)
+- **NFR-2**: Agent must not have network access beyond GitHub API and required services
+- **NFR-3**: Token lifetime should be minimized (prefer short-lived tokens where possible)
 
 ## Out of Scope
 
-- The agent does not need to self-schedule or run as a cron job (that's a future concern)
-- The agent does not need to interact with Twilio/Beeminder during autonomous runs (read-only at most)
-- Multi-repo access is explicitly out of scope — Mecris only
+- Multi-tenancy (this is single-operator Mecris)
+- Agent-to-agent communication
+- Push access to any repository other than `kingdonb/mecris`

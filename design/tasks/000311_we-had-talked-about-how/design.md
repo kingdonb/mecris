@@ -1,43 +1,122 @@
-# Design: Autonomous Mecris Agent (Identity-Isolated)
+# Design: Isolated Autonomous Agent for Mecris
 
-## Architecture
+## Architecture Overview
 
-The agent is a thin shell wrapper that:
-1. Sets a bot git identity (`GIT_AUTHOR_NAME`, `GIT_AUTHOR_EMAIL`, `GIT_COMMITTER_*`)
-2. Uses a scoped deploy key (SSH) or a bot PAT (HTTPS) for push access to the Mecris remote
-3. Launches Claude Code (or runs a claude CLI command) with the Mecris directory as workspace
-4. Has no access to the user's `~/.gitconfig`, personal SSH keys, or `.env` secrets
+This design extends the existing HCAT (Hardened Containerized Autonomous Turn) pattern to ensure complete identity isolation between the autonomous agent and the personal user.
 
 ```
-invoke-bot.sh
-  └── sets GIT_* env vars (bot identity)
-  └── sets GIT_SSH_COMMAND → bot deploy key
-  └── launches: claude --workspace /home/retro/work/Mecris [--prompt ...]
+┌─────────────────────────────────────────────────────────┐
+│                   GitHub Actions                         │
+│  ┌─────────────────────────────────────────────────┐    │
+│  │            mecris-autonomous-bot                 │    │
+│  │  ┌─────────────┐    ┌──────────────────────┐   │    │
+│  │  │ Bot PAT     │───▶│ kingdonb/mecris ONLY │   │    │
+│  │  │ (scoped)    │    │ contents: write      │   │    │
+│  │  └─────────────┘    └──────────────────────┘   │    │
+│  │                                                  │    │
+│  │  Git Identity: mecris-autonomous-bot             │    │
+│  │  Email: mecris-autonomous-bot@users.noreply...   │    │
+│  └─────────────────────────────────────────────────┘    │
+└─────────────────────────────────────────────────────────┘
+         │
+         │ No access to:
+         │ ✗ Personal SSH keys
+         │ ✗ Personal GPG keys  
+         │ ✗ Personal GitHub token
+         │ ✗ Other repositories
+         │
 ```
 
 ## Key Decisions
 
-### Identity isolation via environment variables, not system-wide config
-Git respects `GIT_AUTHOR_NAME`, `GIT_AUTHOR_EMAIL`, `GIT_COMMITTER_NAME`, `GIT_COMMITTER_EMAIL` env vars per-process. Setting these in the wrapper script is sufficient — no need to change the global `~/.gitconfig`.
+### Decision 1: Dedicated GitHub Machine Account vs Fine-Grained PAT
 
-### Deploy key (SSH) preferred over PAT (HTTPS)
-A repository-scoped SSH deploy key grants push access to one repo only. A PAT tied to the user's GitHub account could be scoped to one repo but is harder to audit and revoke. Deploy key is the right primitive here.
+**Chosen: Fine-Grained PAT on existing account (for now)**
 
-**If Helix git (not GitHub):** The remote is `https://app.helix.ml/git/code-mecris-...`. A bot PAT or basic-auth token scoped to that remote is the equivalent — check Helix's access model.
+- **Rationale**: Creating a separate GitHub machine account requires managing a separate email/identity. GitHub's fine-grained PATs already support single-repo scoping with minimal permissions.
+- **Trade-off**: If the account is compromised at the account level (not just the PAT), other repos could be at risk. Acceptable for single-operator Mecris.
+- **Future**: Consider dedicated machine account for multi-tenancy.
 
-### No personal secrets in the agent's environment
-The wrapper does NOT forward `TWILIO_*`, `BEEMINDER_*`, `ANTHROPIC_API_KEY` (user's), or other personal env vars. The agent only gets what it needs to push code.
+### Decision 2: Where Credentials Live
 
-### Commit traceability
-Bot commits carry `Co-Authored-By: mecris-bot <mecris-bot@noreply>` or equivalent so they are always traceable in the log without needing branch naming conventions.
+**Chosen: GitHub Actions Secrets only**
 
-## Codebase Notes
+- `MECRIS_AUTONOMOUS_PAT` - Fine-grained PAT scoped to `kingdonb/mecris` with `contents: write`
+- `MECRIS_AUTONOMOUS_ANTHROPIC_KEY` - Separate Anthropic API key (optional, can share with existing)
 
-- Mecris remote: `https://app.helix.ml/git/code-mecris-1774489448`
-- Mecris is a Python/FastAPI project managed with `uv`
-- Existing git identity in `.git/config` has no explicit `user` section — it inherits from `~/.gitconfig`
-- No existing bot/automation scripts found in `scripts/` for this purpose
+**Why not 1Password or external vault?**
+- Adds complexity for single-repo use case
+- GitHub Actions secrets are already encrypted and scoped to the repo
+- The existing `mecris-bot.yml` workflow already uses this pattern successfully
 
-## Future: Scheduling
+### Decision 3: Git Identity Configuration
 
-Once the agent identity works, connecting it to a cron or Helix spin trigger is the logical next step. That is out of scope here but the wrapper script should be easy to call from cron (`0 9 * * * /path/to/invoke-bot.sh "daily maintenance"`).
+The workflow explicitly sets a synthetic git identity that cannot be confused with the personal user:
+
+```yaml
+git config user.name "mecris-autonomous-bot"
+git config user.email "mecris-autonomous-bot@users.noreply.github.com"
+```
+
+This email does not correspond to any real GitHub account, making commits clearly attributable to the automation.
+
+## Token Scoping
+
+The fine-grained PAT requires exactly these permissions:
+
+| Permission | Access | Reason |
+|------------|--------|--------|
+| `contents` | Read/Write | Push commits, read code |
+| `metadata` | Read | Required for all fine-grained PATs |
+
+**Explicitly NOT granted:**
+- `actions` - Cannot modify workflows
+- `administration` - Cannot change repo settings
+- `issues` - Use existing PAT for issue management if needed
+- `secrets` - Cannot read/modify repository secrets
+
+## Workflow Changes
+
+### Current: `mecris-bot.yml`
+Uses `MECRIS_BOT_PAT` which may have broader permissions.
+
+### New: Isolated variant
+```yaml
+- name: Checkout
+  uses: actions/checkout@v4
+  with:
+    token: ${{ secrets.MECRIS_AUTONOMOUS_PAT }}
+    
+- name: Set isolated bot identity
+  run: |
+    git config user.name "mecris-autonomous-bot"
+    git config user.email "mecris-autonomous-bot@users.noreply.github.com"
+    git config --global submodule.recurse false
+```
+
+## Existing Pattern Alignment
+
+This design aligns with the HCAT principles from `docs/AGENT_AGENDA_DESIGN.md`:
+
+| HCAT Principle | How We Satisfy It |
+|----------------|-------------------|
+| No Private Key Access | PAT is injected, SSH keys not mounted |
+| Isolated Network | GitHub Actions runner is already sandboxed |
+| Just-In-Time Injection | Secrets injected only during workflow run |
+| Ephemeral Container | GitHub Actions runners are ephemeral |
+| Tool Restriction | Claude CLI is the only code-execution tool |
+
+## Logging & Audit
+
+All autonomous runs are captured via:
+
+1. **GitHub Actions logs** - Full execution trace
+2. **Commit messages** - Prefixed with context (e.g., `[bot] Update session log`)
+3. **Neon DB** - `autonomous_turns` table (existing schema)
+
+## Migration Path
+
+1. **Create new fine-grained PAT** scoped to `kingdonb/mecris` only
+2. **Add as `MECRIS_AUTONOMOUS_PAT`** in repo secrets
+3. **Update workflow** to use new PAT and identity
+4. **Revoke old broader PAT** once verified working
