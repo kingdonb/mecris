@@ -354,6 +354,9 @@ def _record_governor_spend(model: str, cost: float):
 @mcp.tool(description="Get real usage data from Anthropic Admin API (organization level).")
 async def get_real_anthropic_usage(days: int = 1) -> Dict[str, Any]:
     """Fetch actual usage data from Anthropic organization report."""
+    guard = _budget_governor.budget_gate("anthropic_api")
+    if guard:
+        return guard
     if not anthropic_cost_tracker:
         return {"error": "Anthropic Admin API key not configured or tracker failed to initialize."}
     
@@ -428,6 +431,9 @@ def get_weather_full_report() -> Dict[str, Any]:
 @mcp.tool(description="Force an immediate scrape of Clozemaster and push to Beeminder.")
 async def trigger_language_sync() -> Dict[str, Any]:
     """Manually trigger the Clozemaster to Beeminder sync process."""
+    guard = _budget_governor.budget_gate("anthropic_api")
+    if guard:
+        return guard
     result = await language_sync_service.sync_all(dry_run=False)
     if not result.get("success", False):
         return {"error": result.get("error", "Sync failed")}
@@ -509,6 +515,9 @@ from services.coaching_service import CoachingService
 @mcp.tool(description="Get a personalized coaching insight based on momentum and current needs.")
 async def get_coaching_insight(user_id: str = None) -> Dict[str, Any]:
     """Analyze current state and provide a momentum-aware coaching pivot."""
+    guard = _budget_governor.budget_gate("anthropic_api")
+    if guard:
+        return guard
     try:
         # Dependency Injection for the Service
         async def _get_obsidian_context():

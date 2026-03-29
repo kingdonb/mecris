@@ -267,6 +267,42 @@ class BudgetGovernor:
         }
 
     # ------------------------------------------------------------------
+    # Enforcement gate
+    # ------------------------------------------------------------------
+
+    def budget_gate(self, bucket: str, cost_estimate: float = 0.01) -> Optional[Dict[str, Any]]:
+        """
+        Enforcement guard for cost-incurring MCP handlers.
+
+        Returns None if the call should proceed, or an error dict if it should
+        be blocked (bucket envelope is 'deny' — total spend at or above limit).
+
+        Only blocks on 'deny' (hard stop), not on 'defer' (rate throttle),
+        so normal session use is not disrupted by short-window spikes.
+
+        Usage in handlers::
+
+            guard = _budget_governor.budget_gate("anthropic_api")
+            if guard:
+                return guard
+            # ... rest of handler
+        """
+        result = self.check_envelope(bucket, cost_estimate)
+        if result == "deny":
+            recommendation = self.recommend_bucket()
+            return {
+                "budget_halted": True,
+                "bucket": bucket,
+                "envelope": result,
+                "routing_recommendation": recommendation,
+                "message": (
+                    f"Budget DENY for bucket '{bucket}': spend limit reached. "
+                    f"Try routing to: {recommendation}"
+                ),
+            }
+        return None
+
+    # ------------------------------------------------------------------
     # Helix API discovery
     # ------------------------------------------------------------------
 

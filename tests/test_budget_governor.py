@@ -238,3 +238,35 @@ def test_spend_log_corrupt_file_recovers_gracefully(tmp_path):
 
     gov = BudgetGovernor(spend_log_path=log_path)  # should not raise
     assert gov._total_spent("anthropic_api") == pytest.approx(0.0)
+
+
+# ---------------------------------------------------------------------------
+# budget_gate — enforcement guard for MCP handlers (plan: yebyen/mecris#31)
+# ---------------------------------------------------------------------------
+
+def test_budget_gate_returns_none_when_allowed():
+    """budget_gate() returns None when the bucket is within limits."""
+    gov = BudgetGovernor()
+    result = gov.budget_gate("anthropic_api")
+    assert result is None
+
+
+def test_budget_gate_returns_error_dict_when_denied():
+    """budget_gate() returns a structured error dict when the bucket is exhausted."""
+    gov = BudgetGovernor()
+    bucket_limit = gov.buckets["anthropic_api"]["limit"]
+    old_ts = datetime.utcnow() - timedelta(hours=2)
+    gov._spend_log.append({
+        "bucket": "anthropic_api",
+        "cost": bucket_limit,
+        "ts": old_ts,
+    })
+
+    result = gov.budget_gate("anthropic_api")
+    assert result is not None
+    assert result["budget_halted"] is True
+    assert result["bucket"] == "anthropic_api"
+    assert result["envelope"] == "deny"
+    assert "routing_recommendation" in result
+    assert result["routing_recommendation"] in gov.buckets
+    assert "message" in result
