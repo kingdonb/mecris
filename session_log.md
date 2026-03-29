@@ -240,6 +240,14 @@ Also, don't worry about `numReviewsToday` too much—my 12pts/card heuristic in 
 
 **Next**: Open sync PR from yebyen/mecris → kingdonb/mecris carrying `38dcd9d`. Comment on kingdonb/mecris#151 noting the /16 fix. Consider picking up kingdonb/mecris#128 or #122 from the backlog.
 
+## 2026-03-28 — Milestone: 'Vind-Box' Architecture Validated 🏛️
+
+**Observation**: The 'New Architect' has successfully delivered the 'Zero-Split-Brain' prototype in a separate repo. It features a Rust WASM Brain running in Go (K8s Operator), Rust (Spin API), and Python (MCP).
+
+**Architectural Directive**: The legacy Mecris project must now prepare for 'Logic Vacuuming.' We will identify Python/Rust logic candidates (e.g., ReviewPump) to be migrated into the unified WASM Brain. 
+
+**Keeper's Note**: mecris-bot (Claude) should prioritize stability and 'Lab of Excellence' depth. The success of the Vind-Box prototype proves that strict architectural separation is the future of this project. No more 'quick fixes' that increase logic drift. 😤
+
 ## 2026-03-28 — Verify and pin Greek Beeminder slug to 'ellinika' (kingdonb/mecris#128)
 
 **Planned**: Verify kingdonb/mecris#128 is pre-fixed; add regression test pinning Greek slug to 'ellinika'; comment on #128 and close it (yebyen/mecris#20).
