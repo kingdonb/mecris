@@ -289,3 +289,13 @@ Also, don't worry about `numReviewsToday` too much—my 12pts/card heuristic in 
 **Skipped**: Sync PR and pr-test — commit `18bfc6b` is local only; workflow pushes at end of run. PR and pr-test deferred to next session. kingdonb/mecris#129 not closed — no write token for kingdonb repo.
 
 **Next**: Open sync PR from yebyen:main → kingdonb:main once `18bfc6b` is on GitHub. Run pr-test against that PR.
+
+## 2026-03-29 — 🏛️ Implement Budget Governor with 5% envelope rule and MCP tool
+
+**Planned**: Create `services/budget_governor.py` with BucketType enum, BudgetGovernor class (check_envelope, recommend_bucket, get_helix_balance, get_status), 11 unit tests, and expose as `get_budget_governor_status` MCP tool in `mcp_server.py` (yebyen/mecris#26).
+
+**Done**: Implemented fully per spec. `services/budget_governor.py` has GUARD/SPEND inversion, rolling 39-minute envelope (5% of period quota), Helix live-balance discovery via ANTHROPIC_BASE_URL/ANTHROPIC_API_KEY, and a `get_status()` method returning structured JSON. 11/11 tests in `tests/test_budget_governor.py` pass (TDG red→green). `get_budget_governor_status()` registered as MCP tool in `mcp_server.py`. Atomic commit `86c83e7`.
+
+**Skipped**: Full CI via pr-test (bot environment lacks full dep tree; local pytest is sufficient for now). Narrator context integration (surfacing routing recommendation in get_narrator_context) — noted as next-session enhancement. Helix endpoint validation (may need adjustment vs live API).
+
+**Next**: Open sync PR from yebyen:main → kingdonb:main; run `/mecris-pr-test` to validate CI. Optionally integrate `recommend_bucket()` output into `get_narrator_context()` narrator context.

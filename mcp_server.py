@@ -662,6 +662,18 @@ async def send_reminder_message(message_data: Dict[str, Any], user_id: str = Non
 
 reminder_service = ReminderService(get_narrator_context, get_coaching_insight, get_last_sent_time)
 
+# ---------------------------------------------------------------------------
+# Budget Governor MCP tool (Plan: yebyen/mecris#26)
+# ---------------------------------------------------------------------------
+from services.budget_governor import BudgetGovernor as _BudgetGovernor
+
+_budget_governor = _BudgetGovernor()
+
+@mcp.tool(description="Get per-bucket LLM spend envelope status and routing recommendation (Budget Governor).")
+def get_budget_governor_status() -> Dict[str, Any]:
+    """Returns per-bucket consumption, envelope status, and a routing recommendation."""
+    return _budget_governor.get_status()
+
 if __name__ == "__main__":
     import sys
     import asyncio
