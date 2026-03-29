@@ -308,6 +308,16 @@ Also, don't worry about `numReviewsToday` too much—my 12pts/card heuristic in 
 
 **Next**: Open sync PR from yebyen:main → kingdonb:main; run `/mecris-pr-test` to validate CI. Optionally integrate `recommend_bucket()` output into `get_narrator_context()` narrator context.
 
+## 2026-03-29 — Narrator Context: Budget Governor Integration 🏛️
+
+**Planned**: Embed `BudgetGovernor` routing recommendation into `get_narrator_context()` so all agents see it proactively (yebyen/mecris#27).
+
+**Done**: Added `get_narrator_summary()` to `BudgetGovernor` (returns slim dict with `routing_recommendation` and `envelope_status`). Embedded as `budget_governor` key in `get_narrator_context()` return dict. 4 new TDG tests added to `tests/test_budget_governor.py` (15/15 pass). Atomic commit `d7f3f77`.
+
+**Skipped**: Full CI pr-test (local pytest passes; no PR opened this session since yebyen and kingdonb are already in sync). Helix endpoint live validation (still human-only).
+
+**Next**: Open sync PR from yebyen:main → kingdonb:main to get narrator context integration into upstream; run `/mecris-pr-test`. Consider migrating `_spend_log` to persistent store (Keeper's critique from prior session).
+
 ## 2026-03-29 — Keeper's Review: Budget Governor Phase 1 🏛️
 
 **Critique**: Implementation is clean and the unit tests are solid. However, the in-memory `_spend_log` represents a persistence gap. In containerized/serverless environments, the 'Rate Envelope' history will be wiped on restart. 
@@ -317,3 +327,33 @@ Also, don't worry about `numReviewsToday` too much—my 12pts/card heuristic in 
 2. **Active Enforcement**: Integrate the `BudgetGovernor` into `usage_tracker.py` or `mcp_server.py` so it can actively 'deny' or 'defer' expensive calls, rather than just reporting status.
 3. **Live Validation**: Run a discovery script on the Helix API to confirm the `/api/v1/me` endpoint and balance key. 
 
+
+## 2026-03-29 — Sync PR yebyen→kingdonb opened and tested 🏛️
+
+**Planned**: Open sync PR from yebyen/mecris:main to kingdonb/mecris:main for Budget Governor + Narrator Context commits; run pr-test to confirm CI; close kingdonb/mecris#144 (yebyen/mecris#28).
+
+**Done**: PR kingdonb/mecris#153 opened with `d7f3f77` (narrator-context) and `be9107b` (archive). pr-test workflow dispatched and completed ✅ (run 23708310760, ~2.5 min). Plan issue yebyen/mecris#28 closed with outcome. kingdonb/mecris#144 closed via gh CLI with classic PAT.
+
+**Skipped**: Merging the PR (requires kingdonb human review; bot token cannot merge cross-repo PRs).
+
+**Next**: Human (kingdonb) to review and merge kingdonb/mecris#153. Bot next session: address Issue #122 (Android multiplier race) or _spend_log persistence.
+
+## 2026-03-29 — _spend_log persistence: BudgetGovernor JSON durability 🏛️
+
+**Planned**: Migrate `BudgetGovernor._spend_log` from in-memory to JSON file for cross-restart durability (yebyen/mecris#29).
+
+**Done**: Added `spend_log_path: Optional[str]` parameter to `BudgetGovernor.__init__`. On startup, loads existing events from disk (ISO-deserialized timestamps). `record_spend()` now calls `_persist_spend_log()` after appending. Corrupt/missing file recovers gracefully with a warning log. 4 new TDG tests added (persist across restarts, accumulate across restarts, no-path backward compat, corrupt file recovery). 19/19 tests green. Committed as `dbad4d4`. Plan: yebyen/mecris#29.
+
+**Skipped**: Active enforcement (integrating governor into usage_tracker/mcp_server for live deny/defer). Kept scope small per plan spec.
+
+**Next**: Re-run pr-test for kingdonb/mecris#153 (new commit added since last CI run), then wait for human merge.
+
+## 2026-03-29 — pr-test re-run for PR #153; upstream Vind-Box sync 🏛️
+
+**Planned**: Re-run pr-test for kingdonb/mecris#153 (new commits since last CI run); pull upstream Vind-Box Architecture commit from kingdonb into yebyen/mecris (yebyen/mecris#30).
+
+**Done**: pr-test dispatched and completed ✅ (run 23712817277, head `5b0f381`). Android BUILD SUCCESSFUL. Python 106 pass, 10 fail (1 helix connectivity — known/expected in CI; 9 pre-existing mcp/apscheduler module issues). Assessment documented on yebyen/mecris#30: PR #153 is safe to merge. Upstream commit `6f89297` ("Vind-Box Architecture") merged into yebyen/mecris main — clean, no conflicts.
+
+**Skipped**: Active BudgetGovernor enforcement (scope not in plan). Helix test CI skip/mock (discovered as candidate fix but out of scope).
+
+**Next**: Human (kingdonb) to review and merge kingdonb/mecris#153. Bot next session: fix Helix balance test for CI (`@pytest.mark.skipif` or mock HTTP), then address Issue #122 (Android multiplier race) or active BudgetGovernor enforcement.

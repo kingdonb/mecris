@@ -16,6 +16,8 @@ on:
 
 jobs:
   run-bot:
+    # Only run on the fork (yebyen/mecris), not upstream (kingdonb/mecris)
+    if: github.repository == 'yebyen/mecris'
     runs-on: ubuntu-latest
     permissions:
       contents: write

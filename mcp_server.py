@@ -278,6 +278,7 @@ async def get_narrator_context(user_id: str = None) -> Dict[str, Any]:
             "time_window_end": time_window_end,
             "greek_backlog_boost": greek_backlog_boost,
             "greek_backlog_cards": greek_backlog_cards,
+            "budget_governor": _budget_governor.get_narrator_summary(),
             "last_updated": datetime.now().isoformat()
         }
     except Exception as e:
