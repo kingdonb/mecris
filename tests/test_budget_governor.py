@@ -126,15 +126,22 @@ def test_get_status_bucket_structure():
 def test_get_helix_balance_returns_float_on_success():
     """When the Helix API responds with a balance, return a float."""
     gov = BudgetGovernor()
-    with patch("services.budget_governor.requests.get") as mock_get:
-        mock_resp = MagicMock()
-        mock_resp.status_code = 200
-        mock_resp.json.return_value = {"balance": 97.83}
-        mock_get.return_value = mock_resp
+    with patch("os.getenv") as mock_env:
+        # Mock env vars needed for Helix discovery
+        mock_env.side_effect = lambda k, d=None: {
+            "ANTHROPIC_BASE_URL": "https://helix.example.com",
+            "ANTHROPIC_API_KEY": "sk-helix-123"
+        }.get(k, d)
 
-        balance = gov.get_helix_balance()
-        assert isinstance(balance, float)
-        assert balance == pytest.approx(97.83)
+        with patch("services.budget_governor.requests.get") as mock_get:
+            mock_resp = MagicMock()
+            mock_resp.status_code = 200
+            mock_resp.json.return_value = {"balance": 97.83}
+            mock_get.return_value = mock_resp
+
+            balance = gov.get_helix_balance()
+            assert isinstance(balance, float)
+            assert balance == pytest.approx(97.83)
 
 
 def test_get_helix_balance_returns_none_on_failure():
