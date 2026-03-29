@@ -1,26 +1,28 @@
-# Next Session: Merge kingdonb/mecris#153 or address active BudgetGovernor enforcement
+# Next Session: PR #155 awaiting kingdonb review and merge (3 commits now)
 
 ## Current Status (2026-03-29)
-- **PR Open**: kingdonb/mecris#153 (yebyen→kingdonb sync) — pr-test re-confirmed ✅ (run 23712817277, head `5b0f381`). Awaiting human review/merge from kingdonb.
-- **Upstream Synced**: yebyen/mecris now contains kingdonb commit `6f89297` "Vind-Box Architecture" (session_log.md entry). No conflicts.
-- **19 Unit Tests Pass (core)**: `tests/test_budget_governor.py` — 19/19 green locally. 
-- **Vind-Box Architecture**: kingdonb has validated a Rust WASM Brain prototype. Architectural directive: prepare Mecris for "Logic Vacuuming" — migrate ReviewPump-like logic into WASM Brain over time.
-- **Clozemaster Card Count**: Stashed work recovered — `scripts/clozemaster_scraper.py` now extracts `cards_today` via `ttmNumPlayedByDate` API field, providing accurate card counts without heuristics when available.
+- **PR #155 OPEN**: kingdonb/mecris#155 now carries 3 commits — budget_gate enforcement + defer warning. pr-test ✅ (run #23719931453).
+- **yebyen/mecris is 3 commits ahead** of kingdonb/mecris main (was 2 last session).
+- **budget_gate defer policy RESOLVED**: `budget_gate()` now returns `{"budget_halted": False, "warning": "...", "envelope": "defer", ...}` for "defer" status. MCP handlers check `guard.get("budget_halted")` — defer is non-blocking.
+- **22 Unit Tests Pass**: `tests/test_budget_governor.py` — 22/22 green.
+- **Clozemaster card count**: `scripts/clozemaster_scraper.py` extracts `cards_today` via `ttmNumPlayedByDate`; Arabic double-normalization guard in place.
 
 ## Verified This Session
 - [x] Identity Check: 🏛️ Canary active.
-- [x] pr-test re-run for PR #153 (head `5b0f381`): ✅ workflow success.
-- [x] Upstream sync: `6f89297` (Vind-Box Architecture) merged.
-- [x] **Stash Recovery**: `LanguageSyncService` now stores `cards_today`; `mcp_server.py` uses it to avoid Arabic double-normalization.
-- [x] All local tests passing (including BudgetGovernor and ReviewPump).
+- [x] `budget_gate()` "defer" returns warning dict with `"warning"` key, `budget_halted: False` — non-blocking.
+- [x] MCP handlers (`trigger_language_sync`, `get_coaching_insight`, `get_real_anthropic_usage`) updated to check `guard.get("budget_halted")`.
+- [x] 22/22 tests pass (1 new test added: `test_budget_gate_returns_warning_dict_when_deferred`).
+- [x] Commit `ca38086` pushed to yebyen/mecris.
+- [x] pr-test run #23719931453 ✅ success.
+- [x] Plan issue yebyen/mecris#33 closed with validation evidence.
 
 ## Pending Verification (Next Session)
-- **Merge kingdonb/mecris#153**: PR is open, needs human review.
+- **PR #155 merge**: kingdonb to review and merge kingdonb/mecris#155 (3 commits: budget enforcement + defer warning + archive). After merge, yebyen/mecris will need to pull from upstream.
 - **Helix balance discovery**: `get_helix_balance()` still unvalidated against live Helix API.
-- **Active enforcement**: `BudgetGovernor` integrated into `usage_tracker.py` or `mcp_server.py` for live deny/defer enforcement.
+- **Live sync verification**: Verify next Clozemaster sync correctly records `cards_today` in `language_stats` for Arabic.
 - **Issue #122** (Android multiplier race) — still unaddressed.
-- **Live sync verification**: Verify next sync correctly records `cards_today` in `language_stats` for Arabic.
-- **Logic Vacuuming prep**: Document candidates (ReviewPump, BudgetGovernor) for migration to Rust WASM Brain.
+- **Logic Vacuuming prep**: Issue #154 open, document candidates (ReviewPump, BudgetGovernor) for Rust WASM migration.
+- **Issue #132** ("FIXED:" in title but still open) — needs live Spin/Neon verification to close.
 
 ## Infrastructure Notes
 - Cloud Cron is still **DISABLED** in `spin.toml`.
@@ -31,3 +33,5 @@
 - `get_language_stats()` stores keys as `row[0].lower()`.
 - `BudgetGovernor(spend_log_path="mecris_spend_log.json")` is now active.
 - `get_narrator_context()` includes `budget_governor.routing_recommendation`.
+- `budget_gate()` now returns warning dict for "defer" (`budget_halted: False`); returns error dict for "deny" (`budget_halted: True`); returns `None` for "allow".
+- MCP handler pattern: `if guard and guard.get("budget_halted"): return guard`

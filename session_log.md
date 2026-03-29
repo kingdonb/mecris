@@ -357,3 +357,33 @@ Also, don't worry about `numReviewsToday` too much—my 12pts/card heuristic in 
 **Skipped**: Active BudgetGovernor enforcement (scope not in plan). Helix test CI skip/mock (discovered as candidate fix but out of scope).
 
 **Next**: Human (kingdonb) to review and merge kingdonb/mecris#153. Bot next session: fix Helix balance test for CI (`@pytest.mark.skipif` or mock HTTP), then address Issue #122 (Android multiplier race) or active BudgetGovernor enforcement.
+
+## 2026-03-29 — BudgetGovernor enforcement: budget_gate() wired into MCP handlers
+
+**Planned**: Wire BudgetGovernor enforcement into mcp_server.py request path — add budget_gate() guard to cost-incurring handlers so HALTED state blocks execution (yebyen/mecris#31).
+
+**Done**: Added `BudgetGovernor.budget_gate(bucket, cost_estimate)` method that returns `None` (allow) or a structured error dict when `check_envelope()` returns "deny" (hard limit reached). Guarded `trigger_language_sync`, `get_real_anthropic_usage`, and `get_coaching_insight` with `budget_gate("anthropic_api")`. Added 2 new tests (21/21 pass). Committed `11ac980`. yebyen/mecris is now 1 commit ahead of kingdonb/mecris and needs a PR sync.
+
+**Skipped**: "defer" status handling (budget_gate only blocks on "deny", not "defer" — intentional design decision to avoid disrupting normal rate-fluctuation). Helix balance live validation (no API access in CI). Arabic cards_today live verification (needs live sync run). Issue #122 (Android multiplier race — deferred again). 
+
+**Next**: Open sync PR from yebyen/mecris to kingdonb/mecris for `11ac980`. Then: Arabic cards_today live verification, or Issue #122 Android multiplier race.
+
+## 2026-03-29 — Sync PR #155 opened to kingdonb/mecris; pr-test ✅ 🏛️
+
+**Planned**: Open sync PR from yebyen/mecris → kingdonb/mecris with budget_gate enforcement commits (yebyen/mecris#32).
+
+**Done**: Confirmed yebyen/mecris was 2 commits ahead of kingdonb/mecris (`11ac980`, `f2a8aac`). PR opened at kingdonb/mecris#155 via gh CLI with GITHUB_CLASSIC_PAT. pr-test workflow dispatched and completed ✅ success (run #23717583068). Plan issue yebyen/mecris#32 closed with validation evidence.
+
+**Skipped**: Nothing — scope was minimal and fully completed.
+
+**Next**: kingdonb to review and merge kingdonb/mecris#155. After merge: pull from upstream into yebyen/mecris, then tackle Arabic cards_today live verification or Issue #122 (Android multiplier race).
+
+## 2026-03-29 — budget_gate() defer warning: non-blocking rate signal added 🏛️
+
+**Planned**: Add soft warning to `budget_gate()` when envelope status is "defer" — returns a dict with `"warning"` key rather than proceeding silently (yebyen/mecris#33).
+
+**Done**: Modified `budget_gate()` to return `{"budget_halted": False, "warning": "...", "envelope": "defer", "routing_recommendation": ...}` when `check_envelope()` returns "defer". Updated all 3 MCP handlers (`trigger_language_sync`, `get_coaching_insight`, `get_real_anthropic_usage`) to guard with `guard.get("budget_halted")` instead of bare truthiness — defer signals pass through non-blocking. Added 1 new test (`test_budget_gate_returns_warning_dict_when_deferred`). 22/22 tests pass. Commit `ca38086`. pr-test ✅ success (run #23719931453). Plan issue yebyen/mecris#33 closed.
+
+**Skipped**: Nothing — scope was fully completed. PR #155 still awaiting kingdonb merge (3 commits now: enforcement + defer warning + this archive commit).
+
+**Next**: kingdonb to review and merge kingdonb/mecris#155. After merge: pull from upstream, then investigate Helix balance live validation or Issue #122 (Android multiplier race).

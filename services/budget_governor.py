@@ -267,6 +267,60 @@ class BudgetGovernor:
         }
 
     # ------------------------------------------------------------------
+    # Enforcement gate
+    # ------------------------------------------------------------------
+
+    def budget_gate(self, bucket: str, cost_estimate: float = 0.01) -> Optional[Dict[str, Any]]:
+        """
+        Enforcement guard for cost-incurring MCP handlers.
+
+        Returns None if the call should proceed, or an error dict if it should
+        be blocked (bucket envelope is 'deny' — total spend at or above limit).
+
+        Only blocks on 'deny' (hard stop), not on 'defer' (rate throttle),
+        so normal session use is not disrupted by short-window spikes.
+
+        Usage in handlers::
+
+            guard = _budget_governor.budget_gate("anthropic_api")
+            if guard:
+                return guard
+            # ... rest of handler
+        """
+        result = self.check_envelope(bucket, cost_estimate)
+        if result == "deny":
+            recommendation = self.recommend_bucket()
+            return {
+                "budget_halted": True,
+                "bucket": bucket,
+                "envelope": result,
+                "routing_recommendation": recommendation,
+                "message": (
+                    f"Budget DENY for bucket '{bucket}': spend limit reached. "
+                    f"Try routing to: {recommendation}"
+                ),
+            }
+        if result == "defer":
+            recommendation = self.recommend_bucket()
+            logger.warning(
+                "Budget DEFER for bucket '%s': 39-min rate envelope is full. "
+                "Proceeding but flagging caller.",
+                bucket,
+            )
+            return {
+                "budget_halted": False,
+                "warning": (
+                    f"Budget DEFER for bucket '{bucket}': rate envelope is full "
+                    f"(>5%% of quota spent in last 39 min). "
+                    f"Consider routing to: {recommendation}"
+                ),
+                "bucket": bucket,
+                "envelope": result,
+                "routing_recommendation": recommendation,
+            }
+        return None
+
+    # ------------------------------------------------------------------
     # Helix API discovery
     # ------------------------------------------------------------------
 
