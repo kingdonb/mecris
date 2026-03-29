@@ -18,10 +18,11 @@
 - **Identity Check**: 🏛️ (Must appear in session_log.md).
 - **Primary Objective: Budget Governor (Issue #144)**:
     - This is a high-autonomy "Lab of Excellence" task. Take your time.
+    - **MUST READ:** 👉 `docs/BUDGET_GOVERNOR_GUIDANCE.md` for architectural hints and the Helix API secret.
     - **Goal**: Implement the `BudgetGovernor` class to manage multi-bucket quotas (Anthropic, Groq, Helix, Gemini).
     - **The Rule**: 5% Daylight Window (approx 39m) → no more than 5% of any bucket's period quota.
     - **Helix Inversion**: Active encouragement to *spend* Helix/Gemini free credits, rather than ration them.
-    - **Location**: Consider a new `services/budget_governor.py` or extending `usage_tracker.py`.
+    - **Location**: Create a new module `services/budget_governor.py`. Do NOT stuff into `usage_tracker.py`.
     - **Output**: A new MCP tool `/mecris-budget` that reports routing decisions.
 - **Field discovery**: (Still blocked, human-only).
 - **Secondary Backlog**: Issue #122 (Android multiplier race) if #144 is fully spec'd.
