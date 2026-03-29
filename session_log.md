@@ -299,3 +299,13 @@ Also, don't worry about `numReviewsToday` too much—my 12pts/card heuristic in 
 **Skipped**: Full CI via pr-test (bot environment lacks full dep tree; local pytest is sufficient for now). Narrator context integration (surfacing routing recommendation in get_narrator_context) — noted as next-session enhancement. Helix endpoint validation (may need adjustment vs live API).
 
 **Next**: Open sync PR from yebyen:main → kingdonb:main; run `/mecris-pr-test` to validate CI. Optionally integrate `recommend_bucket()` output into `get_narrator_context()` narrator context.
+
+## 2026-03-29 — Keeper's Review: Budget Governor Phase 1 🏛️
+
+**Critique**: Implementation is clean and the unit tests are solid. However, the in-memory `_spend_log` represents a persistence gap. In containerized/serverless environments, the 'Rate Envelope' history will be wiped on restart. 
+
+**Next Steps**: 
+1. **Persistence**: Migrate `_spend_log` to a JSON file or a Neon table for cross-restart memory.
+2. **Active Enforcement**: Integrate the `BudgetGovernor` into `usage_tracker.py` or `mcp_server.py` so it can actively 'deny' or 'defer' expensive calls, rather than just reporting status.
+3. **Live Validation**: Run a discovery script on the Helix API to confirm the `/api/v1/me` endpoint and balance key. 
+
