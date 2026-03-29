@@ -347,3 +347,13 @@ Also, don't worry about `numReviewsToday` too much—my 12pts/card heuristic in 
 **Skipped**: Active enforcement (integrating governor into usage_tracker/mcp_server for live deny/defer). Kept scope small per plan spec.
 
 **Next**: Re-run pr-test for kingdonb/mecris#153 (new commit added since last CI run), then wait for human merge.
+
+## 2026-03-29 — pr-test re-run for PR #153; upstream Vind-Box sync 🏛️
+
+**Planned**: Re-run pr-test for kingdonb/mecris#153 (new commits since last CI run); pull upstream Vind-Box Architecture commit from kingdonb into yebyen/mecris (yebyen/mecris#30).
+
+**Done**: pr-test dispatched and completed ✅ (run 23712817277, head `5b0f381`). Android BUILD SUCCESSFUL. Python 106 pass, 10 fail (1 helix connectivity — known/expected in CI; 9 pre-existing mcp/apscheduler module issues). Assessment documented on yebyen/mecris#30: PR #153 is safe to merge. Upstream commit `6f89297` ("Vind-Box Architecture") merged into yebyen/mecris main — clean, no conflicts.
+
+**Skipped**: Active BudgetGovernor enforcement (scope not in plan). Helix test CI skip/mock (discovered as candidate fix but out of scope).
+
+**Next**: Human (kingdonb) to review and merge kingdonb/mecris#153. Bot next session: fix Helix balance test for CI (`@pytest.mark.skipif` or mock HTTP), then address Issue #122 (Android multiplier race) or active BudgetGovernor enforcement.

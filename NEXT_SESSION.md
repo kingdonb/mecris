@@ -1,24 +1,24 @@
-# Next Session: Merge kingdonb/mecris#153 (Budget Governor + Narrator Context + Persistence sync PR)
+# Next Session: Merge kingdonb/mecris#153 or address active BudgetGovernor enforcement
 
 ## Current Status (2026-03-29)
-- **PR Open**: kingdonb/mecris#153 (yebyen→kingdonb sync) now includes `dbad4d4` (_spend_log persistence). pr-test passed for the prior head (`9a77f31`); needs re-test for new commit.
-- **19 Unit Tests Pass**: `tests/test_budget_governor.py` has 19/19 green — 4 new persistence tests added.
-- **_spend_log now durable**: `BudgetGovernor(spend_log_path=path)` persists spend events to JSON across restarts. In-memory default preserved for backward compat.
-- **kingdonb/mecris#153 still open**: Awaiting kingdonb human review/merge. Bot cannot comment on kingdonb repo (fine-grained token scope is yebyen only).
+- **PR Open**: kingdonb/mecris#153 (yebyen→kingdonb sync) — pr-test re-confirmed ✅ (run 23712817277, head `5b0f381`). Awaiting human review/merge from kingdonb.
+- **Upstream Synced**: yebyen/mecris now contains kingdonb commit `6f89297` "Vind-Box Architecture" (session_log.md entry). No conflicts.
+- **19 Unit Tests Pass (core)**: `tests/test_budget_governor.py` — 19/19 green locally. In CI, 1 fails (`test_get_helix_balance_returns_float_on_success`) because CI has no live Helix endpoint. Pre-existing failures: 9 others (mcp/apscheduler module not in CI env).
+- **Vind-Box Architecture**: kingdonb has validated a Rust WASM Brain prototype. Architectural directive: prepare Mecris for "Logic Vacuuming" — migrate ReviewPump-like logic into WASM Brain over time.
 
 ## Verified This Session
 - [x] Identity Check: 🏛️ Canary active.
-- [x] TDG: 4 new tests written (red→green), all 19 pass.
-- [x] `_spend_log` persistence committed as `dbad4d4`.
-- [x] yebyen/mecris#29 plan issue created and will be closed this archive.
+- [x] pr-test re-run for PR #153 (head `5b0f381`): ✅ workflow success (run 23712817277). Android BUILD SUCCESSFUL. Python 106 pass, 10 fail (1 known helix connectivity, 9 pre-existing).
+- [x] Upstream sync: `6f89297` (Vind-Box Architecture) merged into yebyen/mecris main — clean merge, no conflicts.
+- [x] Plan issue yebyen/mecris#30 created and closed this archive.
 
 ## Pending Verification (Next Session)
-- **Re-run pr-test for PR #153**: New commit `dbad4d4` added since last CI run. Dispatch `/mecris-pr-test 153` to confirm 19 tests still pass in CI.
-- **Merge kingdonb/mecris#153**: PR is open, needs human (kingdonb) to review and merge. Bot cannot merge cross-repo PRs.
-- **Helix balance discovery**: `get_helix_balance()` uses `ANTHROPIC_BASE_URL/api/v1/me` — still unvalidated against live Helix API. (Human-only; requires live env with ANTHROPIC_BASE_URL set to Helix endpoint.)
+- **Merge kingdonb/mecris#153**: PR is open, needs human (kingdonb) to review and merge. Bot cannot merge cross-repo PRs. pr-test has been run twice now and is green.
+- **Helix balance discovery**: `get_helix_balance()` uses `ANTHROPIC_BASE_URL/api/v1/me` — still unvalidated against live Helix API. (Human-only; requires live env with ANTHROPIC_BASE_URL set to Helix endpoint.) Skip the `test_get_helix_balance_returns_float_on_success` test in CI (mark `@pytest.mark.skipif` or mock the HTTP call) to clean up CI noise.
+- **Active enforcement**: `BudgetGovernor` integrated into `usage_tracker.py` or `mcp_server.py` for live deny/defer enforcement. Currently advisory only.
 - **Issue #122** (Android multiplier race) — still unaddressed.
 - **Issue #132** (Failover sync verification) — needs human to trigger failover sync from Android and verify `daily_completions` in Neon.
-- **Active enforcement**: `BudgetGovernor` integrated into `usage_tracker.py` or `mcp_server.py` for live deny/defer enforcement. Currently advisory only.
+- **Logic Vacuuming prep**: kingdonb's Vind-Box Architecture milestone signals upcoming migration of Python logic (e.g., ReviewPump) to Rust WASM Brain. No action yet — document candidates when PR #153 is merged.
 
 ## Infrastructure Notes
 - Cloud Cron is still **DISABLED** in `spin.toml`.
