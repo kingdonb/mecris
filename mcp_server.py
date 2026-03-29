@@ -355,7 +355,7 @@ def _record_governor_spend(model: str, cost: float):
 async def get_real_anthropic_usage(days: int = 1) -> Dict[str, Any]:
     """Fetch actual usage data from Anthropic organization report."""
     guard = _budget_governor.budget_gate("anthropic_api")
-    if guard:
+    if guard and guard.get("budget_halted"):
         return guard
     if not anthropic_cost_tracker:
         return {"error": "Anthropic Admin API key not configured or tracker failed to initialize."}
@@ -432,7 +432,7 @@ def get_weather_full_report() -> Dict[str, Any]:
 async def trigger_language_sync() -> Dict[str, Any]:
     """Manually trigger the Clozemaster to Beeminder sync process."""
     guard = _budget_governor.budget_gate("anthropic_api")
-    if guard:
+    if guard and guard.get("budget_halted"):
         return guard
     result = await language_sync_service.sync_all(dry_run=False)
     if not result.get("success", False):
@@ -516,7 +516,7 @@ from services.coaching_service import CoachingService
 async def get_coaching_insight(user_id: str = None) -> Dict[str, Any]:
     """Analyze current state and provide a momentum-aware coaching pivot."""
     guard = _budget_governor.budget_gate("anthropic_api")
-    if guard:
+    if guard and guard.get("budget_halted"):
         return guard
     try:
         # Dependency Injection for the Service

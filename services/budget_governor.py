@@ -300,6 +300,24 @@ class BudgetGovernor:
                     f"Try routing to: {recommendation}"
                 ),
             }
+        if result == "defer":
+            recommendation = self.recommend_bucket()
+            logger.warning(
+                "Budget DEFER for bucket '%s': 39-min rate envelope is full. "
+                "Proceeding but flagging caller.",
+                bucket,
+            )
+            return {
+                "budget_halted": False,
+                "warning": (
+                    f"Budget DEFER for bucket '{bucket}': rate envelope is full "
+                    f"(>5%% of quota spent in last 39 min). "
+                    f"Consider routing to: {recommendation}"
+                ),
+                "bucket": bucket,
+                "envelope": result,
+                "routing_recommendation": recommendation,
+            }
         return None
 
     # ------------------------------------------------------------------

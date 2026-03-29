@@ -251,6 +251,27 @@ def test_budget_gate_returns_none_when_allowed():
     assert result is None
 
 
+def test_budget_gate_returns_warning_dict_when_deferred():
+    """budget_gate() returns a warning dict (non-blocking) when the window is full."""
+    gov = BudgetGovernor()
+    bucket_limit = gov.buckets["anthropic_api"]["limit"]
+    window_cap = 0.05 * bucket_limit
+
+    ten_min_ago = datetime.utcnow() - timedelta(minutes=10)
+    gov._spend_log.append({
+        "bucket": "anthropic_api",
+        "cost": window_cap,
+        "ts": ten_min_ago,
+    })
+
+    result = gov.budget_gate("anthropic_api")
+    assert result is not None
+    assert "warning" in result
+    assert result.get("budget_halted") is not True
+    assert result["bucket"] == "anthropic_api"
+    assert result["envelope"] == "defer"
+
+
 def test_budget_gate_returns_error_dict_when_denied():
     """budget_gate() returns a structured error dict when the bucket is exhausted."""
     gov = BudgetGovernor()
