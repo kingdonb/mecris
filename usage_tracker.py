@@ -111,6 +111,31 @@ class UsageTracker:
                         user_id TEXT REFERENCES users(pocket_id_sub)
                     )
                 """)
+
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS autonomous_turns (
+                        id SERIAL PRIMARY KEY,
+                        timestamp TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                        agent_type TEXT NOT NULL,
+                        agenda_slug TEXT NOT NULL,
+                        input_tokens INTEGER NOT NULL,
+                        output_tokens INTEGER NOT NULL,
+                        cost DOUBLE PRECISION NOT NULL,
+                        summary TEXT,
+                        outcome TEXT,
+                        container_id TEXT,
+                        user_id TEXT REFERENCES users(pocket_id_sub)
+                    )
+                """)
+
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS token_bank (
+                        user_id TEXT PRIMARY KEY REFERENCES users(pocket_id_sub),
+                        available_tokens BIGINT NOT NULL DEFAULT 0,
+                        monthly_limit BIGINT NOT NULL DEFAULT 1000000,
+                        last_refill TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                    )
+                """)
                 
                 # Initialize budget if not exists
                 if self.user_id:

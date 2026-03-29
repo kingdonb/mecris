@@ -54,12 +54,53 @@ async def run_nag_trigger(args):
         result = await trigger_reminder_check(args.user_id)
         print(json.dumps(result, indent=2))
 
+def run_presence(args):
+    """Check for or take the presence lock."""
+    import os
+    import time
+    
+    lock_path = os.path.join(os.getcwd(), "presence.lock")
+    
+    if args.action == "take":
+        with open(lock_path, "w") as f:
+            f.write(str(int(time.time())))
+        print("✅ Presence lock taken.")
+        return 0
+    
+    if args.action == "release":
+        if os.path.exists(lock_path):
+            os.remove(lock_path)
+            print("✅ Presence lock released.")
+        else:
+            print("ℹ️ No presence lock to release.")
+        return 0
+    
+    # Default: check
+    if not os.path.exists(lock_path):
+        print("✅ NO human presence detected (no lock file).")
+        return 0
+    
+    # Check age
+    mtime = os.path.getmtime(lock_path)
+    age = time.time() - mtime
+    
+    if age < (30 * 60): # 30 minutes
+        print(f"⚠️ Human presence detected ({int(age)}s ago).")
+        return 1
+    else:
+        print(f"✅ Stale presence lock found ({int(age)}s old). Assuming human is gone.")
+        return 0
+
 def main():
     parser = argparse.ArgumentParser(description="Mecris CLI - The Ground Truth")
     parser.add_argument("-v", "--verbose", action="store_true", help="Enable debug logging")
     parser.add_argument("--user-id", type=str, default=None, help="Target user ID (defaults to DEFAULT_USER_ID)")
     
     subparsers = parser.add_subparsers(dest="command", help="Sub-commands")
+    
+    # --- Presence Subcommand ---
+    presence_parser = subparsers.add_parser("presence", help="Manage human presence lock for ghost sessions")
+    presence_parser.add_argument("action", choices=["check", "take", "release"], default="check", nargs="?", help="Action to perform")
     
     # --- Nag Subcommands ---
     nag_parser = subparsers.add_parser("nag", help="Autonomous Nagging System controls")
@@ -74,7 +115,9 @@ def main():
     
     setup_logging(args.verbose)
     
-    if args.command == "nag":
+    if args.command == "presence":
+        sys.exit(run_presence(args))
+    elif args.command == "nag":
         if args.nag_command == "eval":
             asyncio.run(run_nag_eval(args))
         elif args.nag_command == "trigger":
