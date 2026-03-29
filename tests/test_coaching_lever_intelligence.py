@@ -27,8 +27,8 @@ async def test_arabic_pressure_neural_behind(mock_providers):
     # Arabic 3x lever (Brisk), debt 2400, tomorrow 10. 
     # Target should be approx 250 (2400/10 + 10)
     mock_stats = {
-        "ARABIC": {"current": 2400, "tomorrow": 10, "multiplier": 3.0, "daily_completions": 50},
-        "GREEK": {"current": 100, "multiplier": 1.0}
+        "arabic": {"current": 2400, "tomorrow": 10, "multiplier": 3.0, "daily_completions": 50},
+        "greek": {"current": 100, "multiplier": 1.0}
     }
     
     with patch("services.neon_sync_checker.NeonSyncChecker.get_language_stats", return_value=mock_stats):
@@ -47,8 +47,8 @@ async def test_arabic_laminar_suppresses_nag(mock_providers):
     
     # Arabic 3x lever, target approx 250, done 300.
     mock_stats = {
-        "ARABIC": {"current": 2400, "tomorrow": 10, "multiplier": 3.0, "daily_completions": 300},
-        "GREEK": {"current": 100, "multiplier": 1.0}
+        "arabic": {"current": 2400, "tomorrow": 10, "multiplier": 3.0, "daily_completions": 300},
+        "greek": {"current": 100, "multiplier": 1.0}
     }
     
     with patch("services.neon_sync_checker.NeonSyncChecker.get_language_stats", return_value=mock_stats):
@@ -74,8 +74,8 @@ async def test_greek_backlog_booster_triggers(mock_providers):
     
     # Arabic is safe (1x), Greek is too low (< 50) with 2x lever
     mock_stats = {
-        "ARABIC": {"current": 0, "multiplier": 1.0},
-        "GREEK": {"current": 10, "multiplier": 2.0}
+        "arabic": {"current": 0, "multiplier": 1.0},
+        "greek": {"current": 10, "multiplier": 2.0}
     }
     
     with patch("services.neon_sync_checker.NeonSyncChecker.get_language_stats", return_value=mock_stats):
