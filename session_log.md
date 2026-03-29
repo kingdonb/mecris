@@ -300,6 +300,16 @@ Also, don't worry about `numReviewsToday` too much—my 12pts/card heuristic in 
 
 **Next**: Open sync PR from yebyen:main → kingdonb:main; run `/mecris-pr-test` to validate CI. Optionally integrate `recommend_bucket()` output into `get_narrator_context()` narrator context.
 
+## 2026-03-29 — Narrator Context: Budget Governor Integration 🏛️
+
+**Planned**: Embed `BudgetGovernor` routing recommendation into `get_narrator_context()` so all agents see it proactively (yebyen/mecris#27).
+
+**Done**: Added `get_narrator_summary()` to `BudgetGovernor` (returns slim dict with `routing_recommendation` and `envelope_status`). Embedded as `budget_governor` key in `get_narrator_context()` return dict. 4 new TDG tests added to `tests/test_budget_governor.py` (15/15 pass). Atomic commit `d7f3f77`.
+
+**Skipped**: Full CI pr-test (local pytest passes; no PR opened this session since yebyen and kingdonb are already in sync). Helix endpoint live validation (still human-only).
+
+**Next**: Open sync PR from yebyen:main → kingdonb:main to get narrator context integration into upstream; run `/mecris-pr-test`. Consider migrating `_spend_log` to persistent store (Keeper's critique from prior session).
+
 ## 2026-03-29 — Keeper's Review: Budget Governor Phase 1 🏛️
 
 **Critique**: Implementation is clean and the unit tests are solid. However, the in-memory `_spend_log` represents a persistence gap. In containerized/serverless environments, the 'Rate Envelope' history will be wiped on restart. 
