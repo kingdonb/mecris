@@ -13,6 +13,7 @@ Plan: yebyen/mecris#26
 from enum import Enum
 from typing import Dict, Any, Optional, List
 from datetime import datetime, timedelta
+import json
 import os
 import logging
 
@@ -43,7 +44,7 @@ class BudgetGovernor:
     this is intentionally lightweight — no DB dependency.
     """
 
-    def __init__(self):
+    def __init__(self, spend_log_path: Optional[str] = None):
         self.buckets: Dict[str, Dict[str, Any]] = {
             "helix": {
                 "type": BucketType.SPEND,
@@ -66,8 +67,44 @@ class BudgetGovernor:
                 "description": "Groq API (ration carefully)",
             },
         }
+        self._spend_log_path: Optional[str] = spend_log_path
         # Spend log: list of dicts with keys: bucket, cost, ts
-        self._spend_log: List[Dict[str, Any]] = []
+        self._spend_log: List[Dict[str, Any]] = self._load_spend_log()
+
+    def _load_spend_log(self) -> List[Dict[str, Any]]:
+        """Load spend events from JSON file. Returns empty list on any error."""
+        if not self._spend_log_path:
+            return []
+        try:
+            with open(self._spend_log_path, "r") as f:
+                raw = json.load(f)
+            result = []
+            for entry in raw:
+                result.append({
+                    "bucket": entry["bucket"],
+                    "cost": float(entry["cost"]),
+                    "ts": datetime.fromisoformat(entry["ts"]),
+                })
+            return result
+        except FileNotFoundError:
+            return []
+        except Exception as exc:
+            logger.warning("Could not load spend log from %s: %s — starting fresh.", self._spend_log_path, exc)
+            return []
+
+    def _persist_spend_log(self) -> None:
+        """Write the current spend log to disk as JSON."""
+        if not self._spend_log_path:
+            return
+        try:
+            serializable = [
+                {"bucket": e["bucket"], "cost": e["cost"], "ts": e["ts"].isoformat()}
+                for e in self._spend_log
+            ]
+            with open(self._spend_log_path, "w") as f:
+                json.dump(serializable, f)
+        except Exception as exc:
+            logger.warning("Could not persist spend log to %s: %s", self._spend_log_path, exc)
 
     # ------------------------------------------------------------------
     # Core envelope logic
@@ -123,6 +160,7 @@ class BudgetGovernor:
             "cost": cost,
             "ts": datetime.utcnow(),
         })
+        self._persist_spend_log()
 
     # ------------------------------------------------------------------
     # Routing recommendation
@@ -208,6 +246,24 @@ class BudgetGovernor:
             "envelope_status": "HALTED" if all_denied else "OK",
             "window_minutes": _ENVELOPE_WINDOW_MINUTES,
             "envelope_spend_pct": int(_ENVELOPE_SPEND_RATIO * 100),
+        }
+
+    # ------------------------------------------------------------------
+    # Narrator context summary
+    # ------------------------------------------------------------------
+
+    def get_narrator_summary(self) -> Dict[str, Any]:
+        """
+        Returns a slim dict suitable for embedding in get_narrator_context().
+
+        Keys:
+          - routing_recommendation: name of the best bucket to use now
+          - envelope_status: 'OK' or 'HALTED'
+        """
+        status = self.get_status()
+        return {
+            "routing_recommendation": status["recommendation"],
+            "envelope_status": status["envelope_status"],
         }
 
     # ------------------------------------------------------------------

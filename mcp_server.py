@@ -278,6 +278,7 @@ async def get_narrator_context(user_id: str = None) -> Dict[str, Any]:
             "time_window_end": time_window_end,
             "greek_backlog_boost": greek_backlog_boost,
             "greek_backlog_cards": greek_backlog_cards,
+            "budget_governor": _budget_governor.get_narrator_summary(),
             "last_updated": datetime.now().isoformat()
         }
     except Exception as e:
@@ -312,6 +313,7 @@ def get_recent_usage(limit: int = 10, user_id: str = None) -> List[Dict[str, Any
 def record_usage_session(input_tokens: int, output_tokens: int, model: str = "claude-3-5-haiku-20241022", session_type: str = "interactive", notes: str = "", user_id: str = None) -> Dict[str, Any]:
     try:
         cost = record_usage(input_tokens, output_tokens, model, session_type, notes, user_id)
+        _record_governor_spend(model, cost)
         return {"recorded": True, "estimated_cost": cost, "updated_status": usage_tracker.get_budget_status(user_id)}
     except Exception as e:
         logger.error(f"Failed to record usage: {e}")
@@ -322,6 +324,7 @@ def record_claude_code_usage(input_tokens: int, output_tokens: int, model: str =
     """Specific tool for Claude Code CLI to report its own usage."""
     try:
         cost = record_usage(input_tokens, output_tokens, model, "claude-code", notes, user_id)
+        _record_governor_spend(model, cost)
         return {
             "recorded": True, 
             "estimated_cost": cost, 
@@ -331,6 +334,22 @@ def record_claude_code_usage(input_tokens: int, output_tokens: int, model: str =
     except Exception as e:
         logger.error(f"Failed to record Claude Code usage: {e}")
         return {"error": str(e)}
+
+def _record_governor_spend(model: str, cost: float):
+    """Internal helper to route spend to the correct BudgetGovernor bucket."""
+    bucket = "anthropic_api" # Default
+    m_lower = model.lower()
+    if "gemini" in m_lower:
+        bucket = "gemini"
+    elif "groq" in m_lower:
+        bucket = "groq"
+    elif os.getenv("ANTHROPIC_BASE_URL") and "helix" in os.getenv("ANTHROPIC_BASE_URL").lower():
+        bucket = "helix"
+    
+    try:
+        _budget_governor.record_spend(bucket, cost)
+    except Exception as e:
+        logger.warning(f"BudgetGovernor: Failed to record spend for {bucket}: {e}")
 
 @mcp.tool(description="Get real usage data from Anthropic Admin API (organization level).")
 async def get_real_anthropic_usage(days: int = 1) -> Dict[str, Any]:
@@ -667,7 +686,7 @@ reminder_service = ReminderService(get_narrator_context, get_coaching_insight, g
 # ---------------------------------------------------------------------------
 from services.budget_governor import BudgetGovernor as _BudgetGovernor
 
-_budget_governor = _BudgetGovernor()
+_budget_governor = _BudgetGovernor(spend_log_path="mecris_spend_log.json")
 
 @mcp.tool(description="Get per-bucket LLM spend envelope status and routing recommendation (Budget Governor).")
 def get_budget_governor_status() -> Dict[str, Any]:
