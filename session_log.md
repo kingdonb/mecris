@@ -377,3 +377,13 @@ Also, don't worry about `numReviewsToday` too much—my 12pts/card heuristic in 
 **Skipped**: Nothing — scope was minimal and fully completed.
 
 **Next**: kingdonb to review and merge kingdonb/mecris#155. After merge: pull from upstream into yebyen/mecris, then tackle Arabic cards_today live verification or Issue #122 (Android multiplier race).
+
+## 2026-03-29 — budget_gate() defer warning: non-blocking rate signal added 🏛️
+
+**Planned**: Add soft warning to `budget_gate()` when envelope status is "defer" — returns a dict with `"warning"` key rather than proceeding silently (yebyen/mecris#33).
+
+**Done**: Modified `budget_gate()` to return `{"budget_halted": False, "warning": "...", "envelope": "defer", "routing_recommendation": ...}` when `check_envelope()` returns "defer". Updated all 3 MCP handlers (`trigger_language_sync`, `get_coaching_insight`, `get_real_anthropic_usage`) to guard with `guard.get("budget_halted")` instead of bare truthiness — defer signals pass through non-blocking. Added 1 new test (`test_budget_gate_returns_warning_dict_when_deferred`). 22/22 tests pass. Commit `ca38086`. pr-test ✅ success (run #23719931453). Plan issue yebyen/mecris#33 closed.
+
+**Skipped**: Nothing — scope was fully completed. PR #155 still awaiting kingdonb merge (3 commits now: enforcement + defer warning + this archive commit).
+
+**Next**: kingdonb to review and merge kingdonb/mecris#155. After merge: pull from upstream, then investigate Helix balance live validation or Issue #122 (Android multiplier race).
