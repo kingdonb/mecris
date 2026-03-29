@@ -1,22 +1,24 @@
-# Next Session: Open Sync PR yebyen→kingdonb for Narrator Context Integration
+# Next Session: Merge kingdonb/mecris#153 (Budget Governor + Narrator Context sync PR)
 
 ## Current Status (2026-03-29)
-- **Budget Governor Live in Narrator Context**: `get_narrator_context()` now returns a `budget_governor` key with `routing_recommendation` (best bucket name) and `envelope_status` (OK/HALTED). Commit `d7f3f77`.
-- **15 Unit Tests Pass**: `tests/test_budget_governor.py` has 15/15 green (4 new tests for `get_narrator_summary()`).
-- **yebyen/mecris ahead of kingdonb/mecris**: Commits `86c83e7`, `bbdf736`, and `d7f3f77` (Budget Governor + Narrator integration) are on yebyen only — not yet merged upstream.
-- **In Sync at base**: Both repos share `dca7e37` as the pre-budget-governor baseline.
+- **PR Open and Tested**: kingdonb/mecris#153 (yebyen→kingdonb sync) is open with `d7f3f77` and `be9107b`. pr-test ✅ passed (run 23708310760). Ready to merge.
+- **15 Unit Tests Pass**: `tests/test_budget_governor.py` has 15/15 green — all Budget Governor + Narrator context tests.
+- **kingdonb/mecris#144 Closed**: Budget Governor feature issue closed after CI pass.
+- **`get_narrator_context()` now embeds `budget_governor`**: Returns `routing_recommendation` (best bucket) and `envelope_status` (OK/HALTED) for all agents.
 
 ## Verified This Session
 - [x] Identity Check: 🏛️ Canary active.
-- [x] `BudgetGovernor.get_narrator_summary()` implemented and unit-tested (15/15 pass).
-- [x] `get_narrator_context()` embeds `budget_governor` key with `routing_recommendation` and `envelope_status`.
-- [x] Atomic commit `d7f3f77` made and verified.
+- [x] Sync PR opened: kingdonb/mecris#153 (yebyen:main → kingdonb:main).
+- [x] pr-test workflow passed ✅ for PR #153 (run 23708310760).
+- [x] Plan issue yebyen/mecris#28 closed with outcome.
+- [x] kingdonb/mecris#144 closed (Budget Governor feature complete).
 
 ## Pending Verification (Next Session)
-- **Open sync PR yebyen→kingdonb**: The narrator context integration (`d7f3f77`) plus the Budget Governor feat (`86c83e7`) need a PR to `kingdonb/mecris:main`. Open the PR and run `/mecris-pr-test <PR_NUMBER>` to confirm CI passes.
+- **Merge kingdonb/mecris#153**: PR is open, CI is green — needs a human (kingdonb) to review and merge. Bot cannot merge cross-repo PRs with available tokens.
 - **Helix balance discovery**: `get_helix_balance()` uses `ANTHROPIC_BASE_URL/api/v1/me` — still unvalidated against live Helix API. (Human-only; requires live env with ANTHROPIC_BASE_URL set to Helix endpoint.)
-- **_spend_log persistence**: Keeper's critique: `_spend_log` is in-memory only; resets on process restart. Consider migrating to a JSON file or Neon table for cross-restart durability. Issue to open if prioritized.
+- **_spend_log persistence**: `_spend_log` is in-memory only; resets on process restart. Consider migrating to a JSON file or Neon table for cross-restart durability. (Keeper's critique — low urgency but noted.)
 - **Issue #122** (Android multiplier race) — still unaddressed.
+- **Issue #132** (Failover sync verification) — needs human to trigger failover sync from Android and verify `daily_completions` in Neon.
 
 ## Infrastructure Notes
 - Cloud Cron is still **DISABLED** in `spin.toml`.
