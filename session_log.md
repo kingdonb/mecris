@@ -435,3 +435,13 @@ Also, don't worry about `numReviewsToday` too much—my 12pts/card heuristic in 
 **Done**: PR opened as kingdonb/mecris#158. Contains all 4 commits. Awaiting kingdonb review and merge.
 **Skipped**: Nothing — plan completed in full.
 **Next**: Confirm PR #158 merged by kingdonb. Research `componentize-py` for Python-native WASM POC (kingdonb/mecris#157). Check Arabic `reviewstack` derailment status manually.
+
+## 2026-03-30 — Arabic Phase 2: velocity_provider enriches arabic_review_reminder with cards_needed
+
+**Planned**: Add optional `velocity_provider` to `ReminderService`; inject `target_flow_rate` (cards/day) from `get_language_velocity_stats["arabic"]` as variable `"3"` in `arabic_review_reminder` vars; graceful fallback when absent; 2 new tests.
+
+**Done**: Implemented exactly as planned. `ReminderService.__init__` now accepts `velocity_provider=None`. When provided, fetches arabic velocity stats and sets `variables["3"] = str(target_flow_rate)`. Exception in provider is caught and logged; variable "3" omitted on failure. 10 tests pass (8 existing, 2 new).
+
+**Skipped**: MCP wire-up (connecting `get_language_velocity_stats` as velocity_provider in mcp_server.py instantiation) — deferred to next session. Arabic Phase 3 (escalation ladder, dedicated WhatsApp template) also deferred.
+
+**Next**: Wire `get_language_velocity_stats` as velocity_provider in `mcp_server.py` where `reminder_service` is instantiated, then confirm PR #158 merged / open fresh sync PR if needed.
