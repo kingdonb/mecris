@@ -404,3 +404,10 @@ Also, don't worry about `numReviewsToday` too much—my 12pts/card heuristic in 
 **Done**: PR kingdonb/mecris#156 opened from yebyen:main. pr-test dispatched and completed with `success` (run 23727757233). Detailed comment posted on PR. Plan issue yebyen/mecris#35 closed.
 **Skipped**: Nothing — all steps completed.
 **Next**: kingdonb reviews and merges PR #156; then Logic Vacuuming Phase 1 — port ReviewPump to Rust/Spin component.
+
+## 2026-03-30 — Logic Vacuuming Phase 1: ReviewPump ported to Rust/Spin
+
+**Planned**: Create `mecris-go-spin/review-pump/` Rust crate with WIT interface, unit tests, and spin.toml registration at `/internal/review-pump-status` (plan yebyen/mecris#36).
+**Done**: Full implementation complete. `Cargo.toml` (cdylib+rlib, optional spin-sdk feature), `src/lib.rs` (calculate_target, get_status, PumpStatus, HTTP handler, 17 #[test] tests), `wit/review-pump.wit` (WIT interface with integer-tenth multipliers). All 17 unit tests pass on native x86 (`cargo test`). Component registered in `mecris-go-spin/sync-service/spin.toml`. Committed at `30d968a`.
+**Skipped**: WASM compile (`wasm32-wasip1` target not installed in CI); pr-test for Phase 1 (PR not yet opened — PR #156 still awaiting upstream merge, 4 commits now ahead of kingdonb/mecris).
+**Next**: Open PR for Phase 1 (yebyen:main → kingdonb:main) once PR #156 is resolved; verify WASM build in deployment CI; then Phase 2 — BudgetGovernor port to Rust/Spin.
