@@ -1,26 +1,22 @@
-# Next Session: Open PR for Logic Vacuuming Phase 1 (ReviewPump Rust crate) and run pr-test
+# Next Session: The Holy Grail — Python-Native WASM & Arabic Emergency
 
-## Current Status (2026-03-30)
-- **PR #156 OPEN**: kingdonb/mecris#156 (Logic Vacuuming Phase 0 — candidate analysis doc) is still open, awaiting kingdonb review/merge.
-- **Logic Vacuuming Phase 1 COMPLETE**: `mecris-go-spin/review-pump/` Rust crate committed at `30d968a`. 17 unit tests pass (`cargo test`). WIT interface and spin.toml registered at `/internal/review-pump-status`.
-- **yebyen/mecris is 4 commits ahead of kingdonb/mecris** (PR #156 includes 3; new Phase 1 commit is a 4th).
-- **WASM build unvalidated**: `wasm32-wasip1` target not installed in CI env. WASM compile validated in deployment CI only.
+## Current Status (Monday, March 30, 2026)
+- **PR #156 OPEN**: kingdonb/mecris#156 (Logic Vacuuming Phase 0) awaiting merge.
+- **Phase 1 COMPLETE**: `ReviewPump` Rust crate merged locally (17 tests ✅).
+- **Architectural Shift**: Issue #157 opened to prioritize **Python-Native WASM**. We want to stop manual translation to Rust and start using existing Python logic directly in the WASM Brain.
+- **ARABIC EMERGENCY**: The `reviewstack` goal (2,426 cards) derails **TODAY**. This is the highest priority for the next session.
 
 ## Verified This Session
 - [x] Identity Check: 🏛️ Canary active.
-- [x] `mecris-go-spin/review-pump/Cargo.toml` — cdylib+rlib crate, optional spin-sdk feature.
-- [x] `mecris-go-spin/review-pump/src/lib.rs` — `calculate_target()`, `get_status()`, `PumpStatus`, HTTP handler (spin feature), 17 `#[test]` tests.
-- [x] `mecris-go-spin/review-pump/wit/review-pump.wit` — WIT interface with integer-tenth multipliers.
-- [x] `mecris-go-spin/sync-service/spin.toml` — review-pump component registered at `/internal/review-pump-status`.
-- [x] `cargo test` — 17/17 pass (native x86).
-- [x] Python pytest — 22 BudgetGovernor tests pass; 5 pre-existing failures in test_coaching_service.py (neon_sync_checker import issue, unrelated to Phase 1).
-- [x] Plan issue yebyen/mecris#36 created and closed.
+- [x] Helix Balance Experiment: Spent $0.45. Confirmed Qwen/Native ($0) vs Proxied ($$$).
+- [x] Logic Vacuuming Phase 1: ReviewPump ported to Rust and verified with 17 tests.
+- [x] Issue #157: "The Holy Grail" requirement documented.
 
 ## Pending Verification (Next Session)
-- **Open PR for Phase 1**: yebyen/mecris is 4 commits ahead of kingdonb/mecris. A new PR from yebyen:main → kingdonb:main should be opened (or PR #156 should be merged first if kingdonb reviews it). Decide: wait for #156 merge and then open Phase 1 PR, or open a new Phase 1 PR now.
-- **WASM compile verification**: After PR is merged and deployed, verify `cargo build --target wasm32-wasip1 --release --features spin` in `mecris-go-spin/review-pump/`. Target must be installed: `rustup target add wasm32-wasip1`.
-- **Spin integration test**: `curl -X POST https://<spin-host>/internal/review-pump-status -d '{"debt":140,"tomorrow_liability":50,"daily_completions":55,"multiplier_x10":20,"unit":"points"}'` should return `{"status":"laminar","target_flow_rate":60,...}`.
-- **Logic Vacuuming Phase 2**: Port BudgetGovernor core envelope to Rust. KV store spend log, outbound HTTP for Helix balance. See `docs/LOGIC_VACUUMING_CANDIDATES.md`.
+- **CLEAR ARABIC BACKLOG**: Act now to prevent derailment of the `reviewstack` goal.
+- **Python-in-WASM POC**: Research `componentize-py` or similar to move `BudgetGovernor` or `ReminderService` to WASM *without* rewriting in Rust.
+- **WASM compile verification**: Verify `review-pump` WASM build in deployment CI.
+- **Issue #122** (Android multiplier race) — still unaddressed.
 - **Helix balance discovery**: `get_helix_balance()` still unvalidated against live Helix API.
 - **Live sync verification**: Verify next Clozemaster sync correctly records `cards_today` in `language_stats` for Arabic.
 - **Issue #122** (Android multiplier race) — still unaddressed. Needs Android UI work.
