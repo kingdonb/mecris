@@ -33,12 +33,20 @@ This design documents the **existing** mecris-bot implementation that provides i
 
 The primary threat we're defending against is **supply chain compromise** of dependencies, as demonstrated by the March 2026 LiteLLM PyPI backdoor incident where a popular Python package was modified to steal credentials and auth tokens.
 
-### Attack Scenario
+### Attack Scenario: Compromised Package
 
 1. Developer runs `pip install` or `uv sync` on their personal machine
 2. A compromised package executes malicious code during install or import
 3. Malware exfiltrates SSH keys, API tokens, browser cookies, etc.
 4. Attacker gains access to all services the developer is authenticated to
+
+### Attack Scenario: The Comforting Lie of SHA-pinning (Unscoped SHAs)
+
+As documented in [The Comforting Lie of SHA-pinning](https://www.vaines.org/posts/2026-03-24-the-comforting-lie-of-sha-pinning/), SHA-pinning (e.g., in GitHub Actions) provides a false sense of security because GitHub resolves commit SHAs across the entire shared object graph of a repository and its forks.
+
+1. **Deceptive Reference**: An attacker forks a trusted action, adds malicious code, and finds the SHA of their malicious commit.
+2. **Reviewer Fatigue**: The attacker submits a PR updating a pinned SHA: `uses: trusted-owner/trusted-repo@malicious-sha`.
+3. **Execution**: GitHub sees `trusted-repo` is allowed, finds `malicious-sha` in a fork, and executes it. The reviewer sees a "trusted" repository name and assumes it's a safe version bump.
 
 ### Why Identity Isolation Matters
 

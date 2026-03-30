@@ -58,6 +58,7 @@ To prevent authorized access or malicious tool use, and especially to mitigate "
 
 ### A. Strict Pinning & Supply Chain Integrity
 - **Base Images**: All Dockerfiles use specific SHA256 digests. No `:latest` tags permitted.
+- **Unscoped SHA Warning**: Be aware of "unscoped" SHAs—where a platform (like GitHub) resolves a commit hash across forks of a repo. A pinned SHA must be verified to exist in the *primary* trusted repository, not just any fork. See [The Comforting Lie of SHA-pinning](https://www.vaines.org/posts/2026-03-24-the-comforting-lie-of-sha-pinning/) for the full threat analysis.
 - **Dependencies**: Python environments are strictly managed by `uv.lock` with hashes verified. `pip install` without a lockfile is forbidden in autonomous contexts.
 - **The Update Queue**: New releases of LLM libraries or base images are never pulled automatically. 
 - **Approval Flow**: The Archivist may detect a new version and log it, but the actual update must be performed during a **LUCID** (interactive) session by the human.
