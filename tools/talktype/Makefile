@@ -1,7 +1,7 @@
 # Makefile for TalkType
 # Located in mecris/tools/talktype/
 
-.PHONY: all server client stop-server status help setup logs clean check-deps sync-upstream
+.PHONY: all server client client-groq stop-server status help setup logs clean check-deps sync-upstream
 
 # Variables
 TALKTYPE_REPO := talktype-repo
@@ -10,6 +10,10 @@ VENV_ACTIVATE := $(VENV_DIR)/bin/activate
 VENV_PYTHON := $(VENV_DIR)/bin/python
 WHISPER_SERVER_PY := whisper_server.py
 TALKTYPE_PY := talktype.py
+
+# Groq configuration
+GROQ_API_URL := https://api.groq.com/openai/v1/audio/transcriptions
+GROQ_MODEL := whisper-large-v3
 
 # Default configuration
 WHISPER_MODEL ?= medium
@@ -35,7 +39,8 @@ help:
 	@echo "                   Set WHISPER_MODEL=medium/large-v3, WHISPER_DEVICE=cpu/cuda to override."
 	@echo "                   Example: make server WHISPER_MODEL=medium WHISPER_DEVICE=auto"
 	@echo "  $(GREEN)client$(RESET)        - Run the TalkType client (connects to local server)"
-	@echo "                   Use --setup flag for interactive configuration."
+	@echo "  $(GREEN)client-groq$(RESET)   - Run the TalkType client using Groq cloud API"
+	@echo "                   Requires GROQ_API_KEY environment variable to be set."
 	@echo "  $(GREEN)stop-server$(RESET)   - Stop the Whisper API server"
 	@echo "  $(GREEN)status$(RESET)        - Check if the Whisper API server is running"
 	@echo "  $(GREEN)logs$(RESET)          - Tail the whisper server logs"
@@ -71,6 +76,15 @@ client:
 	@echo "$(GREEN)Running TalkType client, connecting to server on port $(WHISPER_PORT)...$(RESET)"
 	@cd $(TALKTYPE_REPO) && \
 	../$(VENV_PYTHON) $(TALKTYPE_PY) --api http://localhost:$(WHISPER_PORT)/transcribe --minimal
+
+client-groq:
+	@echo "$(GREEN)Running TalkType client using Groq cloud API...$(RESET)"
+	@if [ -z "$$GROQ_API_KEY" ]; then \
+		echo "$(RED)Error: GROQ_API_KEY is not set.$(RESET)"; \
+		exit 1; \
+	fi
+	@cd $(TALKTYPE_REPO) && \
+	../$(VENV_PYTHON) $(TALKTYPE_PY) --api $(GROQ_API_URL) --api-model $(GROQ_MODEL) --minimal
 
 sync-upstream:
 	@echo "$(YELLOW)Syncing talktype-repo with upstream...$(RESET)"
