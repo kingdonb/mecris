@@ -18,6 +18,10 @@ clozemaster_password = { required = false, default = "" }
 master_encryption_key = { required = false, default = "" }
 
 [[trigger.http]]
+route = "/internal/review-pump-status"
+component = "review-pump"
+
+[[trigger.http]]
 route = "/..."
 component = "sync-service"
 
@@ -41,4 +45,11 @@ clozemaster_password = "{{ clozemaster_password }}"
 master_encryption_key = "{{ master_encryption_key }}"
 [component.sync-service.build]
 command = "cargo build --target wasm32-wasip1 --release"
+watch = ["src/**/*.rs", "Cargo.toml"]
+
+[component.review-pump]
+source = "../review-pump/target/wasm32-wasip1/release/review_pump.wasm"
+[component.review-pump.build]
+command = "cargo build --target wasm32-wasip1 --release --features spin"
+workdir = "../review-pump"
 watch = ["src/**/*.rs", "Cargo.toml"]
