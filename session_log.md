@@ -445,3 +445,10 @@ Also, don't worry about `numReviewsToday` too much—my 12pts/card heuristic in 
 **Skipped**: MCP wire-up (connecting `get_language_velocity_stats` as velocity_provider in mcp_server.py instantiation) — deferred to next session. Arabic Phase 3 (escalation ladder, dedicated WhatsApp template) also deferred.
 
 **Next**: Wire `get_language_velocity_stats` as velocity_provider in `mcp_server.py` where `reminder_service` is instantiated, then confirm PR #158 merged / open fresh sync PR if needed.
+
+## 2026-03-30 — Wire velocity_provider into mcp_server.py ReminderService
+
+**Planned**: Pass `get_language_velocity_stats` as `velocity_provider` when instantiating `ReminderService` in `mcp_server.py` so arabic_review_reminder receives live cards_needed from ReviewPump (plan yebyen/mecris#41).
+**Done**: Removed dead duplicate `ReminderService` instantiation mid-file (lines 540-544, had no log_provider, no velocity_provider — silently overwritten by the real one). Added `velocity_provider=get_language_velocity_stats` to the surviving instantiation at line 685. All 10 tests pass. Committed as `c281116`.
+**Skipped**: Nothing — plan completed in full.
+**Next**: Confirm PR #158 merged by kingdonb. Open fresh sync PR for Phase 2 + MCP wire-up commits if merged. Check Arabic reviewstack Beeminder status manually. Arabic Phase 3 (escalation ladder) is the next code work.

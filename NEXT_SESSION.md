@@ -1,24 +1,21 @@
-# Next Session: Sync PR #158 review / Arabic Phase 2 wire-up or Phase 3 planning
+# Next Session: Sync PR #158 review / Arabic Phase 3 or open a fresh sync PR
 
 ## Current Status (Monday, March 30, 2026)
 - **PR #158 OPEN**: kingdonb/mecris#158 — sync PR carrying `arabic_review_reminder` + WASM `anyhow` fix. Awaiting kingdonb review/merge.
 - **Phase 1 COMPLETE**: `ReviewPump` Rust crate merged to main (17 tests ✅).
 - **WASM Build FIXED**: `cargo build --target wasm32-wasip1 --release --features spin` exits 0.
-- **Arabic Phase 2 COMPLETE**: `velocity_provider` added to `ReminderService`; variable `"3"` = `target_flow_rate` (cards/day) from ReviewPump when provider is present. 10 tests pass.
+- **Arabic Phase 2 COMPLETE (including MCP wire-up)**: `velocity_provider=get_language_velocity_stats` is now passed to `ReminderService` in `mcp_server.py`. Variable `"3"` (cards/day from ReviewPump) will be populated in `arabic_review_reminder` when `reviewstack` is CRITICAL. 10 tests pass.
 - **ARABIC BACKLOG**: `reviewstack` goal (2,426 cards) was at derailment risk on 2026-03-30. Live status unknown — no credentials in CI. User must check Beeminder manually.
 
 ## Verified This Session
 - [x] Identity Check: 🏛️ Canary active.
-- [x] PR #158 still OPEN — no upstream changes from kingdonb since `778522a`.
-- [x] Arabic Phase 2: `velocity_provider` optional param added to `ReminderService.__init__`.
-- [x] Variable `"3"` populated with `str(target_flow_rate)` when velocity_provider returns arabic stats.
-- [x] Graceful fallback: variable `"3"` absent when velocity_provider is not provided.
-- [x] All 10 tests pass: `PYTHONPATH=. .venv/bin/pytest tests/test_reminder_service.py` (8 existing + 2 new).
-- [x] Plan issue yebyen/mecris#40 created, completed, and closed.
+- [x] Dead duplicate `ReminderService` instantiation removed from mid-`mcp_server.py` (lines 540-544 — was silently overwritten by the real one at line 691).
+- [x] `velocity_provider=get_language_velocity_stats` wired into the single surviving `ReminderService(...)` call at `mcp_server.py:685`.
+- [x] All 10 tests pass: `PYTHONPATH=. python -m pytest tests/test_reminder_service.py -v`.
+- [x] Plan issue yebyen/mecris#41 created, completed, and closed.
 
 ## Pending Verification (Next Session)
-- **PR #158 MERGED?**: Check if kingdonb has merged kingdonb/mecris#158. If merged, yebyen/mecris will need to sync back down from upstream.
-- **MCP wire-up for velocity_provider**: In `mcp_server.py`, wire `get_language_velocity_stats` as the `velocity_provider` when constructing `reminder_service`. Requires reading how `reminder_service` is instantiated.
+- **PR #158 MERGED?**: Check if kingdonb has merged kingdonb/mecris#158. If merged, yebyen/mecris will need to sync back down from upstream and open a fresh sync PR for the Phase 2 + MCP wire-up commits.
 - **Live Arabic status**: Check Beeminder manually — is `reviewstack` still in derailment range? If yes, do Clozemaster Arabic reviews NOW.
 - **Live reminder wire-up**: Confirm `arabic_review_reminder` (with `cards_needed` in var `"3"`) appears in `message_log` after next `trigger_reminder_check` call when `reviewstack` is CRITICAL. Requires running Spin app with Neon + Beeminder credentials.
 - **Arabic Phase 3**: Escalation ladder if reminder ignored 3+ cycles; dedicated WhatsApp template for Arabic (not shared with generic urgency_alert_v2).
@@ -42,5 +39,6 @@
 - Logic Vacuuming: ReviewPump is Phase 1 ✅ DONE. BudgetGovernor is Phase 2 (KV store + outbound HTTP). See `docs/LOGIC_VACUUMING_CANDIDATES.md`.
 - `review-pump` WASM build: `cargo build --target wasm32-wasip1 --release --features spin` in `mecris-go-spin/review-pump/`. Native unit tests: `cargo test` (no features needed). **Target `wasm32-wasip1` must be installed**: `rustup target add wasm32-wasip1`.
 - **Token scope**: GITHUB_TOKEN (fine-grained, yebyen/mecris only). Cannot comment on kingdonb/mecris issues. Use GITHUB_CLASSIC_PAT for workflow dispatch and cross-repo PRs.
-- **arabic_review_reminder**: Plan spec posted on yebyen/mecris#37. Phase 2 plan on yebyen/mecris#40.
-- **velocity_provider API**: `ReminderService(context_provider, coaching_provider, log_provider=None, velocity_provider=None)`. Provider is called as `await velocity_provider(user_id)` and must return dict with key `"arabic"` containing `{"target_flow_rate": int, ...}`.
+- **arabic_review_reminder**: Plan spec posted on yebyen/mecris#37. Phase 2 plan on yebyen/mecris#40. MCP wire-up on yebyen/mecris#41 (CLOSED).
+- **velocity_provider API**: `ReminderService(context_provider, coaching_provider, log_provider=None, velocity_provider=None)`. Provider is called as `await velocity_provider(user_id)` and must return dict with key `"arabic"` containing `{"target_flow_rate": int, ...}`. Now wired to `get_language_velocity_stats` in production.
+- **Test runner in CI**: `uv` is not installed in the runner environment. Use `pip install pytest pytest-asyncio` then `PYTHONPATH=. python -m pytest` (not `.venv/bin/pytest`).
