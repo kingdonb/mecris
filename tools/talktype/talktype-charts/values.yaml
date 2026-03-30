@@ -1,0 +1,42 @@
+# Default values for talktype.
+# This is a YAML-formatted file.
+
+## @section Global parameters
+## @param global.imageRegistry Global image registry
+global:
+  imageRegistry: ""
+
+## @section Talktype Server configuration
+server:
+  enabled: true
+  image:
+    repository: urmanac/talktype-server
+    tag: latest
+    pullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+    port: 8002
+  whisper:
+    model: medium
+    device: cpu
+    compute: int8
+  resources:
+    limits:
+      cpu: 4000m
+      memory: 4Gi
+    requests:
+      cpu: 1000m
+      memory: 2Gi
+
+## @section Talktype Client configuration
+client:
+  enabled: true
+  image:
+    repository: urmanac/talktype-client
+    tag: latest
+    pullPolicy: IfNotPresent
+  config:
+    hotkey: f9
+    recoveryHotkey: f8
+    retryHotkey: f7
+    historyLimit: 100

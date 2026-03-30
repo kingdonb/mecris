@@ -1,0 +1,7 @@
+apiVersion: v2
+name: talktype
+description: A Helm chart for the TalkType local voice-to-text service (server and client).
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
+# Generated via readme-generator-for-helm
