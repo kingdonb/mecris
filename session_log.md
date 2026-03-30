@@ -452,3 +452,10 @@ Also, don't worry about `numReviewsToday` too much—my 12pts/card heuristic in 
 **Done**: Removed dead duplicate `ReminderService` instantiation mid-file (lines 540-544, had no log_provider, no velocity_provider — silently overwritten by the real one). Added `velocity_provider=get_language_velocity_stats` to the surviving instantiation at line 685. All 10 tests pass. Committed as `c281116`.
 **Skipped**: Nothing — plan completed in full.
 **Next**: Confirm PR #158 merged by kingdonb. Open fresh sync PR for Phase 2 + MCP wire-up commits if merged. Check Arabic reviewstack Beeminder status manually. Arabic Phase 3 (escalation ladder) is the next code work.
+
+## 2026-03-30 — Arabic Phase 3: escalation ladder for ignored arabic_review_reminder
+
+**Planned**: Add `arabic_review_escalation` reminder type in `reminder_service.py` — fires when skip_count >= 3 consecutive ignored cycles, 1h cooldown, distinct message; 2+ new tests; all existing tests still pass (plan yebyen/mecris#42).
+**Done**: Implemented exactly as planned. `ReminderService.__init__` gains 5th optional param `skip_count_provider` (async fn → int). When skip_count >= 3 and `arabic_review_escalation` cooldown (1h) elapsed: fires escalation with skip count in var "3", urgency_template_sid. Graceful fallback to base reminder if provider raises. 3 new tests cover: fires after 3 cycles, resets when cards_done (skip_count=0), respects 1h cooldown. All 13 tests pass. Committed as `c769016`.
+**Skipped**: MCP wire-up for skip_count_provider (no MCP function returns skip count yet — next session work). Dedicated WhatsApp template for escalation (still uses urgency_alert_v2 — template creation is out-of-band user work).
+**Next**: Wire skip_count_provider into mcp_server.py (need get_arabic_skip_count MCP function or derive from language_stats.cards_today + message_log). Check if PR #158 merged by kingdonb; open fresh sync PR if so.
