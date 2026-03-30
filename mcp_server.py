@@ -537,12 +537,6 @@ async def get_coaching_insight(user_id: str = None) -> Dict[str, Any]:
         logger.error(f"Failed to generate coaching insight: {e}")
         return {"error": str(e)}
 
-from services.reminder_service import ReminderService
-reminder_service = ReminderService(
-    context_provider=get_narrator_context,
-    coaching_provider=get_coaching_insight
-)
-
 @mcp.tool(description="Set the Review Pump intensity multiplier (1.0, 2.0, 4.0, 10.0).")
 async def set_review_pump_lever(language: str, multiplier: float, user_id: str = None) -> Dict[str, Any]:
     """Adjust how fast the backlog should be cleared. 1.0=Maintenance, 4.0=Aggressive, 10.0=Blitz."""
@@ -688,7 +682,7 @@ async def send_reminder_message(message_data: Dict[str, Any], user_id: str = Non
 
 
 
-reminder_service = ReminderService(get_narrator_context, get_coaching_insight, get_last_sent_time)
+reminder_service = ReminderService(get_narrator_context, get_coaching_insight, get_last_sent_time, velocity_provider=get_language_velocity_stats)
 
 # ---------------------------------------------------------------------------
 # Budget Governor MCP tool (Plan: yebyen/mecris#26)
