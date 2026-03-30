@@ -8,10 +8,11 @@ logger = logging.getLogger("mecris.services.reminder")
 class ReminderService:
     """Decides when to nudge the user and formats the content for WhatsApp Templates."""
 
-    def __init__(self, context_provider, coaching_provider, log_provider=None):
+    def __init__(self, context_provider, coaching_provider, log_provider=None, velocity_provider=None):
         self.context_provider = context_provider
         self.coaching_provider = coaching_provider
         self.log_provider = log_provider
+        self.velocity_provider = velocity_provider
         # HX9403f1b85350b8c05780a1128b79f3c2 = mecris_status_v2 (Confirmed working)
         self.walk_template_sid = "HX9403f1b85350b8c05780a1128b79f3c2" 
         self.urgency_template_sid = "HX638b7f9403e04c8fa880370f1b7a9ba1" # urgency_alert_v2
@@ -50,14 +51,23 @@ class ReminderService:
             hours_since_arabic = await self._get_hours_since_last("arabic_review_reminder", user_id)
             if hours_since_arabic >= 2.0:
                 target = arabic_critical[0]
+                variables = {
+                    "1": target.get("title", "Arabic Clozemaster"),
+                    "2": target.get("runway", "0 days")
+                }
+                if self.velocity_provider:
+                    try:
+                        velocity = await self.velocity_provider(user_id)
+                        arabic_stats = velocity.get("arabic") or velocity.get("Arabic")
+                        if arabic_stats and "target_flow_rate" in arabic_stats:
+                            variables["3"] = str(arabic_stats["target_flow_rate"])
+                    except Exception:
+                        logger.warning("velocity_provider failed; omitting cards_needed from arabic reminder")
                 return {
                     "should_send": True,
                     "type": "arabic_review_reminder",
                     "template_sid": self.urgency_template_sid,
-                    "variables": {
-                        "1": target.get("title", "Arabic Clozemaster"),
-                        "2": target.get("runway", "0 days")
-                    },
+                    "variables": variables,
                     "fallback_message": "🚨 Arabic reviewstack is CRITICAL — open Clozemaster and do reviews NOW!"
                 }
             else:

@@ -206,6 +206,65 @@ async def test_arabic_review_reminder_has_shorter_cooldown():
 
 
 @pytest.mark.asyncio
+async def test_arabic_review_reminder_includes_cards_needed_when_velocity_provider_set():
+    """Phase 2: variable '3' is populated with target_flow_rate when velocity_provider is present."""
+
+    mock_context = {
+        "daily_walk_status": {"has_activity_today": True},
+        "beeminder_alerts": [],
+        "goal_runway": [
+            {"slug": "reviewstack", "title": "Arabic Reviews", "derail_risk": "CRITICAL", "runway": "0 days"}
+        ]
+    }
+    mock_insight = {"momentum": "low", "message": "Do your Arabic!"}
+    mock_velocity = {"arabic": {"target_flow_rate": 42, "status": "cavitation", "unit": "cards"}}
+
+    rs = ReminderService(
+        make_async_mock(mock_context),
+        make_async_mock(mock_insight),
+        velocity_provider=make_async_mock(mock_velocity)
+    )
+
+    class MockNow(datetime.datetime):
+        @classmethod
+        def now(cls, *args, **kwargs):
+            return cls(2026, 3, 30, 9, 0, 0)
+
+    with patch('services.reminder_service.datetime', MockNow):
+        result = await rs.check_reminder_needed()
+        assert result["should_send"] is True
+        assert result["type"] == "arabic_review_reminder"
+        assert result["variables"].get("3") == "42"
+
+
+@pytest.mark.asyncio
+async def test_arabic_review_reminder_omits_variable3_without_velocity_provider():
+    """Phase 2: when velocity_provider is absent, variable '3' is not set (graceful fallback)."""
+
+    mock_context = {
+        "daily_walk_status": {"has_activity_today": True},
+        "beeminder_alerts": [],
+        "goal_runway": [
+            {"slug": "reviewstack", "title": "Arabic Reviews", "derail_risk": "CRITICAL", "runway": "0 days"}
+        ]
+    }
+    mock_insight = {"momentum": "low", "message": "Do your Arabic!"}
+
+    rs = ReminderService(make_async_mock(mock_context), make_async_mock(mock_insight))
+
+    class MockNow(datetime.datetime):
+        @classmethod
+        def now(cls, *args, **kwargs):
+            return cls(2026, 3, 30, 9, 0, 0)
+
+    with patch('services.reminder_service.datetime', MockNow):
+        result = await rs.check_reminder_needed()
+        assert result["should_send"] is True
+        assert result["type"] == "arabic_review_reminder"
+        assert "3" not in result["variables"]
+
+
+@pytest.mark.asyncio
 async def test_arabic_review_reminder_fires_after_2h_cooldown():
     """Test that arabic_review_reminder fires again after 2h has elapsed."""
 
