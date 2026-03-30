@@ -1,0 +1,45 @@
+// WIT interface for the ReviewPump Spin component.
+// Multipliers are passed as integer tenths to avoid IEEE 754 hazards:
+//   10 = 1.0x (Maintenance), 20 = 2.0x (Steady), ..., 100 = 10.0x (System Overdrive)
+
+package mecris:review-pump@0.1.0;
+
+interface review-pump {
+  /// Status record returned by get-status.
+  record pump-status {
+    /// Multiplier as integer tenths (10 = 1.0x).
+    multiplier-x10: u32,
+    /// Human-readable lever name (e.g. "Laminar", "Turbulent").
+    lever-name: string,
+    /// Calculated daily target (points or cards).
+    target-flow-rate: s32,
+    /// Actual completions today.
+    current-flow-rate: s32,
+    /// Flow state: "cavitation" | "laminar" | "turbulent".
+    status: string,
+    /// Outstanding backlog (points or cards).
+    debt-remaining: s32,
+    /// Unit label: "points" | "cards".
+    unit: string,
+  }
+
+  /// Calculate the daily target given current debt, tomorrow's liability, and multiplier.
+  calculate-target: func(
+    debt: s32,
+    tomorrow-liability: s32,
+    multiplier-x10: u32,
+  ) -> s32;
+
+  /// Return full pump status including flow state.
+  get-status: func(
+    debt: s32,
+    tomorrow-liability: s32,
+    daily-completions: s32,
+    multiplier-x10: u32,
+    unit: string,
+  ) -> pump-status;
+}
+
+world review-pump-world {
+  export review-pump;
+}

@@ -1,0 +1,20 @@
+[package]
+name = "review-pump"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.78"
+description = "ReviewPump logic — daily language review target calculator (Spin HTTP component)"
+authors = ["mecris-bot <noreply@anthropic.com>"]
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+spin-sdk = { version = "5.2.0", optional = true }
+
+[features]
+spin = ["dep:spin-sdk"]
+
+[workspace]
