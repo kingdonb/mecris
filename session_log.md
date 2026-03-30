@@ -428,3 +428,10 @@ Also, don't worry about `numReviewsToday` too much—my 12pts/card heuristic in 
 **Done**: Build failed — `anyhow` crate used in `#[cfg(feature = "spin")]` handler at `src/lib.rs:134` but absent from `Cargo.toml`. Added `anyhow = { version = "1.0", optional = true }` gated under `spin = ["dep:spin-sdk", "dep:anyhow"]`. Build now exits 0. All 17 native unit tests still pass. Committed as `0d40606`.
 **Skipped**: Nothing — plan completed in full.
 **Next**: Open sync PR from yebyen/mecris to kingdonb/mecris for the anyhow fix. Research `componentize-py` for Python-native WASM POC (kingdonb/mecris#157).
+
+## 2026-03-30 — Open sync PR: yebyen:main → kingdonb:main (arabic_review_reminder + WASM anyhow fix)
+
+**Planned**: Open a PR from yebyen:main → kingdonb:main carrying 4 commits: arabic_review_reminder feature and review-pump WASM anyhow dep fix (plan yebyen/mecris#39).
+**Done**: PR opened as kingdonb/mecris#158. Contains all 4 commits. Awaiting kingdonb review and merge.
+**Skipped**: Nothing — plan completed in full.
+**Next**: Confirm PR #158 merged by kingdonb. Research `componentize-py` for Python-native WASM POC (kingdonb/mecris#157). Check Arabic `reviewstack` derailment status manually.
