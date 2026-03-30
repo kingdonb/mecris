@@ -414,3 +414,10 @@ Also, don't worry about `numReviewsToday` too much—my 12pts/card heuristic in 
 - **Architectural Directive**: Opened kingdonb/mecris#157 documenting "The Holy Grail" — the requirement to move Python logic directly to WASM without manual translation to Rust.
 **Skipped**: Manual balance check (user performed this: $94.52).
 **Next**: Clear Arabic backlog (2,426 cards) to prevent derailment today. Research `componentize-py` for Python-to-WASM POC.
+
+## 2026-03-30 — Arabic review reminder: obnoxious 2h-cooldown type added to ReminderService
+
+**Planned**: Assess `reviewstack` Beeminder derailment emergency via live APIs; push emergency datapoint or document findings (plan yebyen/mecris#37).
+**Done**: Live MCP APIs unreachable in CI (no NEON_DB_URL or Beeminder credentials). Pivoted to systemic fix: added `arabic_review_reminder` type to `services/reminder_service.py`. Fires before generic `beeminder_emergency`, 2h cooldown vs 4h. 3 new tests written (red→green), 8 total passing. Committed as `f969dbc`.
+**Skipped**: Live Beeminder datapoint push (no credentials in CI). Comment on kingdonb/mecris#125 (token scope limited to yebyen/mecris). 
+**Next**: Manually verify `reviewstack` live status. Wire up `arabic_review_reminder` in `message_log` after next `trigger_reminder_check`. Research `componentize-py` for Python-native WASM POC (kingdonb/mecris#157).
