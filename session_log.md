@@ -397,3 +397,10 @@ Also, don't worry about `numReviewsToday` too much—my 12pts/card heuristic in 
 **Skipped**: PR to kingdonb/mecris — cannot open until workflow pushes `f3dbb41` to yebyen/mecris. Plan issue yebyen/mecris#34 remains open pending the PR.
 
 **Next**: After workflow push: open sync PR yebyen→kingdonb for `f3dbb41`, run pr-test, close yebyen/mecris#34. Then Logic Vacuuming Phase 1 (port ReviewPump to Rust/Spin).
+
+## 2026-03-30 — Open sync PR #156 to kingdonb/mecris for Logic Vacuuming Phase 0
+
+**Planned**: Open a pull request from yebyen/mecris main to kingdonb/mecris main carrying the 3 Logic Vacuuming Phase 0 commits, dispatch pr-test, confirm results (plan yebyen/mecris#35).
+**Done**: PR kingdonb/mecris#156 opened from yebyen:main. pr-test dispatched and completed with `success` (run 23727757233). Detailed comment posted on PR. Plan issue yebyen/mecris#35 closed.
+**Skipped**: Nothing — all steps completed.
+**Next**: kingdonb reviews and merges PR #156; then Logic Vacuuming Phase 1 — port ReviewPump to Rust/Spin component.
