@@ -43,7 +43,27 @@ class ReminderService:
         # 1. Beeminder Emergencies (Higher Priority, any time)
         beeminder_alerts = context.get("beeminder_alerts", [])
         critical_goals = [g for g in context.get("goal_runway", []) if g.get("derail_risk") == "CRITICAL"]
-        
+
+        # 1a. Arabic Review Emergency (obnoxious — 2h cooldown, fires before generic)
+        arabic_critical = [g for g in critical_goals if g.get("slug") == "reviewstack"]
+        if arabic_critical:
+            hours_since_arabic = await self._get_hours_since_last("arabic_review_reminder", user_id)
+            if hours_since_arabic >= 2.0:
+                target = arabic_critical[0]
+                return {
+                    "should_send": True,
+                    "type": "arabic_review_reminder",
+                    "template_sid": self.urgency_template_sid,
+                    "variables": {
+                        "1": target.get("title", "Arabic Clozemaster"),
+                        "2": target.get("runway", "0 days")
+                    },
+                    "fallback_message": "🚨 Arabic reviewstack is CRITICAL — open Clozemaster and do reviews NOW!"
+                }
+            else:
+                logger.info(f"Arabic reminder suppressed by cooldown ({hours_since_arabic:.1f}h since last)")
+                return {"should_send": False, "reason": f"Arabic review reminder on cooldown ({hours_since_arabic:.1f}h since last)"}
+
         if critical_goals:
             # Cooldown: 4 hours for emergencies
             hours_since_emergency = await self._get_hours_since_last("beeminder_emergency", user_id)
