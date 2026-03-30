@@ -421,3 +421,10 @@ Also, don't worry about `numReviewsToday` too much—my 12pts/card heuristic in 
 **Done**: Live MCP APIs unreachable in CI (no NEON_DB_URL or Beeminder credentials). Pivoted to systemic fix: added `arabic_review_reminder` type to `services/reminder_service.py`. Fires before generic `beeminder_emergency`, 2h cooldown vs 4h. 3 new tests written (red→green), 8 total passing. Committed as `f969dbc`.
 **Skipped**: Live Beeminder datapoint push (no credentials in CI). Comment on kingdonb/mecris#125 (token scope limited to yebyen/mecris). 
 **Next**: Manually verify `reviewstack` live status. Wire up `arabic_review_reminder` in `message_log` after next `trigger_reminder_check`. Research `componentize-py` for Python-native WASM POC (kingdonb/mecris#157).
+
+## 2026-03-30 — Fix review-pump WASM build (missing anyhow dep)
+
+**Planned**: Verify `cargo build --target wasm32-wasip1 --release --features spin` in `mecris-go-spin/review-pump/` exits 0; fix any errors found (plan yebyen/mecris#38).
+**Done**: Build failed — `anyhow` crate used in `#[cfg(feature = "spin")]` handler at `src/lib.rs:134` but absent from `Cargo.toml`. Added `anyhow = { version = "1.0", optional = true }` gated under `spin = ["dep:spin-sdk", "dep:anyhow"]`. Build now exits 0. All 17 native unit tests still pass. Committed as `0d40606`.
+**Skipped**: Nothing — plan completed in full.
+**Next**: Open sync PR from yebyen/mecris to kingdonb/mecris for the anyhow fix. Research `componentize-py` for Python-native WASM POC (kingdonb/mecris#157).
