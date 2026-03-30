@@ -387,3 +387,13 @@ Also, don't worry about `numReviewsToday` too much—my 12pts/card heuristic in 
 **Skipped**: Nothing — scope was fully completed. PR #155 still awaiting kingdonb merge (3 commits now: enforcement + defer warning + this archive commit).
 
 **Next**: kingdonb to review and merge kingdonb/mecris#155. After merge: pull from upstream, then investigate Helix balance live validation or Issue #122 (Android multiplier race).
+
+## 2026-03-29 — Logic Vacuuming Phase 0: candidate analysis doc written 🏛️
+
+**Planned**: Read ReviewPump and BudgetGovernor Python code, produce `docs/LOGIC_VACUUMING_CANDIDATES.md` with per-candidate migration analysis and WIT interface sketches (yebyen/mecris#34).
+
+**Done**: Read `services/review_pump.py` (68 lines, zero deps), `services/budget_governor.py` (366 lines, 5 host function boundaries), and `mecris-go-spin/sync-service/src/lib.rs`. Produced `docs/LOGIC_VACUUMING_CANDIDATES.md` covering both candidates: ReviewPump (LOW complexity, Phase 1, zero host imports), BudgetGovernor (MEDIUM complexity, Phase 2, KV store + outbound HTTP + clock). Includes WIT interface sketches, host dependency tables, 4-phase migration sequence, and implementation notes. Committed as `f3dbb41`.
+
+**Skipped**: PR to kingdonb/mecris — cannot open until workflow pushes `f3dbb41` to yebyen/mecris. Plan issue yebyen/mecris#34 remains open pending the PR.
+
+**Next**: After workflow push: open sync PR yebyen→kingdonb for `f3dbb41`, run pr-test, close yebyen/mecris#34. Then Logic Vacuuming Phase 1 (port ReviewPump to Rust/Spin).

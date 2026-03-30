@@ -1,28 +1,26 @@
-# Next Session: PR #155 awaiting kingdonb review and merge (3 commits now)
+# Next Session: Open Logic Vacuuming Phase 0 PR to kingdonb/mecris
 
 ## Current Status (2026-03-29)
-- **PR #155 OPEN**: kingdonb/mecris#155 now carries 3 commits — budget_gate enforcement + defer warning. pr-test ✅ (run #23719931453).
-- **yebyen/mecris is 3 commits ahead** of kingdonb/mecris main (was 2 last session).
-- **budget_gate defer policy RESOLVED**: `budget_gate()` now returns `{"budget_halted": False, "warning": "...", "envelope": "defer", ...}` for "defer" status. MCP handlers check `guard.get("budget_halted")` — defer is non-blocking.
-- **22 Unit Tests Pass**: `tests/test_budget_governor.py` — 22/22 green.
-- **Clozemaster card count**: `scripts/clozemaster_scraper.py` extracts `cards_today` via `ttmNumPlayedByDate`; Arabic double-normalization guard in place.
+- **PR #155 MERGED**: kingdonb/mecris#155 (budget_gate enforcement + defer warning) merged at 2026-03-29T23:47:37Z. Working directory is at the post-merge state.
+- **No open PRs or labeled issues**: kingdonb/mecris and yebyen/mecris both clean — no needs-test, pr-review, or bug labels outstanding.
+- **Logic Vacuuming Phase 0 complete**: `docs/LOGIC_VACUUMING_CANDIDATES.md` committed as `f3dbb41`. Covers ReviewPump (LOW complexity, Phase 1) and BudgetGovernor (MEDIUM complexity, Phase 2) with WIT interface sketches and migration sequence.
+- **22 Unit Tests Pass**: `tests/test_budget_governor.py` — 22/22 green (unchanged this session).
+- **PR pending push**: The `f3dbb41` doc commit needs the workflow to push it to yebyen/mecris before a PR can be opened to kingdonb/mecris.
 
 ## Verified This Session
 - [x] Identity Check: 🏛️ Canary active.
-- [x] `budget_gate()` "defer" returns warning dict with `"warning"` key, `budget_halted: False` — non-blocking.
-- [x] MCP handlers (`trigger_language_sync`, `get_coaching_insight`, `get_real_anthropic_usage`) updated to check `guard.get("budget_halted")`.
-- [x] 22/22 tests pass (1 new test added: `test_budget_gate_returns_warning_dict_when_deferred`).
-- [x] Commit `ca38086` pushed to yebyen/mecris.
-- [x] pr-test run #23719931453 ✅ success.
-- [x] Plan issue yebyen/mecris#33 closed with validation evidence.
+- [x] PR #155 confirmed merged into kingdonb/mecris.
+- [x] No open issues in yebyen/mecris or labeled issues in kingdonb/mecris.
+- [x] `docs/LOGIC_VACUUMING_CANDIDATES.md` written — ReviewPump and BudgetGovernor analysed as WASM migration candidates with WIT sketches, host dependency table, migration sequence.
+- [x] Commit `f3dbb41` — `docs(logic-vacuuming): Phase 0 candidate analysis`.
 
 ## Pending Verification (Next Session)
-- **PR #155 merge**: kingdonb to review and merge kingdonb/mecris#155 (3 commits: budget enforcement + defer warning + archive). After merge, yebyen/mecris will need to pull from upstream.
+- **Open PR `f3dbb41` → kingdonb/mecris**: After workflow pushes to yebyen/mecris, open a sync PR carrying `f3dbb41` (LOGIC_VACUUMING_CANDIDATES doc). Run pr-test. Close yebyen/mecris#34.
 - **Helix balance discovery**: `get_helix_balance()` still unvalidated against live Helix API.
 - **Live sync verification**: Verify next Clozemaster sync correctly records `cards_today` in `language_stats` for Arabic.
-- **Issue #122** (Android multiplier race) — still unaddressed.
-- **Logic Vacuuming prep**: Issue #154 open, document candidates (ReviewPump, BudgetGovernor) for Rust WASM migration.
-- **Issue #132** ("FIXED:" in title but still open) — needs live Spin/Neon verification to close.
+- **Issue #122** (Android multiplier race) — still unaddressed. Needs Android UI work.
+- **Logic Vacuuming Phase 1**: Port ReviewPump to Rust/Spin. New component at `mecris-go-spin/review-pump/`. WIT interface, `cargo component build`, Spin registration, unit tests. Expose as `/internal/review-pump-status`.
+- **Issue #132** ("FIXED:" in title but still open) — needs live Spin/Neon verification to close (trigger failover sync, check Neon for non-zero `daily_completions`, check Beeminder for "Failover" comment).
 
 ## Infrastructure Notes
 - Cloud Cron is still **DISABLED** in `spin.toml`.
@@ -35,3 +33,4 @@
 - `get_narrator_context()` includes `budget_governor.routing_recommendation`.
 - `budget_gate()` now returns warning dict for "defer" (`budget_halted: False`); returns error dict for "deny" (`budget_halted: True`); returns `None` for "allow".
 - MCP handler pattern: `if guard and guard.get("budget_halted"): return guard`
+- Logic Vacuuming: ReviewPump is Phase 1 (zero host deps), BudgetGovernor is Phase 2 (KV store + outbound HTTP). See `docs/LOGIC_VACUUMING_CANDIDATES.md`.
