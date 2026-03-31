@@ -60,13 +60,18 @@ This document summarizes the collaborative debugging session to establish a func
 
 ...
 
-## 2026-03-31 — Post-Mortem: Greek Data Corruption (ellinika)
+## 2026-03-31 — Post-Mortem & Fix: Greek Data Corruption (ellinika)
 
 **Planned**: Investigate reports of "spurious" Greek Beeminder data points for the `ellinika` goal; find the source and provide a fix plan.
 
-**Done**: Root cause identified as a category error: treating the `ellinika` odometer/cumulative goal as a backlog-tracking snapshot. Found duplicated incorrect mapping in `scripts/clozemaster_scraper.py` (Python) and `mecris-go-spin/sync-service/src/lib.rs` (Rust/Failover). Published full post-mortem in `docs/postmortems/2026-03-31-greek-data-corruption.md`. Added `NEXT_SESSION.md` recovery steps and `GEMINI.md` directive #6 (Goal Type Awareness) to prevent recurrence.
+**Done**: 
+- Root cause identified as a category error: treating the `ellinika` odometer/cumulative goal as a backlog-tracking snapshot. 
+- **Implemented Fix**: Removed Greek Beeminder push mappings from `scripts/clozemaster_scraper.py` (Python), `services/language_sync_service.py` (Python), and `mecris-go-spin/sync-service/src/lib.rs` (Rust/Failover).
+- Updated `tests/test_greek_slug.py` to ensure Greek is no longer automated.
+- Published full post-mortem in `docs/postmortems/2026-03-31-greek-data-corruption.md`. 
+- Added `GEMINI.md` directive #6 (Goal Type Awareness) to prevent recurrence.
 
-**Next**: Bot to execute recovery plan: remove Greek Beeminder push from Python/Rust scrapers; update regression tests; verify with dry-run.
+**Next**: Catch up `yebyen/main` with these fixes and redeploy Spin components to Fermyon Cloud.
 
 ## 2026-03-31 — Fix Review Pump UX bug: remaining target and unmet goal sorting
 
@@ -79,4 +84,4 @@ This document summarizes the collaborative debugging session to establish a func
 - All 22+ review pump tests (Python) pass.
 - Verified fix with dry-run: Greek with 0 debt/liability now shows `target_flow_rate: 0` and `goal_met: True`, ensuring Arabic (untouched) is surfaced first.
 
-**Next**: Push all changes to upstream and verify Android app correctly displays the sorted list and remaining target.
+**Next**: Catch up `yebyen/main` and redeploy.

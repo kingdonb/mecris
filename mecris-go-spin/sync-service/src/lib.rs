@@ -345,7 +345,7 @@ async fn run_clozemaster_scraper(db_url: &str, user_id: &str) -> anyhow::Result<
             // Map slugs to standard names and Beeminder goals
             let (lang_name, beeminder_slug) = match name {
                 "ara-eng" => ("ARABIC", "reviewstack"),
-                "ell-eng" => ("GREEK", "ellinika"),
+                "ell-eng" => ("GREEK", ""), // Greek is odometer; no automated snapshot pushes.
                 _ => (name, ""),
             };
 

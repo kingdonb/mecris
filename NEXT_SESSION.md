@@ -17,13 +17,6 @@
 - [x] 18/18 tests pass — no regressions in reminder_service.
 
 ## Pending Verification (Next Session)
-- **CRITICAL: Fix Greek Data Corruption (ellinika)**: The bot incorrectly pinned the `ellinika` goal as a backlog-tracking push target. This is WRONG. `ellinika` is an odometer goal.
-    - **Step 1**: In `scripts/clozemaster_scraper.py`, remove `"greek": {"slug": "ell-eng", "goal": "ellinika"}` from the `languages` dict in `sync_clozemaster_to_beeminder`.
-    - **Step 2**: In `mecris-go-spin/sync-service/src/lib.rs`, change the mapping for `"ell-eng"` to return an empty Beeminder slug: `("GREEK", "")`.
-    - **Step 3**: Update `tests/test_greek_slug.py` to ensure it reflects that we DO NOT push to `ellinika`.
-    - **Step 4**: Verify with a dry-run that Greek is still scraped (for Neon DB stats) but NOT pushed to Beeminder.
-    - **Consult Post-Mortem**: `docs/postmortems/2026-03-31-greek-data-corruption.md`.
-
 - **PR #159 merge**: Check if kingdonb has merged kingdonb/mecris#159. If merged, yebyen/mecris will need to sync from upstream.
 - **Logic Vacuuming Phase 1.5b**: Wrap `arabic_skip_counter.py` as a `componentize-py` / `spin-python-sdk` WASM component.
   - Set up `fermyon/spin-python-sdk` toolchain (install `componentize-py`, `spin` CLI).
@@ -56,6 +49,10 @@
 - **componentize-py path**: `fermyon/spin-python-sdk` + `componentize-py`. Pure Python services (no C extensions, no asyncio at WIT boundary). arabic_skip_counter is now ready (httpx replaces psycopg2 — httpx works in WASM via Spin outbound HTTP). Binary size ~10–30MB per component.
 - **Token scope**: GITHUB_TOKEN (fine-grained, yebyen/mecris only). Cannot comment on kingdonb/mecris issues. Use GITHUB_CLASSIC_PAT for workflow dispatch and cross-repo PRs.
 - **arabic_review_reminder**: Plan spec posted on yebyen/mecris#37. Phase 2 plan on yebyen/mecris#40. MCP wire-up on yebyen/mecris#41 (CLOSED). Phase 3 on yebyen/mecris#42 (CLOSED). skip_count_provider MCP wire-up on yebyen/mecris#43 (CLOSED). Sync PR plan on yebyen/mecris#44 (CLOSED). componentize-py research on yebyen/mecris#45 (CLOSED). Phase 1.5a plan on yebyen/mecris#46 (CLOSED).
+- **velocity_provider API**: `ReminderService(context_provider, coaching_provider, log_provider=None, velocity_provider=None, skip_count_provider=None)`. velocity_provider called as `await velocity_provider(user_id)` → dict with key `"arabic"` containing `{"target_flow_rate": int, ...}`. skip_count_provider called as `await skip_count_provider(user_id)` → int (consecutive ignored Arabic cycles). Both fully wired in production mcp_server.py.
+- **skip_count logic**: `services/arabic_skip_counter.py` uses Neon HTTP API (httpx). Counts `arabic_review_reminder` + `arabic_review_escalation` rows in \`message_log\` for the last 24h. SQL: `SELECT COUNT(*) FROM message_log WHERE (type = $1 OR type = $2) AND user_id = $3 AND sent_at >= $4`. Resets naturally when `reviewstack` is no longer CRITICAL.
+- **Test runner in CI**: `uv` is not installed in the runner environment. Use \`pip install pytest pytest-asyncio\` then `PYTHONPATH=. python -m pytest` (not `.venv/bin/pytest`).
+ze-py research on yebyen/mecris#45 (CLOSED). Phase 1.5a plan on yebyen/mecris#46 (CLOSED).
 - **velocity_provider API**: `ReminderService(context_provider, coaching_provider, log_provider=None, velocity_provider=None, skip_count_provider=None)`. velocity_provider called as `await velocity_provider(user_id)` → dict with key `"arabic"` containing `{"target_flow_rate": int, ...}`. skip_count_provider called as `await skip_count_provider(user_id)` → int (consecutive ignored Arabic cycles). Both fully wired in production mcp_server.py.
 - **skip_count logic**: `services/arabic_skip_counter.py` uses Neon HTTP API (httpx). Counts `arabic_review_reminder` + `arabic_review_escalation` rows in \`message_log\` for the last 24h. SQL: `SELECT COUNT(*) FROM message_log WHERE (type = $1 OR type = $2) AND user_id = $3 AND sent_at >= $4`. Resets naturally when `reviewstack` is no longer CRITICAL.
 - **Test runner in CI**: `uv` is not installed in the runner environment. Use \`pip install pytest pytest-asyncio\` then `PYTHONPATH=. python -m pytest` (not `.venv/bin/pytest`).
