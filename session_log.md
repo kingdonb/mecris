@@ -85,3 +85,22 @@ This document summarizes the collaborative debugging session to establish a func
 - Verified fix with dry-run: Greek with 0 debt/liability now shows `target_flow_rate: 0` and `goal_met: True`, ensuring Arabic (untouched) is surfaced first.
 
 **Next**: Permanent fixes for Greek data corruption and Review Pump UX bug are now implemented, committed, pushed to `yebyen/main`, and deployed to Fermyon Cloud.
+
+## 2026-03-31 — Phase 1.5b: componentize-py WASM component for arabic_skip_counter
+
+**Planned**: Set up componentize-py toolchain, write WIT interface for arabic_skip_counter, produce a `.wasm` artifact in `mecris-go-spin/arabic-skip-counter/`. (yebyen/mecris#48)
+
+**Done**:
+- Installed `componentize-py 0.21.0` via pip (24MB wheel, works in GitHub Actions runner).
+- Created `mecris-go-spin/arabic-skip-counter/wit/world.wit`: exports `count-arabic-reminders(neon-url: string, user-id: string, hours: u32) -> u32`.
+- Generated Python bindings via `componentize-py bindings` (produced `wit_world/` stub package).
+- Discovered key naming convention: concrete `WitWorld` class in `app.py` must NOT inherit from the generated abstract Protocol — it must be a fresh concrete class with the same name. This resolves the `AssertionError: TypeError: Can't instantiate abstract class WitWorld` build error.
+- Built `arabic-skip-counter.wasm` (43MB, CPython + httpx embedded) — valid WebAssembly component.
+- Added `[component.arabic-skip-counter]` to `spin.toml` with build command and `allowed_outbound_hosts = ["https://*.neon.tech"]`.
+- Added `mecris-go-spin/arabic-skip-counter/.gitignore` to exclude WASM artifacts and generated stubs.
+- Wrote 6 unit tests in `tests/test_arabic_skip_counter_component.py` — all pass.
+- 24/24 total tests pass (no regressions).
+
+**Skipped**: HTTP trigger wrapper (Phase 1.6) — current WIT is a function-export world, not an HTTP component. Deliberate: validates the componentize-py pipeline first; HTTP route is the next increment. `spin call` invocation not tested (spin CLI not installed in runner).
+
+**Next**: Open sync PR to kingdonb/mecris carrying Phase 1.5b. Then Phase 1.6: HTTP wrapper for `/internal/arabic-skip-count` route.
