@@ -414,3 +414,48 @@ Also, don't worry about `numReviewsToday` too much—my 12pts/card heuristic in 
 - **Architectural Directive**: Opened kingdonb/mecris#157 documenting "The Holy Grail" — the requirement to move Python logic directly to WASM without manual translation to Rust.
 **Skipped**: Manual balance check (user performed this: $94.52).
 **Next**: Clear Arabic backlog (2,426 cards) to prevent derailment today. Research `componentize-py` for Python-to-WASM POC.
+
+## 2026-03-30 — Arabic review reminder: obnoxious 2h-cooldown type added to ReminderService
+
+**Planned**: Assess `reviewstack` Beeminder derailment emergency via live APIs; push emergency datapoint or document findings (plan yebyen/mecris#37).
+**Done**: Live MCP APIs unreachable in CI (no NEON_DB_URL or Beeminder credentials). Pivoted to systemic fix: added `arabic_review_reminder` type to `services/reminder_service.py`. Fires before generic `beeminder_emergency`, 2h cooldown vs 4h. 3 new tests written (red→green), 8 total passing. Committed as `f969dbc`.
+**Skipped**: Live Beeminder datapoint push (no credentials in CI). Comment on kingdonb/mecris#125 (token scope limited to yebyen/mecris). 
+**Next**: Manually verify `reviewstack` live status. Wire up `arabic_review_reminder` in `message_log` after next `trigger_reminder_check`. Research `componentize-py` for Python-native WASM POC (kingdonb/mecris#157).
+
+## 2026-03-30 — Fix review-pump WASM build (missing anyhow dep)
+
+**Planned**: Verify `cargo build --target wasm32-wasip1 --release --features spin` in `mecris-go-spin/review-pump/` exits 0; fix any errors found (plan yebyen/mecris#38).
+**Done**: Build failed — `anyhow` crate used in `#[cfg(feature = "spin")]` handler at `src/lib.rs:134` but absent from `Cargo.toml`. Added `anyhow = { version = "1.0", optional = true }` gated under `spin = ["dep:spin-sdk", "dep:anyhow"]`. Build now exits 0. All 17 native unit tests still pass. Committed as `0d40606`.
+**Skipped**: Nothing — plan completed in full.
+**Next**: Open sync PR from yebyen/mecris to kingdonb/mecris for the anyhow fix. Research `componentize-py` for Python-native WASM POC (kingdonb/mecris#157).
+
+## 2026-03-30 — Open sync PR: yebyen:main → kingdonb:main (arabic_review_reminder + WASM anyhow fix)
+
+**Planned**: Open a PR from yebyen:main → kingdonb:main carrying 4 commits: arabic_review_reminder feature and review-pump WASM anyhow dep fix (plan yebyen/mecris#39).
+**Done**: PR opened as kingdonb/mecris#158. Contains all 4 commits. Awaiting kingdonb review and merge.
+**Skipped**: Nothing — plan completed in full.
+**Next**: Confirm PR #158 merged by kingdonb. Research `componentize-py` for Python-native WASM POC (kingdonb/mecris#157). Check Arabic `reviewstack` derailment status manually.
+
+## 2026-03-30 — Arabic Phase 2: velocity_provider enriches arabic_review_reminder with cards_needed
+
+**Planned**: Add optional `velocity_provider` to `ReminderService`; inject `target_flow_rate` (cards/day) from `get_language_velocity_stats["arabic"]` as variable `"3"` in `arabic_review_reminder` vars; graceful fallback when absent; 2 new tests.
+
+**Done**: Implemented exactly as planned. `ReminderService.__init__` now accepts `velocity_provider=None`. When provided, fetches arabic velocity stats and sets `variables["3"] = str(target_flow_rate)`. Exception in provider is caught and logged; variable "3" omitted on failure. 10 tests pass (8 existing, 2 new).
+
+**Skipped**: MCP wire-up (connecting `get_language_velocity_stats` as velocity_provider in mcp_server.py instantiation) — deferred to next session. Arabic Phase 3 (escalation ladder, dedicated WhatsApp template) also deferred.
+
+**Next**: Wire `get_language_velocity_stats` as velocity_provider in `mcp_server.py` where `reminder_service` is instantiated, then confirm PR #158 merged / open fresh sync PR if needed.
+
+## 2026-03-30 — Wire velocity_provider into mcp_server.py ReminderService
+
+**Planned**: Pass `get_language_velocity_stats` as `velocity_provider` when instantiating `ReminderService` in `mcp_server.py` so arabic_review_reminder receives live cards_needed from ReviewPump (plan yebyen/mecris#41).
+**Done**: Removed dead duplicate `ReminderService` instantiation mid-file (lines 540-544, had no log_provider, no velocity_provider — silently overwritten by the real one). Added `velocity_provider=get_language_velocity_stats` to the surviving instantiation at line 685. All 10 tests pass. Committed as `c281116`.
+**Skipped**: Nothing — plan completed in full.
+**Next**: Confirm PR #158 merged by kingdonb. Open fresh sync PR for Phase 2 + MCP wire-up commits if merged. Check Arabic reviewstack Beeminder status manually. Arabic Phase 3 (escalation ladder) is the next code work.
+
+## 2026-03-30 — Arabic Phase 3: escalation ladder for ignored arabic_review_reminder
+
+**Planned**: Add `arabic_review_escalation` reminder type in `reminder_service.py` — fires when skip_count >= 3 consecutive ignored cycles, 1h cooldown, distinct message; 2+ new tests; all existing tests still pass (plan yebyen/mecris#42).
+**Done**: Implemented exactly as planned. `ReminderService.__init__` gains 5th optional param `skip_count_provider` (async fn → int). When skip_count >= 3 and `arabic_review_escalation` cooldown (1h) elapsed: fires escalation with skip count in var "3", urgency_template_sid. Graceful fallback to base reminder if provider raises. 3 new tests cover: fires after 3 cycles, resets when cards_done (skip_count=0), respects 1h cooldown. All 13 tests pass. Committed as `c769016`.
+**Skipped**: MCP wire-up for skip_count_provider (no MCP function returns skip count yet — next session work). Dedicated WhatsApp template for escalation (still uses urgency_alert_v2 — template creation is out-of-band user work).
+**Next**: Wire skip_count_provider into mcp_server.py (need get_arabic_skip_count MCP function or derive from language_stats.cards_today + message_log). Check if PR #158 merged by kingdonb; open fresh sync PR if so.
