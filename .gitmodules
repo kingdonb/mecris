@@ -1,0 +1,6 @@
+[submodule "tools/echokit/echokit_server"]
+        path = tools/echokit/echokit_server
+        url = https://github.com/second-state/echokit_server
+[submodule "tools/talktype/talktype"]
+	path = tools/talktype/talktype
+	url = netmoom:talktype.git
