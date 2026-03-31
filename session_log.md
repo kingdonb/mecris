@@ -459,3 +459,10 @@ Also, don't worry about `numReviewsToday` too much—my 12pts/card heuristic in 
 **Done**: Implemented exactly as planned. `ReminderService.__init__` gains 5th optional param `skip_count_provider` (async fn → int). When skip_count >= 3 and `arabic_review_escalation` cooldown (1h) elapsed: fires escalation with skip count in var "3", urgency_template_sid. Graceful fallback to base reminder if provider raises. 3 new tests cover: fires after 3 cycles, resets when cards_done (skip_count=0), respects 1h cooldown. All 13 tests pass. Committed as `c769016`.
 **Skipped**: MCP wire-up for skip_count_provider (no MCP function returns skip count yet — next session work). Dedicated WhatsApp template for escalation (still uses urgency_alert_v2 — template creation is out-of-band user work).
 **Next**: Wire skip_count_provider into mcp_server.py (need get_arabic_skip_count MCP function or derive from language_stats.cards_today + message_log). Check if PR #158 merged by kingdonb; open fresh sync PR if so.
+
+## 2026-03-31 — Wire skip_count_provider into mcp_server.py (Arabic Phase 3 MCP wire-up)
+
+**Planned**: Add `get_arabic_skip_count(user_id)` to `mcp_server.py` and wire it as `skip_count_provider` in `ReminderService` instantiation, so Arabic Phase 3 escalation can fire in production (plan yebyen/mecris#43).
+**Done**: Extracted `count_arabic_reminders(neon_url, user_id, hours=24)` into `services/arabic_skip_counter.py` (testable, lazy psycopg2 import). Added `get_arabic_skip_count()` async wrapper in `mcp_server.py` using `asyncio.to_thread`; returns 0 if NEON_DB_URL unset. Updated `ReminderService` instantiation with `skip_count_provider=get_arabic_skip_count`. 4 new tests using `sys.modules` psycopg2 patching. All 17 tests pass. Committed as `6f73b92`.
+**Skipped**: Opening sync PR to kingdonb (next session work). Dedicated WhatsApp template for escalation (requires Twilio console — user work).
+**Next**: Open sync PR yebyen/mecris → kingdonb/mecris for commit `6f73b92`. Check Arabic reviewstack Beeminder status manually.
