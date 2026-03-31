@@ -121,3 +121,21 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: WASM build (`spin py2wasm`) and live HTTP validation (`curl`) — `spin` CLI and `componentize-py` binary not available in CI runner. Also skipped: verify `request.uri` attribute name in spin_sdk>=3.0.0 (may be `request.url`); document componentize-py conventions in `docs/LOGIC_VACUUMING_CANDIDATES.md`.
 
 **Next**: In deployment environment: `pip install -r requirements.txt && spin py2wasm app -o arabic-skip-counter.wasm`, then `curl "http://localhost:3000/internal/arabic-skip-count?user_id=yebyen&hours=24"`. Confirm `{"skip_count": <int>}` response. Open Phase 1.6 sync PR to kingdonb once WASM validates.
+
+## 2026-03-31 — Document componentize-py WitWorld/IncomingHandler conventions
+
+**Planned**: Add "componentize-py Class Naming Conventions" section to `docs/LOGIC_VACUUMING_CANDIDATES.md` covering WitWorld (function-export world) and IncomingHandler (HTTP world) patterns, including try/except ImportError CI guard. (yebyen/mecris#51)
+
+**Done**:
+- Added 65-line section to `docs/LOGIC_VACUUMING_CANDIDATES.md` under Candidate 3 covering:
+  - Function-export world: fresh concrete `WitWorld` class, no inheritance from generated Protocol.
+  - HTTP world: `IncomingHandler(spin_sdk.http.IncomingHandler)`, `try/except ImportError` guard, all logic outside the class for CI testability.
+  - `request.uri` attribute note (verify against installed spin-sdk version).
+  - Build command reference table for both world types.
+  - Rationale: why names are fixed (toolchain binding shim lookup by class name).
+- Committed at `53e65b0`. Plan issue yebyen/mecris#51 closed.
+- NEXT_SESSION.md updated: componentize-py convention item moved from Pending to Verified.
+
+**Skipped**: WASM build/live test (blocked — no `spin` CLI in CI). Phase 1.6 PR to kingdonb (gated on WASM validation; existing PR #161 carries both 1.5b+1.6 code).
+
+**Next**: WASM build validation in a deployment environment with `spin` + `componentize-py 0.21.0`. Then confirm kingdonb/mecris#161 review/merge path.
