@@ -682,7 +682,21 @@ async def send_reminder_message(message_data: Dict[str, Any], user_id: str = Non
 
 
 
-reminder_service = ReminderService(get_narrator_context, get_coaching_insight, get_last_sent_time, velocity_provider=get_language_velocity_stats)
+async def get_arabic_skip_count(user_id: str = None) -> int:
+    """Return the number of Arabic reminders sent in the last 24h (skip count proxy).
+
+    Used as skip_count_provider for ReminderService Phase 3 escalation.
+    Returns 0 if NEON_DB_URL is not configured or on any DB error.
+    """
+    from services.arabic_skip_counter import count_arabic_reminders
+    target_user_id = usage_tracker.resolve_user_id(user_id)
+    neon_url = os.getenv("NEON_DB_URL", "")
+    if not neon_url:
+        return 0
+    return await asyncio.to_thread(count_arabic_reminders, neon_url, target_user_id)
+
+
+reminder_service = ReminderService(get_narrator_context, get_coaching_insight, get_last_sent_time, velocity_provider=get_language_velocity_stats, skip_count_provider=get_arabic_skip_count)
 
 # ---------------------------------------------------------------------------
 # Budget Governor MCP tool (Plan: yebyen/mecris#26)
