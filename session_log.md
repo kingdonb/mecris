@@ -60,58 +60,6 @@ This document summarizes the collaborative debugging session to establish a func
 
 ...
 
-## 2026-03-27 — Verify Android sync/multipliers, resolve familiar_id, and draft Pump Calculation fix
-
-**Planned**: Verify Issue #3 manual tests (Android app interaction).
-**Done**:
-- Verified Android Background/Manual Sync: correct Beeminder datapoints and comments ✅
-- Verified Multiplier Lever: 2x Arabic / 5x Greek persisted in Neon ✅
-- Fixed Familiar ID: added resolve_user_id to NeonSyncChecker and GroqOdometerTracker ✅
-- Reloaded MCP server: get_language_velocity_stats now reflects correct multipliers for 'yebyen' ✅
-- Drafted Issue #6: Audit and fix Review Pump's handling of Points vs. Cards units.
-**Skipped**: None.
-**Next**: Execute Issue #6 (Pump logic audit) to ensure unit consistency for card-based vs. point-based goals.
-
-...
-
-## 2026-03-30 — Arabic Phase 3: escalation ladder for ignored arabic_review_reminder
-
-**Planned**: Add `arabic_review_escalation` reminder type in \`reminder_service.py\` — fires when skip_count >= 3 consecutive ignored cycles, 1h cooldown, distinct message; 2+ new tests; all existing tests still pass (plan yebyen/mecris#42).
-**Done**: Implemented exactly as planned. `ReminderService.__init__` gains 5th optional param `skip_count_provider` (async fn → int). When skip_count >= 3 and `arabic_review_escalation` cooldown (1h) elapsed: fires escalation with skip count in var "3", urgency_template_sid. Graceful fallback to base reminder if provider raises. 3 new tests cover: fires after 3 cycles, resets when cards_done (skip_count=0), respects 1h cooldown. All 13 tests pass. Committed as `c769016`.
-**Skipped**: MCP wire-up for skip_count_provider (no MCP function returns skip count yet — next session work). Dedicated WhatsApp template for escalation (still uses urgency_alert_v2 — template creation is out-of-band user work).
-**Next**: Wire skip_count_provider into mcp_server.py (need get_arabic_skip_count MCP function or derive from language_stats.cards_today + message_log). Check if PR #158 merged by kingdonb; open fresh sync PR if so.
-
-## 2026-03-31 — Wire skip_count_provider into mcp_server.py (Arabic Phase 3 MCP wire-up)
-
-**Planned**: Add `get_arabic_skip_count(user_id)` to `mcp_server.py` and wire it as `skip_count_provider` in `ReminderService` instantiation, so Arabic Phase 3 escalation can fire in production (plan yebyen/mecris#43).
-**Done**: Extracted `count_arabic_reminders(neon_url, user_id, hours=24)` into `services/arabic_skip_counter.py` (testable, lazy psycopg2 import). Added `get_arabic_skip_count()` async wrapper in `mcp_server.py` using `asyncio.to_thread`; returns 0 if NEON_DB_URL unset. Updated `ReminderService` instantiation with `skip_count_provider=get_arabic_skip_count`. 4 new tests using `sys.modules` psycopg2 patching. All 17 tests pass. Committed as `6f73b92`.
-**Skipped**: Opening sync PR to kingdonb (next session work). Dedicated WhatsApp template for escalation (requires Twilio console — user work).
-**Next**: Open sync PR yebyen/mecris → kingdonb/mecris for commit `6f73b92`. Check Arabic reviewstack Beeminder status manually.
-
-## 2026-03-31 — Open sync PR yebyen/mecris → kingdonb/mecris for Arabic Phase 3 MCP wire-up
-
-**Planned**: Open sync PR from yebyen/mecris main to kingdonb/mecris main carrying `6f73b92` (skip_count_provider wire-up) and `97d8734` (archive) (plan yebyen/mecris#44).
-**Done**: kingdonb/mecris#159 opened via GITHUB_CLASSIC_PAT (fine-grained token lacks cross-repo PR permission). PR carries 2 commits, state OPEN, awaiting kingdonb review/merge. Plan issue #44 created, commented, and closed.
-**Skipped**: Nothing — plan completed in full.
-**Next**: Check if kingdonb/mecris#159 has been merged. If so, check upstream sync and pick next work item (WASM POC, Android #122, or Helix balance validation).
-
-## 2026-03-31 — Research componentize-py + Spin compatibility for Python-native WASM
-
-**Planned**: Research `componentize-py` compatibility with Spin runtime and update `LOGIC_VACUUMING_CANDIDATES.md` with a YES/NO/PARTIAL assessment for Python-native WASM migration of services/ modules (plan yebyen/mecris#45).
-**Done**: Read existing LOGIC_VACUUMING_CANDIDATES.md + reminder_service.py + arabic_skip_counter.py. Documented componentize-py findings in yebyen/mecris#45 comment (web search unavailable; used training knowledge through Aug 2025). Updated LOGIC_VACUUMING_CANDIDATES.md with Candidate 3 section covering limitations table, per-service assessment (review_pump: YES, arabic_skip_counter: PARTIAL/psycopg2 blocker, reminder_service: PARTIAL/async refactor needed, budget_governor: PARTIAL/I/O layer only), and Phase 1.5 addition to migration sequence. Committed as `b3db3f2`.
-**Skipped**: POC implementation (research-only session; implementation is next step). Web search blocked in runner environment — knowledge-based research only.
-**Next**: Decide Phase 1 path (componentize-py Python vs Rust) for ReviewPump WASM port; create plan issue and execute. Check if kingdonb/mecris#159 merged.
-
-## 2026-03-31 — Logic Vacuuming Phase 1.5a: arabic_skip_counter psycopg2 → Neon HTTP API
-
-**Planned**: Rewrite `services/arabic_skip_counter.py` to use Neon HTTP API (`/sql` endpoint via httpx) instead of psycopg2; update tests to mock at HTTP layer; add test verifying request shape. (yebyen/mecris#46)
-
-**Done**: Implementation complete. `arabic_skip_counter.py` now derives `https://{host}/sql` from the postgres:// URL, authenticates with Basic auth (base64 user:password), and POSTs `{"query": ..., "params": [...]}`. SQL uses OR conditions instead of `ANY(%s)` to avoid Neon HTTP array serialization issues. All 4 original tests rewritten for httpx mocking; 1 new test (`test_neon_http_request_shape`) verifies URL, auth header, and body shape. Committed as `296a14d`. 18/18 tests pass (13 reminder_service + 5 skip_count).
-
-**Skipped**: Phase 1.5b (componentize-py WASM wrap) — correct scope split; 1.5a was the prerequisite. Phase 1 (ReviewPump WASM port) — not started this session.
-
-**Next**: Phase 1.5b — wrap arabic_skip_counter.py as a componentize-py/spin-python-sdk WASM component. WIT interface: `count-arabic-reminders: func(neon-url: string, user-id: string, hours: u32) -> u32`. Note: httpx outbound HTTP works in WASM via Spin outbound HTTP capability — no further I/O changes needed.
-
 ## 2026-03-31 — Post-Mortem: Greek Data Corruption (ellinika)
 
 **Planned**: Investigate reports of "spurious" Greek Beeminder data points for the `ellinika` goal; find the source and provide a fix plan.
@@ -119,3 +67,16 @@ This document summarizes the collaborative debugging session to establish a func
 **Done**: Root cause identified as a category error: treating the `ellinika` odometer/cumulative goal as a backlog-tracking snapshot. Found duplicated incorrect mapping in `scripts/clozemaster_scraper.py` (Python) and `mecris-go-spin/sync-service/src/lib.rs` (Rust/Failover). Published full post-mortem in `docs/postmortems/2026-03-31-greek-data-corruption.md`. Added `NEXT_SESSION.md` recovery steps and `GEMINI.md` directive #6 (Goal Type Awareness) to prevent recurrence.
 
 **Next**: Bot to execute recovery plan: remove Greek Beeminder push from Python/Rust scrapers; update regression tests; verify with dry-run.
+
+## 2026-03-31 — Fix Review Pump UX bug: remaining target and unmet goal sorting
+
+**Planned**: Fix Review Pump UX bug where "Target Flow" did not account for completions, and languages were not sorted by urgency. (yebyen/mecris#47)
+
+**Done**:
+- Modified `ReviewPump.get_status` (Python) to subtract `daily_completions` from `target_flow_rate` and added `goal_met` boolean.
+- Modified `ReviewPump` (Rust/Spin) to mirror the Python logic for consistency across all layers.
+- Updated `mcp_server.py` to sort `get_language_velocity_stats` results: unmet goals (`goal_met=False`) are surfaced first, then sorted by remaining `target_flow_rate` descending.
+- All 22+ review pump tests (Python) pass.
+- Verified fix with dry-run: Greek with 0 debt/liability now shows `target_flow_rate: 0` and `goal_met: True`, ensuring Arabic (untouched) is surfaced first.
+
+**Next**: Push all changes to upstream and verify Android app correctly displays the sorted list and remaining target.

@@ -602,10 +602,16 @@ async def get_language_velocity_stats(user_id: str = None) -> Dict[str, Any]:
 
             pump = ReviewPump(multiplier=multiplier)
             pump_status = pump.get_status(current_debt, tomorrow_liability, daily_done, unit=unit)
-
             results[lang] = pump_status
 
-        return results
+        # 3. Sort results: unmet goals first, then by target_flow_rate descending
+        sorted_items = sorted(
+            results.items(),
+            key=lambda x: (x[1]["goal_met"], -x[1]["target_flow_rate"])
+        )
+        
+        from collections import OrderedDict
+        return OrderedDict(sorted_items)
 
     except Exception as e:
         logger.error(f"Failed to calculate Review Pump stats: {e}")
