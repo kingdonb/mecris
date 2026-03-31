@@ -3,71 +3,82 @@ Tests for services/arabic_skip_counter.py
 
 Verifies that count_arabic_reminders:
   - returns an int in all cases
-  - returns the count from the DB on success
-  - returns 0 on DB error (fail-safe)
+  - returns the count from the Neon HTTP response on success
+  - returns 0 on HTTP error (fail-safe)
   - queries both arabic reminder type strings
+  - sends the correct HTTP request shape (Neon /sql endpoint, Basic auth)
 """
 
-import sys
 import pytest
 from unittest.mock import MagicMock, patch
 
 from services.arabic_skip_counter import count_arabic_reminders
 
+_NEON_URL = "postgresql://myuser:mypass@ep-test-123.us-east-2.aws.neon.tech/neondb"
 
-def _make_psycopg2_mock(count: int):
-    """Build a minimal psycopg2 mock returning `count` from fetchone."""
-    mock_cur = MagicMock()
-    mock_cur.fetchone.return_value = (count,)
-    mock_cur.__enter__ = lambda s: s
-    mock_cur.__exit__ = MagicMock(return_value=False)
 
-    mock_conn = MagicMock()
-    mock_conn.cursor.return_value = mock_cur
-    mock_conn.__enter__ = lambda s: s
-    mock_conn.__exit__ = MagicMock(return_value=False)
-
-    mock_psycopg2 = MagicMock()
-    mock_psycopg2.connect.return_value = mock_conn
-    return mock_psycopg2, mock_cur
+def _make_httpx_mock(count: int) -> MagicMock:
+    """Build a minimal httpx.post mock returning `count` from the Neon /sql response."""
+    mock_response = MagicMock()
+    mock_response.raise_for_status = MagicMock()
+    mock_response.json.return_value = {"rows": [{"count": str(count)}], "fields": []}
+    return mock_response
 
 
 def test_returns_int_zero_when_no_rows():
     """Returns 0 (as int) when no arabic reminders are in the window."""
-    mock_pg, _ = _make_psycopg2_mock(0)
-    with patch.dict(sys.modules, {"psycopg2": mock_pg}):
-        result = count_arabic_reminders("postgresql://test", "user1")
+    mock_resp = _make_httpx_mock(0)
+    with patch("httpx.post", return_value=mock_resp):
+        result = count_arabic_reminders(_NEON_URL, "user1")
     assert isinstance(result, int)
     assert result == 0
 
 
 def test_returns_correct_count():
-    """Returns the row count from the DB as an int."""
-    mock_pg, _ = _make_psycopg2_mock(3)
-    with patch.dict(sys.modules, {"psycopg2": mock_pg}):
-        result = count_arabic_reminders("postgresql://test", "user1")
+    """Returns the row count from the HTTP response as an int."""
+    mock_resp = _make_httpx_mock(3)
+    with patch("httpx.post", return_value=mock_resp):
+        result = count_arabic_reminders(_NEON_URL, "user1")
     assert isinstance(result, int)
     assert result == 3
 
 
-def test_returns_zero_on_db_error():
-    """Returns 0 (fail-safe) when the DB connection raises an exception."""
-    mock_pg = MagicMock()
-    mock_pg.connect.side_effect = Exception("connection refused")
-    with patch.dict(sys.modules, {"psycopg2": mock_pg}):
-        result = count_arabic_reminders("postgresql://test", "user1")
+def test_returns_zero_on_http_error():
+    """Returns 0 (fail-safe) when the HTTP request raises an exception."""
+    with patch("httpx.post", side_effect=Exception("connection refused")):
+        result = count_arabic_reminders(_NEON_URL, "user1")
     assert isinstance(result, int)
     assert result == 0
 
 
 def test_queries_correct_reminder_types():
-    """SQL is called with both arabic_review_reminder and arabic_review_escalation."""
-    mock_pg, mock_cur = _make_psycopg2_mock(5)
-    with patch.dict(sys.modules, {"psycopg2": mock_pg}):
-        count_arabic_reminders("postgresql://test", "user1", hours=12)
+    """HTTP request params contain both arabic_review_reminder and arabic_review_escalation."""
+    mock_resp = _make_httpx_mock(5)
+    with patch("httpx.post", return_value=mock_resp) as mock_post:
+        count_arabic_reminders(_NEON_URL, "user1", hours=12)
 
-    call_args = mock_cur.execute.call_args
-    params = call_args[0][1]  # (sql, params) positional args
-    assert "arabic_review_reminder" in params[0]
-    assert "arabic_review_escalation" in params[0]
-    assert params[1] == "user1"
+    call_kwargs = mock_post.call_args[1]
+    params = call_kwargs["json"]["params"]
+    assert "arabic_review_reminder" in params
+    assert "arabic_review_escalation" in params
+    assert "user1" in params
+
+
+def test_neon_http_request_shape():
+    """HTTP request targets the correct Neon /sql endpoint with Basic auth and proper body."""
+    mock_resp = _make_httpx_mock(2)
+    with patch("httpx.post", return_value=mock_resp) as mock_post:
+        count_arabic_reminders(
+            "postgresql://myuser:mypass@ep-test.neon.tech/neondb", "user42"
+        )
+
+    call_args = mock_post.call_args
+    url = call_args[0][0]
+    kwargs = call_args[1]
+
+    assert url == "https://ep-test.neon.tech/sql"
+    assert "Authorization" in kwargs["headers"]
+    assert kwargs["headers"]["Authorization"].startswith("Basic ")
+    assert "query" in kwargs["json"]
+    assert "params" in kwargs["json"]
+    assert "user42" in kwargs["json"]["params"]
