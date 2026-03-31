@@ -473,3 +473,10 @@ Also, don't worry about `numReviewsToday` too much—my 12pts/card heuristic in 
 **Done**: kingdonb/mecris#159 opened via GITHUB_CLASSIC_PAT (fine-grained token lacks cross-repo PR permission). PR carries 2 commits, state OPEN, awaiting kingdonb review/merge. Plan issue #44 created, commented, and closed.
 **Skipped**: Nothing — plan completed in full.
 **Next**: Check if kingdonb/mecris#159 has been merged. If so, check upstream sync and pick next work item (WASM POC, Android #122, or Helix balance validation).
+
+## 2026-03-31 — Research componentize-py + Spin compatibility for Python-native WASM
+
+**Planned**: Research `componentize-py` compatibility with Spin runtime and update `LOGIC_VACUUMING_CANDIDATES.md` with a YES/NO/PARTIAL assessment for Python-native WASM migration of services/ modules (plan yebyen/mecris#45).
+**Done**: Read existing LOGIC_VACUUMING_CANDIDATES.md + reminder_service.py + arabic_skip_counter.py. Documented componentize-py findings in yebyen/mecris#45 comment (web search unavailable; used training knowledge through Aug 2025). Updated LOGIC_VACUUMING_CANDIDATES.md with Candidate 3 section covering limitations table, per-service assessment (review_pump: YES, arabic_skip_counter: PARTIAL/psycopg2 blocker, reminder_service: PARTIAL/async refactor needed, budget_governor: PARTIAL/I/O layer only), and Phase 1.5 addition to migration sequence. Committed as `b3db3f2`.
+**Skipped**: POC implementation (research-only session; implementation is next step). Web search blocked in runner environment — knowledge-based research only.
+**Next**: Decide Phase 1 path (componentize-py Python vs Rust) for ReviewPump WASM port; create plan issue and execute. Check if kingdonb/mecris#159 merged.
