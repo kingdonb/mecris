@@ -104,3 +104,20 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: HTTP trigger wrapper (Phase 1.6) — current WIT is a function-export world, not an HTTP component. Deliberate: validates the componentize-py pipeline first; HTTP route is the next increment. `spin call` invocation not tested (spin CLI not installed in runner).
 
 **Next**: Open sync PR to kingdonb/mecris carrying Phase 1.5b. Then Phase 1.6: HTTP wrapper for `/internal/arabic-skip-count` route.
+
+## 2026-03-31 — Phase 1.6: HTTP trigger wrapper for arabic-skip-counter
+
+**Planned**: Add HTTP trigger wrapper for `arabic-skip-counter` — rewrite WIT to WASI HTTP incoming-handler, implement IncomingHandler class, add `neon_db_url` Spin variable, register `GET /internal/arabic-skip-count` route. (yebyen/mecris#50)
+
+**Done**:
+- Opened sync PR kingdonb/mecris#161 (yebyen→kingdonb, Phase 1.5b WASM work — pending review).
+- Rewrote `world.wit` to WASI HTTP incoming-handler world (wasi:http/incoming-handler@0.2.0), replacing function-export world.
+- Rewrote `app.py`: added `_parse_query_params()`, `_json_response()`, `_error_json()` helper functions; added `IncomingHandler` class using `spin_sdk` (guarded with `try/except ImportError` for CI testability).
+- Added `spin-sdk>=3.0.0` to `requirements.txt`.
+- Updated `spin.toml`: added `[[trigger.http]]` for `/internal/arabic-skip-count`, added `neon_db_url` to `[variables]`, bound variable in `[component.arabic-skip-counter.variables]`, changed build command to `spin py2wasm app -o arabic-skip-counter.wasm`.
+- Replaced 6 `WitWorld` tests with 16 helper-function tests. Total suite: 34/34 passing (up from 24).
+- Committed at `6e93e9b`.
+
+**Skipped**: WASM build (`spin py2wasm`) and live HTTP validation (`curl`) — `spin` CLI and `componentize-py` binary not available in CI runner. Also skipped: verify `request.uri` attribute name in spin_sdk>=3.0.0 (may be `request.url`); document componentize-py conventions in `docs/LOGIC_VACUUMING_CANDIDATES.md`.
+
+**Next**: In deployment environment: `pip install -r requirements.txt && spin py2wasm app -o arabic-skip-counter.wasm`, then `curl "http://localhost:3000/internal/arabic-skip-count?user_id=yebyen&hours=24"`. Confirm `{"skip_count": <int>}` response. Open Phase 1.6 sync PR to kingdonb once WASM validates.
