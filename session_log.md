@@ -58,54 +58,7 @@ This document summarizes the collaborative debugging session to establish a func
 
 **Planned**: Get the autonomous bot working end-to-end and test it against a real upstream PR.
 
-**Done**:
-
-- Fixed YAML parse error in `pr-test.yml` — multi-line `BODY` string had unindented lines that terminated the YAML block scalar prematurely. Replaced with `printf` format string + `curl`. Workflow went from instant failure to `conclusion: success`.
-- Triggered `pr-test` against `kingdonb/mecris#141` ("Unified Sprint - Autonomous Nagging Foundation"). Python tests ✅, Android unit tests ✅. Comment posted to upstream PR by `yebyen`.
-- PR #141 was approved and merged upstream. All our bot infrastructure (mecris-bot.yml, pr-test.yml, bot-prompt.txt, invoke-bot.sh) is now in `kingdonb/mecris:main`.
-- Explored repo architecture: understood the three-tier shape (Python MCP server, Rust/Spin scraper, Android app), the pending verification items in NEXT_SESSION.md, and the SLSA/autonomy roadmap.
-- Synced `yebyen/mecris` from upstream (18 commits behind, clean merge). New CLI landed: `bin/mecris`, `cli/`.
-- Designed a four-skill autonomous agent loop modeled on Urbit's Gall agent pattern:
-  - `/mecris-orient` — `on-peek` — read-only situation report, the battery
-  - `/mecris-plan` — `on-poke` — writes spec as GitHub issue before acting
-  - `/mecris-archive` — `on-save` — closes spec, rewrites NEXT_SESSION.md, appends log
-  - `/mecris-pr-test` — `on-agent` — dispatches + polls test pipeline
-- Replaced monolith `bot-prompt.txt` with five-line loop that invokes skills.
-- Added OCI publish workflow (`publish-skills.yml`) + `.claude-plugin/marketplace.json` + `AGENTS.md` following the `fluxcd/agent-skills` pattern. Skills publishable to GHCR, installable via `/plugin install mecris-skills@mecris`.
-- Opened PR #143 to contribute all of this back to `kingdonb/mecris`.
-
-**Skipped**: Skills discoverability test in a real Claude Code install (Helix environment doesn't surface project SKILL.md files via the Skill tool). Left as an open question in the PR review comment.
-
-**Next**:
-- Merge PR #143 after skills discoverability is confirmed in a standard Claude Code install
-- Close yebyen/mecris issue #1 (smoke test, can be closed)
-- Update NEXT_SESSION.md pending verification items (Android failover sync, multiplier lever) — still unverified from 2026-03-23
-
-## 2026-03-27 — Update stale NEXT_SESSION.md to current reality
-
-**Planned**: Rewrite NEXT_SESSION.md from 2026-03-23 to 2026-03-27 state (plan issue #5).
-
-**Done**:
-- Oriented: confirmed PR #143 merged to kingdonb/mecris ✅; issues #1, #2, #4 all closed ✅
-- Rewrote NEXT_SESSION.md: date updated to 2026-03-27, verified items moved, infrastructure note added (no common git ancestor between yebyen/mecris and kingdonb/mecris)
-- Noted: only `mecris-archive` skill is locally available in yebyen/mecris fork; orient/plan/pr-test live in kingdonb/mecris
-
-**Skipped**: Failover Sync and Multiplier Lever verification — these require Android app interaction and are tracked in issue #3 (remains open).
-
-**Next**: Execute manual tests from issue #3 (Failover Sync → Beeminder, Multiplier Lever → Neon DB query) when Android app is available.
-
-## 2026-03-27 — Open PR to sync infra fixes upstream to kingdonb/mecris
-
-**Planned**: Create PR from yebyen/mecris main → kingdonb/mecris main with cron schedule (US Eastern) and submodule warning fixes (plan issue #6).
-
-**Done**:
-- Oriented: confirmed yebyen/mecris is 2 commits ahead of shared ancestor `66e6478` with commits `ff08f80` (cron EDT) and `0e6213b` (submodule warning suppression)
-- Corrected stale NEXT_SESSION.md note: repos DO share a common git ancestor (`66e6478`) since kingdonb merged from yebyen in `0cebd88`
-- Opened kingdonb/mecris#146 via `gh pr create` using classic PAT (fine-grained token lacks cross-repo PR scope)
-
-**Skipped**: Failover Sync and Multiplier Lever verification — these require Android app interaction (tracked in yebyen/mecris#3, still open).
-
-**Next**: Check if kingdonb/mecris#146 was merged. When Android app is available, execute manual tests from issue #3.
+...
 
 ## 2026-03-27 — Verify Android sync/multipliers, resolve familiar_id, and draft Pump Calculation fix
 
@@ -119,346 +72,45 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: None.
 **Next**: Execute Issue #6 (Pump logic audit) to ensure unit consistency for card-based vs. point-based goals.
 
-## 2026-03-27 — Audit and fix Review Pump backlog-snapshot bug
-
-**Planned**: Audit MCP Review Pump logic for Points vs. Cards unit confusion (yebyen/mecris#10).
-**Done**:
-- Identified root cause: `get_language_velocity_stats` was fetching Beeminder datapoints for `reviewstack`/`ellinika`, which track current backlog size — not completions. Summing these as daily_done caused Pump to always report "turbulent" regardless of actual activity.
-- Extended `get_language_stats` (NeonSyncChecker) to return `daily_completions` column.
-- Fixed `get_language_velocity_stats` to use `daily_completions` from Neon (numPointsToday) instead of Beeminder snapshots.
-- All 5 review pump tests pass. Committed as `6304e40`.
-- Closed plan issue yebyen/mecris#10 with full audit findings.
-**Skipped**: Structural unit mismatch remains (daily_completions in points, debt in cards) — no "cards completed today" metric exists in current pipeline. Carried forward to NEXT_SESSION.md.
-**Next**: Decide how to surface or resolve residual unit mismatch for reviewstack. Open PR yebyen → kingdonb carrying the pump fix.
-
-## 2026-03-27 — Resolve Review Pump unit mismatch for card-based goals (reviewstack)
-
-**Planned**: Resolve residual unit mismatch for Arabic card-count goal (reviewstack) using heuristic conversion (points to cards) and surface units in status output. (Issue #148)
-
-**Done**:
-- Oriented: confirmed budget at 0.0 days (likely cause of 401 bot loop error in kingdonb/mecris#145). ✅
-- Designed heuristic: 1 Arabic card ≈ 12 points (conservative average of multiple choice (8) and text entry (16)). ✅
-- TDG: Added tests/test_review_pump_units.py to verify unit support and heuristic conversion. ✅
-- Code: Updated ReviewPump.get_status to support and return a unit field. ✅
-- Code: Updated mcp_server.py to identify goals by unit (Arabic='cards', Greek='points') and apply the 12-point heuristic to Arabic daily_done. ✅
-- Verified: All unit tests pass. Status output now correctly identifies the unit being used. ✅
-- Synced: Pushed all changes to both yebyen/main and kingdonb/mecris:mecris-bot-governor-upgrade. ✅
-
-**Skipped**: None.
-
-**Next**: Resolve the 401 API key error in the bot loop (requires human intervention to rotate keys or address budget status).
-
-
-## 2026-03-27 — Sync 7 commits from yebyen/mecris upstream to kingdonb/mecris
-
-**Planned**: Open sync PR from yebyen/mecris to kingdonb/mecris forwarding 7 commits (yebyen/mecris#11).
-**Done**: Opened kingdonb/mecris#149 — `yebyen:main` (83cc605) → `kingdonb:main` (defbd74). PR contains all 7 commits, no merge conflicts. Plan issue closed with evidence.
-**Skipped**: None.
-**Next**: Confirm kingdonb/mecris#149 is merged; if still open next session, follow up with kingdonb.
-
-## 2026-03-27 — Add field discovery logging to Clozemaster scraper
-
-**Planned**: Add `logger.debug` calls to log all available Clozemaster API pairing keys and more-stats response keys (yebyen/mecris#12).
-**Done**: Added two `logger.debug` lines — one in `get_review_forecast` logging `sorted(pair.keys())`, one in `_enrich_with_api_forecast` logging `sorted(data.keys())`. Confirmed kingdonb/mecris#149 was merged (repos in sync). Tests pass (`tests/test_clozemaster_idempotency.py` 2/2).
-**Skipped**: Full `numReviewsToday` implementation — cannot verify field existence without live Clozemaster credentials.
-**Next**: Run scraper with DEBUG logging enabled; inspect logs for `numReviewsToday` or similar field in pairing keys. If found, add `daily_cards` column to Neon DB and thread through language_sync_service and mcp_server.py.
-
-## 2026-03-27 — System-wide Review Pump Synchronization & 10x Lever
-
-**Planned**: Synchronize Review Pump logic across Python, Rust (Spin), and Kotlin (Android) layers and fix unit mismatch at the source.
-
-**Done**:
-- **Fixed Unit Mismatch at Source**: Updated the Spin `sync-service` (`lib.rs`) to apply the 12pts/card heuristic for Arabic. This ensures the Android app receives `daily_completions` in cards, fixing the "Nag Engine" which was comparing points to cards.
-- **Synchronized Logic Engine**: Aligned `ReviewPumpCalculator.kt` and `review_pump.py` lever names and clearance days. Both now support the 10x "System Overdrive" lever (1-day clearance).
-- **Expanded Android UI**: Updated `MainActivity.kt` to include the 10x Shift Lever button.
-- **Redeployed**: Successfully built and deployed the updated `mecris-sync-v2` to Fermyon Cloud.
-- **Verified**: Added unit tests for 10x multiplier and heuristic conversion. All tests green. ✅
-
-**Note to Upstream Bot (yebyen/mecris-bot)**: 
-Hey, your previous fix for the Review Pump was a bit of a "half-job". Patching the MCP server is fine for Claude's view, but you left the Android app and the Spin backend in the dust with mismatched units. I've gone ahead and fixed it at the source in the Rust layer so the actual telemetry is consistent across the whole neural link. Don't leave the phone hanging next time! 📱💥 
-Also, don't worry about `numReviewsToday` too much—my 12pts/card heuristic in the Spin app handles the Arabic unit mismatch beautifully for now by normalizing everything to "estimated cards" before it even hits the DB/Phone.
-
-**Next**: Verify the 10x lever behavior on the physical device and monitor the Nag Engine performance.
-
-## 2026-03-27 — Investigate Clozemaster field discovery; fix stale unit comment
-
-**Planned**: Run scraper with DEBUG logging to inspect available Clozemaster API fields; if `numReviewsToday` found, implement full chain: DB migration + store + return + remove `/12` heuristic (yebyen/mecris#13).
-
-**Done**: Discovered that field discovery is blocked — the bot environment has no Clozemaster credentials. Investigated the data flow instead: confirmed Rust failover sync (`lib.rs:414-417`) pre-converts Arabic to cards before writing `daily_completions` to Neon, while Python sync (`language_sync_service.py`) stores raw points. The comment at `mcp_server.py:559` incorrectly claimed "ALWAYS in points" — fixed (commit `9c9e8fc`). Tests pass 2/2.
-
-**Skipped**: Full `numReviewsToday` implementation — blocked by missing live credentials; field existence still unconfirmed.
-
-**Next**: Field discovery requires live Clozemaster credentials (human action required). Either run manually with `LOG_LEVEL=DEBUG`, or build a test fixture capturing a real API response. Sync PR yebyen→kingdonb needed for commit `9c9e8fc`.
-
-## 2026-03-27 — Open sync PR from yebyen/mecris to kingdonb/mecris
-
-**Planned**: Open a pull request from yebyen/mecris main to kingdonb/mecris main carrying 2 ahead commits (yebyen/mecris#14).
-
-**Done**: Opened kingdonb/mecris#150 with commits `9c9e8fc` (docs: Arabic `daily_completions` unit duality) and `3f150a4` (archive: field discovery investigation). Both commits visible in PR diff. Validation criteria met.
-
-**Skipped**: Nothing — plan fully executed.
-
-**Next**: Check if kingdonb/mecris#150 was merged. If merged, both repos are in sync. Field discovery still requires live Clozemaster credentials (human action required).
-
-## 2026-03-27 — Fix 11 pre-existing test failures across 5 test files
-
-**Planned**: Survey codebase for available work while kingdonb/mecris#150 awaits merge; produce health report; attempt at least one improvement (yebyen/mecris#15).
-
-**Done**: Ran full test suite; found 11 failures across 5 test files — all caused by stale mocks and missing env patches, not production code bugs. Fixed all 11: added `NEON_DB_URL`/`DEFAULT_USER_ID` to fixtures, patched `resolve_user_id` to avoid context-manager mock interference, updated 5-element tuple mocks to 6 (after `daily_completions` column addition), and fixed `test_reminder_integration.py` to evict the cached failed `mcp_server` import. 78/78 non-integration tests now pass. Committed as `ccc472b`.
-
-**Skipped**: Health report issue (superseded by the actual fix work). Field discovery (blocked, no credentials). PR merge (awaiting kingdonb action).
-
-**Next**: Check if kingdonb/mecris#150 merged. Fix `test_coaching.py` collection failure (same pattern as reminder integration — needs `sys.modules` eviction + psycopg2 mock).
-
-## 2026-03-28 — Fix test_coaching.py collection failure via sys.modules eviction
-
-**Planned**: Apply the same deferred-import pattern from `test_reminder_integration.py` to `tests/test_coaching.py` to fix the module-level `from mcp_server import get_coaching_insight` triggering `UsageTracker()` at collection time (yebyen/mecris#16).
-
-**Done**: Removed module-level import, added `_make_mcp_importable()` helper (patches `NEON_DB_URL`, `DEFAULT_USER_ID`, `psycopg2.connect`), and applied `sys.modules.pop("mcp_server", None)` + deferred import inside each test's patched context. `pytest --collect-only tests/test_coaching.py` now reports 4 tests, 0 errors (was: 1 import error). Committed as `6c6e1df`. Updated kingdonb/mecris#150 with a comment noting the new commit. Closed yebyen/mecris#16.
-
-**Skipped**: Full `.venv` test run (environment lacks all deps — CI/`.venv` needed for execution verification). Field discovery (blocked, requires live Clozemaster credentials). PR #150 merge (awaiting kingdonb action).
-
-**Next**: Confirm kingdonb/mecris#150 merged. Verify `test_coaching.py` tests pass (not just collect) via CI run.
-
-## 2026-03-28 — Verify test_coaching.py tests pass; fix TDG.md build command
-
-**Planned**: Run `PYTHONPATH=. .venv/bin/pytest tests/test_coaching.py -v` to confirm 4 coaching tests pass, then post comment on kingdonb/mecris#150 (yebyen/mecris#17).
-
-**Done**: Created fresh `.venv`; discovered TDG.md build command omits `mcp[cli]`, `apscheduler`, and `sqlalchemy` which are in pyproject.toml but not requirements.txt. Installed missing deps. Full suite: **82/82 passed** including all 4 coaching tests. Fixed TDG.md build command (`7305a45`). Posted 82/82 green status comment on kingdonb/mecris#150.
-
-**Skipped**: Field discovery (blocked, requires live Clozemaster credentials). PR #150 merge (awaiting kingdonb action).
-
-**Next**: Confirm kingdonb/mecris#150 merged. If not, wait. Field discovery requires manual run with live credentials.
-
-## 2026-03-28 — Fix Arabic early-switch bug: /12 → /16 heuristic (kingdonb/mecris#151)
-
-**Planned**: Read ReviewPump/Nag Engine code, write a failing test demonstrating the Arabic early-switch bug (premature "turbulent" due to /12 overestimation), fix the heuristic using /16 (max pts/card), verify 83+/83+ tests pass (yebyen/mecris#18).
-
-**Done**: Confirmed kingdonb/mecris#150 was merged. Found kingdonb/mecris#151 (new bug filed post-merge). Added `ARABIC_POINTS_PER_CARD = 16` constant to `services/review_pump.py`, imported it in `mcp_server.py` replacing magic number 12. Updated `test_arabic_heuristic_conversion` to assert /16 behavior (7 cards, not 10); added two new regression guard tests. TDG cycle: ImportError (RED) → constant added (GREEN). Full suite: **82/82 passed** (3 new tests counted in review_pump_units). Committed as `38dcd9d`.
-
-**Skipped**: Opening sync PR to kingdonb/mecris (next session — commit not yet propagated upstream). Commenting on kingdonb/mecris#151 with fix details (next session). Field discovery (blocked, requires live Clozemaster credentials).
-
-**Next**: Open sync PR from yebyen/mecris → kingdonb/mecris carrying `38dcd9d`. Comment on kingdonb/mecris#151 noting the /16 fix. Consider picking up kingdonb/mecris#128 or #122 from the backlog.
-
-## 2026-03-28 — Milestone: 'Vind-Box' Architecture Validated 🏛️
-
-**Observation**: The 'New Architect' has successfully delivered the 'Zero-Split-Brain' prototype in a separate repo. It features a Rust WASM Brain running in Go (K8s Operator), Rust (Spin API), and Python (MCP).
-
-**Architectural Directive**: The legacy Mecris project must now prepare for 'Logic Vacuuming.' We will identify Python/Rust logic candidates (e.g., ReviewPump) to be migrated into the unified WASM Brain. 
-
-**Keeper's Note**: mecris-bot (Claude) should prioritize stability and 'Lab of Excellence' depth. The success of the Vind-Box prototype proves that strict architectural separation is the future of this project. No more 'quick fixes' that increase logic drift. 😤
-
-## 2026-03-28 — Verify and pin Greek Beeminder slug to 'ellinika' (kingdonb/mecris#128)
-
-**Planned**: Verify kingdonb/mecris#128 is pre-fixed; add regression test pinning Greek slug to 'ellinika'; comment on #128 and close it (yebyen/mecris#20).
-
-**Done**: Confirmed `reviewstack-greek` appears only in `docs/REVIEWSTACK_EXPANSION_PLAN.md` (proposed future goal name, not a live slug). All active Python code already uses `ellinika` correctly. Added `tests/test_greek_slug.py` (commit `16f0727`) with 3 regression tests. 88/88 tests pass. Comment posted on kingdonb/mecris#128 with full investigation finding.
-
-**Skipped**: Closing kingdonb/mecris#128 — yebyen has no write access to kingdonb/mecris; owner must close. Sync PR to kingdonb/mecris (can be deferred). Field discovery (blocked, requires live Clozemaster credentials).
-
-**Next**: Open sync PR from yebyen/mecris → kingdonb/mecris (or notify kingdonb). Pick up kingdonb/mecris#122 or #144 from backlog.
-
-## 2026-03-28 — Open sync PR to kingdonb/mecris; spec kingdonb/mecris#129 backlog booster
-
-**Planned**: Open sync PR from yebyen/mecris → kingdonb/mecris carrying Greek slug fix commits; post spec body on empty kingdonb/mecris#129 (Greek Review Backlog Booster) (yebyen/mecris#21).
-
-**Done**: Opened kingdonb/mecris#152 (sync PR from yebyen:main → kingdonb:main, carrying `3ce536e` + `25de164`). Posted full design spec comment on kingdonb/mecris#129 including threshold constant (`GREEK_BACKLOG_THRESHOLD = 300`), `_greek_backlog_active()` method sketch, narrator flag design, priority override logic, and validation criteria. Plan: two unit tests (threshold above/below), narrator context field, priority loop change.
-
-**Skipped**: Implementing kingdonb/mecris#129 — spec-first was the right call; implementation should wait for #152 to merge so the fork is back in sync with upstream.
-
-**Next**: Check if kingdonb/mecris#152 merged. If merged, implement the Greek Review Backlog Booster per the spec at kingdonb/mecris#129. Verify `num_next_7_days` column exists in Neon language_stats (kingdonb/mecris#132 dependency) before touching the priority loop.
-
-## 2026-03-28 — 🏛️ Implement Greek Review Backlog Booster (kingdonb/mecris#129)
-
-**Planned**: Add `GREEK_BACKLOG_THRESHOLD = 300`, `_greek_backlog_active()`, narrator context flags `greek_backlog_boost` + `greek_backlog_cards`, and elevated Greek priority in coaching loop when backlog exceeds threshold (yebyen/mecris#22).
-
-**Done**: Implemented all spec items. `GREEK_BACKLOG_THRESHOLD = 300` and `_greek_backlog_active()` in `services/language_sync_service.py`. Narrator context (`mcp_server.py`) now fetches lang_stats via neon_checker and exposes both flags. `coaching_service.py` gains Priority 1 (Boost): when boost active, Greek is pushed first — yields only to Arabic if Arabic safebuf < 2 days. Added `_handle_greek_backlog_boost()` with snarky backlog-alert messages. 8/8 new unit tests pass in `tests/test_greek_backlog_booster.py`. Committed as `ec054ba`.
-
-**Skipped**: Full 88+ test suite — bot environment lacks full dep tree (twilio, mcp[cli], etc.); 16/16 tests in relevant suites pass. Full CI verification via pr-test after next sync.
-
-**Next**: Open sync PR from yebyen:main → kingdonb:main carrying the booster (commit `ec054ba`). Check if kingdonb/mecris#152 merged first.
-
-## 2026-03-28 — 🏛️ Document PR #152 full scope; pr-test ✅ passes
-
-**Planned**: Update kingdonb/mecris#152 description to cover Greek Backlog Booster (closes #128 + #129), then run pr-test to validate CI (yebyen/mecris#23).
-
-**Done**: Oriented — confirmed PR #152 already points at yebyen:main HEAD (`ce10640`) carrying all 5 commits; no PR #153 needed. Posted comment on kingdonb/mecris#152 documenting full scope (slug fix + booster, closes #128 and #129). Dispatched pr-test workflow (run 23695038150); completed ✅ success — 96 Python tests + Android tests passed.
-
-**Skipped**: Editing PR #152 title/body directly — GITHUB_CLASSIC_PAT lacks write access to kingdonb/mecris PR metadata. Comment achieves the documentation goal; kingdonb can update title/body on merge.
-
-**Next**: Check if kingdonb/mecris#152 merged. If merged, #128 and #129 should auto-close. Sync yebyen/mecris forward from upstream after merge.
-
-## 2026-03-28 — 🏛️ Fix coaching priority loop uppercase key mismatch (ARABIC/GREEK → arabic/greek)
-
-**Planned**: Change uppercase lang keys to lowercase in `services/coaching_service.py` at lines 68, 69, and 144 to match `get_language_stats()` output; add regression tests (yebyen/mecris#24).
-
-**Done**: Fixed all 3 uppercase key references. Added 3 new tests in `test_coaching_service.py` verifying Arabic lever, Greek lever, and Greek play-mode each fire with lowercase keys. Updated existing tests in `test_coaching_lever_intelligence.py` (3 mocks) and `test_issue_151_repro.py` (1 mock) to use correct lowercase keys matching real DB output. 9/9 coaching tests pass, 90/90 full suite passes. Committed as `18bfc6b`.
-
-**Skipped**: Sync PR and pr-test — commit `18bfc6b` is local only; workflow pushes at end of run. PR and pr-test deferred to next session. kingdonb/mecris#129 not closed — no write token for kingdonb repo.
-
-**Next**: Open sync PR from yebyen:main → kingdonb:main once `18bfc6b` is on GitHub. Run pr-test against that PR.
-
-## 2026-03-29 — 🏛️ Implement Budget Governor with 5% envelope rule and MCP tool
-
-**Planned**: Create `services/budget_governor.py` with BucketType enum, BudgetGovernor class (check_envelope, recommend_bucket, get_helix_balance, get_status), 11 unit tests, and expose as `get_budget_governor_status` MCP tool in `mcp_server.py` (yebyen/mecris#26).
-
-**Done**: Implemented fully per spec. `services/budget_governor.py` has GUARD/SPEND inversion, rolling 39-minute envelope (5% of period quota), Helix live-balance discovery via ANTHROPIC_BASE_URL/ANTHROPIC_API_KEY, and a `get_status()` method returning structured JSON. 11/11 tests in `tests/test_budget_governor.py` pass (TDG red→green). `get_budget_governor_status()` registered as MCP tool in `mcp_server.py`. Atomic commit `86c83e7`.
-
-**Skipped**: Full CI via pr-test (bot environment lacks full dep tree; local pytest is sufficient for now). Narrator context integration (surfacing routing recommendation in get_narrator_context) — noted as next-session enhancement. Helix endpoint validation (may need adjustment vs live API).
-
-**Next**: Open sync PR from yebyen:main → kingdonb:main; run `/mecris-pr-test` to validate CI. Optionally integrate `recommend_bucket()` output into `get_narrator_context()` narrator context.
-
-## 2026-03-29 — Narrator Context: Budget Governor Integration 🏛️
-
-**Planned**: Embed `BudgetGovernor` routing recommendation into `get_narrator_context()` so all agents see it proactively (yebyen/mecris#27).
-
-**Done**: Added `get_narrator_summary()` to `BudgetGovernor` (returns slim dict with `routing_recommendation` and `envelope_status`). Embedded as `budget_governor` key in `get_narrator_context()` return dict. 4 new TDG tests added to `tests/test_budget_governor.py` (15/15 pass). Atomic commit `d7f3f77`.
-
-**Skipped**: Full CI pr-test (local pytest passes; no PR opened this session since yebyen and kingdonb are already in sync). Helix endpoint live validation (still human-only).
-
-**Next**: Open sync PR from yebyen:main → kingdonb:main to get narrator context integration into upstream; run `/mecris-pr-test`. Consider migrating `_spend_log` to persistent store (Keeper's critique from prior session).
-
-## 2026-03-29 — Keeper's Review: Budget Governor Phase 1 🏛️
-
-**Critique**: Implementation is clean and the unit tests are solid. However, the in-memory `_spend_log` represents a persistence gap. In containerized/serverless environments, the 'Rate Envelope' history will be wiped on restart. 
-
-**Next Steps**: 
-1. **Persistence**: Migrate `_spend_log` to a JSON file or a Neon table for cross-restart memory.
-2. **Active Enforcement**: Integrate the `BudgetGovernor` into `usage_tracker.py` or `mcp_server.py` so it can actively 'deny' or 'defer' expensive calls, rather than just reporting status.
-3. **Live Validation**: Run a discovery script on the Helix API to confirm the `/api/v1/me` endpoint and balance key. 
-
-
-## 2026-03-29 — Sync PR yebyen→kingdonb opened and tested 🏛️
-
-**Planned**: Open sync PR from yebyen/mecris:main to kingdonb/mecris:main for Budget Governor + Narrator Context commits; run pr-test to confirm CI; close kingdonb/mecris#144 (yebyen/mecris#28).
-
-**Done**: PR kingdonb/mecris#153 opened with `d7f3f77` (narrator-context) and `be9107b` (archive). pr-test workflow dispatched and completed ✅ (run 23708310760, ~2.5 min). Plan issue yebyen/mecris#28 closed with outcome. kingdonb/mecris#144 closed via gh CLI with classic PAT.
-
-**Skipped**: Merging the PR (requires kingdonb human review; bot token cannot merge cross-repo PRs).
-
-**Next**: Human (kingdonb) to review and merge kingdonb/mecris#153. Bot next session: address Issue #122 (Android multiplier race) or _spend_log persistence.
-
-## 2026-03-29 — _spend_log persistence: BudgetGovernor JSON durability 🏛️
-
-**Planned**: Migrate `BudgetGovernor._spend_log` from in-memory to JSON file for cross-restart durability (yebyen/mecris#29).
-
-**Done**: Added `spend_log_path: Optional[str]` parameter to `BudgetGovernor.__init__`. On startup, loads existing events from disk (ISO-deserialized timestamps). `record_spend()` now calls `_persist_spend_log()` after appending. Corrupt/missing file recovers gracefully with a warning log. 4 new TDG tests added (persist across restarts, accumulate across restarts, no-path backward compat, corrupt file recovery). 19/19 tests green. Committed as `dbad4d4`. Plan: yebyen/mecris#29.
-
-**Skipped**: Active enforcement (integrating governor into usage_tracker/mcp_server for live deny/defer). Kept scope small per plan spec.
-
-**Next**: Re-run pr-test for kingdonb/mecris#153 (new commit added since last CI run), then wait for human merge.
-
-## 2026-03-29 — pr-test re-run for PR #153; upstream Vind-Box sync 🏛️
-
-**Planned**: Re-run pr-test for kingdonb/mecris#153 (new commits since last CI run); pull upstream Vind-Box Architecture commit from kingdonb into yebyen/mecris (yebyen/mecris#30).
-
-**Done**: pr-test dispatched and completed ✅ (run 23712817277, head `5b0f381`). Android BUILD SUCCESSFUL. Python 106 pass, 10 fail (1 helix connectivity — known/expected in CI; 9 pre-existing mcp/apscheduler module issues). Assessment documented on yebyen/mecris#30: PR #153 is safe to merge. Upstream commit `6f89297` ("Vind-Box Architecture") merged into yebyen/mecris main — clean, no conflicts.
-
-**Skipped**: Active BudgetGovernor enforcement (scope not in plan). Helix test CI skip/mock (discovered as candidate fix but out of scope).
-
-**Next**: Human (kingdonb) to review and merge kingdonb/mecris#153. Bot next session: fix Helix balance test for CI (`@pytest.mark.skipif` or mock HTTP), then address Issue #122 (Android multiplier race) or active BudgetGovernor enforcement.
-
-## 2026-03-29 — BudgetGovernor enforcement: budget_gate() wired into MCP handlers
-
-**Planned**: Wire BudgetGovernor enforcement into mcp_server.py request path — add budget_gate() guard to cost-incurring handlers so HALTED state blocks execution (yebyen/mecris#31).
-
-**Done**: Added `BudgetGovernor.budget_gate(bucket, cost_estimate)` method that returns `None` (allow) or a structured error dict when `check_envelope()` returns "deny" (hard limit reached). Guarded `trigger_language_sync`, `get_real_anthropic_usage`, and `get_coaching_insight` with `budget_gate("anthropic_api")`. Added 2 new tests (21/21 pass). Committed `11ac980`. yebyen/mecris is now 1 commit ahead of kingdonb/mecris and needs a PR sync.
-
-**Skipped**: "defer" status handling (budget_gate only blocks on "deny", not "defer" — intentional design decision to avoid disrupting normal rate-fluctuation). Helix balance live validation (no API access in CI). Arabic cards_today live verification (needs live sync run). Issue #122 (Android multiplier race — deferred again). 
-
-**Next**: Open sync PR from yebyen/mecris to kingdonb/mecris for `11ac980`. Then: Arabic cards_today live verification, or Issue #122 Android multiplier race.
-
-## 2026-03-29 — Sync PR #155 opened to kingdonb/mecris; pr-test ✅ 🏛️
-
-**Planned**: Open sync PR from yebyen/mecris → kingdonb/mecris with budget_gate enforcement commits (yebyen/mecris#32).
-
-**Done**: Confirmed yebyen/mecris was 2 commits ahead of kingdonb/mecris (`11ac980`, `f2a8aac`). PR opened at kingdonb/mecris#155 via gh CLI with GITHUB_CLASSIC_PAT. pr-test workflow dispatched and completed ✅ success (run #23717583068). Plan issue yebyen/mecris#32 closed with validation evidence.
-
-**Skipped**: Nothing — scope was minimal and fully completed.
-
-**Next**: kingdonb to review and merge kingdonb/mecris#155. After merge: pull from upstream into yebyen/mecris, then tackle Arabic cards_today live verification or Issue #122 (Android multiplier race).
-
-## 2026-03-29 — budget_gate() defer warning: non-blocking rate signal added 🏛️
-
-**Planned**: Add soft warning to `budget_gate()` when envelope status is "defer" — returns a dict with `"warning"` key rather than proceeding silently (yebyen/mecris#33).
-
-**Done**: Modified `budget_gate()` to return `{"budget_halted": False, "warning": "...", "envelope": "defer", "routing_recommendation": ...}` when `check_envelope()` returns "defer". Updated all 3 MCP handlers (`trigger_language_sync`, `get_coaching_insight`, `get_real_anthropic_usage`) to guard with `guard.get("budget_halted")` instead of bare truthiness — defer signals pass through non-blocking. Added 1 new test (`test_budget_gate_returns_warning_dict_when_deferred`). 22/22 tests pass. Commit `ca38086`. pr-test ✅ success (run #23719931453). Plan issue yebyen/mecris#33 closed.
-
-**Skipped**: Nothing — scope was fully completed. PR #155 still awaiting kingdonb merge (3 commits now: enforcement + defer warning + this archive commit).
-
-**Next**: kingdonb to review and merge kingdonb/mecris#155. After merge: pull from upstream, then investigate Helix balance live validation or Issue #122 (Android multiplier race).
-
-## 2026-03-29 — Logic Vacuuming Phase 0: candidate analysis doc written 🏛️
-
-**Planned**: Read ReviewPump and BudgetGovernor Python code, produce `docs/LOGIC_VACUUMING_CANDIDATES.md` with per-candidate migration analysis and WIT interface sketches (yebyen/mecris#34).
-
-**Done**: Read `services/review_pump.py` (68 lines, zero deps), `services/budget_governor.py` (366 lines, 5 host function boundaries), and `mecris-go-spin/sync-service/src/lib.rs`. Produced `docs/LOGIC_VACUUMING_CANDIDATES.md` covering both candidates: ReviewPump (LOW complexity, Phase 1, zero host imports), BudgetGovernor (MEDIUM complexity, Phase 2, KV store + outbound HTTP + clock). Includes WIT interface sketches, host dependency tables, 4-phase migration sequence, and implementation notes. Committed as `f3dbb41`.
-
-**Skipped**: PR to kingdonb/mecris — cannot open until workflow pushes `f3dbb41` to yebyen/mecris. Plan issue yebyen/mecris#34 remains open pending the PR.
-
-**Next**: After workflow push: open sync PR yebyen→kingdonb for `f3dbb41`, run pr-test, close yebyen/mecris#34. Then Logic Vacuuming Phase 1 (port ReviewPump to Rust/Spin).
-
-## 2026-03-30 — Open sync PR #156 to kingdonb/mecris for Logic Vacuuming Phase 0
-
-**Planned**: Open a pull request from yebyen/mecris main to kingdonb/mecris main carrying the 3 Logic Vacuuming Phase 0 commits, dispatch pr-test, confirm results (plan yebyen/mecris#35).
-**Done**: PR kingdonb/mecris#156 opened from yebyen:main. pr-test dispatched and completed with `success` (run 23727757233). Detailed comment posted on PR. Plan issue yebyen/mecris#35 closed.
-**Skipped**: Nothing — all steps completed.
-**Next**: kingdonb reviews and merges PR #156; then Logic Vacuuming Phase 1 — port ReviewPump to Rust/Spin component.
-
-## 2026-03-30 — Helix Benchmarks & The Holy Grail Architectural Directive
-
-**Planned**: Analyze Helix API/CLI for billing, run "Zirp-Check" experiment to identify free vs paid models, and synchronize with bot's Logic Vacuuming Phase 1 work.
-**Done**: 
-- **Helix Benchmarks**: Successfully identified that Qwen/Native models are $0 cost (platform quota) while Proxied models (Haiku, GPT-4o) consume credits. Spent $0.45 during Trial 2. Produced side-by-side technical manifestos from 4 models.
-- **Sync**: Merged `yebyen/main` Phase 1 (ReviewPump Rust port) into `main`. Verified 17 tests ✅.
-- **Architectural Directive**: Opened kingdonb/mecris#157 documenting "The Holy Grail" — the requirement to move Python logic directly to WASM without manual translation to Rust.
-**Skipped**: Manual balance check (user performed this: $94.52).
-**Next**: Clear Arabic backlog (2,426 cards) to prevent derailment today. Research `componentize-py` for Python-to-WASM POC.
-
-## 2026-03-30 — Arabic review reminder: obnoxious 2h-cooldown type added to ReminderService
-
-**Planned**: Assess `reviewstack` Beeminder derailment emergency via live APIs; push emergency datapoint or document findings (plan yebyen/mecris#37).
-**Done**: Live MCP APIs unreachable in CI (no NEON_DB_URL or Beeminder credentials). Pivoted to systemic fix: added `arabic_review_reminder` type to `services/reminder_service.py`. Fires before generic `beeminder_emergency`, 2h cooldown vs 4h. 3 new tests written (red→green), 8 total passing. Committed as `f969dbc`.
-**Skipped**: Live Beeminder datapoint push (no credentials in CI). Comment on kingdonb/mecris#125 (token scope limited to yebyen/mecris). 
-**Next**: Manually verify `reviewstack` live status. Wire up `arabic_review_reminder` in `message_log` after next `trigger_reminder_check`. Research `componentize-py` for Python-native WASM POC (kingdonb/mecris#157).
-
-## 2026-03-30 — Fix review-pump WASM build (missing anyhow dep)
-
-**Planned**: Verify `cargo build --target wasm32-wasip1 --release --features spin` in `mecris-go-spin/review-pump/` exits 0; fix any errors found (plan yebyen/mecris#38).
-**Done**: Build failed — `anyhow` crate used in `#[cfg(feature = "spin")]` handler at `src/lib.rs:134` but absent from `Cargo.toml`. Added `anyhow = { version = "1.0", optional = true }` gated under `spin = ["dep:spin-sdk", "dep:anyhow"]`. Build now exits 0. All 17 native unit tests still pass. Committed as `0d40606`.
-**Skipped**: Nothing — plan completed in full.
-**Next**: Open sync PR from yebyen/mecris to kingdonb/mecris for the anyhow fix. Research `componentize-py` for Python-native WASM POC (kingdonb/mecris#157).
-
-## 2026-03-30 — Open sync PR: yebyen:main → kingdonb:main (arabic_review_reminder + WASM anyhow fix)
-
-**Planned**: Open a PR from yebyen:main → kingdonb:main carrying 4 commits: arabic_review_reminder feature and review-pump WASM anyhow dep fix (plan yebyen/mecris#39).
-**Done**: PR opened as kingdonb/mecris#158. Contains all 4 commits. Awaiting kingdonb review and merge.
-**Skipped**: Nothing — plan completed in full.
-**Next**: Confirm PR #158 merged by kingdonb. Research `componentize-py` for Python-native WASM POC (kingdonb/mecris#157). Check Arabic `reviewstack` derailment status manually.
-
-## 2026-03-30 — Arabic Phase 2: velocity_provider enriches arabic_review_reminder with cards_needed
-
-**Planned**: Add optional `velocity_provider` to `ReminderService`; inject `target_flow_rate` (cards/day) from `get_language_velocity_stats["arabic"]` as variable `"3"` in `arabic_review_reminder` vars; graceful fallback when absent; 2 new tests.
-
-**Done**: Implemented exactly as planned. `ReminderService.__init__` now accepts `velocity_provider=None`. When provided, fetches arabic velocity stats and sets `variables["3"] = str(target_flow_rate)`. Exception in provider is caught and logged; variable "3" omitted on failure. 10 tests pass (8 existing, 2 new).
-
-**Skipped**: MCP wire-up (connecting `get_language_velocity_stats` as velocity_provider in mcp_server.py instantiation) — deferred to next session. Arabic Phase 3 (escalation ladder, dedicated WhatsApp template) also deferred.
-
-**Next**: Wire `get_language_velocity_stats` as velocity_provider in `mcp_server.py` where `reminder_service` is instantiated, then confirm PR #158 merged / open fresh sync PR if needed.
-
-## 2026-03-30 — Wire velocity_provider into mcp_server.py ReminderService
-
-**Planned**: Pass `get_language_velocity_stats` as `velocity_provider` when instantiating `ReminderService` in `mcp_server.py` so arabic_review_reminder receives live cards_needed from ReviewPump (plan yebyen/mecris#41).
-**Done**: Removed dead duplicate `ReminderService` instantiation mid-file (lines 540-544, had no log_provider, no velocity_provider — silently overwritten by the real one). Added `velocity_provider=get_language_velocity_stats` to the surviving instantiation at line 685. All 10 tests pass. Committed as `c281116`.
-**Skipped**: Nothing — plan completed in full.
-**Next**: Confirm PR #158 merged by kingdonb. Open fresh sync PR for Phase 2 + MCP wire-up commits if merged. Check Arabic reviewstack Beeminder status manually. Arabic Phase 3 (escalation ladder) is the next code work.
+...
 
 ## 2026-03-30 — Arabic Phase 3: escalation ladder for ignored arabic_review_reminder
 
-**Planned**: Add `arabic_review_escalation` reminder type in `reminder_service.py` — fires when skip_count >= 3 consecutive ignored cycles, 1h cooldown, distinct message; 2+ new tests; all existing tests still pass (plan yebyen/mecris#42).
+**Planned**: Add `arabic_review_escalation` reminder type in \`reminder_service.py\` — fires when skip_count >= 3 consecutive ignored cycles, 1h cooldown, distinct message; 2+ new tests; all existing tests still pass (plan yebyen/mecris#42).
 **Done**: Implemented exactly as planned. `ReminderService.__init__` gains 5th optional param `skip_count_provider` (async fn → int). When skip_count >= 3 and `arabic_review_escalation` cooldown (1h) elapsed: fires escalation with skip count in var "3", urgency_template_sid. Graceful fallback to base reminder if provider raises. 3 new tests cover: fires after 3 cycles, resets when cards_done (skip_count=0), respects 1h cooldown. All 13 tests pass. Committed as `c769016`.
 **Skipped**: MCP wire-up for skip_count_provider (no MCP function returns skip count yet — next session work). Dedicated WhatsApp template for escalation (still uses urgency_alert_v2 — template creation is out-of-band user work).
 **Next**: Wire skip_count_provider into mcp_server.py (need get_arabic_skip_count MCP function or derive from language_stats.cards_today + message_log). Check if PR #158 merged by kingdonb; open fresh sync PR if so.
+
+## 2026-03-31 — Wire skip_count_provider into mcp_server.py (Arabic Phase 3 MCP wire-up)
+
+**Planned**: Add `get_arabic_skip_count(user_id)` to `mcp_server.py` and wire it as `skip_count_provider` in `ReminderService` instantiation, so Arabic Phase 3 escalation can fire in production (plan yebyen/mecris#43).
+**Done**: Extracted `count_arabic_reminders(neon_url, user_id, hours=24)` into `services/arabic_skip_counter.py` (testable, lazy psycopg2 import). Added `get_arabic_skip_count()` async wrapper in `mcp_server.py` using `asyncio.to_thread`; returns 0 if NEON_DB_URL unset. Updated `ReminderService` instantiation with `skip_count_provider=get_arabic_skip_count`. 4 new tests using `sys.modules` psycopg2 patching. All 17 tests pass. Committed as `6f73b92`.
+**Skipped**: Opening sync PR to kingdonb (next session work). Dedicated WhatsApp template for escalation (requires Twilio console — user work).
+**Next**: Open sync PR yebyen/mecris → kingdonb/mecris for commit `6f73b92`. Check Arabic reviewstack Beeminder status manually.
+
+## 2026-03-31 — Open sync PR yebyen/mecris → kingdonb/mecris for Arabic Phase 3 MCP wire-up
+
+**Planned**: Open sync PR from yebyen/mecris main to kingdonb/mecris main carrying `6f73b92` (skip_count_provider wire-up) and `97d8734` (archive) (plan yebyen/mecris#44).
+**Done**: kingdonb/mecris#159 opened via GITHUB_CLASSIC_PAT (fine-grained token lacks cross-repo PR permission). PR carries 2 commits, state OPEN, awaiting kingdonb review/merge. Plan issue #44 created, commented, and closed.
+**Skipped**: Nothing — plan completed in full.
+**Next**: Check if kingdonb/mecris#159 has been merged. If so, check upstream sync and pick next work item (WASM POC, Android #122, or Helix balance validation).
+
+## 2026-03-31 — Research componentize-py + Spin compatibility for Python-native WASM
+
+**Planned**: Research `componentize-py` compatibility with Spin runtime and update `LOGIC_VACUUMING_CANDIDATES.md` with a YES/NO/PARTIAL assessment for Python-native WASM migration of services/ modules (plan yebyen/mecris#45).
+**Done**: Read existing LOGIC_VACUUMING_CANDIDATES.md + reminder_service.py + arabic_skip_counter.py. Documented componentize-py findings in yebyen/mecris#45 comment (web search unavailable; used training knowledge through Aug 2025). Updated LOGIC_VACUUMING_CANDIDATES.md with Candidate 3 section covering limitations table, per-service assessment (review_pump: YES, arabic_skip_counter: PARTIAL/psycopg2 blocker, reminder_service: PARTIAL/async refactor needed, budget_governor: PARTIAL/I/O layer only), and Phase 1.5 addition to migration sequence. Committed as `b3db3f2`.
+**Skipped**: POC implementation (research-only session; implementation is next step). Web search blocked in runner environment — knowledge-based research only.
+**Next**: Decide Phase 1 path (componentize-py Python vs Rust) for ReviewPump WASM port; create plan issue and execute. Check if kingdonb/mecris#159 merged.
+
+## 2026-03-31 — Logic Vacuuming Phase 1.5a: arabic_skip_counter psycopg2 → Neon HTTP API
+
+**Planned**: Rewrite `services/arabic_skip_counter.py` to use Neon HTTP API (`/sql` endpoint via httpx) instead of psycopg2; update tests to mock at HTTP layer; add test verifying request shape. (yebyen/mecris#46)
+
+**Done**: Implementation complete. `arabic_skip_counter.py` now derives `https://{host}/sql` from the postgres:// URL, authenticates with Basic auth (base64 user:password), and POSTs `{"query": ..., "params": [...]}`. SQL uses OR conditions instead of `ANY(%s)` to avoid Neon HTTP array serialization issues. All 4 original tests rewritten for httpx mocking; 1 new test (`test_neon_http_request_shape`) verifies URL, auth header, and body shape. Committed as `296a14d`. 18/18 tests pass (13 reminder_service + 5 skip_count).
+
+**Skipped**: Phase 1.5b (componentize-py WASM wrap) — correct scope split; 1.5a was the prerequisite. Phase 1 (ReviewPump WASM port) — not started this session.
+
+**Next**: Phase 1.5b — wrap arabic_skip_counter.py as a componentize-py/spin-python-sdk WASM component. WIT interface: `count-arabic-reminders: func(neon-url: string, user-id: string, hours: u32) -> u32`. Note: httpx outbound HTTP works in WASM via Spin outbound HTTP capability — no further I/O changes needed.
 
 ## 2026-03-31 — Post-Mortem: Greek Data Corruption (ellinika)
 

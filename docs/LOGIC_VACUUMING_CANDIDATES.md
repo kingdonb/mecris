@@ -204,13 +204,69 @@ enforcement without depending on the Python MCP server being live.
 
 ---
 
+## Candidate 3: Python-Native WASM via componentize-py (Phase 1.5 Path)
+
+**Epic**: kingdonb/mecris#157 ("Holy Grail" — Python-in-WASM without Rust rewrite)
+**Research date**: 2026-03-31 (yebyen/mecris#45)
+
+### What is componentize-py?
+
+`componentize-py` (BytecodeAlliance / Fermyon) compiles Python source into a WASM Component
+by embedding a minimal CPython interpreter in the binary. It does **not** transpile Python
+to Rust — it runs CPython inside WASM. The practical entry point for Spin is
+`fermyon/spin-python-sdk`, which layers Spin-native bindings (KV store, outbound HTTP,
+variables) on top of componentize-py.
+
+### Key Limitations
+
+| Feature | Support | Notes |
+|---|---|---|
+| `datetime`, `logging`, `os.getenv` | ✅ Works | WASI environment provides these |
+| Pure Python (no C extensions) | ✅ Works | Core value proposition |
+| `asyncio` event loop | ⚠️ PARTIAL | WASI async ≠ Python asyncio; top-level async handlers via WIT work, but internal `await` chains need refactoring at the component boundary |
+| `psycopg2` (C extension) | ❌ BLOCKER | C extensions don't compile to WASM; replace with Neon HTTP API or WASI-native PG binding |
+| `requests` library | ❌ Direct | Replace with `spin_sdk` outbound HTTP (already established pattern in Rust components) |
+| Binary size | ⚠️ Large | CPython-in-WASM = 10–30 MB per component; material on Fermyon free tier |
+| Threading | ❌ None | WASM is single-threaded |
+
+### Python-Native Assessment per Existing Service
+
+| Service | componentize-py Verdict | Blocker / Note |
+|---|---|---|
+| `services/review_pump.py` | **YES** | Pure arithmetic, no I/O, no async — trivially portable |
+| `services/arabic_skip_counter.py` | **PARTIAL** | psycopg2 is the only blocker; replace with Neon HTTP API (`/sql` endpoint) and the logic is portable |
+| `services/reminder_service.py` | **PARTIAL** | async/provider callback pattern needs WIT boundary refactor; Python logic preserved, asyncio event loop dropped in favour of sync WIT exports |
+| `services/budget_governor.py` | **PARTIAL** | File I/O → Spin KV; `requests` → `spin_sdk` outbound HTTP; core envelope logic pure Python — all portable once I/O replaced |
+
+### Recommended Approach
+
+Use componentize-py as an **alternative path for Phase 1** (ReviewPump) and as
+the default path for any future service migration before reaching for a Rust rewrite:
+
+1. **ReviewPump (pure logic)**: Port as a Python component via `spin-python-sdk`.
+   Avoids Rust entirely. Validates the componentize-py pipeline on this project.
+2. **arabic_skip_counter**: Replace `psycopg2` with an HTTP call to Neon's HTTP API;
+   wrap with componentize-py. Synchronous, small, testable.
+3. **ReminderService / BudgetGovernor**: Boundary refactor only — make WIT exports
+   synchronous wrappers; preserve all internal Python logic. The `asyncio` is a
+   thin wrapper at the MCP layer, not intrinsic to the logic.
+
+This is the spirit of kingdonb/mecris#157: **zero-rewrite migration** is achievable for
+pure-logic and I/O-abstracted services. Only services with C extension runtime
+dependencies (psycopg2) require I/O layer replacement — the Python *logic* is preserved.
+
+---
+
 ## Recommended Migration Sequence
 
 ```
 Phase 0  (now)       — This document. Candidates identified.
-Phase 1  (next)      — Port ReviewPump to Rust, expose as /internal/review-pump-status.
-                        WIT interface, cargo component build, Spin registration, unit tests.
-Phase 2              — Port BudgetGovernor core envelope to Rust.
+Phase 1  (next)      — Port ReviewPump as Python WASM via componentize-py/spin-python-sdk.
+                        Alternative: port to Rust if Python binary size is prohibitive.
+                        Expose as /internal/review-pump-status. Unit tests required.
+Phase 1.5            — arabic_skip_counter: replace psycopg2 with Neon HTTP API,
+                        wrap with componentize-py. Validates Python + I/O-via-HTTP pattern.
+Phase 2              — Port BudgetGovernor core envelope (Python-native via componentize-py).
                         KV store spend log, outbound HTTP for Helix balance.
                         Python MCP server becomes a thin wrapper calling the WASM component.
 Phase 3              — Android app binds WASM component directly (Wasmtime for Android).
