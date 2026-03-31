@@ -188,7 +188,7 @@ Also, don't worry about `numReviewsToday` too much—my 12pts/card heuristic in 
 
 **Skipped**: Full `numReviewsToday` implementation — blocked by missing live credentials; field existence still unconfirmed.
 
-**Next**: Field discovery requires live Clozemaster credentials (can't be done by mecris-bot in CI). Either run manually with `LOG_LEVEL=DEBUG`, or build a test fixture capturing a real API response. Sync PR yebyen→kingdonb needed for commit `9c9e8fc`.
+**Next**: Field discovery requires live Clozemaster credentials (human action required). Either run manually with `LOG_LEVEL=DEBUG`, or build a test fixture capturing a real API response. Sync PR yebyen→kingdonb needed for commit `9c9e8fc`.
 
 ## 2026-03-27 — Open sync PR from yebyen/mecris to kingdonb/mecris
 
@@ -208,7 +208,7 @@ Also, don't worry about `numReviewsToday` too much—my 12pts/card heuristic in 
 
 **Skipped**: Health report issue (superseded by the actual fix work). Field discovery (blocked, no credentials). PR merge (awaiting kingdonb action).
 
-**Next**: Check if kingdonb/mecris#150 was merged. Fix `test_coaching.py` collection failure (same pattern as reminder integration — needs `sys.modules` eviction + psycopg2 mock).
+**Next**: Check if kingdonb/mecris#150 merged. Fix `test_coaching.py` collection failure (same pattern as reminder integration — needs `sys.modules` eviction + psycopg2 mock).
 
 ## 2026-03-28 — Fix test_coaching.py collection failure via sys.modules eviction
 
@@ -459,3 +459,11 @@ Also, don't worry about `numReviewsToday` too much—my 12pts/card heuristic in 
 **Done**: Implemented exactly as planned. `ReminderService.__init__` gains 5th optional param `skip_count_provider` (async fn → int). When skip_count >= 3 and `arabic_review_escalation` cooldown (1h) elapsed: fires escalation with skip count in var "3", urgency_template_sid. Graceful fallback to base reminder if provider raises. 3 new tests cover: fires after 3 cycles, resets when cards_done (skip_count=0), respects 1h cooldown. All 13 tests pass. Committed as `c769016`.
 **Skipped**: MCP wire-up for skip_count_provider (no MCP function returns skip count yet — next session work). Dedicated WhatsApp template for escalation (still uses urgency_alert_v2 — template creation is out-of-band user work).
 **Next**: Wire skip_count_provider into mcp_server.py (need get_arabic_skip_count MCP function or derive from language_stats.cards_today + message_log). Check if PR #158 merged by kingdonb; open fresh sync PR if so.
+
+## 2026-03-31 — Post-Mortem: Greek Data Corruption (ellinika)
+
+**Planned**: Investigate reports of "spurious" Greek Beeminder data points for the `ellinika` goal; find the source and provide a fix plan.
+
+**Done**: Root cause identified as a category error: treating the `ellinika` odometer/cumulative goal as a backlog-tracking snapshot. Found duplicated incorrect mapping in `scripts/clozemaster_scraper.py` (Python) and `mecris-go-spin/sync-service/src/lib.rs` (Rust/Failover). Published full post-mortem in `docs/postmortems/2026-03-31-greek-data-corruption.md`. Added `NEXT_SESSION.md` recovery steps and `GEMINI.md` directive #6 (Goal Type Awareness) to prevent recurrence.
+
+**Next**: Bot to execute recovery plan: remove Greek Beeminder push from Python/Rust scrapers; update regression tests; verify with dry-run.
