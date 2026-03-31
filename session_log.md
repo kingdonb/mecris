@@ -480,3 +480,13 @@ Also, don't worry about `numReviewsToday` too much—my 12pts/card heuristic in 
 **Done**: Read existing LOGIC_VACUUMING_CANDIDATES.md + reminder_service.py + arabic_skip_counter.py. Documented componentize-py findings in yebyen/mecris#45 comment (web search unavailable; used training knowledge through Aug 2025). Updated LOGIC_VACUUMING_CANDIDATES.md with Candidate 3 section covering limitations table, per-service assessment (review_pump: YES, arabic_skip_counter: PARTIAL/psycopg2 blocker, reminder_service: PARTIAL/async refactor needed, budget_governor: PARTIAL/I/O layer only), and Phase 1.5 addition to migration sequence. Committed as `b3db3f2`.
 **Skipped**: POC implementation (research-only session; implementation is next step). Web search blocked in runner environment — knowledge-based research only.
 **Next**: Decide Phase 1 path (componentize-py Python vs Rust) for ReviewPump WASM port; create plan issue and execute. Check if kingdonb/mecris#159 merged.
+
+## 2026-03-31 — Logic Vacuuming Phase 1.5a: arabic_skip_counter psycopg2 → Neon HTTP API
+
+**Planned**: Rewrite `services/arabic_skip_counter.py` to use Neon HTTP API (`/sql` endpoint via httpx) instead of psycopg2; update tests to mock at HTTP layer; add test verifying request shape. (yebyen/mecris#46)
+
+**Done**: Implementation complete. `arabic_skip_counter.py` now derives `https://{host}/sql` from the postgres:// URL, authenticates with Basic auth (base64 user:password), and POSTs `{"query": ..., "params": [...]}`. SQL uses OR conditions instead of `ANY(%s)` to avoid Neon HTTP array serialization issues. All 4 original tests rewritten for httpx mocking; 1 new test (`test_neon_http_request_shape`) verifies URL, auth header, and body shape. Committed as `296a14d`. 18/18 tests pass (13 reminder_service + 5 skip_count).
+
+**Skipped**: Phase 1.5b (componentize-py WASM wrap) — correct scope split; 1.5a was the prerequisite. Phase 1 (ReviewPump WASM port) — not started this session.
+
+**Next**: Phase 1.5b — wrap arabic_skip_counter.py as a componentize-py/spin-python-sdk WASM component. WIT interface: `count-arabic-reminders: func(neon-url: string, user-id: string, hours: u32) -> u32`. Note: httpx outbound HTTP works in WASM via Spin outbound HTTP capability — no further I/O changes needed.
