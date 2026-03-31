@@ -1,0 +1,3 @@
+# Runtime dependencies bundled into the WASM component by componentize-py.
+# Install before building: pip install -r requirements.txt
+httpx>=0.27
