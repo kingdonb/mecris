@@ -466,3 +466,10 @@ Also, don't worry about `numReviewsToday` too much—my 12pts/card heuristic in 
 **Done**: Extracted `count_arabic_reminders(neon_url, user_id, hours=24)` into `services/arabic_skip_counter.py` (testable, lazy psycopg2 import). Added `get_arabic_skip_count()` async wrapper in `mcp_server.py` using `asyncio.to_thread`; returns 0 if NEON_DB_URL unset. Updated `ReminderService` instantiation with `skip_count_provider=get_arabic_skip_count`. 4 new tests using `sys.modules` psycopg2 patching. All 17 tests pass. Committed as `6f73b92`.
 **Skipped**: Opening sync PR to kingdonb (next session work). Dedicated WhatsApp template for escalation (requires Twilio console — user work).
 **Next**: Open sync PR yebyen/mecris → kingdonb/mecris for commit `6f73b92`. Check Arabic reviewstack Beeminder status manually.
+
+## 2026-03-31 — Open sync PR yebyen/mecris → kingdonb/mecris for Arabic Phase 3 MCP wire-up
+
+**Planned**: Open sync PR from yebyen/mecris main to kingdonb/mecris main carrying `6f73b92` (skip_count_provider wire-up) and `97d8734` (archive) (plan yebyen/mecris#44).
+**Done**: kingdonb/mecris#159 opened via GITHUB_CLASSIC_PAT (fine-grained token lacks cross-repo PR permission). PR carries 2 commits, state OPEN, awaiting kingdonb review/merge. Plan issue #44 created, commented, and closed.
+**Skipped**: Nothing — plan completed in full.
+**Next**: Check if kingdonb/mecris#159 has been merged. If so, check upstream sync and pick next work item (WASM POC, Android #122, or Helix balance validation).
