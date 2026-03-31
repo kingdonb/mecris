@@ -19,6 +19,13 @@
 - [x] Plan issue yebyen/mecris#42 created, completed, and closed.
 
 ## Pending Verification (Next Session)
+- **CRITICAL: Fix Greek Data Corruption (ellinika)**: The bot incorrectly pinned the `ellinika` goal as a backlog-tracking push target. This is WRONG. `ellinika` is an odometer goal.
+    - **Step 1**: In `scripts/clozemaster_scraper.py`, remove `"greek": {"slug": "ell-eng", "goal": "ellinika"}` from the `languages` dict in `sync_clozemaster_to_beeminder`.
+    - **Step 2**: In `mecris-go-spin/sync-service/src/lib.rs`, change the mapping for `"ell-eng"` to return an empty Beeminder slug: `("GREEK", "")`.
+    - **Step 3**: Update `tests/test_greek_slug.py` to ensure it reflects that we DO NOT push to `ellinika`.
+    - **Step 4**: Verify with a dry-run that Greek is still scraped (for Neon DB stats) but NOT pushed to Beeminder.
+    - **Consult Post-Mortem**: `docs/postmortems/2026-03-31-greek-data-corruption.md`.
+
 - **PR #158 MERGED?**: Check if kingdonb has merged kingdonb/mecris#158. If merged, yebyen/mecris will need to sync back down from upstream and open a fresh sync PR for Phase 2 + Phase 3 commits.
 - **MCP wire-up for skip_count_provider**: Wire an actual `skip_count_provider` implementation into `mcp_server.py` when instantiating `ReminderService`. Currently Phase 3 is in reminder_service.py but no MCP function returns a skip count. Need to either: (a) add `get_arabic_skip_count()` MCP function that reads message_log, or (b) derive skip count from `language_stats.cards_today` — if 0 and last reminder was >2h ago, increment a counter. Track in a new KV key `arabic_skip_count`.
 - **Dedicated WhatsApp template for escalation**: `arabic_review_escalation` currently reuses `urgency_template_sid` (urgency_alert_v2). Need a dedicated template with a more aggressive message that incorporates skip count in a meaningful way.
