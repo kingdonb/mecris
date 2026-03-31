@@ -16,10 +16,15 @@ oidc_jwks_json = { required = false, default = "" }
 clozemaster_email = { required = false, default = "" }
 clozemaster_password = { required = false, default = "" }
 master_encryption_key = { required = false, default = "" }
+neon_db_url = { required = false, default = "" }
 
 [[trigger.http]]
 route = "/internal/review-pump-status"
 component = "review-pump"
+
+[[trigger.http]]
+route = "/internal/arabic-skip-count"
+component = "arabic-skip-counter"
 
 [[trigger.http]]
 route = "/..."
@@ -54,14 +59,16 @@ command = "cargo build --target wasm32-wasip1 --release --features spin"
 workdir = "../review-pump"
 watch = ["src/**/*.rs", "Cargo.toml"]
 
-# arabic-skip-counter: Python WASM component (componentize-py, Phase 1.5b).
-# Exports count-arabic-reminders(neon-url, user-id, hours) -> u32.
-# No HTTP trigger — invokable via `spin call` or component linking.
-# Phase 1.6: add HTTP wrapper route (/internal/arabic-skip-count).
+# arabic-skip-counter: Python WASM component (componentize-py + spin_sdk, Phase 1.6).
+# HTTP trigger: GET /internal/arabic-skip-count?user_id=<id>&hours=<n>
+# Returns JSON: {"skip_count": <u32>}
+# Reads neon_db_url from Spin variables.
 [component.arabic-skip-counter]
 source = "../arabic-skip-counter/arabic-skip-counter.wasm"
 allowed_outbound_hosts = ["https://*.neon.tech"]
+[component.arabic-skip-counter.variables]
+neon_db_url = "{{ neon_db_url }}"
 [component.arabic-skip-counter.build]
-command = "pip install -r requirements.txt && componentize-py --wit-path wit --world arabic-skip-counter componentize app -o arabic-skip-counter.wasm"
+command = "pip install -r requirements.txt && spin py2wasm app -o arabic-skip-counter.wasm"
 workdir = "../arabic-skip-counter"
 watch = ["app.py", "wit/*.wit"]
