@@ -84,4 +84,4 @@ This document summarizes the collaborative debugging session to establish a func
 - All 22+ review pump tests (Python) pass.
 - Verified fix with dry-run: Greek with 0 debt/liability now shows `target_flow_rate: 0` and `goal_met: True`, ensuring Arabic (untouched) is surfaced first.
 
-**Next**: Catch up `yebyen/main` and redeploy.
+**Next**: Permanent fixes for Greek data corruption and Review Pump UX bug are now implemented, committed, pushed to `yebyen/main`, and deployed to Fermyon Cloud.
