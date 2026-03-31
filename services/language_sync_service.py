@@ -22,8 +22,8 @@ class LanguageSyncService:
         
         # Mapping from scraper keys to Beeminder slugs
         self.lang_to_slug = {
-            "ARABIC": "reviewstack",
-            "GREEK": "ellinika"
+            "ARABIC": "reviewstack"
+            # GREEK (ellinika) is an odometer goal; do not push snapshots.
         }
 
     @staticmethod

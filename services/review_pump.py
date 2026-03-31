@@ -51,16 +51,22 @@ class ReviewPump:
         
         # Flow states: cavitation (low), laminar (normal), turbulent (high)
         status = "laminar"
-        if daily_completions < tomorrow_liability:
+        
+        # If debt is zero and no liability, we are done.
+        if current_debt == 0 and tomorrow_liability == 0:
+            target = 0
+            status = "laminar"
+        elif daily_completions < tomorrow_liability:
             status = "cavitation"
-        elif daily_completions >= target and target > 0:
+        elif target > 0 and daily_completions >= target:
             status = "turbulent"
             
         return {
             "multiplier": self.multiplier,
             "lever_name": self.LEVER_CONFIG[self.multiplier]["name"],
-            "target_flow_rate": target,
+            "target_flow_rate": max(0, target - daily_completions),
             "current_flow_rate": daily_completions,
+            "goal_met": daily_completions >= target if target > 0 else (current_debt == 0),
             "status": status,
             "debt_remaining": current_debt,
             "unit": unit

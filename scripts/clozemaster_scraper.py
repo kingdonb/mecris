@@ -233,8 +233,8 @@ async def sync_clozemaster_to_beeminder(dry_run: bool = False):
         if await scraper.login():
             # Language configuration
             languages = {
-                "arabic": {"slug": "ara-eng", "goal": "reviewstack"},
-                "greek": {"slug": "ell-eng", "goal": "ellinika"}
+                "arabic": {"slug": "ara-eng", "goal": "reviewstack"}
+                # Greek (ellinika) is an odometer goal; do not push snapshots here.
             }
             
             # Fetch today's date in Eastern Time for Beeminder datapoint checks

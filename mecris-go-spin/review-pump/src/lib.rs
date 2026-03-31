@@ -65,6 +65,7 @@ pub struct PumpStatus {
     pub lever_name: String,
     pub target_flow_rate: i32,
     pub current_flow_rate: i32,
+    pub goal_met: bool,
     /// "cavitation" | "laminar" | "turbulent"
     pub status: String,
     pub debt_remaining: i32,
@@ -85,21 +86,30 @@ pub fn get_status(
     unit: &str,
 ) -> PumpStatus {
     let config = lookup(multiplier_x10);
-    let target = calculate_target(debt, tomorrow_liability, multiplier_x10);
+    let mut target = calculate_target(debt, tomorrow_liability, multiplier_x10);
 
-    let status = if daily_completions < tomorrow_liability {
-        "cavitation"
-    } else if target > 0 && daily_completions >= target {
-        "turbulent"
+    let mut status = "laminar";
+    let goal_met;
+
+    if debt == 0 && tomorrow_liability == 0 {
+        target = 0;
+        status = "laminar";
+        goal_met = true;
     } else {
-        "laminar"
-    };
+        if daily_completions < tomorrow_liability {
+            status = "cavitation";
+        } else if target > 0 && daily_completions >= target {
+            status = "turbulent";
+        }
+        goal_met = if target > 0 { daily_completions >= target } else { debt == 0 };
+    }
 
     PumpStatus {
         multiplier_x10,
         lever_name: config.name.to_string(),
-        target_flow_rate: target,
+        target_flow_rate: (target - daily_completions).max(0),
         current_flow_rate: daily_completions,
+        goal_met,
         status: status.to_string(),
         debt_remaining: debt,
         unit: unit.to_string(),

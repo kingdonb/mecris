@@ -14,24 +14,13 @@ from unittest.mock import MagicMock
 CORRECT_GREEK_SLUG = "ellinika"
 
 
-def test_language_sync_service_greek_slug(monkeypatch):
-    """LanguageSyncService.lang_to_slug must map GREEK to 'ellinika'."""
+def test_language_sync_service_greek_not_automated(monkeypatch):
+    """LanguageSyncService must not automate Greek Beeminder pushes (it's an odometer)."""
     monkeypatch.setenv("NEON_DB_URL", "postgres://fake")
     from services.language_sync_service import LanguageSyncService
 
     service = LanguageSyncService(beeminder_client=MagicMock())
-    assert service.lang_to_slug.get("GREEK") == CORRECT_GREEK_SLUG, (
-        f"Expected GREEK slug '{CORRECT_GREEK_SLUG}', got '{service.lang_to_slug.get('GREEK')}'"
-    )
-
-
-def test_language_sync_service_greek_slug_not_reviewstack_greek(monkeypatch):
-    """GREEK slug must not be the legacy/wrong 'reviewstack-greek' value."""
-    monkeypatch.setenv("NEON_DB_URL", "postgres://fake")
-    from services.language_sync_service import LanguageSyncService
-
-    service = LanguageSyncService(beeminder_client=MagicMock())
-    assert service.lang_to_slug.get("GREEK") != "reviewstack-greek"
+    assert "GREEK" not in service.lang_to_slug, "GREEK should not be in lang_to_slug"
 
 
 def test_no_active_python_code_uses_reviewstack_greek():
