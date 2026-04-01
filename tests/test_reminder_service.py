@@ -408,3 +408,288 @@ async def test_arabic_review_reminder_fires_after_2h_cooldown():
         result = await rs.check_reminder_needed()
         assert result["should_send"] is True
         assert result["type"] == "arabic_review_reminder"
+
+
+# --- Nag Ladder Tier tests ---
+
+@pytest.mark.asyncio
+async def test_walk_reminder_has_tier_1():
+    """Nag Ladder: walk_reminder returns tier 1 (gentle WhatsApp template)."""
+
+    mock_context = {
+        "daily_walk_status": {"has_activity_today": False},
+        "beeminder_alerts": [],
+        "goal_runway": []
+    }
+    mock_insight = {"momentum": "low", "message": "Get moving!"}
+
+    rs = ReminderService(make_async_mock(mock_context), make_async_mock(mock_insight))
+
+    class MockAfternoon(datetime.datetime):
+        @classmethod
+        def now(cls, *args, **kwargs):
+            return cls(2026, 3, 20, 15, 0, 0)
+
+    with patch('services.reminder_service.datetime', MockAfternoon):
+        result = await rs.check_reminder_needed()
+        assert result["should_send"] is True
+        assert result["type"] == "walk_reminder"
+        assert result["tier"] == 1
+
+
+@pytest.mark.asyncio
+async def test_arabic_review_escalation_has_tier_2():
+    """Nag Ladder: arabic_review_escalation returns tier 2 (escalated template)."""
+
+    mock_context = {
+        "daily_walk_status": {"has_activity_today": True},
+        "beeminder_alerts": [],
+        "goal_runway": [
+            {"slug": "reviewstack", "title": "Arabic Reviews", "derail_risk": "CRITICAL", "runway": "0 days"}
+        ]
+    }
+    mock_insight = {"momentum": "low", "message": "Do your Arabic!"}
+
+    async def mock_skip_count(user_id=None):
+        return 4  # ignored 4 consecutive cycles → escalation
+
+    rs = ReminderService(
+        make_async_mock(mock_context),
+        make_async_mock(mock_insight),
+        skip_count_provider=mock_skip_count
+    )
+
+    class MockNow(datetime.datetime):
+        @classmethod
+        def now(cls, *args, **kwargs):
+            return cls(2026, 3, 30, 9, 0, 0)
+
+    with patch('services.reminder_service.datetime', MockNow):
+        result = await rs.check_reminder_needed()
+        assert result["should_send"] is True
+        assert result["type"] == "arabic_review_escalation"
+        assert result["tier"] == 2
+
+
+@pytest.mark.asyncio
+async def test_sms_emergency_tier_3_fires_for_sub_2h_runway():
+    """Nag Ladder: tier 3 sms_emergency fires when a CRITICAL goal has '1.5 hours' runway."""
+
+    mock_context = {
+        "daily_walk_status": {"has_activity_today": True},
+        "beeminder_alerts": [],
+        "goal_runway": [
+            {"slug": "weight", "title": "Weight Goal", "derail_risk": "CRITICAL", "runway": "1.5 hours"}
+        ]
+    }
+    mock_insight = {"momentum": "low", "message": "Emergency!"}
+
+    rs = ReminderService(make_async_mock(mock_context), make_async_mock(mock_insight))
+
+    class MockMorning(datetime.datetime):
+        @classmethod
+        def now(cls, *args, **kwargs):
+            return cls(2026, 3, 20, 8, 0, 0)
+
+    with patch('services.reminder_service.datetime', MockMorning):
+        result = await rs.check_reminder_needed()
+        assert result["should_send"] is True
+        assert result["type"] == "sms_emergency"
+        assert result["tier"] == 3
+        assert "Weight Goal" in result["fallback_message"]
+
+
+@pytest.mark.asyncio
+async def test_sms_emergency_not_triggered_for_days_runway():
+    """Nag Ladder: '0 days' runway does NOT trigger tier 3 — 'today' is not 'within 2 hours'."""
+
+    mock_context = {
+        "daily_walk_status": {"has_activity_today": True},
+        "beeminder_alerts": [],
+        "goal_runway": [
+            {"slug": "weight", "title": "Weight Goal", "derail_risk": "CRITICAL", "runway": "0 days"}
+        ]
+    }
+    mock_insight = {"momentum": "low", "message": "Emergency!"}
+
+    rs = ReminderService(make_async_mock(mock_context), make_async_mock(mock_insight))
+
+    class MockMorning(datetime.datetime):
+        @classmethod
+        def now(cls, *args, **kwargs):
+            return cls(2026, 3, 20, 8, 0, 0)
+
+    with patch('services.reminder_service.datetime', MockMorning):
+        result = await rs.check_reminder_needed()
+        # Should get beeminder_emergency (tier 1), NOT sms_emergency (tier 3)
+        assert result["should_send"] is True
+        assert result["type"] == "beeminder_emergency"
+        assert result["tier"] == 1
+
+
+# --- Tier 2 time-based escalation tests (yebyen/mecris#59) ---
+
+@pytest.mark.asyncio
+async def test_tier1_beeminder_emergency_escalates_to_tier2_after_6h_idle():
+    """Tier 2 escalation: beeminder_emergency promoted to tier 2 after 7h idle."""
+
+    MOCKED_NOW = datetime.datetime(2026, 3, 20, 8, 0, 0)
+    SENT_AT = MOCKED_NOW - datetime.timedelta(hours=7)
+
+    async def mock_last_sent(msg_type, user_id=None):
+        if msg_type == "beeminder_emergency":
+            return SENT_AT
+        return None
+
+    mock_context = {
+        "daily_walk_status": {"has_activity_today": True},
+        "beeminder_alerts": [],
+        "goal_runway": [
+            {"slug": "weight", "title": "Weight Goal", "derail_risk": "CRITICAL", "runway": "0 days"}
+        ]
+    }
+    mock_insight = {"momentum": "low", "message": "Emergency!"}
+
+    rs = ReminderService(make_async_mock(mock_context), make_async_mock(mock_insight), log_provider=mock_last_sent)
+
+    class MockMorning(datetime.datetime):
+        @classmethod
+        def now(cls, *args, **kwargs):
+            return MOCKED_NOW
+
+    with patch('services.reminder_service.datetime', MockMorning):
+        result = await rs.check_reminder_needed()
+        assert result["should_send"] is True
+        assert result["type"] == "beeminder_emergency"
+        assert result["tier"] == 2
+        assert result.get("use_template") is False
+
+
+@pytest.mark.asyncio
+async def test_tier1_beeminder_emergency_stays_tier1_under_6h_idle():
+    """Tier 2 escalation: beeminder_emergency stays tier 1 when last sent < 6h ago."""
+
+    MOCKED_NOW = datetime.datetime(2026, 3, 20, 12, 0, 0)
+    SENT_AT = MOCKED_NOW - datetime.timedelta(hours=5)  # within TIER2_IDLE_HOURS
+
+    async def mock_last_sent(msg_type, user_id=None):
+        if msg_type == "beeminder_emergency":
+            return SENT_AT
+        return None
+
+    mock_context = {
+        "daily_walk_status": {"has_activity_today": True},
+        "beeminder_alerts": [],
+        "goal_runway": [
+            {"slug": "weight", "title": "Weight Goal", "derail_risk": "CRITICAL", "runway": "0 days"}
+        ]
+    }
+    mock_insight = {"momentum": "low", "message": "Emergency!"}
+
+    rs = ReminderService(make_async_mock(mock_context), make_async_mock(mock_insight), log_provider=mock_last_sent)
+
+    class MockNow(datetime.datetime):
+        @classmethod
+        def now(cls, *args, **kwargs):
+            return MOCKED_NOW
+
+    with patch('services.reminder_service.datetime', MockNow):
+        result = await rs.check_reminder_needed()
+        assert result["should_send"] is True
+        assert result["type"] == "beeminder_emergency"
+        assert result["tier"] == 1
+        assert "use_template" not in result
+
+
+@pytest.mark.asyncio
+async def test_tier1_walk_reminder_escalates_to_tier2_after_6h_idle():
+    """Tier 2 escalation: walk_reminder promoted to tier 2 when last sent 7h ago."""
+
+    MOCKED_NOW = datetime.datetime(2026, 3, 20, 15, 0, 0)
+    SENT_AT = MOCKED_NOW - datetime.timedelta(hours=7)
+
+    async def mock_last_sent(msg_type, user_id=None):
+        if msg_type == "walk_reminder":
+            return SENT_AT
+        return None
+
+    mock_context = {
+        "daily_walk_status": {"has_activity_today": False},
+        "beeminder_alerts": [],
+        "goal_runway": []
+    }
+    mock_insight = {"momentum": "low", "message": "Get moving!"}
+
+    rs = ReminderService(make_async_mock(mock_context), make_async_mock(mock_insight), log_provider=mock_last_sent)
+
+    class MockAfternoon(datetime.datetime):
+        @classmethod
+        def now(cls, *args, **kwargs):
+            return MOCKED_NOW
+
+    with patch('services.reminder_service.datetime', MockAfternoon):
+        result = await rs.check_reminder_needed()
+        assert result["should_send"] is True
+        assert result["type"] == "walk_reminder"
+        assert result["tier"] == 2
+        assert result.get("use_template") is False
+
+
+@pytest.mark.asyncio
+async def test_no_tier2_escalation_without_log_provider():
+    """Tier 2 escalation: no escalation when log_provider is absent (no history)."""
+
+    mock_context = {
+        "daily_walk_status": {"has_activity_today": False},
+        "beeminder_alerts": [],
+        "goal_runway": []
+    }
+    mock_insight = {"momentum": "low", "message": "Get moving!"}
+
+    rs = ReminderService(make_async_mock(mock_context), make_async_mock(mock_insight))  # no log_provider
+
+    class MockAfternoon(datetime.datetime):
+        @classmethod
+        def now(cls, *args, **kwargs):
+            return cls(2026, 3, 20, 15, 0, 0)
+
+    with patch('services.reminder_service.datetime', MockAfternoon):
+        result = await rs.check_reminder_needed()
+        assert result["should_send"] is True
+        assert result["type"] == "walk_reminder"
+        assert result["tier"] == 1  # no escalation without history
+        assert "use_template" not in result
+
+
+@pytest.mark.asyncio
+async def test_tier3_not_promoted_by_idle_window():
+    """Tier 2 escalation: sms_emergency (tier 3) is never downgraded or affected."""
+
+    MOCKED_NOW = datetime.datetime(2026, 3, 20, 8, 0, 0)
+    SENT_AT = MOCKED_NOW - datetime.timedelta(hours=7)
+
+    async def mock_last_sent(msg_type, user_id=None):
+        # Return old timestamp for any type — would trigger escalation for tier 1
+        return SENT_AT
+
+    mock_context = {
+        "daily_walk_status": {"has_activity_today": True},
+        "beeminder_alerts": [],
+        "goal_runway": [
+            {"slug": "weight", "title": "Weight Goal", "derail_risk": "CRITICAL", "runway": "1.5 hours"}
+        ]
+    }
+    mock_insight = {"momentum": "low", "message": "Emergency!"}
+
+    rs = ReminderService(make_async_mock(mock_context), make_async_mock(mock_insight), log_provider=mock_last_sent)
+
+    class MockMorning(datetime.datetime):
+        @classmethod
+        def now(cls, *args, **kwargs):
+            return MOCKED_NOW
+
+    with patch('services.reminder_service.datetime', MockMorning):
+        result = await rs.check_reminder_needed()
+        assert result["should_send"] is True
+        assert result["type"] == "sms_emergency"
+        assert result["tier"] == 3  # must remain tier 3

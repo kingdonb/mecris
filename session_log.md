@@ -183,3 +183,85 @@ This document summarizes the collaborative debugging session to establish a func
 - **Merged `yebyen/main`**: Pulled and reviewed the latest changes from the autonomous worker, resolving the WASM build blocker.
 
 **Next**: Push all changes to `origin/main` and confirm the deployment status in Fermyon Cloud.
+
+## 🏛️ 2026-04-01 — Test coverage audit for kingdonb review-pump + language-velocity fixes
+
+**Planned**: Audit test coverage for 5 commits kingdonb pushed today (dc2e1fe→f62ad68): review-pump goal_met refinement, GREEK canonical goal, language-velocity safebuf/beeminder_slug columns. Add targeted pytest cases. (yebyen/mecris#55)
+
+**Done**:
+- Read all 5 kingdonb commits and identified 3 coverage gaps.
+- Added `test_goal_met_when_debt_rounds_to_zero_target_with_aggressive_multiplier` — covers fix 5cb1397: small debt with multiplier > 1.0 rounds target to 0, goal_met=True.
+- Added `test_goal_met_false_in_maintenance_mode_with_outstanding_debt` — regression guard for maintenance-mode debt path.
+- Added `test_get_language_stats_includes_beeminder_slug_and_safebuf` — covers fix f62ad68: 8-column DB query returns new fields.
+- Fixed pre-existing wrong assertion in `test_system_overdrive` (target_flow_rate is remaining work, not total target).
+- Committed as ec4d578. 13/13 pass in the two touched test files.
+
+**Skipped**: GREEK canonical test — Rust sync-service (9d90f69) cannot be unit-tested from Python. No open issues remain on either repo. Phase 1.7 WASM build still blocked on CI environment.
+
+**Next**: WASM build validation in a deployment environment with `spin` + `componentize-py 0.21.0`. `spin py2wasm app -o arabic-skip-counter.wasm` in `mecris-go-spin/arabic-skip-counter/`, then live curl test.
+
+## 🏛️ 2026-04-01 — Session 2: Propose test coverage upstream via kingdonb/mecris#163
+
+**Planned**: Open health report, propose the 2 ahead commits (test coverage for goal_met edge cases + beeminder_slug/safebuf) as a PR to kingdonb/mecris if clean, then archive. (yebyen/mecris#56)
+
+**Done**:
+- Ran full orient: yebyen/mecris 2 commits ahead of kingdonb (ec4d578 test coverage + cf4af18 archive). Zero open issues on both repos. All WASM tasks blocked on live environment.
+- Confirmed ec4d578 is clean for upstream: only `tests/test_neon_sync_checker.py` and `tests/test_review_pump.py` — no yebyen-private content.
+- Created branch `test/review-pump-neon-coverage-2026-04-01` in yebyen/mecris at ec4d578 and pushed.
+- Opened PR kingdonb/mecris#163 with test coverage for goal_met edge cases + beeminder_slug/safebuf columns.
+
+**Skipped**: Nothing unblocked was skipped. WASM build validation still requires live Spin CLI unavailable in CI. Issue #122 (Android) and Issue #132 (live Spin/Neon) remain out of scope for bot.
+
+**Next**: Check if kingdonb/mecris#163 has been reviewed/merged. If merged, confirm yebyen/mecris sync state. WASM build validation in a deployment environment with `spin` + `componentize-py 0.21.0`.
+
+## 🏛️ 2026-04-01 — Session 3: pr-test fork-PR bug diagnosis (partial)
+
+**Planned**: Dispatch pr-test against kingdonb/mecris#163 and post results as a comment. (yebyen/mecris#57)
+
+**Done**:
+- Ran full orient: PR #163 still open, no labels, no CI run, no upstream activity since session 2.
+- Dispatched pr-test twice (runs #23863414611 and #23863517252). Both failed at "Fetch and merge upstream PR branch" step.
+- Root cause confirmed: `pr-test.yml` always tries `git merge upstream/${PR_BRANCH}`. PR #163 head is on yebyen/mecris (fork), so the branch doesn't exist in `upstream` (kingdonb/mecris) — it's in `origin`.
+- Fix identified: detect `head.repo.full_name` from PR API; use `git fetch origin ${PR_BRANCH}` if head is yebyen. The checkout's `fetch-depth: 0` already fetches all origin branches, so it's available.
+- Committed fix locally as 412f032 but could not push: both PATs lack `workflow` scope required by GitHub to modify `.github/workflows/` files. Reverted 412f032 to avoid breaking the mecris-bot.yml push step.
+- Posted blocker comment on kingdonb/mecris#163 explaining the token scope issue.
+
+**Skipped**: Deploying the pr-test fix — blocked on `workflow` scope in MECRIS_BOT_CLASSIC_PAT. PR #163 cannot be auto-tested until kingdonb updates the secret.
+
+**Next**: Ask kingdonb to update MECRIS_BOT_CLASSIC_PAT to include `repo + workflow` scopes. Once done, re-run `/mecris-pr-test 163` which will pick up the fix in NEXT_SESSION.md.
+
+## 🏛️ 2026-04-01 — Session 4: Nag Ladder Tier field + Tier 3 SMS detection (complete)
+
+**Planned**: Add explicit `tier` (1/2/3) to all `check_reminder_needed()` return dicts, add Tier 3 detection for goals with runway < 2 hours, update `nag eval` CLI output. (yebyen/mecris#58)
+
+**Done**:
+- Orient: PR #163 still open, no `needs-test`/`pr-review` labels, pr-test fix still blocked on workflow-scope token. Identified kingdonb/mecris#139 (Nag Ladder) as highest-value tractable work.
+- Opened plan yebyen/mecris#58 before touching code.
+- Added `_parse_runway_hours()` to `ReminderService`: parses "N hours" format only; "N days" returns 999 to avoid false Tier 3 triggers.
+- Added Tier 3 check at top of `check_reminder_needed()`: CRITICAL goals with `runway < 2.0 hours` → `sms_emergency` at `tier: 3`, 1h cooldown.
+- Added `tier: 1` to `walk_reminder`, `arabic_review_reminder`, `beeminder_emergency`.
+- Added `tier: 2` to `arabic_review_escalation`, `momentum_coaching`.
+- Updated `nag eval` CLI to show "Tier: N" alongside send/no-send status.
+- Added 4 new tests: tier 1 on walk_reminder, tier 2 on escalation, tier 3 on "1.5 hours" runway, no tier 3 for "0 days".
+- 17/17 reminder_service tests pass; 29/29 target tests pass. Committed c4857ba.
+
+**Skipped**: Tier 2 generalization (freeform Claude for any goal type after idle window) — needs acknowledgement tracking design first. Documented in NEXT_SESSION.md Pending.
+
+**Next**: Check if kingdonb/mecris#163 has been reviewed/merged. If MECRIS_BOT_CLASSIC_PAT workflow scope is granted, deploy pr-test fix and re-run /mecris-pr-test 163. Otherwise: design Tier 2 acknowledgement tracking as a sub-issue of #139.
+
+## 🏛️ 2026-04-01 — Session 5: Nag Ladder Tier 2 time-based escalation (complete)
+
+**Planned**: Add Tier 2 time-based escalation to `ReminderService` — any Tier 1 result escalates to Tier 2 (`use_template: False`) after `TIER2_IDLE_HOURS` idle, using `message_log` history via `log_provider`. (yebyen/mecris#59)
+
+**Done**:
+- Orient: PR #163 still open, no upstream activity, pr-test fix still token-blocked. Identified Tier 2 generalization as highest-value unblocked work.
+- Opened plan yebyen/mecris#59 with full design notes before touching code.
+- Added `TIER2_IDLE_HOURS = 6.0` module constant to `services/reminder_service.py`.
+- Added `_apply_tier2_escalation()` async helper: skips Tier 2/3 results, uses existing `_get_hours_since_last()` (999.0 sentinel for no history/no provider → safe no-op).
+- Applied escalation at all 3 Tier 1 return sites: walk_reminder, beeminder_emergency, arabic_review_reminder.
+- Added 5 new tests covering: escalation fires after 6h (beeminder + walk), stays Tier 1 under 6h, no escalation without log_provider, Tier 3 unaffected.
+- 22/22 reminder_service tests pass. Committed 3a34478.
+
+**Skipped**: Acknowledgement tracking / explicit reset mechanism for escalation state — implicit reset (goal exits CRITICAL → condition never fires) may be sufficient. Needs design decision before next coding slice.
+
+**Next**: Decide if implicit reset is sufficient for Tier 2 ack tracking (document decision as sub-issue of kingdonb/mecris#139). Then either: deploy pr-test fix if MECRIS_BOT_CLASSIC_PAT workflow scope is granted, or continue with Tier 2 ack tracking design.

@@ -23,9 +23,10 @@ async def run_nag_eval(args):
     result = await check_reminder_needed(args.user_id)
     print("\n--- Heuristic Result ---")
     print(json.dumps(result, indent=2))
-    
+
     if result.get("should_send"):
-        print("\n✅ A nag WOULD be triggered right now.")
+        tier = result.get("tier", "?")
+        print(f"\n✅ A nag WOULD be triggered right now.  Tier: {tier}")
     else:
         print("\n❌ No nag would be sent.")
 

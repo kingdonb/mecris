@@ -57,6 +57,25 @@ def test_neon_checker_has_walk_today_false(mock_psycopg2):
     assert result is False
 
 @patch.dict("os.environ", {"NEON_DB_URL": "postgres://fake"})
+def test_get_language_stats_includes_beeminder_slug_and_safebuf(mock_psycopg2):
+    """Fix: f62ad68 — get_language_stats must return beeminder_slug and safebuf from DB."""
+    checker = NeonSyncChecker()
+    # 8-column row: name, current, tomorrow, next_7, multiplier, daily_completions, beeminder_slug, safebuf
+    mock_psycopg2.fetchall.return_value = [
+        ("Arabic", 2600, 5, 100, 2.0, 50, "reviewstack", 3),
+        ("Greek", 20, 2, 40, 1.0, 10, None, 0),
+    ]
+
+    result = checker.get_language_stats(user_id="yebyen")
+
+    assert "arabic" in result
+    assert result["arabic"]["beeminder_slug"] == "reviewstack"
+    assert result["arabic"]["safebuf"] == 3
+    assert "greek" in result
+    assert result["greek"]["beeminder_slug"] is None
+    assert result["greek"]["safebuf"] == 0
+
+@patch.dict("os.environ", {"NEON_DB_URL": "postgres://fake"})
 def test_neon_checker_get_latest_walk(mock_psycopg2):
     """Test that it correctly maps the database row to a dictionary."""
     checker = NeonSyncChecker()

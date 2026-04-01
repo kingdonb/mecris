@@ -5,6 +5,9 @@ from typing import Dict, Any, Optional
 
 logger = logging.getLogger("mecris.services.reminder")
 
+TIER2_IDLE_HOURS = 6.0  # hours idle before a Tier 1 reminder escalates to Tier 2
+
+
 class ReminderService:
     """Decides when to nudge the user and formats the content for WhatsApp Templates."""
 
@@ -17,6 +20,23 @@ class ReminderService:
         # HX9403f1b85350b8c05780a1128b79f3c2 = mecris_status_v2 (Confirmed working)
         self.walk_template_sid = "HX9403f1b85350b8c05780a1128b79f3c2" 
         self.urgency_template_sid = "HX638b7f9403e04c8fa880370f1b7a9ba1" # urgency_alert_v2
+
+    def _parse_runway_hours(self, goal: dict) -> float:
+        """Return hours of runway from a goal dict.
+
+        Only returns a sub-24h value when the runway string explicitly uses an
+        'hours' unit (e.g. '1.5 hours').  Goals expressed in days (e.g. '0 days')
+        return 999.0 so they do NOT trigger Tier 3 — 'today' is not the same as
+        'within 2 hours'.
+        """
+        runway = goal.get("runway", "")
+        try:
+            parts = runway.lower().split()
+            if len(parts) >= 2 and "hour" in parts[1]:
+                return float(parts[0])
+        except (ValueError, IndexError):
+            pass
+        return 999.0
 
     async def _get_hours_since_last(self, msg_type: str, user_id: str = None) -> float:
         """Helper to get hours since a specific message type was sent."""
@@ -32,6 +52,21 @@ class ReminderService:
         diff = now - last_sent
         return diff.total_seconds() / 3600.0
 
+    async def _apply_tier2_escalation(self, result: Dict[str, Any], user_id: str = None) -> Dict[str, Any]:
+        """Promote a Tier 1 result to Tier 2 if it has been idle long enough.
+
+        Tier 3 results and already-Tier-2 results are returned unchanged.
+        If log_provider is absent or there's no message history, no escalation occurs.
+        """
+        if result.get("tier") != 1:
+            return result
+        hours_idle = await self._get_hours_since_last(result["type"], user_id)
+        if hours_idle < 999.0 and hours_idle >= TIER2_IDLE_HOURS:
+            result = dict(result)
+            result["tier"] = 2
+            result["use_template"] = False
+        return result
+
     async def check_reminder_needed(self, user_id: str = None) -> Dict[str, Any]:
         """Core logic for proactive nudges."""
         context = await self.context_provider(user_id)
@@ -45,6 +80,23 @@ class ReminderService:
         # 1. Beeminder Emergencies (Higher Priority, any time)
         beeminder_alerts = context.get("beeminder_alerts", [])
         critical_goals = [g for g in context.get("goal_runway", []) if g.get("derail_risk") == "CRITICAL"]
+
+        # 0. Tier 3: Goal runway expressed in hours and < 2h remaining → SMS emergency
+        subhour_critical = [g for g in critical_goals if self._parse_runway_hours(g) < 2.0]
+        if subhour_critical:
+            hours_since_sms = await self._get_hours_since_last("sms_emergency", user_id)
+            if hours_since_sms >= 1.0:
+                target = subhour_critical[0]
+                return {
+                    "should_send": True,
+                    "type": "sms_emergency",
+                    "tier": 3,
+                    "fallback_message": (
+                        f"🚨🚨🚨 {target.get('title', target.get('slug'))} derails in under 2 hours — TAKE ACTION NOW."
+                    )
+                }
+            else:
+                return {"should_send": False, "reason": f"SMS emergency on cooldown ({hours_since_sms:.1f}h since last)"}
 
         # 1a. Arabic Review Emergency (obnoxious — 2h cooldown, fires before generic)
         arabic_critical = [g for g in critical_goals if g.get("slug") == "reviewstack"]
@@ -60,6 +112,7 @@ class ReminderService:
                             return {
                                 "should_send": True,
                                 "type": "arabic_review_escalation",
+                                "tier": 2,
                                 "template_sid": self.urgency_template_sid,
                                 "variables": {
                                     "1": target.get("title", "Arabic Clozemaster"),
@@ -89,13 +142,15 @@ class ReminderService:
                             variables["3"] = str(arabic_stats["target_flow_rate"])
                     except Exception:
                         logger.warning("velocity_provider failed; omitting cards_needed from arabic reminder")
-                return {
+                result = {
                     "should_send": True,
                     "type": "arabic_review_reminder",
+                    "tier": 1,
                     "template_sid": self.urgency_template_sid,
                     "variables": variables,
                     "fallback_message": "🚨 Arabic reviewstack is CRITICAL — open Clozemaster and do reviews NOW!"
                 }
+                return await self._apply_tier2_escalation(result, user_id)
             else:
                 logger.info(f"Arabic reminder suppressed by cooldown ({hours_since_arabic:.1f}h since last)")
                 return {"should_send": False, "reason": f"Arabic review reminder on cooldown ({hours_since_arabic:.1f}h since last)"}
@@ -105,9 +160,10 @@ class ReminderService:
             hours_since_emergency = await self._get_hours_since_last("beeminder_emergency", user_id)
             if hours_since_emergency >= 4.0:
                 target = critical_goals[0]
-                return {
+                result = {
                     "should_send": True,
                     "type": "beeminder_emergency",
+                    "tier": 1,
                     "template_sid": self.urgency_template_sid,
                     "variables": {
                         "1": target.get("title", target.get("slug")),
@@ -115,6 +171,7 @@ class ReminderService:
                     },
                     "fallback_message": insight.get("message")
                 }
+                return await self._apply_tier2_escalation(result, user_id)
             else:
                 logger.info(f"Emergency reminder suppressed by cooldown ({hours_since_emergency:.1f}h since last)")
 
@@ -128,9 +185,10 @@ class ReminderService:
                 hours_since_walk = await self._get_hours_since_last("walk_reminder", user_id)
                 if hours_since_walk >= 2.5:
                     # Format variables for mecris_activity_check_v2
-                    return {
+                    result = {
                         "should_send": True,
                         "type": "walk_reminder",
+                        "tier": 1,
                         "template_sid": self.walk_template_sid,
                         "variables": {
                             "1": "Daily Walk",
@@ -141,6 +199,7 @@ class ReminderService:
                         },
                         "fallback_message": insight.get("message")
                     }
+                    return await self._apply_tier2_escalation(result, user_id)
                 else:
                     return {"should_send": False, "reason": f"Walk reminder on cooldown ({hours_since_walk:.1f}h since last)"}
             elif insight.get("momentum") == "high" and current_hour >= 16:
@@ -150,6 +209,7 @@ class ReminderService:
                     return {
                         "should_send": True,
                         "type": "momentum_coaching",
+                        "tier": 2,
                         "message": insight.get("message"), # Use freeform for coaching
                         "use_template": False
                     }
