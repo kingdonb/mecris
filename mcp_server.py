@@ -602,12 +602,33 @@ async def get_language_velocity_stats(user_id: str = None) -> Dict[str, Any]:
 
             pump = ReviewPump(multiplier=multiplier)
             pump_status = pump.get_status(current_debt, tomorrow_liability, daily_done, unit=unit)
+            
+            # Unit/Goal Classification:
+            # - Arabic: Has a "Reviewstack" goal (explicitly tracked/synced)
+            # - Greek: Has a "Canonical" points goal (autodata, no sync needed)
+            # - Others (Lithuanian, etc.): Truly unplanned debt
+            
+            if lang.lower() == "greek":
+                pump_status["priority_boost"] = True
+                pump_status["lever_name"] = f"Canonical ({pump_status['lever_name']})"
+            elif not stats.get("beeminder_slug") and lang.lower() != "arabic":
+                # This language is in the pile but has no Beeminder accountability plan yet.
+                pump_status["goal_met"] = True # Effectively deprioritize unplanned goals
+                pump_status["lever_name"] = "No Goal (Unplanned)"
+            
             results[lang] = pump_status
 
-        # 3. Sort results: unmet goals first, then by target_flow_rate descending
+        # 3. Sort results: 
+        # - Priority boosted goals (GREEK) first if not met
+        # - Then unmet goals
+        # - Then by target_flow_rate descending
         sorted_items = sorted(
             results.items(),
-            key=lambda x: (x[1]["goal_met"], -x[1]["target_flow_rate"])
+            key=lambda x: (
+                not (x[1].get("priority_boost") and not x[1]["goal_met"]),
+                x[1]["goal_met"], 
+                -x[1]["target_flow_rate"]
+            )
         )
         
         from collections import OrderedDict
