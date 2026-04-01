@@ -408,3 +408,120 @@ async def test_arabic_review_reminder_fires_after_2h_cooldown():
         result = await rs.check_reminder_needed()
         assert result["should_send"] is True
         assert result["type"] == "arabic_review_reminder"
+
+
+# --- Nag Ladder Tier tests ---
+
+@pytest.mark.asyncio
+async def test_walk_reminder_has_tier_1():
+    """Nag Ladder: walk_reminder returns tier 1 (gentle WhatsApp template)."""
+
+    mock_context = {
+        "daily_walk_status": {"has_activity_today": False},
+        "beeminder_alerts": [],
+        "goal_runway": []
+    }
+    mock_insight = {"momentum": "low", "message": "Get moving!"}
+
+    rs = ReminderService(make_async_mock(mock_context), make_async_mock(mock_insight))
+
+    class MockAfternoon(datetime.datetime):
+        @classmethod
+        def now(cls, *args, **kwargs):
+            return cls(2026, 3, 20, 15, 0, 0)
+
+    with patch('services.reminder_service.datetime', MockAfternoon):
+        result = await rs.check_reminder_needed()
+        assert result["should_send"] is True
+        assert result["type"] == "walk_reminder"
+        assert result["tier"] == 1
+
+
+@pytest.mark.asyncio
+async def test_arabic_review_escalation_has_tier_2():
+    """Nag Ladder: arabic_review_escalation returns tier 2 (escalated template)."""
+
+    mock_context = {
+        "daily_walk_status": {"has_activity_today": True},
+        "beeminder_alerts": [],
+        "goal_runway": [
+            {"slug": "reviewstack", "title": "Arabic Reviews", "derail_risk": "CRITICAL", "runway": "0 days"}
+        ]
+    }
+    mock_insight = {"momentum": "low", "message": "Do your Arabic!"}
+
+    async def mock_skip_count(user_id=None):
+        return 4  # ignored 4 consecutive cycles → escalation
+
+    rs = ReminderService(
+        make_async_mock(mock_context),
+        make_async_mock(mock_insight),
+        skip_count_provider=mock_skip_count
+    )
+
+    class MockNow(datetime.datetime):
+        @classmethod
+        def now(cls, *args, **kwargs):
+            return cls(2026, 3, 30, 9, 0, 0)
+
+    with patch('services.reminder_service.datetime', MockNow):
+        result = await rs.check_reminder_needed()
+        assert result["should_send"] is True
+        assert result["type"] == "arabic_review_escalation"
+        assert result["tier"] == 2
+
+
+@pytest.mark.asyncio
+async def test_sms_emergency_tier_3_fires_for_sub_2h_runway():
+    """Nag Ladder: tier 3 sms_emergency fires when a CRITICAL goal has '1.5 hours' runway."""
+
+    mock_context = {
+        "daily_walk_status": {"has_activity_today": True},
+        "beeminder_alerts": [],
+        "goal_runway": [
+            {"slug": "weight", "title": "Weight Goal", "derail_risk": "CRITICAL", "runway": "1.5 hours"}
+        ]
+    }
+    mock_insight = {"momentum": "low", "message": "Emergency!"}
+
+    rs = ReminderService(make_async_mock(mock_context), make_async_mock(mock_insight))
+
+    class MockMorning(datetime.datetime):
+        @classmethod
+        def now(cls, *args, **kwargs):
+            return cls(2026, 3, 20, 8, 0, 0)
+
+    with patch('services.reminder_service.datetime', MockMorning):
+        result = await rs.check_reminder_needed()
+        assert result["should_send"] is True
+        assert result["type"] == "sms_emergency"
+        assert result["tier"] == 3
+        assert "Weight Goal" in result["fallback_message"]
+
+
+@pytest.mark.asyncio
+async def test_sms_emergency_not_triggered_for_days_runway():
+    """Nag Ladder: '0 days' runway does NOT trigger tier 3 — 'today' is not 'within 2 hours'."""
+
+    mock_context = {
+        "daily_walk_status": {"has_activity_today": True},
+        "beeminder_alerts": [],
+        "goal_runway": [
+            {"slug": "weight", "title": "Weight Goal", "derail_risk": "CRITICAL", "runway": "0 days"}
+        ]
+    }
+    mock_insight = {"momentum": "low", "message": "Emergency!"}
+
+    rs = ReminderService(make_async_mock(mock_context), make_async_mock(mock_insight))
+
+    class MockMorning(datetime.datetime):
+        @classmethod
+        def now(cls, *args, **kwargs):
+            return cls(2026, 3, 20, 8, 0, 0)
+
+    with patch('services.reminder_service.datetime', MockMorning):
+        result = await rs.check_reminder_needed()
+        # Should get beeminder_emergency (tier 1), NOT sms_emergency (tier 3)
+        assert result["should_send"] is True
+        assert result["type"] == "beeminder_emergency"
+        assert result["tier"] == 1

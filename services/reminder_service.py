@@ -18,6 +18,23 @@ class ReminderService:
         self.walk_template_sid = "HX9403f1b85350b8c05780a1128b79f3c2" 
         self.urgency_template_sid = "HX638b7f9403e04c8fa880370f1b7a9ba1" # urgency_alert_v2
 
+    def _parse_runway_hours(self, goal: dict) -> float:
+        """Return hours of runway from a goal dict.
+
+        Only returns a sub-24h value when the runway string explicitly uses an
+        'hours' unit (e.g. '1.5 hours').  Goals expressed in days (e.g. '0 days')
+        return 999.0 so they do NOT trigger Tier 3 — 'today' is not the same as
+        'within 2 hours'.
+        """
+        runway = goal.get("runway", "")
+        try:
+            parts = runway.lower().split()
+            if len(parts) >= 2 and "hour" in parts[1]:
+                return float(parts[0])
+        except (ValueError, IndexError):
+            pass
+        return 999.0
+
     async def _get_hours_since_last(self, msg_type: str, user_id: str = None) -> float:
         """Helper to get hours since a specific message type was sent."""
         if not self.log_provider:
@@ -46,6 +63,23 @@ class ReminderService:
         beeminder_alerts = context.get("beeminder_alerts", [])
         critical_goals = [g for g in context.get("goal_runway", []) if g.get("derail_risk") == "CRITICAL"]
 
+        # 0. Tier 3: Goal runway expressed in hours and < 2h remaining → SMS emergency
+        subhour_critical = [g for g in critical_goals if self._parse_runway_hours(g) < 2.0]
+        if subhour_critical:
+            hours_since_sms = await self._get_hours_since_last("sms_emergency", user_id)
+            if hours_since_sms >= 1.0:
+                target = subhour_critical[0]
+                return {
+                    "should_send": True,
+                    "type": "sms_emergency",
+                    "tier": 3,
+                    "fallback_message": (
+                        f"🚨🚨🚨 {target.get('title', target.get('slug'))} derails in under 2 hours — TAKE ACTION NOW."
+                    )
+                }
+            else:
+                return {"should_send": False, "reason": f"SMS emergency on cooldown ({hours_since_sms:.1f}h since last)"}
+
         # 1a. Arabic Review Emergency (obnoxious — 2h cooldown, fires before generic)
         arabic_critical = [g for g in critical_goals if g.get("slug") == "reviewstack"]
         if arabic_critical:
@@ -60,6 +94,7 @@ class ReminderService:
                             return {
                                 "should_send": True,
                                 "type": "arabic_review_escalation",
+                                "tier": 2,
                                 "template_sid": self.urgency_template_sid,
                                 "variables": {
                                     "1": target.get("title", "Arabic Clozemaster"),
@@ -92,6 +127,7 @@ class ReminderService:
                 return {
                     "should_send": True,
                     "type": "arabic_review_reminder",
+                    "tier": 1,
                     "template_sid": self.urgency_template_sid,
                     "variables": variables,
                     "fallback_message": "🚨 Arabic reviewstack is CRITICAL — open Clozemaster and do reviews NOW!"
@@ -108,6 +144,7 @@ class ReminderService:
                 return {
                     "should_send": True,
                     "type": "beeminder_emergency",
+                    "tier": 1,
                     "template_sid": self.urgency_template_sid,
                     "variables": {
                         "1": target.get("title", target.get("slug")),
@@ -131,6 +168,7 @@ class ReminderService:
                     return {
                         "should_send": True,
                         "type": "walk_reminder",
+                        "tier": 1,
                         "template_sid": self.walk_template_sid,
                         "variables": {
                             "1": "Daily Walk",
@@ -150,6 +188,7 @@ class ReminderService:
                     return {
                         "should_send": True,
                         "type": "momentum_coaching",
+                        "tier": 2,
                         "message": insight.get("message"), # Use freeform for coaching
                         "use_template": False
                     }
