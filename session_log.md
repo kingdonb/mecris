@@ -199,3 +199,17 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: GREEK canonical test — Rust sync-service (9d90f69) cannot be unit-tested from Python. No open issues remain on either repo. Phase 1.7 WASM build still blocked on CI environment.
 
 **Next**: WASM build validation in a deployment environment with `spin` + `componentize-py 0.21.0`. `spin py2wasm app -o arabic-skip-counter.wasm` in `mecris-go-spin/arabic-skip-counter/`, then live curl test.
+
+## 🏛️ 2026-04-01 — Session 2: Propose test coverage upstream via kingdonb/mecris#163
+
+**Planned**: Open health report, propose the 2 ahead commits (test coverage for goal_met edge cases + beeminder_slug/safebuf) as a PR to kingdonb/mecris if clean, then archive. (yebyen/mecris#56)
+
+**Done**:
+- Ran full orient: yebyen/mecris 2 commits ahead of kingdonb (ec4d578 test coverage + cf4af18 archive). Zero open issues on both repos. All WASM tasks blocked on live environment.
+- Confirmed ec4d578 is clean for upstream: only `tests/test_neon_sync_checker.py` and `tests/test_review_pump.py` — no yebyen-private content.
+- Created branch `test/review-pump-neon-coverage-2026-04-01` in yebyen/mecris at ec4d578 and pushed.
+- Opened PR kingdonb/mecris#163 with test coverage for goal_met edge cases + beeminder_slug/safebuf columns.
+
+**Skipped**: Nothing unblocked was skipped. WASM build validation still requires live Spin CLI unavailable in CI. Issue #122 (Android) and Issue #132 (live Spin/Neon) remain out of scope for bot.
+
+**Next**: Check if kingdonb/mecris#163 has been reviewed/merged. If merged, confirm yebyen/mecris sync state. WASM build validation in a deployment environment with `spin` + `componentize-py 0.21.0`.
