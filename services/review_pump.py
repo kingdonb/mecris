@@ -66,7 +66,7 @@ class ReviewPump:
             "lever_name": self.LEVER_CONFIG[self.multiplier]["name"],
             "target_flow_rate": max(0, target - daily_completions),
             "current_flow_rate": daily_completions,
-            "goal_met": daily_completions >= target if target > 0 else (current_debt == 0),
+            "goal_met": daily_completions >= target if (target > 0 or (current_debt > 0 and self.multiplier > 1.0)) else (current_debt == 0),
             "status": status,
             "debt_remaining": current_debt,
             "unit": unit
