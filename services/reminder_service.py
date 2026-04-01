@@ -9,7 +9,12 @@ TIER2_IDLE_HOURS = 6.0  # hours idle before a Tier 1 reminder escalates to Tier 
 
 
 class ReminderService:
-    """Decides when to nudge the user and formats the content for WhatsApp Templates."""
+    """Decides when to nudge the user and formats the content for WhatsApp Templates.
+
+    Core Mandate: 
+    - No more than 2 messages per hour across ALL channels.
+    - Cooldowns are enforced per-type, but the aggregate frequency is the primary rate-limit.
+    """
 
     def __init__(self, context_provider, coaching_provider, log_provider=None, velocity_provider=None, skip_count_provider=None):
         self.context_provider = context_provider
@@ -38,19 +43,20 @@ class ReminderService:
             pass
         return 999.0
 
-    async def _get_hours_since_last(self, msg_type: str, user_id: str = None) -> float:
-        """Helper to get hours since a specific message type was sent."""
+    async def _get_hours_since_last(self, msg_type: Optional[str] = None, user_id: str = None) -> float:
+        """Helper to get hours since a specific message type (or ANY type) was sent."""
         if not self.log_provider:
-            return 999.0 # If no provider, assume it's been a long time
-        
+            return 999.0
+
         last_sent = await self.log_provider(msg_type, user_id)
         if not last_sent:
             return 999.0
-            
+
         # Ensure we are comparing aware datetimes if last_sent is aware
         now = datetime.now(timezone.utc) if last_sent.tzinfo else datetime.now()
         diff = now - last_sent
         return diff.total_seconds() / 3600.0
+
 
     async def _apply_tier2_escalation(self, result: Dict[str, Any], user_id: str = None) -> Dict[str, Any]:
         """Promote a Tier 1 result to Tier 2 if it has been idle long enough.
@@ -69,6 +75,14 @@ class ReminderService:
 
     async def check_reminder_needed(self, user_id: str = None) -> Dict[str, Any]:
         """Core logic for proactive nudges."""
+        # 1. ENFORCE GLOBAL RATE LIMIT: No more than 2 messages per hour (30m cooldown)
+        hours_since_any = await self._get_hours_since_last(None, user_id)
+        if hours_since_any < 0.5:
+            return {
+                "should_send": False, 
+                "reason": f"Global rate limit: 2x/hour (last sent {hours_since_any*60:.1f}m ago)"
+            }
+
         context = await self.context_provider(user_id)
         insight = await self.coaching_provider(user_id)
         

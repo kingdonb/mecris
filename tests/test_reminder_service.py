@@ -413,6 +413,30 @@ async def test_arabic_review_reminder_fires_after_2h_cooldown():
 # --- Nag Ladder Tier tests ---
 
 @pytest.mark.asyncio
+async def test_global_rate_limit_suppresses_reminders():
+    """Nag Ladder: No matter the type, aggregate frequency is capped at 2x/hour."""
+    MOCKED_NOW = datetime.datetime(2026, 3, 20, 15, 0, 0)
+    SENT_AT = MOCKED_NOW - datetime.timedelta(minutes=15)  # Sent 15m ago
+
+    async def mock_last_sent(msg_type, user_id=None):
+        if msg_type is None: # Any message
+            return SENT_AT
+        return None
+
+    rs = ReminderService(make_async_mock({}), make_async_mock({}), log_provider=mock_last_sent)
+
+    class MockNow(datetime.datetime):
+        @classmethod
+        def now(cls, *args, **kwargs):
+            return MOCKED_NOW
+
+    with patch('services.reminder_service.datetime', MockNow):
+        result = await rs.check_reminder_needed()
+        assert result["should_send"] is False
+        assert "Global rate limit" in result["reason"]
+
+
+@pytest.mark.asyncio
 async def test_walk_reminder_has_tier_1():
     """Nag Ladder: walk_reminder returns tier 1 (gentle WhatsApp template)."""
 
