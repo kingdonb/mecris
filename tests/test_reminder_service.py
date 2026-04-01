@@ -472,8 +472,8 @@ async def test_arabic_review_escalation_has_tier_2():
 
 
 @pytest.mark.asyncio
-async def test_sms_emergency_tier_3_fires_for_sub_2h_runway():
-    """Nag Ladder: tier 3 sms_emergency fires when a CRITICAL goal has '1.5 hours' runway."""
+async def test_beeminder_emergency_tier_3_fires_for_sub_2h_runway():
+    """Nag Ladder: tier 3 beeminder_emergency_tier3 fires when a CRITICAL goal has '1.5 hours' runway."""
 
     mock_context = {
         "daily_walk_status": {"has_activity_today": True},
@@ -494,13 +494,14 @@ async def test_sms_emergency_tier_3_fires_for_sub_2h_runway():
     with patch('services.reminder_service.datetime', MockMorning):
         result = await rs.check_reminder_needed()
         assert result["should_send"] is True
-        assert result["type"] == "sms_emergency"
+        assert result["type"] == "beeminder_emergency_tier3"
         assert result["tier"] == 3
         assert "Weight Goal" in result["fallback_message"]
+        assert result["use_template"] is False
 
 
 @pytest.mark.asyncio
-async def test_sms_emergency_not_triggered_for_days_runway():
+async def test_beeminder_emergency_tier_3_not_triggered_for_days_runway():
     """Nag Ladder: '0 days' runway does NOT trigger tier 3 — 'today' is not 'within 2 hours'."""
 
     mock_context = {
@@ -663,7 +664,7 @@ async def test_no_tier2_escalation_without_log_provider():
 
 @pytest.mark.asyncio
 async def test_tier3_not_promoted_by_idle_window():
-    """Tier 2 escalation: sms_emergency (tier 3) is never downgraded or affected."""
+    """Nag Ladder: beeminder_emergency_tier3 (tier 3) is never downgraded or affected."""
 
     MOCKED_NOW = datetime.datetime(2026, 3, 20, 8, 0, 0)
     SENT_AT = MOCKED_NOW - datetime.timedelta(hours=7)
@@ -691,5 +692,5 @@ async def test_tier3_not_promoted_by_idle_window():
     with patch('services.reminder_service.datetime', MockMorning):
         result = await rs.check_reminder_needed()
         assert result["should_send"] is True
-        assert result["type"] == "sms_emergency"
+        assert result["type"] == "beeminder_emergency_tier3"
         assert result["tier"] == 3  # must remain tier 3

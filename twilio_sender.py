@@ -15,24 +15,9 @@ load_dotenv()
 logger = logging.getLogger("mecris.twilio")
 
 def send_sms(message: str, to_number: Optional[str] = None) -> bool:
-    """Send SMS via Twilio (requires A2P 10DLC registration for US)."""
-    try:
-        account_sid = os.getenv('TWILIO_ACCOUNT_SID')
-        auth_token = os.getenv('TWILIO_AUTH_TOKEN')
-        from_number = os.getenv('TWILIO_FROM_NUMBER')
-        to_number = to_number or os.getenv('TWILIO_TO_NUMBER')
-        
-        if not all([account_sid, auth_token, from_number, to_number]):
-            logger.error("Missing Twilio credentials in environment variables")
-            return False
-        
-        client = Client(account_sid, auth_token)
-        message_obj = client.messages.create(body=message, from_=from_number, to=to_number)
-        logger.info(f"SMS sent: {message_obj.sid}")
-        return True
-    except Exception as e:
-        logger.error(f"Failed to send SMS: {e}")
-        return False
+    """Send SMS via Twilio (DISABLED: requires A2P 10DLC registration which is not active)."""
+    logger.error("SMS attempted but DISABLED: No A2P campaign active. SMS will fail and incur costs.")
+    return False
 
 def send_whatsapp_template(content_sid: str, variables: Dict[str, str], to_number: Optional[str] = None) -> bool:
     """
@@ -186,12 +171,6 @@ def smart_send_message(message: str, to_number: Optional[str] = None) -> dict:
     if delivery_method in ['whatsapp', 'both']:
         if send_message(message, to_number):
             result.update({"sent": True, "method": "whatsapp_freeform"})
-            return result
-
-    # Fallback to SMS
-    if delivery_method in ['sms', 'both']:
-        if send_sms(message, to_number):
-            result.update({"sent": True, "method": "sms"})
             return result
 
     # Final fallback: Console

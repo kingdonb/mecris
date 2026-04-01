@@ -230,7 +230,7 @@ This document summarizes the collaborative debugging session to establish a func
 
 **Next**: Ask kingdonb to update MECRIS_BOT_CLASSIC_PAT to include `repo + workflow` scopes. Once done, re-run `/mecris-pr-test 163` which will pick up the fix in NEXT_SESSION.md.
 
-## 🏛️ 2026-04-01 — Session 4: Nag Ladder Tier field + Tier 3 SMS detection (complete)
+## 🏛️ 2026-04-01 — Session 4: Nag Ladder Tier field + Tier 3 WhatsApp High Urgency detection (complete)
 
 **Planned**: Add explicit `tier` (1/2/3) to all `check_reminder_needed()` return dicts, add Tier 3 detection for goals with runway < 2 hours, update `nag eval` CLI output. (yebyen/mecris#58)
 
@@ -238,7 +238,7 @@ This document summarizes the collaborative debugging session to establish a func
 - Orient: PR #163 still open, no `needs-test`/`pr-review` labels, pr-test fix still blocked on workflow-scope token. Identified kingdonb/mecris#139 (Nag Ladder) as highest-value tractable work.
 - Opened plan yebyen/mecris#58 before touching code.
 - Added `_parse_runway_hours()` to `ReminderService`: parses "N hours" format only; "N days" returns 999 to avoid false Tier 3 triggers.
-- Added Tier 3 check at top of `check_reminder_needed()`: CRITICAL goals with `runway < 2.0 hours` → `sms_emergency` at `tier: 3`, 1h cooldown.
+- Added Tier 3 check at top of `check_reminder_needed()`: CRITICAL goals with `runway < 2.0 hours` → `beeminder_emergency_tier3` at `tier: 3`, 1h cooldown.
 - Added `tier: 1` to `walk_reminder`, `arabic_review_reminder`, `beeminder_emergency`.
 - Added `tier: 2` to `arabic_review_escalation`, `momentum_coaching`.
 - Updated `nag eval` CLI to show "Tier: N" alongside send/no-send status.
@@ -265,3 +265,20 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: Acknowledgement tracking / explicit reset mechanism for escalation state — implicit reset (goal exits CRITICAL → condition never fires) may be sufficient. Needs design decision before next coding slice.
 
 **Next**: Decide if implicit reset is sufficient for Tier 2 ack tracking (document decision as sub-issue of kingdonb/mecris#139). Then either: deploy pr-test fix if MECRIS_BOT_CLASSIC_PAT workflow scope is granted, or continue with Tier 2 ack tracking design.
+
+## 🏛️ 2026-04-01 — Session 6: Removal of undeliverable SMS path (complete)
+
+**Planned**: Remove all SMS fallback logic and Tier 3 SMS emergency path due to missing A2P 10DLC registration. Redefine Tier 3 as WhatsApp High Urgency.
+
+**Done**:
+- Disabled `send_sms` in `twilio_sender.py` with an error log explaining the A2P blocker.
+- Removed SMS fallback from `smart_send_message` in `twilio_sender.py`.
+- Renamed `sms_emergency` to `beeminder_emergency_tier3` in `ReminderService`.
+- Updated Tier 3 logic to use freeform WhatsApp messages for high-urgency alerts (< 2h runway).
+- Updated all unit tests in `tests/test_reminder_service.py` to reflect the new WhatsApp-only reality for Tier 3.
+- Verified all 22 `reminder_service` tests pass.
+- Updated `NEXT_SESSION.md` and `session_log.md` to remove SMS references.
+
+**Skipped**: None.
+
+**Next**: Merge `review-bot-changes` to `main` and deploy.

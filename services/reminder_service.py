@@ -81,22 +81,23 @@ class ReminderService:
         beeminder_alerts = context.get("beeminder_alerts", [])
         critical_goals = [g for g in context.get("goal_runway", []) if g.get("derail_risk") == "CRITICAL"]
 
-        # 0. Tier 3: Goal runway expressed in hours and < 2h remaining → SMS emergency
+        # 0. Tier 3: Goal runway expressed in hours and < 2h remaining → WhatsApp High Urgency
         subhour_critical = [g for g in critical_goals if self._parse_runway_hours(g) < 2.0]
         if subhour_critical:
-            hours_since_sms = await self._get_hours_since_last("sms_emergency", user_id)
-            if hours_since_sms >= 1.0:
+            hours_since_urgent = await self._get_hours_since_last("beeminder_emergency_tier3", user_id)
+            if hours_since_urgent >= 1.0:
                 target = subhour_critical[0]
                 return {
                     "should_send": True,
-                    "type": "sms_emergency",
+                    "type": "beeminder_emergency_tier3",
                     "tier": 3,
+                    "use_template": False, # Use freeform for maximum flexibility/urgency text
                     "fallback_message": (
-                        f"🚨🚨🚨 {target.get('title', target.get('slug'))} derails in under 2 hours — TAKE ACTION NOW."
+                        f"🚨🚨🚨 CRITICAL EMERGENCY: {target.get('title', target.get('slug'))} derails in under 2 hours — TAKE ACTION NOW."
                     )
                 }
             else:
-                return {"should_send": False, "reason": f"SMS emergency on cooldown ({hours_since_sms:.1f}h since last)"}
+                return {"should_send": False, "reason": f"Tier 3 emergency on cooldown ({hours_since_urgent:.1f}h since last)"}
 
         # 1a. Arabic Review Emergency (obnoxious — 2h cooldown, fires before generic)
         arabic_critical = [g for g in critical_goals if g.get("slug") == "reviewstack"]

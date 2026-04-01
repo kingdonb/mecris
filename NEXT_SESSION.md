@@ -17,7 +17,7 @@
 - [x] `beeminder_emergency` escalates to Tier 2 after 7h idle: `tier=2`, `use_template=False`
 - [x] `beeminder_emergency` stays Tier 1 when last sent 5h ago
 - [x] `walk_reminder` escalates to Tier 2 after 7h idle
-- [x] `sms_emergency` (Tier 3) is NOT promoted by idle-window logic (guard: `result.get("tier") != 1`)
+- [x] `beeminder_emergency_tier3` (Tier 3) is NOT promoted by idle-window logic (guard: `result.get("tier") != 1`)
 - [x] 22/22 reminder_service tests pass (17 existing + 5 new)
 
 ## Pending Verification (Next Session)
@@ -96,5 +96,5 @@ Tier 2 generalization is complete for time-based escalation. The next slice is *
 - **gh CLI PR edit scope issue**: `gh pr edit` on kingdonb/mecris fails with `read:org` scope error even with GITHUB_CLASSIC_PAT (repo scope only). Use `gh api --method PATCH /repos/kingdonb/mecris/pulls/{N}` instead.
 - **goal_met semantics**: When `multiplier > 1.0` and `current_debt > 0` but debt rounds to 0 daily target, `goal_met=True` (your per-day contribution is 0, so you automatically meet it). Maintenance mode (1.0x) with debt: `goal_met=False` because target=0 and multiplier is NOT > 1.0. Tests in `test_review_pump.py`.
 - **get_language_stats 8-column query**: Returns `language_name, current_reviews, tomorrow_reviews, next_7_days_reviews, pump_multiplier, daily_completions, beeminder_slug, safebuf`. Test in `test_neon_sync_checker.py`.
-- **Nag Ladder tier semantics**: Tier 1 = WhatsApp template (walk_reminder, arabic_review_reminder, beeminder_emergency). Tier 2 = freeform/escalated (arabic_review_escalation, momentum_coaching; OR any Tier 1 type after 6h idle). Tier 3 = SMS emergency (sms_emergency, fires when runway string contains "hours" and < 2.0h — NOT triggered by "0 days" format). `_parse_runway_hours()` only returns sub-24h for explicit "N hours" strings. `TIER2_IDLE_HOURS = 6.0` in `reminder_service.py`.
+- **Nag Ladder tier semantics**: Tier 1 = WhatsApp template (walk_reminder, arabic_review_reminder, beeminder_emergency). Tier 2 = freeform/escalated (arabic_review_escalation, momentum_coaching; OR any Tier 1 type after 6h idle). Tier 3 = WhatsApp High Urgency (beeminder_emergency_tier3, fires when runway string contains "hours" and < 2.0h — NOT triggered by "0 days" format). `_parse_runway_hours()` only returns sub-24h for explicit "N hours" strings. `TIER2_IDLE_HOURS = 6.0` in `reminder_service.py`.
 - **_apply_tier2_escalation() API**: async helper, called at all 3 Tier 1 return sites. Guards: `result.get("tier") != 1` → passthrough. `_get_hours_since_last()` returns 999.0 when no log_provider or no history → no escalation. Escalation condition: `hours_idle < 999.0 and hours_idle >= TIER2_IDLE_HOURS`.
