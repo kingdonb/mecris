@@ -101,7 +101,11 @@ pub fn get_status(
         } else if target > 0 && daily_completions >= target {
             status = "turbulent";
         }
-        goal_met = if target > 0 { daily_completions >= target } else { debt == 0 };
+        goal_met = if target > 0 || (debt > 0 && multiplier_x10 > 10) { 
+            daily_completions >= target 
+        } else { 
+            debt == 0 
+        };
     }
 
     PumpStatus {
