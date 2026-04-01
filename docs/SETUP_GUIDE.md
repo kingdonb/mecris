@@ -110,7 +110,7 @@ Claude Code can be configured using the `.mcp.json` file in the project root or 
 
 ## 5. Spin Backend Configuration (Cloud)
 
-The Mecris-Go sync service requires specific variables to be set in Fermyon Cloud for OIDC verification and PII encryption.
+The Mecris-Go sync service requires specific variables to be set in Fermyon Cloud for OIDC verification and PII encryption. For detailed OIDC provider setup (Pocket-ID), see [docs/AUTH_CONFIGURATION.md](AUTH_CONFIGURATION.md).
 
 ### Required Secrets
 
