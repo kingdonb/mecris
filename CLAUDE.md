@@ -31,6 +31,16 @@ Mecris is a marathon, not a sprint. We value **depth over velocity**. Your fork 
 **Stop thinking. Start testing. NOW.**
 - Prioritize small, testable tasks.
 - 30-minute cap per task segment.
+
+🛑 **CRITICAL: NO RECURSIVE GLOBAL GREP** 🛑
+- **DO NOT** `grep -r` the entire project root. 
+- **DO NOT** use `grep_search` without a targeted `include_pattern` or `dir_path`.
+- **HIGH-VOLUME PATHS** (Logic is critical, but root-level recursive search will spin tokens):
+  - `.models/` (Giant binaries)
+  - `.venv/`, `**/node_modules/`, `**/target/` (Dependencies/Build artifacts)
+  - `boris-fiona-walker/`, `mecris-go*/` (Active sub-projects with large build/dependency trees)
+- **TARGETED SEARCH MANDATORY**: Always use specific `include_pattern` (e.g., `**/*.py`, `**/*.rs`) or focus on `src/` subdirectories. 
+
 - **NO THROWAWAY SCRIPTS**: Any script generated to fix a problem or gather data must be committed to `scripts/` and then moved to `attic/scripts/` if it is no longer needed. Never `rm` a functional diagnostic or repair script.
 - **Consult `TDG.md` for specific test commands** (e.g., `PYTHONPATH=. .venv/bin/pytest`).
 - Use `Skill(tdg:atomic)` after coding sessions.
