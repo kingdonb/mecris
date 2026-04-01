@@ -20,11 +20,12 @@ def test_arabic_heuristic_conversion():
     assert daily_done_cards == 7  # 120/16=7, not 120/12=10 (which caused early-switch bug)
 
     pump = ReviewPump(multiplier=2.0)  # 14 days
-    # 140 debt -> target = 10 cards.
+    # 140 debt -> total target = 10 cards.
+    # 120 points -> 7 estimated cards -> remaining = 10 - 7 = 3.
     # 120 points -> 7 estimated cards -> below target -> NOT turbulent (Arabic still needs work)
     status = pump.get_status(current_debt=140, tomorrow_liability=0, daily_completions=daily_done_cards, unit="cards")
     assert status["current_flow_rate"] == 7
-    assert status["target_flow_rate"] == 10
+    assert status["target_flow_rate"] == 3
     assert status["status"] != "turbulent"  # Not done: prevents premature switch to Greek
     assert status["unit"] == "cards"
 
