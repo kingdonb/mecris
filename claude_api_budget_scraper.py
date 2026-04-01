@@ -134,6 +134,7 @@ class ClaudeConsoleScraper:
         implementation_notes = {
             "approach": "Web scraping Anthropic Console billing page",
             "tools": ["playwright", "selenium", "requests + beautifulsoup"],
+            "notes": "Reference: https://community.groq.com/t/add-api-endpoint-to-fetch-billing-and-usage-data/378 (Explains why we avoid scraping Groq due to Google SSO and lack of API)",
             "steps": [
                 "1. Load or establish authenticated session",
                 "2. Navigate to https://console.anthropic.com/settings/billing",

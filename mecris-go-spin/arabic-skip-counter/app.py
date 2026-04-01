@@ -81,18 +81,7 @@ def _count_reminders(neon_url: str, user_id: str, hours: int) -> int:
 
 
 def _parse_query_params(path_with_query: str) -> dict:
-    """Extract query parameters from a URL path+query string.
-
-    Returns a flat dict of {key: first_value}.
-    Returns {} if there is no query string or path_with_query is empty/None.
-
-    Examples:
-        "/internal/arabic-skip-count?user_id=yebyen&hours=24"
-        -> {"user_id": "yebyen", "hours": "24"}
-
-        "/internal/arabic-skip-count"
-        -> {}
-    """
+    """Extract query parameters from a URL path+query string."""
     if not path_with_query or "?" not in path_with_query:
         return {}
     _, query = path_with_query.split("?", 1)
@@ -112,9 +101,6 @@ def _error_json(message: str) -> bytes:
 
 # ---------------------------------------------------------------------------
 # HTTP handler — operational inside the WASM runtime only.
-# spin_sdk is provided by componentize-py at build time (from requirements.txt).
-# Outside the WASM runtime (e.g. in pytest), the import fails gracefully and
-# helper functions above are still importable and testable.
 # ---------------------------------------------------------------------------
 try:
     from spin_sdk.http import IncomingHandler as _SpinHandler, Request, Response
@@ -159,7 +145,11 @@ try:
                     _error_json("internal error"),
                 )
 
+    def handle_request(request):
+        """Top-level entry point for spin py2wasm."""
+        return IncomingHandler().handle(request)
+
 except ImportError:
-    # Not inside the WASM runtime — IncomingHandler is unavailable.
-    # Tests import this module directly and call the helper functions above.
-    pass
+    # Fail gracefully outside WASM runtime
+    def handle_request(request):
+        raise NotImplementedError("handle_request requires WASM runtime (spin_sdk)")
