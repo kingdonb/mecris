@@ -183,3 +183,19 @@ This document summarizes the collaborative debugging session to establish a func
 - **Merged `yebyen/main`**: Pulled and reviewed the latest changes from the autonomous worker, resolving the WASM build blocker.
 
 **Next**: Push all changes to `origin/main` and confirm the deployment status in Fermyon Cloud.
+
+## 🏛️ 2026-04-01 — Test coverage audit for kingdonb review-pump + language-velocity fixes
+
+**Planned**: Audit test coverage for 5 commits kingdonb pushed today (dc2e1fe→f62ad68): review-pump goal_met refinement, GREEK canonical goal, language-velocity safebuf/beeminder_slug columns. Add targeted pytest cases. (yebyen/mecris#55)
+
+**Done**:
+- Read all 5 kingdonb commits and identified 3 coverage gaps.
+- Added `test_goal_met_when_debt_rounds_to_zero_target_with_aggressive_multiplier` — covers fix 5cb1397: small debt with multiplier > 1.0 rounds target to 0, goal_met=True.
+- Added `test_goal_met_false_in_maintenance_mode_with_outstanding_debt` — regression guard for maintenance-mode debt path.
+- Added `test_get_language_stats_includes_beeminder_slug_and_safebuf` — covers fix f62ad68: 8-column DB query returns new fields.
+- Fixed pre-existing wrong assertion in `test_system_overdrive` (target_flow_rate is remaining work, not total target).
+- Committed as ec4d578. 13/13 pass in the two touched test files.
+
+**Skipped**: GREEK canonical test — Rust sync-service (9d90f69) cannot be unit-tested from Python. No open issues remain on either repo. Phase 1.7 WASM build still blocked on CI environment.
+
+**Next**: WASM build validation in a deployment environment with `spin` + `componentize-py 0.21.0`. `spin py2wasm app -o arabic-skip-counter.wasm` in `mecris-go-spin/arabic-skip-counter/`, then live curl test.
