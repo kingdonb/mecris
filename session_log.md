@@ -213,3 +213,19 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: Nothing unblocked was skipped. WASM build validation still requires live Spin CLI unavailable in CI. Issue #122 (Android) and Issue #132 (live Spin/Neon) remain out of scope for bot.
 
 **Next**: Check if kingdonb/mecris#163 has been reviewed/merged. If merged, confirm yebyen/mecris sync state. WASM build validation in a deployment environment with `spin` + `componentize-py 0.21.0`.
+
+## 🏛️ 2026-04-01 — Session 3: pr-test fork-PR bug diagnosis (partial)
+
+**Planned**: Dispatch pr-test against kingdonb/mecris#163 and post results as a comment. (yebyen/mecris#57)
+
+**Done**:
+- Ran full orient: PR #163 still open, no labels, no CI run, no upstream activity since session 2.
+- Dispatched pr-test twice (runs #23863414611 and #23863517252). Both failed at "Fetch and merge upstream PR branch" step.
+- Root cause confirmed: `pr-test.yml` always tries `git merge upstream/${PR_BRANCH}`. PR #163 head is on yebyen/mecris (fork), so the branch doesn't exist in `upstream` (kingdonb/mecris) — it's in `origin`.
+- Fix identified: detect `head.repo.full_name` from PR API; use `git fetch origin ${PR_BRANCH}` if head is yebyen. The checkout's `fetch-depth: 0` already fetches all origin branches, so it's available.
+- Committed fix locally as 412f032 but could not push: both PATs lack `workflow` scope required by GitHub to modify `.github/workflows/` files. Reverted 412f032 to avoid breaking the mecris-bot.yml push step.
+- Posted blocker comment on kingdonb/mecris#163 explaining the token scope issue.
+
+**Skipped**: Deploying the pr-test fix — blocked on `workflow` scope in MECRIS_BOT_CLASSIC_PAT. PR #163 cannot be auto-tested until kingdonb updates the secret.
+
+**Next**: Ask kingdonb to update MECRIS_BOT_CLASSIC_PAT to include `repo + workflow` scopes. Once done, re-run `/mecris-pr-test 163` which will pick up the fix in NEXT_SESSION.md.
