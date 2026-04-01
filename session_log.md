@@ -168,3 +168,18 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: Code work — nothing unblocked. WASM build still blocked on CI environment. PR #161 still awaiting kingdonb review.
 
 **Next**: WASM build validation in a deployment environment with `spin` + `componentize-py 0.21.0`. `spin py2wasm app -o arabic-skip-counter.wasm` in `mecris-go-spin/arabic-skip-counter/`, then live curl test. Await kingdonb/mecris#161 review/merge.
+
+## 2026-03-31 — Fix: arabic-skip-counter WASM build and Documentation Update
+
+**Planned**: Resolve the `AttributeError: module 'app' has no attribute 'handle_request'` during the `spin py2wasm` build and update project documentation.
+
+**Done**:
+- **Fixed `arabic-skip-counter` WASM build**: Added the `handle_request` top-level entry point to `mecris-go-spin/arabic-skip-counter/app.py`, as required by the `spin py2wasm` toolchain.
+- **Verified WASM build**: Successfully compiled `arabic-skip-counter.wasm` using the `spin py2wasm` plugin.
+- **Updated `GEMINI.md`**: Added a new mandate: **NO RECURSIVE GLOBAL GREP**. This prevents performance issues and unnecessary context usage in large directories.
+- **Updated `docs/SETUP_GUIDE.md`**: Added a dedicated section for Playwright installation (`.venv/bin/python3 -m playwright install`) to resolve "missing browser binaries" errors during automated scrapers.
+- **Documented Groq Scraping Decision**: Added a reference to the [Groq community thread](https://community.groq.com/t/add-api-endpoint-to-fetch-billing-and-usage-data/378) in `fetch_groq_usage.py` and `claude_api_budget_scraper.py` to explain the intentional avoidance of scraping Groq due to Google SSO and the lack of an official API.
+- **Verified `trigger_language_sync`**: Confirmed that the Clozemaster-to-Beeminder sync is fully functional after the Playwright installation.
+- **Merged `yebyen/main`**: Pulled and reviewed the latest changes from the autonomous worker, resolving the WASM build blocker.
+
+**Next**: Push all changes to `origin/main` and confirm the deployment status in Fermyon Cloud.
