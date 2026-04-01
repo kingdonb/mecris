@@ -742,9 +742,15 @@ async fn handle_languages_get(req: Request) -> anyhow::Result<Response> {
     }
 
     let mut languages: Vec<LanguageStat> = row_set.rows.iter().map(|row| {
+        let name = match &row[0] { DbValue::Str(s) => s.clone(), _ => "".to_string() };
         let slug = match &row[8] { DbValue::Str(s) => Some(s.clone()), _ => None };
+        
+        // Canonical/Autodata goals (GREEK) should be treated as having a goal even without a sync slug.
+        let is_canonical = name.to_uppercase() == "GREEK";
+        let has_goal = is_canonical || slug.as_ref().map_or(false, |s| !s.is_empty());
+        
         LanguageStat {
-            name: match &row[0] { DbValue::Str(s) => s.clone(), _ => "".to_string() },
+            name,
             current: match &row[1] { DbValue::Int32(i) => *i, _ => 0 },
             tomorrow: match &row[2] { DbValue::Int32(i) => *i, _ => 0 },
             next_7_days: match &row[3] { DbValue::Int32(i) => *i, _ => 0 },
@@ -752,7 +758,7 @@ async fn handle_languages_get(req: Request) -> anyhow::Result<Response> {
             safebuf: match &row[5] { DbValue::Int32(i) => *i, _ => 0 },
             derail_risk: match &row[6] { DbValue::Str(s) => s.clone(), _ => "SAFE".to_string() },
             pump_multiplier: match &row[7] { DbValue::Floating64(f) => *f, _ => 1.0 },
-            has_goal: slug.as_ref().map_or(false, |s| !s.is_empty()),
+            has_goal,
             daily_completions: match &row[9] { DbValue::Int32(i) => *i, _ => 0 },
         }
     }).collect();
