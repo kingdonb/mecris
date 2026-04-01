@@ -1,11 +1,11 @@
 # Next Session: Phase 1.6 WASM Build Validation — HTTP trigger for arabic-skip-counter
 
-## Current Status (Tuesday, March 31, 2026)
+## Current Status (Wednesday, April 1, 2026)
 - **Phase 1.6 code COMPLETE**: `app.py`, `world.wit`, `spin.toml`, `requirements.txt` all updated. Committed at `6e93e9b`.
 - **34/34 tests pass**: 5 `_count_reminders` + 7 `_parse_query_params` + 4 helpers + 13 reminder_service + 5 arabic_skip_count.
-- **Sync PR open**: kingdonb/mecris#161 (yebyen→kingdonb, Phase 1.5b+1.6 work — awaiting review).
+- **Sync PR updated**: kingdonb/mecris#161 title and body now accurately reflect Phase 1.5b + 1.6 (updated this session). Awaiting kingdonb review.
 - **WASM build NOT run**: `spin py2wasm` and `componentize-py` unavailable in CI runner. Code is correct but unbuilt.
-- **Conventions documented**: `docs/LOGIC_VACUUMING_CANDIDATES.md` now has "componentize-py Class Naming Conventions" section. Committed at `53e65b0`.
+- **Conventions documented**: `docs/LOGIC_VACUUMING_CANDIDATES.md` has "componentize-py Class Naming Conventions" section. Committed at `53e65b0`.
 
 ## Verified This Session
 - [x] Identity Check: 🏛️ Canary active.
@@ -16,6 +16,8 @@
 - [x] 34/34 Python unit tests pass (no regressions from Phase 1.5b's 24 tests).
 - [x] Sync PR kingdonb/mecris#161 opened carrying Phase 1.5b+1.6 work.
 - [x] componentize-py `WitWorld` / `IncomingHandler` naming conventions documented in `docs/LOGIC_VACUUMING_CANDIDATES.md` (yebyen/mecris#51, `53e65b0`).
+- [x] PR kingdonb/mecris#161 title updated to `feat(phase-1.5b+1.6): arabic_skip_counter WASM component + HTTP trigger wrapper` (yebyen/mecris#52).
+- [x] PR kingdonb/mecris#161 description updated: both Phase 1.5b and 1.6 deliverables listed, 34/34 test plan, "Next" updated to Phase 1.7.
 
 ## Pending Verification (Next Session)
 - **Phase 1.6 WASM build**: In a deployment environment with `spin` CLI and `componentize-py 0.21.0`:
@@ -31,8 +33,7 @@
   # Expected: {"skip_count": <int>}
   ```
 - **spin_sdk API compatibility**: The `IncomingHandler.handle(self, request: Request) -> Response` signature is based on `spin-sdk>=3.0.0` docs. Verify `request.uri` attribute is correct (may be `request.url` in some versions).
-- **Sync PR kingdonb/mecris#161**: Await kingdonb review/merge. Head SHA is `01e14b0` — carries both Phase 1.5b and Phase 1.6 code.
-- **Phase 1.6 PR to kingdonb**: Current PR #161 covers both phases. After WASM validates, confirm no second PR is needed (or open a focused one if kingdonb prefers).
+- **Sync PR kingdonb/mecris#161**: Await kingdonb review/merge. Head SHA is `f41b33e` — carries Phase 1.5b, Phase 1.6, and convention docs.
 - **ARABIC BACKLOG**: `reviewstack` goal (2,426 cards) — live Beeminder status unknown. User must check manually. If still CRITICAL, do Arabic reviews now.
 - **Dedicated WhatsApp template for escalation**: `arabic_review_escalation` reuses `urgency_template_sid` (urgency_alert_v2). Need a dedicated template with skip count in the message. Out-of-band user work (Twilio console).
 - **Issue #122** (Android multiplier race) — still unaddressed. Needs Android UI work.
@@ -57,9 +58,10 @@
 - MCP handler pattern: `if guard and guard.get("budget_halted"): return guard`
 - Logic Vacuuming: ReviewPump is Phase 1 (Rust, done). BudgetGovernor is Phase 2. Phase 1.5 split: 1.5a (psycopg2→httpx, DONE) and 1.5b (componentize-py WASM wrap, DONE). Phase 1.6 = HTTP wrapper (code done, WASM build pending). See `docs/LOGIC_VACUUMING_CANDIDATES.md`.
 - **Phase 1.5a implementation detail**: Neon HTTP URL derived from postgres:// URL by parsing host, constructing `https://{host}/sql`, Basic auth = `base64(user:password)`. SQL uses OR params not ANY array.
-- **Token scope**: GITHUB_TOKEN (fine-grained, yebyen/mecris only). Cannot comment on kingdonb/mecris issues. Use GITHUB_CLASSIC_PAT for workflow dispatch and cross-repo PRs.
-- **arabic_review_reminder**: Plan spec on yebyen/mecris#37. Phase 2 on yebyen/mecris#40. MCP wire-up on yebyen/mecris#41 (CLOSED). Phase 3 on yebyen/mecris#42 (CLOSED). skip_count_provider on yebyen/mecris#43 (CLOSED). Sync PR on yebyen/mecris#44 (CLOSED). componentize-py research on yebyen/mecris#45 (CLOSED). Phase 1.5a on yebyen/mecris#46 (CLOSED). Phase 1.5b on yebyen/mecris#48 (CLOSED). Phase 1.6 on yebyen/mecris#50 (partial — WASM build pending). Convention docs on yebyen/mecris#51 (CLOSED).
+- **Token scope**: GITHUB_TOKEN (fine-grained, yebyen/mecris only). Cannot comment on kingdonb/mecris issues. Use GITHUB_CLASSIC_PAT for workflow dispatch, cross-repo PRs, and PR edits on kingdonb/mecris.
+- **arabic_review_reminder**: Plan spec on yebyen/mecris#37. Phase 2 on yebyen/mecris#40. MCP wire-up on yebyen/mecris#41 (CLOSED). Phase 3 on yebyen/mecris#42 (CLOSED). skip_count_provider on yebyen/mecris#43 (CLOSED). Sync PR on yebyen/mecris#44 (CLOSED). componentize-py research on yebyen/mecris#45 (CLOSED). Phase 1.5a on yebyen/mecris#46 (CLOSED). Phase 1.5b on yebyen/mecris#48 (CLOSED). Phase 1.6 on yebyen/mecris#50 (CLOSED — WASM build pending in live env). Convention docs on yebyen/mecris#51 (CLOSED). PR description fix on yebyen/mecris#52 (CLOSED).
 - **velocity_provider API**: `ReminderService(context_provider, coaching_provider, log_provider=None, velocity_provider=None, skip_count_provider=None)`. velocity_provider called as `await velocity_provider(user_id)` → dict with key `"arabic"` containing `{"target_flow_rate": int, ...}`. skip_count_provider called as `await skip_count_provider(user_id)` → int (consecutive ignored Arabic cycles). Both fully wired in production mcp_server.py.
 - **skip_count logic**: `services/arabic_skip_counter.py` uses Neon HTTP API (httpx). Counts `arabic_review_reminder` + `arabic_review_escalation` rows in `message_log` for the last 24h. SQL: `SELECT COUNT(*) FROM message_log WHERE (type = $1 OR type = $2) AND user_id = $3 AND sent_at >= $4`. Resets naturally when `reviewstack` is no longer CRITICAL.
 - **Test runner in CI**: `uv` is not installed in the runner environment. Use `pip install pytest pytest-asyncio` then `PYTHONPATH=. python -m pytest` (not `.venv/bin/pytest`).
 - **arabic-skip-counter test target files**: `tests/test_reminder_service.py tests/test_arabic_skip_count.py tests/test_arabic_skip_counter_component.py` (34 tests total).
+- **gh CLI PR edit scope issue**: `gh pr edit` on kingdonb/mecris fails with `read:org` scope error even with GITHUB_CLASSIC_PAT (repo scope only). Use `gh api --method PATCH /repos/kingdonb/mecris/pulls/{N}` instead.

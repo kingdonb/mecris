@@ -139,3 +139,17 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: WASM build/live test (blocked — no `spin` CLI in CI). Phase 1.6 PR to kingdonb (gated on WASM validation; existing PR #161 carries both 1.5b+1.6 code).
 
 **Next**: WASM build validation in a deployment environment with `spin` + `componentize-py 0.21.0`. Then confirm kingdonb/mecris#161 review/merge path.
+
+## 2026-04-01 — Update PR #161 to reflect Phase 1.5b + 1.6 content
+
+**Planned**: Update kingdonb/mecris#161 title and description to accurately reflect that it carries Phase 1.5b WASM component AND Phase 1.6 HTTP trigger wrapper, since PR was opened before Phase 1.6 commits landed. (yebyen/mecris#52)
+
+**Done**:
+- Updated PR #161 title: `feat(phase-1.5b+1.6): arabic_skip_counter WASM component + HTTP trigger wrapper`.
+- Rewrote PR body: Phase 1.5b and 1.6 deliverables listed separately, 34/34 test plan checklist, "Next" updated to Phase 1.7 WASM validation.
+- Used `gh api --method PATCH` (REST) rather than `gh pr edit` — `gh pr edit` fails with GITHUB_CLASSIC_PAT (repo-only scope) due to `read:org` requirement in GraphQL.
+- Noted token scope workaround in NEXT_SESSION.md Infrastructure Notes.
+
+**Skipped**: Nothing — task was tight and complete. WASM build validation still blocked (no `spin` CLI in CI runner).
+
+**Next**: WASM build validation in deployment environment. `spin py2wasm app -o arabic-skip-counter.wasm` in `mecris-go-spin/arabic-skip-counter/`, then live curl test. Await kingdonb/mecris#161 review/merge.
