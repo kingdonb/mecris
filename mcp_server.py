@@ -603,6 +603,9 @@ async def get_language_velocity_stats(user_id: str = None) -> Dict[str, Any]:
             pump = ReviewPump(multiplier=multiplier)
             pump_status = pump.get_status(current_debt, tomorrow_liability, daily_done, unit=unit)
             
+            # Surface safebuf (lead time) from DB
+            pump_status["safebuf"] = stats.get("safebuf", 0)
+            
             # Unit/Goal Classification:
             # - Arabic: Has a "Reviewstack" goal (explicitly tracked/synced)
             # - Greek: Has a "Canonical" points goal (autodata, no sync needed)
