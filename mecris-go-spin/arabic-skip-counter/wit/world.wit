@@ -1,0 +1,19 @@
+package mecris:arabic-skip-counter@0.1.0;
+
+/// Arabic skip counter HTTP component — Phase 1.6.
+///
+/// Route: GET /internal/arabic-skip-count?user_id=<id>&hours=<n>
+/// Returns JSON: {"skip_count": <u32>}
+///
+/// Reads neon_db_url from Spin variables.
+/// Implemented with spin_sdk HTTP incoming-handler (Python / componentize-py).
+///
+/// Build command (in spin.toml):
+///   pip install -r requirements.txt && spin py2wasm app -o arabic-skip-counter.wasm
+///
+/// Note: Phase 1.5b used a function-export world (count-arabic-reminders func).
+/// Phase 1.6 replaces it with the HTTP incoming-handler world so the component
+/// is callable as a Spin route rather than requiring component-to-component linking.
+world arabic-skip-counter {
+  export wasi:http/incoming-handler@0.2.0;
+}

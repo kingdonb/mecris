@@ -6,6 +6,15 @@ IMPORTANT: This is a temporary solution until Groq releases a billing API.
 Use sparingly to avoid ToS issues. Cache results aggressively.
 """
 
+"""
+Groq Usage Scraper (Proof of Concept)
+
+NOTE: This scraper is difficult to maintain due to Groq's use of Google SSO 
+and the lack of an official billing API. We intentionally avoid importing 
+private APIs or extensive scraping where possible.
+Reference: https://community.groq.com/t/add-api-endpoint-to-fetch-billing-and-usage-data/378
+"""
+
 import os
 import json
 import logging

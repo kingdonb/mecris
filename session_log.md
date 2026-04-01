@@ -85,3 +85,101 @@ This document summarizes the collaborative debugging session to establish a func
 - Verified fix with dry-run: Greek with 0 debt/liability now shows `target_flow_rate: 0` and `goal_met: True`, ensuring Arabic (untouched) is surfaced first.
 
 **Next**: Permanent fixes for Greek data corruption and Review Pump UX bug are now implemented, committed, pushed to `yebyen/main`, and deployed to Fermyon Cloud.
+
+## 2026-03-31 — Phase 1.5b: componentize-py WASM component for arabic_skip_counter
+
+**Planned**: Set up componentize-py toolchain, write WIT interface for arabic_skip_counter, produce a `.wasm` artifact in `mecris-go-spin/arabic-skip-counter/`. (yebyen/mecris#48)
+
+**Done**:
+- Installed `componentize-py 0.21.0` via pip (24MB wheel, works in GitHub Actions runner).
+- Created `mecris-go-spin/arabic-skip-counter/wit/world.wit`: exports `count-arabic-reminders(neon-url: string, user-id: string, hours: u32) -> u32`.
+- Generated Python bindings via `componentize-py bindings` (produced `wit_world/` stub package).
+- Discovered key naming convention: concrete `WitWorld` class in `app.py` must NOT inherit from the generated abstract Protocol — it must be a fresh concrete class with the same name. This resolves the `AssertionError: TypeError: Can't instantiate abstract class WitWorld` build error.
+- Built `arabic-skip-counter.wasm` (43MB, CPython + httpx embedded) — valid WebAssembly component.
+- Added `[component.arabic-skip-counter]` to `spin.toml` with build command and `allowed_outbound_hosts = ["https://*.neon.tech"]`.
+- Added `mecris-go-spin/arabic-skip-counter/.gitignore` to exclude WASM artifacts and generated stubs.
+- Wrote 6 unit tests in `tests/test_arabic_skip_counter_component.py` — all pass.
+- 24/24 total tests pass (no regressions).
+
+**Skipped**: HTTP trigger wrapper (Phase 1.6) — current WIT is a function-export world, not an HTTP component. Deliberate: validates the componentize-py pipeline first; HTTP route is the next increment. `spin call` invocation not tested (spin CLI not installed in runner).
+
+**Next**: Open sync PR to kingdonb/mecris carrying Phase 1.5b. Then Phase 1.6: HTTP wrapper for `/internal/arabic-skip-count` route.
+
+## 2026-03-31 — Phase 1.6: HTTP trigger wrapper for arabic-skip-counter
+
+**Planned**: Add HTTP trigger wrapper for `arabic-skip-counter` — rewrite WIT to WASI HTTP incoming-handler, implement IncomingHandler class, add `neon_db_url` Spin variable, register `GET /internal/arabic-skip-count` route. (yebyen/mecris#50)
+
+**Done**:
+- Opened sync PR kingdonb/mecris#161 (yebyen→kingdonb, Phase 1.5b WASM work — pending review).
+- Rewrote `world.wit` to WASI HTTP incoming-handler world (wasi:http/incoming-handler@0.2.0), replacing function-export world.
+- Rewrote `app.py`: added `_parse_query_params()`, `_json_response()`, `_error_json()` helper functions; added `IncomingHandler` class using `spin_sdk` (guarded with `try/except ImportError` for CI testability).
+- Added `spin-sdk>=3.0.0` to `requirements.txt`.
+- Updated `spin.toml`: added `[[trigger.http]]` for `/internal/arabic-skip-count`, added `neon_db_url` to `[variables]`, bound variable in `[component.arabic-skip-counter.variables]`, changed build command to `spin py2wasm app -o arabic-skip-counter.wasm`.
+- Replaced 6 `WitWorld` tests with 16 helper-function tests. Total suite: 34/34 passing (up from 24).
+- Committed at `6e93e9b`.
+
+**Skipped**: WASM build (`spin py2wasm`) and live HTTP validation (`curl`) — `spin` CLI and `componentize-py` binary not available in CI runner. Also skipped: verify `request.uri` attribute name in spin_sdk>=3.0.0 (may be `request.url`); document componentize-py conventions in `docs/LOGIC_VACUUMING_CANDIDATES.md`.
+
+**Next**: In deployment environment: `pip install -r requirements.txt && spin py2wasm app -o arabic-skip-counter.wasm`, then `curl "http://localhost:3000/internal/arabic-skip-count?user_id=yebyen&hours=24"`. Confirm `{"skip_count": <int>}` response. Open Phase 1.6 sync PR to kingdonb once WASM validates.
+
+## 2026-03-31 — Document componentize-py WitWorld/IncomingHandler conventions
+
+**Planned**: Add "componentize-py Class Naming Conventions" section to `docs/LOGIC_VACUUMING_CANDIDATES.md` covering WitWorld (function-export world) and IncomingHandler (HTTP world) patterns, including try/except ImportError CI guard. (yebyen/mecris#51)
+
+**Done**:
+- Added 65-line section to `docs/LOGIC_VACUUMING_CANDIDATES.md` under Candidate 3 covering:
+  - Function-export world: fresh concrete `WitWorld` class, no inheritance from generated Protocol.
+  - HTTP world: `IncomingHandler(spin_sdk.http.IncomingHandler)`, `try/except ImportError` guard, all logic outside the class for CI testability.
+  - `request.uri` attribute note (verify against installed spin-sdk version).
+  - Build command reference table for both world types.
+  - Rationale: why names are fixed (toolchain binding shim lookup by class name).
+- Committed at `53e65b0`. Plan issue yebyen/mecris#51 closed.
+- NEXT_SESSION.md updated: componentize-py convention item moved from Pending to Verified.
+
+**Skipped**: WASM build/live test (blocked — no `spin` CLI in CI). Phase 1.6 PR to kingdonb (gated on WASM validation; existing PR #161 carries both 1.5b+1.6 code).
+
+**Next**: WASM build validation in a deployment environment with `spin` + `componentize-py 0.21.0`. Then confirm kingdonb/mecris#161 review/merge path.
+
+## 2026-04-01 — Update PR #161 to reflect Phase 1.5b + 1.6 content
+
+**Planned**: Update kingdonb/mecris#161 title and description to accurately reflect that it carries Phase 1.5b WASM component AND Phase 1.6 HTTP trigger wrapper, since PR was opened before Phase 1.6 commits landed. (yebyen/mecris#52)
+
+**Done**:
+- Updated PR #161 title: `feat(phase-1.5b+1.6): arabic_skip_counter WASM component + HTTP trigger wrapper`.
+- Rewrote PR body: Phase 1.5b and 1.6 deliverables listed separately, 34/34 test plan checklist, "Next" updated to Phase 1.7 WASM validation.
+- Used `gh api --method PATCH` (REST) rather than `gh pr edit` — `gh pr edit` fails with GITHUB_CLASSIC_PAT (repo-only scope) due to `read:org` requirement in GraphQL.
+- Noted token scope workaround in NEXT_SESSION.md Infrastructure Notes.
+
+**Skipped**: Nothing — task was tight and complete. WASM build validation still blocked (no `spin` CLI in CI runner).
+
+**Next**: WASM build validation in deployment environment. `spin py2wasm app -o arabic-skip-counter.wasm` in `mecris-go-spin/arabic-skip-counter/`, then live curl test. Await kingdonb/mecris#161 review/merge.
+
+## 🏛️ 2026-04-01 — Health report: orientation only, no unblocked work
+
+**Planned**: Document Phase 1.6/1.7 blocked state and archive cleanly. (yebyen/mecris#53)
+
+**Done**:
+- Ran full orient: confirmed yebyen/mecris 7 commits ahead of kingdonb via open PR #161 (awaiting review).
+- Confirmed no labeled issues (needs-test/pr-review/bug) in either repo.
+- Confirmed no bot-accessible code work unblocked: Phase 1.7 requires live Spin CLI (unavailable in CI), issue #122 is Android UI work, issue #132 needs live Neon/Spin verification.
+- Opened health report plan issue yebyen/mecris#53 (closed at archive).
+- Updated NEXT_SESSION.md to reflect 2026-04-01 orientation status.
+
+**Skipped**: Code work — nothing unblocked. WASM build still blocked on CI environment. PR #161 still awaiting kingdonb review.
+
+**Next**: WASM build validation in a deployment environment with `spin` + `componentize-py 0.21.0`. `spin py2wasm app -o arabic-skip-counter.wasm` in `mecris-go-spin/arabic-skip-counter/`, then live curl test. Await kingdonb/mecris#161 review/merge.
+
+## 2026-03-31 — Fix: arabic-skip-counter WASM build and Documentation Update
+
+**Planned**: Resolve the `AttributeError: module 'app' has no attribute 'handle_request'` during the `spin py2wasm` build and update project documentation.
+
+**Done**:
+- **Fixed `arabic-skip-counter` WASM build**: Added the `handle_request` top-level entry point to `mecris-go-spin/arabic-skip-counter/app.py`, as required by the `spin py2wasm` toolchain.
+- **Verified WASM build**: Successfully compiled `arabic-skip-counter.wasm` using the `spin py2wasm` plugin.
+- **Updated `GEMINI.md`**: Added a new mandate: **NO RECURSIVE GLOBAL GREP**. This prevents performance issues and unnecessary context usage in large directories.
+- **Updated `docs/SETUP_GUIDE.md`**: Added a dedicated section for Playwright installation (`.venv/bin/python3 -m playwright install`) to resolve "missing browser binaries" errors during automated scrapers.
+- **Documented Groq Scraping Decision**: Added a reference to the [Groq community thread](https://community.groq.com/t/add-api-endpoint-to-fetch-billing-and-usage-data/378) in `fetch_groq_usage.py` and `claude_api_budget_scraper.py` to explain the intentional avoidance of scraping Groq due to Google SSO and the lack of an official API.
+- **Verified `trigger_language_sync`**: Confirmed that the Clozemaster-to-Beeminder sync is fully functional after the Playwright installation.
+- **Merged `yebyen/main`**: Pulled and reviewed the latest changes from the autonomous worker, resolving the WASM build blocker.
+
+**Next**: Push all changes to `origin/main` and confirm the deployment status in Fermyon Cloud.

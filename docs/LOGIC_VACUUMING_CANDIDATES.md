@@ -255,6 +255,71 @@ This is the spirit of kingdonb/mecris#157: **zero-rewrite migration** is achieva
 pure-logic and I/O-abstracted services. Only services with C extension runtime
 dependencies (psycopg2) require I/O layer replacement — the Python *logic* is preserved.
 
+### componentize-py Class Naming Conventions
+
+Two distinct patterns exist depending on the WIT world type. These are non-obvious and
+were learned the hard way in Phase 1.5b/1.6.
+
+#### Function-Export World (e.g., `arabic-skip-counter`)
+
+The concrete implementation class **must** be named `WitWorld`.
+
+- The `componentize-py` toolchain generates an abstract `WitWorld` Protocol class from the WIT interface
+- Define a **fresh concrete class** named `WitWorld` — do **not** inherit from the generated abstract `WitWorld`
+- Example (from `mecris-go-spin/arabic-skip-counter/app.py`):
+
+```python
+class WitWorld:
+    def count_reminders(self, user_id: str, hours: float) -> int:
+        # implementation
+        ...
+```
+
+This naming is mandatory. The componentize-py binding generator looks for a class named
+`WitWorld` at the module root to wire up the WIT exports.
+
+#### HTTP World (`http-trigger`, `spin_sdk.http.IncomingHandler`)
+
+The concrete implementation class **must** be named `IncomingHandler` and **must** inherit
+from `spin_sdk.http.IncomingHandler`.
+
+```python
+try:
+    from spin_sdk.http import IncomingHandler, Request, Response
+
+    class IncomingHandler(IncomingHandler):
+        def handle(self, request: Request) -> Response:
+            # parse request.uri, dispatch, return Response(...)
+            ...
+except ImportError:
+    pass  # spin_sdk unavailable outside WASM runtime — guard enables CI testability
+```
+
+Key points:
+- The `try/except ImportError` guard is **required** for CI testability — `spin_sdk` is not
+  available in plain Python/pytest environments (only inside the WASM runtime)
+- All pure logic (query parsing, JSON construction, DB calls) must live **outside** the
+  `IncomingHandler` class so unit tests can import and exercise them without the WASM runtime
+- The `handle(self, request: Request) -> Response` signature is the entrypoint
+- Use `request.uri` for the full URI string (not `.url`) — verify this against the installed
+  `spin-sdk` version, as the attribute name has varied across releases
+
+#### Why These Names Are Fixed
+
+The componentize-py toolchain generates binding shims that look for specific class names in
+the module root (`WitWorld` for function-export worlds, `IncomingHandler` for HTTP worlds).
+Deviating from them produces silent failures at build time — no Python-level exceptions.
+
+#### Build Commands (Phase 1.6 reference)
+
+| World type | Build command |
+|---|---|
+| Function-export (`WitWorld`) | `componentize-py --wit-path wit --world arabic-skip-counter componentize app -o arabic-skip-counter.wasm` |
+| HTTP trigger (`IncomingHandler`) | `spin py2wasm app -o arabic-skip-counter.wasm` |
+
+Note: Phase 1.6 uses `spin py2wasm` (the `spin-python-sdk` toolchain), which wraps
+`componentize-py` internally and wires up the Spin HTTP trigger automatically.
+
 ---
 
 ## Recommended Migration Sequence
