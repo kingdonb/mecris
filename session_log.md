@@ -229,3 +229,22 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: Deploying the pr-test fix — blocked on `workflow` scope in MECRIS_BOT_CLASSIC_PAT. PR #163 cannot be auto-tested until kingdonb updates the secret.
 
 **Next**: Ask kingdonb to update MECRIS_BOT_CLASSIC_PAT to include `repo + workflow` scopes. Once done, re-run `/mecris-pr-test 163` which will pick up the fix in NEXT_SESSION.md.
+
+## 🏛️ 2026-04-01 — Session 4: Nag Ladder Tier field + Tier 3 SMS detection (complete)
+
+**Planned**: Add explicit `tier` (1/2/3) to all `check_reminder_needed()` return dicts, add Tier 3 detection for goals with runway < 2 hours, update `nag eval` CLI output. (yebyen/mecris#58)
+
+**Done**:
+- Orient: PR #163 still open, no `needs-test`/`pr-review` labels, pr-test fix still blocked on workflow-scope token. Identified kingdonb/mecris#139 (Nag Ladder) as highest-value tractable work.
+- Opened plan yebyen/mecris#58 before touching code.
+- Added `_parse_runway_hours()` to `ReminderService`: parses "N hours" format only; "N days" returns 999 to avoid false Tier 3 triggers.
+- Added Tier 3 check at top of `check_reminder_needed()`: CRITICAL goals with `runway < 2.0 hours` → `sms_emergency` at `tier: 3`, 1h cooldown.
+- Added `tier: 1` to `walk_reminder`, `arabic_review_reminder`, `beeminder_emergency`.
+- Added `tier: 2` to `arabic_review_escalation`, `momentum_coaching`.
+- Updated `nag eval` CLI to show "Tier: N" alongside send/no-send status.
+- Added 4 new tests: tier 1 on walk_reminder, tier 2 on escalation, tier 3 on "1.5 hours" runway, no tier 3 for "0 days".
+- 17/17 reminder_service tests pass; 29/29 target tests pass. Committed c4857ba.
+
+**Skipped**: Tier 2 generalization (freeform Claude for any goal type after idle window) — needs acknowledgement tracking design first. Documented in NEXT_SESSION.md Pending.
+
+**Next**: Check if kingdonb/mecris#163 has been reviewed/merged. If MECRIS_BOT_CLASSIC_PAT workflow scope is granted, deploy pr-test fix and re-run /mecris-pr-test 163. Otherwise: design Tier 2 acknowledgement tracking as a sub-issue of #139.

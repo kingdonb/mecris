@@ -1,19 +1,21 @@
-# Next Session: Fix pr-test workflow (workflow scope) + re-test kingdonb/mecris#163
+# Next Session: Tier 2 (Freeform Claude) generalization + PR #163 review/merge follow-up
 
-## Current Status (Wednesday, April 1, 2026 — session 3)
-- **PR #163 OPEN**: kingdonb/mecris#163 still awaiting review/merge. No changes upstream.
-- **pr-test BROKEN for fork PRs**: `pr-test.yml` always fetches PR branch from `upstream` (kingdonb/mecris). Fork PRs (head on yebyen) fail with `merge: upstream/${PR_BRANCH} - not something we can merge`. Confirmed in runs #23863414611 and #23863517252.
-- **Fix identified but undeployable**: Both `GITHUB_TOKEN` and `GITHUB_CLASSIC_PAT` lack `workflow` scope required to push `.github/workflows/` files. Fix requires MECRIS_BOT_CLASSIC_PAT to be updated with `repo + workflow` scopes by kingdonb.
-- **yebyen/mecris main** unchanged from session 2: still 2 commits (ec4d578 test + archive commits) ahead of kingdonb/mecris.
-- **Zero open issues** on both repos (yebyen/mecris#57 will be closed by archive).
+## Current Status (Wednesday, April 1, 2026 — session 4)
+- **PR #163 OPEN**: kingdonb/mecris#163 still awaiting review/merge. No upstream activity since session 3.
+- **pr-test BROKEN for fork PRs**: `pr-test.yml` fork-PR bug (yebyen vs upstream branch) still undeployed. Fix is fully documented in NEXT_SESSION.md. Blocked on MECRIS_BOT_CLASSIC_PAT `workflow` scope (kingdonb must update).
+- **Nag Ladder (Tier field + Tier 3) DONE**: `ReminderService.check_reminder_needed()` now returns `tier: 1/2/3` on all `should_send: True` responses. Tier 3 fires for CRITICAL goals with runway expressed in hours (< 2h), type `sms_emergency`. Committed c4857ba. (yebyen/mecris#58 closed.)
+- **yebyen/mecris main** is now 5 commits ahead of kingdonb/mecris (c4857ba + 4 prior archive commits).
+- **Zero open issues** on yebyen/mecris (yebyen/mecris#58 closed by archive).
 
 ## Verified This Session
 - [x] Identity Check: 🏛️ Canary active.
 - [x] PR kingdonb/mecris#163 still OPEN — no upstream review or merge activity.
-- [x] pr-test workflow bug reproduced and root cause confirmed: fork-origin PR branches not found in `upstream` remote.
-- [x] Fix tested locally: detect `head.repo.full_name`; if `yebyen/mecris`, use `git fetch origin ${PR_BRANCH}` instead of `upstream/${PR_BRANCH}`.
-- [x] Revert of workflow fix commit confirmed (412f032 reverted) — local HEAD is clean at f680093.
-- [x] Blocker comment posted on kingdonb/mecris#163 explaining the token scope issue.
+- [x] `tier: 1` on `walk_reminder`, `beeminder_emergency`, `arabic_review_reminder`
+- [x] `tier: 2` on `arabic_review_escalation`, `momentum_coaching`
+- [x] `tier: 3` on CRITICAL goal with runway "1.5 hours" → `sms_emergency`
+- [x] "0 days" runway does NOT trigger Tier 3 (correct: today ≠ within 2 hours)
+- [x] `nag eval` CLI shows "Tier: N" in output line
+- [x] 17/17 reminder_service tests pass; 29/29 target tests pass
 
 ## Pending Verification (Next Session)
 
@@ -40,8 +42,14 @@ After applying: `git commit`, push (with workflow-scope token), re-dispatch `/me
 
 ### PR #163 review/merge
 - Check if kingdonb/mecris#163 has been merged.
-- If merged: yebyen/mecris main will be 2 archive-only commits ahead (cf4af18 + f680093) — that's expected.
+- If merged: yebyen/mecris main will be 5 archive-only commits ahead — that's expected.
 - If not merged: re-run pr-test once workflow fix is deployed.
+
+### Nag Ladder Tier 2 generalization (kingdonb/mecris#139)
+The second slice: Tier 2 currently only applies to `arabic_review_escalation` and `momentum_coaching`. The full Nag Ladder spec wants ANY goal type to escalate from Tier 1 → Tier 2 (freeform Claude message) after a configurable idle window.
+- Design: `check_reminder_needed()` should check hours since last reminder of a given type; if >= N hours without acknowledgement and still unresolved → upgrade to tier 2 with `use_template: False` and generate message via `coaching_provider`.
+- Requires: an "acknowledgement" mechanism (Beeminder datapoint received since last nudge, or goal no longer CRITICAL). Without ack tracking, time-based tier upgrades are unreliable.
+- Suggested approach: track `"last_acknowledged"` per goal slug in `message_log`. That's a schema addition — file it as a sub-issue before coding.
 
 ### Phase 1.6 WASM build (blocked on live Spin env)
 - `cd mecris-go-spin/arabic-skip-counter && spin py2wasm app -o arabic-skip-counter.wasm`
@@ -56,7 +64,6 @@ After applying: `git commit`, push (with workflow-scope token), re-dispatch `/me
 - If CRITICAL, do Arabic reviews before anything else.
 
 ### Issue #122 (Android multiplier race) — still unaddressed
-
 ### Issue #132 ("FIXED:" in title) — needs live Spin/Neon verification to close
 
 ## Infrastructure Notes
@@ -79,11 +86,12 @@ After applying: `git commit`, push (with workflow-scope token), re-dispatch `/me
 - Logic Vacuuming: ReviewPump is Phase 1 (Rust, done). BudgetGovernor is Phase 2. Phase 1.5 split: 1.5a (psycopg2→httpx, DONE) and 1.5b (componentize-py WASM wrap, DONE). Phase 1.6 = HTTP wrapper (code done, WASM build pending). See `docs/LOGIC_VACUUMING_CANDIDATES.md`.
 - **Phase 1.5a implementation detail**: Neon HTTP URL derived from postgres:// URL by parsing host, constructing `https://{host}/sql`, Basic auth = `base64(user:password)`. SQL uses OR params not ANY array.
 - **Token scope**: GITHUB_TOKEN (fine-grained, yebyen/mecris only). Cannot comment on kingdonb/mecris issues. Use GITHUB_CLASSIC_PAT for workflow dispatch, cross-repo PRs, and PR edits on kingdonb/mecris.
-- **arabic_review_reminder**: Plan spec on yebyen/mecris#37. Phase 2 on yebyen/mecris#40. MCP wire-up on yebyen/mecris#41 (CLOSED). Phase 3 on yebyen/mecris#42 (CLOSED). skip_count_provider on yebyen/mecris#43 (CLOSED). Sync PR on yebyen/mecris#44 (CLOSED). componentize-py research on yebyen/mecris#45 (CLOSED). Phase 1.5a on yebyen/mecris#46 (CLOSED). Phase 1.5b on yebyen/mecris#48 (CLOSED). Phase 1.6 on yebyen/mecris#50 (CLOSED — WASM build pending in live env). Convention docs on yebyen/mecris#51 (CLOSED). PR description fix on yebyen/mecris#52 (CLOSED). Health report 2026-04-01 on yebyen/mecris#53 (CLOSED). Test coverage for today's kingdonb fixes on yebyen/mecris#55 (CLOSED). Health report 2026-04-01 session 2 on yebyen/mecris#56 (CLOSED). Upstream PR for test coverage on kingdonb/mecris#163 (OPEN — awaiting review). pr-test fork-PR bug diagnosis on yebyen/mecris#57 (CLOSED — fix identified but needs workflow-scope token).
+- **arabic_review_reminder**: Plan spec on yebyen/mecris#37. Phase 2 on yebyen/mecris#40. MCP wire-up on yebyen/mecris#41 (CLOSED). Phase 3 on yebyen/mecris#42 (CLOSED). skip_count_provider on yebyen/mecris#43 (CLOSED). Sync PR on yebyen/mecris#44 (CLOSED). componentize-py research on yebyen/mecris#45 (CLOSED). Phase 1.5a on yebyen/mecris#46 (CLOSED). Phase 1.5b on yebyen/mecris#48 (CLOSED). Phase 1.6 on yebyen/mecris#50 (CLOSED — WASM build pending in live env). Convention docs on yebyen/mecris#51 (CLOSED). PR description fix on yebyen/mecris#52 (CLOSED). Health report 2026-04-01 on yebyen/mecris#53 (CLOSED). Test coverage for today's kingdonb fixes on yebyen/mecris#55 (CLOSED). Health report 2026-04-01 session 2 on yebyen/mecris#56 (CLOSED). Upstream PR for test coverage on kingdonb/mecris#163 (OPEN — awaiting review). pr-test fork-PR bug diagnosis on yebyen/mecris#57 (CLOSED — fix identified but needs workflow-scope token). Nag Ladder Tier field + Tier 3 on yebyen/mecris#58 (CLOSED — complete, committed c4857ba).
 - **velocity_provider API**: `ReminderService(context_provider, coaching_provider, log_provider=None, velocity_provider=None, skip_count_provider=None)`. velocity_provider called as `await velocity_provider(user_id)` → dict with key `"arabic"` containing `{"target_flow_rate": int, ...}`. skip_count_provider called as `await skip_count_provider(user_id)` → int (consecutive ignored Arabic cycles). Both fully wired in production mcp_server.py.
 - **skip_count logic**: `services/arabic_skip_counter.py` uses Neon HTTP API (httpx). Counts `arabic_review_reminder` + `arabic_review_escalation` rows in `message_log` for the last 24h. SQL: `SELECT COUNT(*) FROM message_log WHERE (type = $1 OR type = $2) AND user_id = $3 AND sent_at >= $4`. Resets naturally when `reviewstack` is no longer CRITICAL.
 - **Test runner in CI**: `uv` is not installed in the runner environment. Use `pip install pytest pytest-asyncio` then `PYTHONPATH=. python -m pytest` (not `.venv/bin/pytest`).
-- **arabic-skip-counter test target files**: `tests/test_reminder_service.py tests/test_arabic_skip_count.py tests/test_arabic_skip_counter_component.py` (34 tests total).
+- **arabic-skip-counter test target files**: `tests/test_reminder_service.py tests/test_arabic_skip_count.py tests/test_arabic_skip_counter_component.py` (34 tests total; `test_arabic_skip_count.py` fails in CI due to missing `httpx` module — pre-existing).
 - **gh CLI PR edit scope issue**: `gh pr edit` on kingdonb/mecris fails with `read:org` scope error even with GITHUB_CLASSIC_PAT (repo scope only). Use `gh api --method PATCH /repos/kingdonb/mecris/pulls/{N}` instead.
 - **goal_met semantics**: When `multiplier > 1.0` and `current_debt > 0` but debt rounds to 0 daily target, `goal_met=True` (your per-day contribution is 0, so you automatically meet it). Maintenance mode (1.0x) with debt: `goal_met=False` because target=0 and multiplier is NOT > 1.0. Tests in `test_review_pump.py`.
 - **get_language_stats 8-column query**: Returns `language_name, current_reviews, tomorrow_reviews, next_7_days_reviews, pump_multiplier, daily_completions, beeminder_slug, safebuf`. Test in `test_neon_sync_checker.py`.
+- **Nag Ladder tier semantics**: Tier 1 = WhatsApp template (walk_reminder, arabic_review_reminder, beeminder_emergency). Tier 2 = freeform/escalated (arabic_review_escalation, momentum_coaching). Tier 3 = SMS emergency (sms_emergency, fires when runway string contains "hours" and < 2.0h — NOT triggered by "0 days" format). `_parse_runway_hours()` only returns sub-24h for explicit "N hours" strings.
