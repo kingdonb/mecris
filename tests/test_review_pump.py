@@ -34,4 +34,19 @@ def test_system_overdrive():
     assert pump.calculate_target(100, 10) == 110 # 10 + 100/1
     status = pump.get_status(100, 10, 50)
     assert status["lever_name"] == "System Overdrive"
-    assert status["target_flow_rate"] == 110
+    assert status["target_flow_rate"] == 60  # remaining: 110 target - 50 completions
+
+def test_goal_met_when_debt_rounds_to_zero_target_with_aggressive_multiplier():
+    # Fix: 5cb1397 — debt so small it rounds to 0 per day with 14-day window.
+    # Before fix: goal_met = (current_debt == 0) = False (false negative).
+    # After fix: multiplier > 1.0 and debt > 0 → goal_met = (completions >= 0) = True.
+    pump = ReviewPump(multiplier=2.0)  # 14 days
+    status = pump.get_status(current_debt=5, tomorrow_liability=0, daily_completions=0)
+    assert status["goal_met"] is True
+
+def test_goal_met_false_in_maintenance_mode_with_outstanding_debt():
+    # Maintenance (1.0x) sets target = tomorrow_liability only. With tomorrow=0,
+    # target=0 and multiplier is NOT > 1.0, so goal_met = (current_debt == 0) = False.
+    pump = ReviewPump(multiplier=1.0)
+    status = pump.get_status(current_debt=500, tomorrow_liability=0, daily_completions=0)
+    assert status["goal_met"] is False

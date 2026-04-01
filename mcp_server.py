@@ -644,7 +644,7 @@ async def get_language_velocity_stats(user_id: str = None) -> Dict[str, Any]:
 async def check_reminder_needed(user_id: str = None) -> Dict[str, Any]:
     return await reminder_service.check_reminder_needed(user_id)
 
-async def get_last_sent_time(msg_type: str, user_id: str = None) -> Optional[datetime]:
+async def get_last_sent_time(msg_type: Optional[str] = None, user_id: str = None) -> Optional[datetime]:
     target_user_id = usage_tracker.resolve_user_id(user_id)
     neon_url = os.getenv("NEON_DB_URL")
     if not neon_url:
@@ -654,10 +654,16 @@ async def get_last_sent_time(msg_type: str, user_id: str = None) -> Optional[dat
         import psycopg2
         with psycopg2.connect(neon_url) as conn:
             with conn.cursor() as cur:
-                cur.execute(
-                    "SELECT sent_at FROM message_log WHERE type = %s AND user_id = %s ORDER BY sent_at DESC LIMIT 1", 
-                    (msg_type, target_user_id)
-                )
+                if msg_type:
+                    cur.execute(
+                        "SELECT sent_at FROM message_log WHERE type = %s AND user_id = %s ORDER BY sent_at DESC LIMIT 1", 
+                        (msg_type, target_user_id)
+                    )
+                else:
+                    cur.execute(
+                        "SELECT sent_at FROM message_log WHERE user_id = %s ORDER BY sent_at DESC LIMIT 1", 
+                        (target_user_id,)
+                    )
                 row = cur.fetchone()
                 return row[0] if row else None
     try:
