@@ -248,3 +248,20 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: Tier 2 generalization (freeform Claude for any goal type after idle window) — needs acknowledgement tracking design first. Documented in NEXT_SESSION.md Pending.
 
 **Next**: Check if kingdonb/mecris#163 has been reviewed/merged. If MECRIS_BOT_CLASSIC_PAT workflow scope is granted, deploy pr-test fix and re-run /mecris-pr-test 163. Otherwise: design Tier 2 acknowledgement tracking as a sub-issue of #139.
+
+## 🏛️ 2026-04-01 — Session 5: Nag Ladder Tier 2 time-based escalation (complete)
+
+**Planned**: Add Tier 2 time-based escalation to `ReminderService` — any Tier 1 result escalates to Tier 2 (`use_template: False`) after `TIER2_IDLE_HOURS` idle, using `message_log` history via `log_provider`. (yebyen/mecris#59)
+
+**Done**:
+- Orient: PR #163 still open, no upstream activity, pr-test fix still token-blocked. Identified Tier 2 generalization as highest-value unblocked work.
+- Opened plan yebyen/mecris#59 with full design notes before touching code.
+- Added `TIER2_IDLE_HOURS = 6.0` module constant to `services/reminder_service.py`.
+- Added `_apply_tier2_escalation()` async helper: skips Tier 2/3 results, uses existing `_get_hours_since_last()` (999.0 sentinel for no history/no provider → safe no-op).
+- Applied escalation at all 3 Tier 1 return sites: walk_reminder, beeminder_emergency, arabic_review_reminder.
+- Added 5 new tests covering: escalation fires after 6h (beeminder + walk), stays Tier 1 under 6h, no escalation without log_provider, Tier 3 unaffected.
+- 22/22 reminder_service tests pass. Committed 3a34478.
+
+**Skipped**: Acknowledgement tracking / explicit reset mechanism for escalation state — implicit reset (goal exits CRITICAL → condition never fires) may be sufficient. Needs design decision before next coding slice.
+
+**Next**: Decide if implicit reset is sufficient for Tier 2 ack tracking (document decision as sub-issue of kingdonb/mecris#139). Then either: deploy pr-test fix if MECRIS_BOT_CLASSIC_PAT workflow scope is granted, or continue with Tier 2 ack tracking design.
