@@ -398,3 +398,18 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: CLI `bin/mecris nag eval` tier output verification (requires live environment). Cross-repo comment on #139 (token scope issue).
 
 **Next**: Upstream PR to kingdonb/mecris for sessions 9-14 work (close #139); then tackle kingdonb/mecris#164 (ghost presence global Neon).
+
+## 🏛️ 2026-04-02 — Session 15: Upstream PR — Nag Ladder complete (sessions 9-14) → kingdonb/mecris#165
+
+**Planned**: Open upstream PR from yebyen/mecris main to kingdonb/mecris main closing Nag Ladder issue #139. (yebyen/mecris#68)
+
+**Done**:
+- Orient: yebyen/mecris 4 commits ahead of kingdonb/mecris (HEAD f823cb6); no open PRs; #139 still open.
+- Opened plan yebyen/mecris#68 with spec: open upstream PR referencing #139, 32 tests confirmed.
+- Created kingdonb/mecris#165 via GITHUB_CLASSIC_PAT (fine-grained token lacks cross-repo PR scope).
+- Commented on kingdonb/mecris#139 via GITHUB_CLASSIC_PAT — confirmed working (was blocked in session 14).
+- PR description includes all three tier table, 32/32 test count, and Closes #139.
+
+**Skipped**: Nothing — plan complete. PR merge requires human (or bot with kingdonb/mecris write access).
+
+**Next**: kingdonb/mecris#164 (Ghost Presence Global Neon Evolution) — start in yebyen fork while #165 awaits merge.
