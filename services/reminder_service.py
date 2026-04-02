@@ -72,6 +72,11 @@ class ReminderService:
                 f"🚨 ESCALATED: '{goal_title}' is still at risk after {hours_str} of silence. "
                 f"You've ignored this long enough — address it NOW before it derails. 📉"
             )
+        if msg_type == "arabic_review_reminder":
+            return (
+                f"🚨 Arabic reviews still overdue after {hours_str}. "
+                f"reviewstack won't fix itself — open Clozemaster NOW. 📚"
+            )
         return (
             f"⚠️ Escalated reminder after {hours_str} idle: this situation hasn't resolved itself. "
             f"Take action NOW. 🔥"

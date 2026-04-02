@@ -872,6 +872,45 @@ async def test_tier2_escalation_generic_type_has_escalated_message():
 
 
 @pytest.mark.asyncio
+async def test_arabic_review_reminder_tier2_fallback_is_contextual():
+    """Tier 2: arabic_review_reminder idle-promoted to tier 2 gets contextual (not generic) message."""
+    MOCKED_NOW = datetime.datetime(2026, 3, 30, 13, 0, 0)
+    SENT_AT = MOCKED_NOW - datetime.timedelta(hours=7)
+
+    async def mock_last_sent(msg_type, user_id=None):
+        if msg_type == "arabic_review_reminder":
+            return SENT_AT
+        return None
+
+    mock_context = {
+        "daily_walk_status": {"has_activity_today": True},
+        "beeminder_alerts": [],
+        "goal_runway": [
+            {"slug": "reviewstack", "title": "Arabic Reviews", "derail_risk": "CRITICAL", "runway": "0 days"}
+        ]
+    }
+    mock_insight = {"momentum": "low", "message": "Do your Arabic!"}
+
+    rs = ReminderService(make_async_mock(mock_context), make_async_mock(mock_insight), log_provider=mock_last_sent)
+
+    class MockNow(datetime.datetime):
+        @classmethod
+        def now(cls, *args, **kwargs):
+            return MOCKED_NOW
+
+    with patch('services.reminder_service.datetime', MockNow):
+        result = await rs.check_reminder_needed()
+        assert result["should_send"] is True
+        assert result["type"] == "arabic_review_reminder"
+        assert result["tier"] == 2
+        assert result.get("use_template") is False
+        msg = result.get("fallback_message", "")
+        assert msg != mock_insight["message"], "Tier 2 must not be Tier 1 coaching copy"
+        assert any(word in msg.lower() for word in ("arabic", "clozemaster", "reviewstack")), \
+            f"Expected Arabic-specific Tier 2 message, got: {msg!r}"
+
+
+@pytest.mark.asyncio
 async def test_tier3_not_promoted_by_idle_window():
     """Nag Ladder: beeminder_emergency_tier3 (tier 3) is never downgraded or affected."""
 
