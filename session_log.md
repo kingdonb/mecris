@@ -282,3 +282,21 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: None.
 
 **Next**: Merge `review-bot-changes` to `main` and deploy.
+
+## 🏛️ 2026-04-01 — Session 7: Tier 2 escalation reset semantics — implicit reset proven (complete)
+
+**Planned**: Determine whether Tier 2 escalation resets correctly via implicit means or requires explicit `last_acknowledged` tracking; document with a test; implement only if gap found. (yebyen/mecris#61)
+
+**Done**:
+- Orient: discovered PR #163 is MERGED (was listed as open in session 5 notes). Repos now fully in sync at b28285e. Zero open issues on either repo.
+- Opened plan yebyen/mecris#61 before touching code.
+- Read `reminder_service.py` fully; traced escalation reset for beeminder_emergency, walk_reminder, and arabic_review_reminder paths.
+- Design decision: **implicit reset is sufficient** — two mechanisms: (1) condition exit (goal not CRITICAL, walk done) skips code path entirely; (2) Tier 2 send logs same type, resetting hours_since_last, so next fire (4h later) sees 4h < TIER2_IDLE_HOURS=6h → Tier 1.
+- Posted full analysis to yebyen/mecris#61 as a comment before coding.
+- Added `test_tier2_escalation_resets_after_tier2_message_sent`: proves beeminder Tier 2 resets after send.
+- Added `test_tier2_walk_escalation_implicit_reset_when_user_walks`: proves walk Tier 2 cannot stick after activity.
+- 25/25 reminder_service tests pass. Committed 354cae4.
+
+**Skipped**: No explicit `last_acknowledged` implementation — analysis showed it is not needed. Tier 2 message content (what does a Tier 2 walk_reminder actually say?) is deferred.
+
+**Next**: If MECRIS_BOT_CLASSIC_PAT workflow scope is granted, deploy pr-test fork-PR fix. Otherwise: Tier 2 freeform message content design (what coaching text does the escalated walk_reminder send?).

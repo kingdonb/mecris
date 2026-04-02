@@ -687,6 +687,85 @@ async def test_no_tier2_escalation_without_log_provider():
 
 
 @pytest.mark.asyncio
+async def test_tier2_escalation_resets_after_tier2_message_sent():
+    """Tier 2 reset semantics (yebyen/mecris#61): implicit reset is sufficient.
+
+    After a Tier 2 beeminder_emergency fires, the NEXT call (4h cooldown elapsed,
+    goal still CRITICAL) returns Tier 1 — NOT Tier 2. The Tier 2 send itself resets
+    hours_since_last("beeminder_emergency") to 0, so 4h later it is 4h < TIER2_IDLE_HOURS
+    (6h) → no escalation. No explicit last_acknowledged field is needed.
+    """
+    MOCKED_NOW = datetime.datetime(2026, 3, 20, 12, 0, 0)
+    # Simulates: Tier 2 was sent 4h ago (logged as "beeminder_emergency", same type)
+    TIER2_SENT_AT = MOCKED_NOW - datetime.timedelta(hours=4)
+
+    async def mock_last_sent(msg_type, user_id=None):
+        if msg_type is None:  # global rate limit check (any type)
+            return TIER2_SENT_AT
+        if msg_type == "beeminder_emergency":
+            return TIER2_SENT_AT
+        return None
+
+    mock_context = {
+        "daily_walk_status": {"has_activity_today": True},
+        "beeminder_alerts": [],
+        "goal_runway": [
+            {"slug": "weight", "title": "Weight Goal", "derail_risk": "CRITICAL", "runway": "0 days"}
+        ]
+    }
+    mock_insight = {"momentum": "low", "message": "Emergency!"}
+
+    rs = ReminderService(make_async_mock(mock_context), make_async_mock(mock_insight), log_provider=mock_last_sent)
+
+    class MockNow(datetime.datetime):
+        @classmethod
+        def now(cls, *args, **kwargs):
+            return MOCKED_NOW
+
+    with patch('services.reminder_service.datetime', MockNow):
+        result = await rs.check_reminder_needed()
+        assert result["should_send"] is True
+        assert result["type"] == "beeminder_emergency"
+        assert result["tier"] == 1  # NOT Tier 2: 4h < TIER2_IDLE_HOURS (6h) → no escalation
+        assert "use_template" not in result  # Tier 2 would set use_template=False
+
+
+@pytest.mark.asyncio
+async def test_tier2_walk_escalation_implicit_reset_when_user_walks():
+    """Tier 2 reset semantics (yebyen/mecris#61): walk escalation cannot stick after activity.
+
+    Even with a stale walk_reminder log entry (8h ago, which would trigger Tier 2 escalation),
+    once has_activity_today=True the walk block is skipped entirely — _apply_tier2_escalation()
+    is never called and should_send is False. Implicit reset via condition change is sufficient.
+    """
+    MOCKED_NOW = datetime.datetime(2026, 3, 20, 14, 0, 0)
+    SENT_AT = MOCKED_NOW - datetime.timedelta(hours=8)  # 8h ago — would escalate IF walk hadn't happened
+
+    async def mock_last_sent(msg_type, user_id=None):
+        if msg_type == "walk_reminder":
+            return SENT_AT
+        return None
+
+    mock_context = {
+        "daily_walk_status": {"has_activity_today": True},  # user walked — reset condition
+        "beeminder_alerts": [],
+        "goal_runway": []
+    }
+    mock_insight = {"momentum": "low", "message": "Good job!"}
+
+    rs = ReminderService(make_async_mock(mock_context), make_async_mock(mock_insight), log_provider=mock_last_sent)
+
+    class MockAfternoon(datetime.datetime):
+        @classmethod
+        def now(cls, *args, **kwargs):
+            return MOCKED_NOW
+
+    with patch('services.reminder_service.datetime', MockAfternoon):
+        result = await rs.check_reminder_needed()
+        assert result["should_send"] is False  # walk happened; walk block skipped entirely
+
+
+@pytest.mark.asyncio
 async def test_tier3_not_promoted_by_idle_window():
     """Nag Ladder: beeminder_emergency_tier3 (tier 3) is never downgraded or affected."""
 

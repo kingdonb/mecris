@@ -1,24 +1,19 @@
-# Next Session: Nag Ladder Tier 2 generalization complete — PR #163 still pending, pr-test fix still blocked
+# Next Session: pr-test fork-PR fix (blocked on token scope) — Tier 2 design complete
 
-## Current Status (Wednesday, April 1, 2026 — session 5)
-- **PR #163 OPEN**: kingdonb/mecris#163 still awaiting review/merge. No upstream activity since session 3.
+## Current Status (Wednesday, April 1, 2026 — session 7)
+- **PR #163 MERGED** ✓: kingdonb/mecris#163 merged 2026-04-01T23:31:53Z. Repos are now fully in sync (yebyen = kingdonb at `b28285e`).
 - **pr-test BROKEN for fork PRs**: `pr-test.yml` fork-PR bug still undeployed. Fix is fully documented below. Blocked on MECRIS_BOT_CLASSIC_PAT `workflow` scope (kingdonb must update).
-- **Nag Ladder Tier 2 generalization DONE**: `_apply_tier2_escalation()` added to `ReminderService`. Any Tier 1 result (walk_reminder, beeminder_emergency, arabic_review_reminder) escalates to Tier 2 (`use_template: False`) after `TIER2_IDLE_HOURS = 6.0h` idle time, detected via `log_provider` message history. Committed 3a34478. (yebyen/mecris#59 closed.)
-- **yebyen/mecris main** is now 6 commits ahead of kingdonb/mecris (3a34478 + 5 prior commits).
-- **Zero open issues** on yebyen/mecris (yebyen/mecris#59 closed by archive).
+- **Tier 2 escalation reset: CLOSED** — implicit reset is sufficient. No explicit `last_acknowledged` field needed. See yebyen/mecris#61 for full analysis and proof tests (354cae4).
+- **25/25 reminder_service tests pass**: includes 2 new tests proving reset semantics.
+- **Zero open issues** on yebyen/mecris.
 
 ## Verified This Session
-- [x] Identity Check: 🏛️ Canary active.
-- [x] PR kingdonb/mecris#163 still OPEN — no upstream review or merge activity.
-- [x] `TIER2_IDLE_HOURS = 6.0` module constant in `reminder_service.py`
-- [x] `_apply_tier2_escalation()` skips Tier 2/3 results; only acts on `tier == 1`
-- [x] No escalation when `log_provider=None` (returns 999.0 sentinel)
-- [x] No escalation when no log history (first-ever send → returns 999.0 sentinel)
-- [x] `beeminder_emergency` escalates to Tier 2 after 7h idle: `tier=2`, `use_template=False`
-- [x] `beeminder_emergency` stays Tier 1 when last sent 5h ago
-- [x] `walk_reminder` escalates to Tier 2 after 7h idle
-- [x] `beeminder_emergency_tier3` (Tier 3) is NOT promoted by idle-window logic (guard: `result.get("tier") != 1`)
-- [x] 22/22 reminder_service tests pass (17 existing + 5 new)
+- [x] PR kingdonb/mecris#163 MERGED — yebyen/mecris and kingdonb/mecris now share HEAD at `b28285e`.
+- [x] Repos in sync — no divergence, no pending upstream commits.
+- [x] Tier 2 implicit reset is sufficient: `_apply_tier2_escalation()` naturally deescalates after a send (hours_idle resets), and condition exit (goal not CRITICAL, walk done) skips the code path entirely.
+- [x] `test_tier2_escalation_resets_after_tier2_message_sent`: 4h after Tier 2 fires, next beeminder_emergency is Tier 1 (4h < TIER2_IDLE_HOURS=6h). PASS.
+- [x] `test_tier2_walk_escalation_implicit_reset_when_user_walks`: has_activity_today=True skips walk block; should_send=False even with 8h-old log entry. PASS.
+- [x] 25/25 reminder_service tests pass. Committed 354cae4.
 
 ## Pending Verification (Next Session)
 
@@ -41,17 +36,12 @@ else
   git merge upstream/${PR_BRANCH} --no-edit
 fi
 ```
-After applying: `git commit`, push (with workflow-scope token), re-dispatch `/mecris-pr-test 163`.
+After applying: `git commit`, push (with workflow-scope token), re-dispatch `/mecris-pr-test` on next PR.
 
-### PR #163 review/merge
-- Check if kingdonb/mecris#163 has been merged.
-- If merged: yebyen/mecris main will be 6 archive-only commits ahead — that's expected.
-- If not merged: re-run pr-test once workflow fix is deployed.
-
-### Nag Ladder: Tier 2 acknowledgement tracking (kingdonb/mecris#139 — next slice)
-Tier 2 generalization is complete for time-based escalation. The next slice is **acknowledgement tracking**: when does the escalation reset? Currently, `_apply_tier2_escalation()` promotes after 6h idle but there's no mechanism to reset the escalation once the user acts.
-- Approach: After a Beeminder goal exits CRITICAL (or walk is completed), the next `check_reminder_needed()` call naturally returns a different type or `should_send: False` — the escalation never fires because the condition is no longer met. This may be sufficient without explicit ack tracking.
-- **Decision needed**: Is implicit reset (goal no longer CRITICAL) enough, or do we need explicit `last_acknowledged` per goal slug in `message_log`? File a sub-issue before coding.
+### Nag Ladder: Next Feature Slice (kingdonb/mecris#139)
+Tier 2 time-based escalation + reset semantics are complete. Remaining Nag Ladder work:
+- **Tier 2 message content**: Currently uses `use_template: False` with `fallback_message`. What does the actual freeform message say for a Tier 2 walk_reminder or beeminder_emergency? Consider a `tier2_message` field populated with coaching copy.
+- No design issue filed yet — file one if taking this on.
 
 ### Phase 1.6 WASM build (blocked on live Spin env)
 - `cd mecris-go-spin/arabic-skip-counter && spin py2wasm app -o arabic-skip-counter.wasm`
@@ -88,7 +78,7 @@ Tier 2 generalization is complete for time-based escalation. The next slice is *
 - Logic Vacuuming: ReviewPump is Phase 1 (Rust, done). BudgetGovernor is Phase 2. Phase 1.5 split: 1.5a (psycopg2→httpx, DONE) and 1.5b (componentize-py WASM wrap, DONE). Phase 1.6 = HTTP wrapper (code done, WASM build pending). See `docs/LOGIC_VACUUMING_CANDIDATES.md`.
 - **Phase 1.5a implementation detail**: Neon HTTP URL derived from postgres:// URL by parsing host, constructing `https://{host}/sql`, Basic auth = `base64(user:password)`. SQL uses OR params not ANY array.
 - **Token scope**: GITHUB_TOKEN (fine-grained, yebyen/mecris only). Cannot comment on kingdonb/mecris issues. Use GITHUB_CLASSIC_PAT for workflow dispatch, cross-repo PRs, and PR edits on kingdonb/mecris.
-- **arabic_review_reminder**: Plan spec on yebyen/mecris#37. Phase 2 on yebyen/mecris#40. MCP wire-up on yebyen/mecris#41 (CLOSED). Phase 3 on yebyen/mecris#42 (CLOSED). skip_count_provider on yebyen/mecris#43 (CLOSED). Sync PR on yebyen/mecris#44 (CLOSED). componentize-py research on yebyen/mecris#45 (CLOSED). Phase 1.5a on yebyen/mecris#46 (CLOSED). Phase 1.5b on yebyen/mecris#48 (CLOSED). Phase 1.6 on yebyen/mecris#50 (CLOSED — WASM build pending in live env). Convention docs on yebyen/mecris#51 (CLOSED). PR description fix on yebyen/mecris#52 (CLOSED). Health report 2026-04-01 on yebyen/mecris#53 (CLOSED). Test coverage for today's kingdonb fixes on yebyen/mecris#55 (CLOSED). Health report 2026-04-01 session 2 on yebyen/mecris#56 (CLOSED). Upstream PR for test coverage on kingdonb/mecris#163 (OPEN — awaiting review). pr-test fork-PR bug diagnosis on yebyen/mecris#57 (CLOSED — fix identified but needs workflow-scope token). Nag Ladder Tier field + Tier 3 on yebyen/mecris#58 (CLOSED — complete, committed c4857ba). Tier 2 time-based escalation on yebyen/mecris#59 (CLOSED — complete, committed 3a34478).
+- **arabic_review_reminder**: Plan spec on yebyen/mecris#37. Phase 2 on yebyen/mecris#40. MCP wire-up on yebyen/mecris#41 (CLOSED). Phase 3 on yebyen/mecris#42 (CLOSED). skip_count_provider on yebyen/mecris#43 (CLOSED). Sync PR on yebyen/mecris#44 (CLOSED). componentize-py research on yebyen/mecris#45 (CLOSED). Phase 1.5a on yebyen/mecris#46 (CLOSED). Phase 1.5b on yebyen/mecris#48 (CLOSED). Phase 1.6 on yebyen/mecris#50 (CLOSED — WASM build pending in live env). Convention docs on yebyen/mecris#51 (CLOSED). PR description fix on yebyen/mecris#52 (CLOSED). Health report 2026-04-01 on yebyen/mecris#53 (CLOSED). Test coverage for today's kingdonb fixes on yebyen/mecris#55 (CLOSED). Health report 2026-04-01 session 2 on yebyen/mecris#56 (CLOSED). Upstream PR for test coverage on kingdonb/mecris#163 (MERGED ✓). pr-test fork-PR bug diagnosis on yebyen/mecris#57 (CLOSED — fix identified but needs workflow-scope token). Nag Ladder Tier field + Tier 3 on yebyen/mecris#58 (CLOSED — complete, committed c4857ba). Tier 2 time-based escalation on yebyen/mecris#59 (CLOSED — complete, committed 3a34478). Tier 2 reset semantics on yebyen/mecris#61 (CLOSED — implicit reset sufficient, proved with 2 tests, committed 354cae4).
 - **velocity_provider API**: `ReminderService(context_provider, coaching_provider, log_provider=None, velocity_provider=None, skip_count_provider=None)`. velocity_provider called as `await velocity_provider(user_id)` → dict with key `"arabic"` containing `{"target_flow_rate": int, ...}`. skip_count_provider called as `await skip_count_provider(user_id)` → int (consecutive ignored Arabic cycles). Both fully wired in production mcp_server.py.
 - **skip_count logic**: `services/arabic_skip_counter.py` uses Neon HTTP API (httpx). Counts `arabic_review_reminder` + `arabic_review_escalation` rows in `message_log` for the last 24h. SQL: `SELECT COUNT(*) FROM message_log WHERE (type = $1 OR type = $2) AND user_id = $3 AND sent_at >= $4`. Resets naturally when `reviewstack` is no longer CRITICAL.
 - **Test runner in CI**: `uv` is not installed in the runner environment. Use `pip install pytest pytest-asyncio` then `PYTHONPATH=. python -m pytest` (not `.venv/bin/pytest`).
@@ -97,4 +87,5 @@ Tier 2 generalization is complete for time-based escalation. The next slice is *
 - **goal_met semantics**: When `multiplier > 1.0` and `current_debt > 0` but debt rounds to 0 daily target, `goal_met=True` (your per-day contribution is 0, so you automatically meet it). Maintenance mode (1.0x) with debt: `goal_met=False` because target=0 and multiplier is NOT > 1.0. Tests in `test_review_pump.py`.
 - **get_language_stats 8-column query**: Returns `language_name, current_reviews, tomorrow_reviews, next_7_days_reviews, pump_multiplier, daily_completions, beeminder_slug, safebuf`. Test in `test_neon_sync_checker.py`.
 - **Nag Ladder tier semantics**: Tier 1 = WhatsApp template (walk_reminder, arabic_review_reminder, beeminder_emergency). Tier 2 = freeform/escalated (arabic_review_escalation, momentum_coaching; OR any Tier 1 type after 6h idle). Tier 3 = WhatsApp High Urgency (beeminder_emergency_tier3, fires when runway string contains "hours" and < 2.0h — NOT triggered by "0 days" format). `_parse_runway_hours()` only returns sub-24h for explicit "N hours" strings. `TIER2_IDLE_HOURS = 6.0` in `reminder_service.py`.
-- **_apply_tier2_escalation() API**: async helper, called at all 3 Tier 1 return sites. Guards: `result.get("tier") != 1` → passthrough. `_get_hours_since_last()` returns 999.0 when no log_provider or no history → no escalation. Escalation condition: `hours_idle < 999.0 and hours_idle >= TIER2_IDLE_HOURS`.
+- **_apply_tier2_escalation() API**: async helper, called at all 3 Tier 1 return sites. Guards: `result.get("tier") != 1` → passthrough. `_get_hours_since_last()` returns 999.0 when no log_provider or no history → no escalation. Escalation condition: `hours_idle < 999.0 and hours_idle >= TIER2_IDLE_HOURS`. **Reset**: implicit — condition exit skips code path; sending Tier 2 resets the timer (same type logged).
+- **25 reminder_service tests** (as of 354cae4): covers all tiers, cooldowns, global rate limit, escalation, and reset semantics.
