@@ -73,8 +73,12 @@ To prevent authorized access or malicious tool use, and especially to mitigate "
 - **Tool Restriction**: The `--allow-tool` flag is strictly limited per agenda (e.g., The Archivist cannot use `run_shell_command` outside of `git`).
 - **No Private Key Access**: Autonomous agents can edit code but are explicitly denied read access to `.env` or SSH keys via filesystem-level protections and container isolation.
 
-### D. Human Yield
-- If any human interaction is detected (keyboard input or session start), the `presence.lock` is released and the Ghost Session is terminated immediately.
+### D. Human Yield and Cooperative Rebase
+- **Interruption**: If any human interaction is detected (keyboard input or session start), the `presence.lock` is released and the Ghost Session is terminated immediately.
+- **Git Conflict Resolution**: If a standard `git push` fails due to concurrent human changes, the workflow triggers a **Rescue Session**. 
+    - The agent uses the `mecris-rebase` skill to surgically resolve conflicts.
+    - Priority is given to merging logs and documentation while deferring to the human's changes in core logic.
+    - The work is verified via tests before the final push, ensuring no work is "lost" due to race conditions.
 
 ## 7. Implementation Path
 1. [ ] **`bin/mecris presence`**: Add logic to detect if human is active.
