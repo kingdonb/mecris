@@ -316,20 +316,28 @@ fun MecrisDashboard(
                             gps_route_points = if (collectGpsRoutes) currentWalk.routePointCount else 0,
                             timezone = ZoneId.of("America/New_York").id
                         )
-                        syncApi.uploadWalk("Bearer $token", dto)
+                        val walkResponse = syncApi.uploadWalk("Bearer $token", dto)
                         
-                        // Send heartbeat to register client presence in Neon
-                        try {
-                            syncApi.sendHeartbeat(
-                                "Bearer $token",
-                                com.mecris.go.sync.HeartbeatRequestDto(role = "android_client", process_id = "com.mecris.go.ui")
-                            )
-                        } catch (e: Exception) {
-                            Log.w("MecrisDashboard", "Heartbeat failed during sync (non-fatal): ${e.message}")
-                        }
+                        if (walkResponse.isSuccessful) {
+                            // Send heartbeat to register client presence in Neon
+                            try {
+                                val hbResponse = syncApi.sendHeartbeat(
+                                    "Bearer $token",
+                                    com.mecris.go.sync.HeartbeatRequestDto(role = "android_client", process_id = "com.mecris.go.ui")
+                                )
+                                if (!hbResponse.isSuccessful) {
+                                    Log.w("MecrisDashboard", "Heartbeat failed: ${hbResponse.code()}")
+                                }
+                            } catch (e: Exception) {
+                                Log.w("MecrisDashboard", "Heartbeat exception (non-fatal): ${e.message}")
+                            }
 
-                        syncStatus = "Success"
-                        lastSyncTime = LocalDateTime.now().format(DateTimeFormatter.ofPattern("HH:mm"))
+                            syncStatus = "Success"
+                            lastSyncTime = LocalDateTime.now().format(DateTimeFormatter.ofPattern("HH:mm"))
+                        } else {
+                            syncStatus = "Error: ${walkResponse.code()}"
+                            Log.e("MecrisDashboard", "Sync failed with code: ${walkResponse.code()}")
+                        }
                     } catch (e: Exception) {
                         syncStatus = "Error"
                         Log.e("MecrisDashboard", "Sync failed: ${e.message}")

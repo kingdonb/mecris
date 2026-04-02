@@ -14,33 +14,33 @@ interface SyncServiceApi {
     suspend fun uploadWalk(
         @Header("Authorization") authHeader: String,
         @Body walkData: WalkDataSummaryDto
-    ): SyncResponse
+    ): retrofit2.Response<SyncResponse>
 
     @GET("budget")
     suspend fun getBudget(
         @Header("Authorization") authHeader: String
-    ): BudgetResponseDto
+    ): retrofit2.Response<BudgetResponseDto>
 
     @GET("languages")
     suspend fun getLanguages(
         @Header("Authorization") authHeader: String
-    ): LanguagesResponseDto
+    ): retrofit2.Response<LanguagesResponseDto>
 
     @GET("health")
     suspend fun getHealth(
         @Header("Authorization") authHeader: String
-    ): HealthResponseDto
+    ): retrofit2.Response<HealthResponseDto>
 
     @POST("internal/failover-sync")
     suspend fun triggerFailoverSync(
         @Header("Authorization") authHeader: String
-    ): SyncResponse
+    ): retrofit2.Response<SyncResponse>
 
     @POST("heartbeat")
     suspend fun sendHeartbeat(
         @Header("Authorization") authHeader: String,
         @Body heartbeatData: HeartbeatRequestDto
-    ): HeartbeatResponseDto
+    ): retrofit2.Response<HeartbeatResponseDto>
 
     @POST("languages/multiplier")
     suspend fun updateMultiplier(

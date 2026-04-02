@@ -49,14 +49,20 @@ class WalkHeuristicsWorker @JvmOverloads constructor(
                     "Bearer $token",
                     com.mecris.go.sync.HeartbeatRequestDto(role = "android_client", process_id = "com.mecris.go")
                 )
-                Log.i("WalkHeuristicsWorker", "Heartbeat SUCCESS. MCP Active: ${hbResponse.mcp_server_active}")
+                
+                if (hbResponse.isSuccessful) {
+                    val body = hbResponse.body()
+                    Log.i("WalkHeuristicsWorker", "Heartbeat SUCCESS. MCP Active: ${body?.mcp_server_active}")
 
-                // Cooperative Failover: If MCP is dark and we haven't triggered in 2 hours
-                val twoHoursAgo = Instant.now().minusSeconds(7200).toEpochMilli()
-                if (!hbResponse.mcp_server_active && lastFailoverTrigger < twoHoursAgo) {
-                    Log.w("WalkHeuristicsWorker", "MCP Server is DARK. Triggering Autonomous Failover Sync.")
-                    syncApi.triggerFailoverSync("Bearer $token")
-                    prefs.edit().putLong("last_failover_trigger", Instant.now().toEpochMilli()).apply()
+                    // Cooperative Failover: If MCP is dark and we haven't triggered in 2 hours
+                    val twoHoursAgo = Instant.now().minusSeconds(7200).toEpochMilli()
+                    if (body?.mcp_server_active == false && lastFailoverTrigger < twoHoursAgo) {
+                        Log.w("WalkHeuristicsWorker", "MCP Server is DARK. Triggering Autonomous Failover Sync.")
+                        syncApi.triggerFailoverSync("Bearer $token")
+                        prefs.edit().putLong("last_failover_trigger", Instant.now().toEpochMilli()).apply()
+                    }
+                } else {
+                    Log.w("WalkHeuristicsWorker", "Heartbeat failed with code: ${hbResponse.code()}")
                 }
             }
         } catch (e: Exception) {
@@ -158,14 +164,18 @@ class WalkHeuristicsWorker @JvmOverloads constructor(
                     )
 
                     // 5. Awaitable Cloud Sync
-                    val response = syncApi.uploadWalk("Bearer $token", dto)
-                    Log.i("WalkHeuristicsWorker", "Cloud Sync SUCCESS: ${response.message}")
-                    
-                    // 6. Update Local State
-                    prefs.edit()
-                        .putString("last_synced_day", if (summary.isWalkInferred) today else lastSyncedDay)
-                        .putLong("last_step_count", summary.totalSteps)
-                        .apply()
+                    val syncResponse = syncApi.uploadWalk("Bearer $token", dto)
+                    if (syncResponse.isSuccessful) {
+                        Log.i("WalkHeuristicsWorker", "Cloud Sync SUCCESS: ${syncResponse.body()?.message}")
+                        
+                        // 6. Update Local State
+                        prefs.edit()
+                            .putString("last_synced_day", if (summary.isWalkInferred) today else lastSyncedDay)
+                            .putLong("last_step_count", summary.totalSteps)
+                            .apply()
+                    } else {
+                        Log.e("WalkHeuristicsWorker", "Cloud Sync FAILED: ${syncResponse.code()}")
+                    }
                 } else {
                     Log.w("WalkHeuristicsWorker", "Auth required: Token retrieval failed.")
                     return Result.retry() 
