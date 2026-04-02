@@ -368,3 +368,18 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: Arabic review reminder Tier 2 path — the `arabic_review_reminder` goes through `_apply_tier2_escalation` but gets the generic fallback (no `variables` dict). Scope decision deferred to next session.
 
 **Next**: Decide whether `arabic_review_reminder` Tier 2 needs its own `_build_tier2_message` branch (references Arabic goal context); add test if so.
+
+## 🏛️ 2026-04-02 — Session 13: Nag Ladder — Arabic review reminder Tier 2 contextual copy (complete)
+
+**Planned**: Add `arabic_review_reminder` branch in `_build_tier2_message()` with test coverage for idle-based Tier 2 promotion. (yebyen/mecris#66)
+
+**Done**:
+- Orient: NEXT_SESSION.md flagged Arabic review reminder Tier 2 path as next pending item. Repos in sync.
+- Opened plan yebyen/mecris#66; posted analysis discovering that `arabic_review_reminder` does have `variables` dict — NEXT_SESSION.md note was inaccurate.
+- Added `if msg_type == "arabic_review_reminder":` branch to `_build_tier2_message()`: returns "Arabic reviews still overdue after Nh. reviewstack won't fix itself — open Clozemaster NOW."
+- Added `test_arabic_review_reminder_tier2_fallback_is_contextual`: reviewstack CRITICAL + arabic_review_reminder sent 7h ago → tier=2, use_template=False, fallback references Arabic context.
+- All 29 tests pass. Committed 2b18381.
+
+**Skipped**: Nothing — plan complete.
+
+**Next**: Ghost archivist live validation (requires live environment); upstream PR to kingdonb/mecris for sessions 9-13.
