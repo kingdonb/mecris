@@ -766,6 +766,112 @@ async def test_tier2_walk_escalation_implicit_reset_when_user_walks():
 
 
 @pytest.mark.asyncio
+async def test_tier2_walk_reminder_has_escalated_fallback_message():
+    """Tier 2 walk_reminder must have an escalated fallback_message, not the generic Tier 1 coaching copy."""
+    MOCKED_NOW = datetime.datetime(2026, 3, 20, 15, 0, 0)
+    SENT_AT = MOCKED_NOW - datetime.timedelta(hours=7)
+
+    async def mock_last_sent(msg_type, user_id=None):
+        if msg_type == "walk_reminder":
+            return SENT_AT
+        return None
+
+    mock_context = {
+        "daily_walk_status": {"has_activity_today": False},
+        "beeminder_alerts": [],
+        "goal_runway": []
+    }
+    mock_insight = {"momentum": "low", "message": "Get moving!"}
+
+    rs = ReminderService(make_async_mock(mock_context), make_async_mock(mock_insight), log_provider=mock_last_sent)
+
+    class MockAfternoon(datetime.datetime):
+        @classmethod
+        def now(cls, *args, **kwargs):
+            return MOCKED_NOW
+
+    with patch('services.reminder_service.datetime', MockAfternoon):
+        result = await rs.check_reminder_needed()
+        assert result["should_send"] is True
+        assert result["type"] == "walk_reminder"
+        assert result["tier"] == 2
+        msg = result.get("fallback_message", "")
+        # Must be escalated — not the generic coaching copy
+        assert msg != mock_insight["message"], f"Tier 2 fallback must differ from Tier 1 coaching message, got: {msg!r}"
+        # Must reference the escalated/idle context
+        assert any(word in msg.lower() for word in ("escalat", "7h", "no walk", "still")), \
+            f"Expected escalated Tier 2 walk message, got: {msg!r}"
+
+
+@pytest.mark.asyncio
+async def test_tier2_beeminder_emergency_fallback_references_goal_title():
+    """Tier 2 beeminder_emergency fallback_message must reference the specific goal title."""
+    MOCKED_NOW = datetime.datetime(2026, 3, 20, 8, 0, 0)
+    SENT_AT = MOCKED_NOW - datetime.timedelta(hours=7)
+
+    async def mock_last_sent(msg_type, user_id=None):
+        if msg_type == "beeminder_emergency":
+            return SENT_AT
+        return None
+
+    mock_context = {
+        "daily_walk_status": {"has_activity_today": True},
+        "beeminder_alerts": [],
+        "goal_runway": [
+            {"slug": "weight", "title": "Weight Goal", "derail_risk": "CRITICAL", "runway": "0 days"}
+        ]
+    }
+    mock_insight = {"momentum": "low", "message": "Emergency!"}
+
+    rs = ReminderService(make_async_mock(mock_context), make_async_mock(mock_insight), log_provider=mock_last_sent)
+
+    class MockMorning(datetime.datetime):
+        @classmethod
+        def now(cls, *args, **kwargs):
+            return MOCKED_NOW
+
+    with patch('services.reminder_service.datetime', MockMorning):
+        result = await rs.check_reminder_needed()
+        assert result["should_send"] is True
+        assert result["type"] == "beeminder_emergency"
+        assert result["tier"] == 2
+        msg = result.get("fallback_message", "")
+        assert "Weight Goal" in msg, f"Expected goal title in Tier 2 message, got: {msg!r}"
+        assert msg != mock_insight["message"], "Tier 2 fallback must differ from Tier 1 coaching message"
+
+
+@pytest.mark.asyncio
+async def test_tier2_escalation_generic_type_has_escalated_message():
+    """Tier 2 escalation for an unknown type gets a generic but urgent escalated message (not original copy)."""
+    MOCKED_NOW = datetime.datetime(2026, 3, 20, 15, 0, 0)
+    SENT_AT = MOCKED_NOW - datetime.timedelta(hours=7)
+
+    async def mock_last_sent(msg_type, user_id=None):
+        return SENT_AT
+
+    rs = ReminderService(make_async_mock({}), make_async_mock({}), log_provider=mock_last_sent)
+
+    tier1_result = {
+        "should_send": True,
+        "type": "custom_reminder",
+        "tier": 1,
+        "fallback_message": "Do stuff."
+    }
+
+    class MockNow(datetime.datetime):
+        @classmethod
+        def now(cls, *args, **kwargs):
+            return MOCKED_NOW
+
+    with patch('services.reminder_service.datetime', MockNow):
+        result = await rs._apply_tier2_escalation(tier1_result)
+        assert result["tier"] == 2
+        msg = result.get("fallback_message", "")
+        assert msg != "Do stuff.", f"Generic escalated message should replace Tier 1 copy, got: {msg!r}"
+        assert len(msg) > 10, "Escalated message must have actual content"
+
+
+@pytest.mark.asyncio
 async def test_tier3_not_promoted_by_idle_window():
     """Nag Ladder: beeminder_emergency_tier3 (tier 3) is never downgraded or affected."""
 

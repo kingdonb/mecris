@@ -58,6 +58,25 @@ class ReminderService:
         return diff.total_seconds() / 3600.0
 
 
+    def _build_tier2_message(self, msg_type: str, hours_idle: float, result: Dict[str, Any]) -> str:
+        """Build a contextual escalated message for Tier 2 promotion."""
+        hours_str = f"{hours_idle:.0f}h"
+        if msg_type == "walk_reminder":
+            return (
+                f"⚠️ Still no walk after {hours_str}. Boris and Fiona are not impressed. "
+                f"This is your escalated reminder — get outside NOW. 🐕🚨"
+            )
+        if msg_type == "beeminder_emergency":
+            goal_title = result.get("variables", {}).get("1", "a Beeminder goal")
+            return (
+                f"🚨 ESCALATED: '{goal_title}' is still at risk after {hours_str} of silence. "
+                f"You've ignored this long enough — address it NOW before it derails. 📉"
+            )
+        return (
+            f"⚠️ Escalated reminder after {hours_str} idle: this situation hasn't resolved itself. "
+            f"Take action NOW. 🔥"
+        )
+
     async def _apply_tier2_escalation(self, result: Dict[str, Any], user_id: str = None) -> Dict[str, Any]:
         """Promote a Tier 1 result to Tier 2 if it has been idle long enough.
 
@@ -71,6 +90,7 @@ class ReminderService:
             result = dict(result)
             result["tier"] = 2
             result["use_template"] = False
+            result["fallback_message"] = self._build_tier2_message(result["type"], hours_idle, result)
         return result
 
     async def check_reminder_needed(self, user_id: str = None) -> Dict[str, Any]:
