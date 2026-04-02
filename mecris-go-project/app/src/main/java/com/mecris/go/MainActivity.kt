@@ -383,16 +383,20 @@ fun MecrisDashboard(
             val token = auth.getAccessTokenSuspend()
             if (token != null) {
                 try {
-                    val response = syncApi.getBudget("Bearer $token")
-                    budgetAmount = response.remaining_budget
+                    val budgetResponse = syncApi.getBudget("Bearer $token")
+                    if (budgetResponse.isSuccessful) {
+                        budgetAmount = budgetResponse.body()?.remaining_budget
+                    }
 
                     val healthResponse = syncApi.getHealth("Bearer $token")
-                    homeServerActive = healthResponse.home_server_active
+                    if (healthResponse.isSuccessful) {
+                        homeServerActive = healthResponse.body()?.home_server_active == true
+                    }
                     
                     // 1. QUICK FETCH: Get currently known languages first
                     var langResponse = syncApi.getLanguages("Bearer $token")
-                    if (!surgicalUpdateInProgress) {
-                        languageStats = langResponse.languages
+                    if (langResponse.isSuccessful && !surgicalUpdateInProgress) {
+                        languageStats = langResponse.body()?.languages ?: emptyList()
                     }
                     
                     // We have DB data, so release the UI block immediately
@@ -404,8 +408,8 @@ fun MecrisDashboard(
                         
                         // 3. FRESH FETCH: Grab the updated stats after the sync completes
                         langResponse = syncApi.getLanguages("Bearer $token")
-                        if (!surgicalUpdateInProgress) {
-                            languageStats = langResponse.languages
+                        if (langResponse.isSuccessful && !surgicalUpdateInProgress) {
+                            languageStats = langResponse.body()?.languages ?: emptyList()
                         }
                     } catch (se: HttpException) {
                         val errorBody = se.response()?.errorBody()?.string()

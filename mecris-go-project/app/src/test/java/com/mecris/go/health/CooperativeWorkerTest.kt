@@ -7,6 +7,7 @@ import androidx.work.ListenableWorker
 import androidx.work.WorkerParameters
 import com.mecris.go.auth.PocketIdAuth
 import com.mecris.go.sync.HeartbeatResponseDto
+import com.mecris.go.sync.SyncResponse
 import com.mecris.go.sync.SyncServiceApi
 import io.mockk.*
 import kotlinx.coroutines.runBlocking
@@ -43,8 +44,15 @@ class CooperativeWorkerTest {
     @Test
     fun `worker triggers failover when MCP is dark`() = runBlocking {
         // GIVEN: MCP is reported as NOT active
-        coEvery { syncApi.sendHeartbeat(any(), any()) } returns HeartbeatResponseDto("ok", mcp_server_active = false)
-        coEvery { syncApi.triggerFailoverSync(any()) } returns mockk()
+        coEvery { syncApi.sendHeartbeat(any(), any()) } returns retrofit2.Response.success(
+            HeartbeatResponseDto("ok", mcp_server_active = false)
+        )
+        coEvery { syncApi.triggerFailoverSync(any()) } returns retrofit2.Response.success(
+            SyncResponse("ok", "failover triggered")
+        )
+        coEvery { syncApi.getLanguages(any()) } returns retrofit2.Response.success(
+            com.mecris.go.sync.LanguagesResponseDto(emptyList())
+        )
         
         // GIVEN: We use the injected dependencies
         val worker = WalkHeuristicsWorker(context, workerParams, pocketIdAuth, syncApi)
@@ -58,7 +66,12 @@ class CooperativeWorkerTest {
     @Test
     fun `worker DOES NOT trigger failover when MCP is active`() = runBlocking {
         // GIVEN: MCP is reported as active
-        coEvery { syncApi.sendHeartbeat(any(), any()) } returns HeartbeatResponseDto("ok", mcp_server_active = true)
+        coEvery { syncApi.sendHeartbeat(any(), any()) } returns retrofit2.Response.success(
+            HeartbeatResponseDto("ok", mcp_server_active = true)
+        )
+        coEvery { syncApi.getLanguages(any()) } returns retrofit2.Response.success(
+            com.mecris.go.sync.LanguagesResponseDto(emptyList())
+        )
         
         val worker = WalkHeuristicsWorker(context, workerParams, pocketIdAuth, syncApi)
         

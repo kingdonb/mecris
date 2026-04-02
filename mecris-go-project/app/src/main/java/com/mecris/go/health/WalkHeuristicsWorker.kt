@@ -74,59 +74,63 @@ class WalkHeuristicsWorker @JvmOverloads constructor(
             if (token != null) {
                 val langResponse = syncApi.getLanguages("Bearer $token")
                 
-                // 1. Arabic: High Pressure (PRIORITY)
-                val arabicStat = langResponse.languages.find { it.name.equals("ARABIC", ignoreCase = true) }
-                var isArabicBehind = false
-                
-                if (arabicStat != null && arabicStat.current > 0) {
-                    val multiplier = arabicStat.pump_multiplier ?: 1.0
-                    val targetFlowRate = com.mecris.go.sync.ReviewPumpCalculator.calculateTargetFlowRate(
-                        multiplier, arabicStat.current, arabicStat.tomorrow
-                    )
+                if (langResponse.isSuccessful) {
+                    val languages = langResponse.body()?.languages ?: emptyList()
                     
-                    if (arabicStat.daily_completions < targetFlowRate) {
-                        isArabicBehind = true
-                        val lastNagTime = prefs.getLong("last_arabic_nag_timestamp", 0L)
-                        val fourHoursAgo = Instant.now().minusSeconds(14400).toEpochMilli()
-                        
-                        if (lastNagTime < fourHoursAgo) {
-                            Log.i("WalkHeuristicsWorker", "Triggering Arabic Pressure notification. Progress: ${arabicStat.daily_completions}/$targetFlowRate")
-                            val nagManager = NagNotificationManager(applicationContext)
-                            nagManager.showNag(
-                                title = "ARABIC PRESSURE",
-                                message = "Pace: ${arabicStat.daily_completions}/$targetFlowRate cards. Lever: ${multiplier}x. You are behind your neural goal. Clear the debt. 📈"
-                            )
-                            prefs.edit().putLong("last_arabic_nag_timestamp", Instant.now().toEpochMilli()).apply()
-                        }
-                    }
-                }
-
-                // 2. Greek: Island Time (Only if Arabic is cleared)
-                if (!isArabicBehind) {
-                    val greekStat = langResponse.languages.find { it.name.equals("GREEK", ignoreCase = true) }
-                    if (greekStat != null && greekStat.current > 0) {
-                        val multiplier = greekStat.pump_multiplier ?: 1.0
+                    // 1. Arabic: High Pressure (PRIORITY)
+                    val arabicStat = languages.find { it.name.equals("ARABIC", ignoreCase = true) }
+                    var isArabicBehind = false
+                    
+                    if (arabicStat != null && arabicStat.current > 0) {
+                        val multiplier = arabicStat.pump_multiplier ?: 1.0
                         val targetFlowRate = com.mecris.go.sync.ReviewPumpCalculator.calculateTargetFlowRate(
-                            multiplier, greekStat.current, greekStat.tomorrow
+                            multiplier, arabicStat.current, arabicStat.tomorrow
                         )
                         
-                        if (greekStat.daily_completions < targetFlowRate) {
-                            val lastNagTime = prefs.getLong("last_greek_nag_timestamp", 0L)
+                        if (arabicStat.daily_completions < targetFlowRate) {
+                            isArabicBehind = true
+                            val lastNagTime = prefs.getLong("last_arabic_nag_timestamp", 0L)
                             val fourHoursAgo = Instant.now().minusSeconds(14400).toEpochMilli()
                             
                             if (lastNagTime < fourHoursAgo) {
-                                Log.i("WalkHeuristicsWorker", "Triggering Greek Island Time notification. Progress: ${greekStat.daily_completions}/$targetFlowRate")
+                                Log.i("WalkHeuristicsWorker", "Triggering Arabic Pressure notification. Progress: ${arabicStat.daily_completions}/$targetFlowRate")
                                 val nagManager = NagNotificationManager(applicationContext)
                                 nagManager.showNag(
-                                    title = "GREEK ISLAND TIME 🏝️",
-                                    message = "Pace: ${greekStat.daily_completions}/$targetFlowRate points. The moussaka is waiting, but the cards come first. Spend a moment in Mykonos. 🇬🇷"
+                                    title = "ARABIC PRESSURE",
+                                    message = "Pace: ${arabicStat.daily_completions}/$targetFlowRate cards. Lever: ${multiplier}x. You are behind your neural goal. Clear the debt. 📈"
                                 )
-                                prefs.edit().putLong("last_greek_nag_timestamp", Instant.now().toEpochMilli()).apply()
+                                prefs.edit().putLong("last_arabic_nag_timestamp", Instant.now().toEpochMilli()).apply()
                             }
                         }
                     }
-                } else {
-                    Log.d("WalkHeuristicsWorker", "Arabic is behind. Suppressing Greek Island Time.")
+
+                    // 2. Greek: Island Time (Only if Arabic is cleared)
+                    if (!isArabicBehind) {
+                        val greekStat = languages.find { it.name.equals("GREEK", ignoreCase = true) }
+                        if (greekStat != null && greekStat.current > 0) {
+                            val multiplier = greekStat.pump_multiplier ?: 1.0
+                            val targetFlowRate = com.mecris.go.sync.ReviewPumpCalculator.calculateTargetFlowRate(
+                                multiplier, greekStat.current, greekStat.tomorrow
+                            )
+                            
+                            if (greekStat.daily_completions < targetFlowRate) {
+                                val lastNagTime = prefs.getLong("last_greek_nag_timestamp", 0L)
+                                val fourHoursAgo = Instant.now().minusSeconds(14400).toEpochMilli()
+                                
+                                if (lastNagTime < fourHoursAgo) {
+                                    Log.i("WalkHeuristicsWorker", "Triggering Greek Island Time notification. Progress: ${greekStat.daily_completions}/$targetFlowRate")
+                                    val nagManager = NagNotificationManager(applicationContext)
+                                    nagManager.showNag(
+                                        title = "GREEK ISLAND TIME 🏝️",
+                                        message = "Pace: ${greekStat.daily_completions}/$targetFlowRate points. The moussaka is waiting, but the cards come first. Spend a moment in Mykonos. 🇬🇷"
+                                    )
+                                    prefs.edit().putLong("last_greek_nag_timestamp", Instant.now().toEpochMilli()).apply()
+                                }
+                            }
+                        }
+                    } else {
+                        Log.d("WalkHeuristicsWorker", "Arabic is behind. Suppressing Greek Island Time.")
+                    }
                 }
             }
         } catch (e: Exception) {
