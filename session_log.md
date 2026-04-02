@@ -352,3 +352,19 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: Nothing — Goal 1 Phase 3 is complete.
 
 **Next**: Nag Ladder Tier 2 message content (kingdonb/mecris#139) — decide on coaching copy for escalated walk/Beeminder alerts.
+
+## 🏛️ 2026-04-02 — Session 12: Nag Ladder Tier 2 — escalated coaching copy (complete)
+
+**Planned**: Implement actual Tier 2 coaching copy in `services/reminder_service.py` to replace generic `fallback_message`. (yebyen/mecris#65)
+
+**Done**:
+- Orient: NEXT_SESSION.md flagged Nag Ladder Tier 2 as HIGHEST PRIORITY. Confirmed kingdonb/mecris#163 (PR-Test Fix) is now MERGED — blocker resolved.
+- Opened plan yebyen/mecris#65; posted analysis comment confirming root cause before coding.
+- Read `services/reminder_service.py` and `tests/test_reminder_service.py` in full. Root cause: `_apply_tier2_escalation` sets `tier=2` and `use_template=False` but leaves `fallback_message` as the Tier 1 coaching copy.
+- Red: added 3 failing tests — walk_reminder Tier 2 content, beeminder_emergency Tier 2 content, generic type fallback.
+- Green: added `_build_tier2_message()` to `ReminderService`; wired into `_apply_tier2_escalation`. Walk path references Boris & Fiona + hours idle; beeminder path names specific goal title + hours idle; generic path is appropriately urgent.
+- All 28 tests pass (25 existing + 3 new). Committed 0898f44.
+
+**Skipped**: Arabic review reminder Tier 2 path — the `arabic_review_reminder` goes through `_apply_tier2_escalation` but gets the generic fallback (no `variables` dict). Scope decision deferred to next session.
+
+**Next**: Decide whether `arabic_review_reminder` Tier 2 needs its own `_build_tier2_message` branch (references Arabic goal context); add test if so.
