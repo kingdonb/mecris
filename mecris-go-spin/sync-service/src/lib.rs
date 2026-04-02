@@ -152,6 +152,8 @@ async fn extract_user_id(auth_header: Option<&spin_sdk::http::HeaderValue>) -> O
 #[http_component]
 async fn handle_sync_service(req: Request) -> anyhow::Result<impl IntoResponse> {
     let path = req.path();
+    let method = req.method().to_string();
+    println!("REQUEST: {} {}", method, path);
     
     if path == "/walks" {
         if req.method() != &spin_sdk::http::Method::Post {
