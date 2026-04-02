@@ -383,3 +383,18 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: Nothing — plan complete.
 
 **Next**: Ghost archivist live validation (requires live environment); upstream PR to kingdonb/mecris for sessions 9-13.
+
+## 🏛️ 2026-04-02 — Session 14: Nag Ladder Tier 3 test coverage (complete)
+
+**Planned**: Implement Nag Ladder Tier 3 — High Urgency path for <2h Beeminder runway. (yebyen/mecris#67)
+
+**Done**:
+- Orient: Recommended implementing Tier 3 (kingdonb/mecris#139 still open). Discovered on inspection that Tier 3 was already implemented (services/reminder_service.py:123-139) with 3 existing tests. Plan issue updated with discovery.
+- Identified genuine test gaps: Tier 3 cooldown path, 2.0h exact boundary (strictly < 2.0), and missing _parse_runway_hours unit tests.
+- Added 3 new tests: `test_tier3_on_cooldown_returns_should_send_false`, `test_tier3_not_triggered_for_exactly_2h_runway`, `test_parse_runway_hours_returns_hours_for_hours_unit` (covers 5 cases).
+- 32/32 tests pass (was 29). Committed bcd9469.
+- Attempted to comment on kingdonb/mecris#139 — blocked (GITHUB_TOKEN scope is yebyen-only). Noted for human follow-up.
+
+**Skipped**: CLI `bin/mecris nag eval` tier output verification (requires live environment). Cross-repo comment on #139 (token scope issue).
+
+**Next**: Upstream PR to kingdonb/mecris for sessions 9-14 work (close #139); then tackle kingdonb/mecris#164 (ghost presence global Neon).
