@@ -300,3 +300,20 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: No explicit `last_acknowledged` implementation — analysis showed it is not needed. Tier 2 message content (what does a Tier 2 walk_reminder actually say?) is deferred.
 
 **Next**: If MECRIS_BOT_CLASSIC_PAT workflow scope is granted, deploy pr-test fork-PR fix. Otherwise: Tier 2 freeform message content design (what coaching text does the escalated walk_reminder send?).
+
+## 🏛️ 2026-04-02 — Session 9: Ghost Presence Detection — ghost.presence module (complete)
+
+**Planned**: Implement `presence.lock`-based coordination for autonomous ghost sessions so they can signal aliveness and yield to human operators. (yebyen/mecris#62)
+
+**Done**:
+- Orient: NEXT_SESSION.md identified Goal 1 Phase 1 (Ghost Presence Detection) as highest priority. No issues tagged needs-test/pr-review/bug on either repo. yebyen in sync with kingdonb.
+- Opened plan yebyen/mecris#62 before touching code.
+- Discovered `cli/main.py::run_presence()` already had inline presence logic (check/take/release) but no importable module and no tests.
+- Created `ghost/__init__.py` and `ghost/presence.py` with: `acquire_lock()`, `release_lock()`, `check_presence()`, `presence_lock()` context manager, `PresenceStatus` dataclass, configurable TTL (default 30 min).
+- Created `tests/test_ghost_presence.py` with 16 tests: acquire creates file, writes timestamp, release removes file, returns True/False correctly, roundtrip, no-lock means no human, fresh lock means human present, stale lock means human gone, custom TTL, lock path in status, context manager creates/removes/yields path/releases on exception/detects concurrent session.
+- Refactored `cli/main.py::run_presence()` to import from `ghost.presence` — no behavior change, logic centralized.
+- All 16 tests pass. Committed 3f06f2b.
+
+**Skipped**: Archivist ghost session wiring (Phase 2) — out of scope for this plan issue. Carried forward.
+
+**Next**: Create `ghost/archivist.py` — cron-invocable script that checks presence, calls a pulse MCP function, and logs to `logs/ghost_archivist.log`.
