@@ -317,3 +317,20 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: Archivist ghost session wiring (Phase 2) — out of scope for this plan issue. Carried forward.
 
 **Next**: Create `ghost/archivist.py` — cron-invocable script that checks presence, calls a pulse MCP function, and logs to `logs/ghost_archivist.log`.
+
+## 🏛️ 2026-04-02 — Session 10: Ghost Archivist — ghost.archivist module (complete)
+
+**Planned**: Create `ghost/archivist.py` — cron-invocable presence-aware pulse logger. (yebyen/mecris#63)
+
+**Done**:
+- Orient: NEXT_SESSION.md identified Ghost Archivist (Goal 1 Phase 2) as highest priority. No issues tagged needs-test/pr-review/bug on either repo. yebyen is 2 commits ahead of kingdonb.
+- Opened plan yebyen/mecris#63 before touching code.
+- Read `ghost/presence.py` and `mcp_server.py` to understand available interfaces; confirmed `/health` and `/narrator/context` HTTP endpoints exist on FastAPI at localhost:8000.
+- Created `ghost/archivist.py` with: `run()` (main entrypoint), `pulse()` (HTTP health probe with offline fallback), `_write_log()` (ISO-8601 UTC append). Env var overrides for lock path, log path, and MCP URL.
+- Created `tests/test_archivist.py` with 10 tests: pulse online/offline/timeout, YIELD path, PULSE online path, PULSE offline path, log dir creation, return codes, ISO timestamp.
+- All 10 tests pass. Committed e8ef739.
+- Smoke test verified: `python ghost/archivist.py` logs `[PULSE] mcp=offline` correctly when server is not running.
+
+**Skipped**: Cron/scheduler registration (Phase 3) — out of scope for this plan issue. Carried forward.
+
+**Next**: Wire `ghost/archivist.py` into `scheduler.py` as a recurring cron job; verify `logs/ghost_archivist.log` accumulates entries autonomously.

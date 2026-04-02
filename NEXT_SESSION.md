@@ -1,27 +1,27 @@
-# Next Session: Goal 1 Phase 2 — Ghost Archivist Session Prototype
+# Next Session: Goal 1 Phase 3 — Wire Ghost Archivist into Cron/Bot Workflow
 
-## Current Status (Thursday, April 2, 2026 — session 9)
-- **Ghost Presence Module COMPLETE** ✓: `ghost/presence.py` extracted with `acquire_lock()`, `release_lock()`, `check_presence()`, and `presence_lock()` context manager.
-- **16/16 presence tests PASS**: Full acquire/release lifecycle, stale lock detection, custom TTL, concurrent session deferral, and exception-safe context manager.
-- **CLI refactored**: `cli/main.py::run_presence()` now delegates to `ghost.presence` instead of inline file ops.
-- **Repos**: yebyen/mecris is 1 commit ahead of origin/main (committed 3f06f2b; push handled by workflow).
+## Current Status (Thursday, April 2, 2026 — session 10)
+- **Ghost Archivist Module COMPLETE** ✓: `ghost/archivist.py` implemented with `run()`, `pulse()`, and `_write_log()`.
+- **10/10 archivist tests PASS**: YIELD path (human present), PULSE online, PULSE offline, log file creation, exit codes, timestamp format.
+- **Smoke test verified**: `python ghost/archivist.py` with no lock active logs `[PULSE] mcp=offline` correctly (server not running in CI).
+- **Repos**: yebyen/mecris is ahead of kingdonb/mecris (sessions 9+10 not yet upstreamed; push handled by workflow).
 
 ## Verified This Session
-- [x] **ghost/presence.py**: `acquire_lock()` / `release_lock()` / `check_presence()` / `presence_lock()` all implemented and tested.
-- [x] **Stale lock detection**: Locks older than 30 minutes are treated as "human gone" (configurable via `ttl` param).
-- [x] **Context manager**: `presence_lock()` auto-releases even on exception.
-- [x] **Concurrent deferral**: Test proves second session detects active lock and gets `human_present=True`.
-- [x] **CLI integration**: `cli presence check|take|release` uses module, no duplication.
+- [x] **ghost/archivist.py**: `run()` checks presence, yields (exit 0 + YIELD log) if human detected, otherwise calls `pulse()` and logs PULSE entry.
+- [x] **pulse()**: probes `{MECRIS_MCP_URL}/health`, returns `{"status": "online", "server_ts": ...}` or `{"status": "offline", "error": ...}`.
+- [x] **Log format**: `{ISO-8601 UTC} [{YIELD|PULSE}] {detail}` appended to `logs/ghost_archivist.log`.
+- [x] **Log dir auto-created**: `os.makedirs` ensures the log path exists even if `logs/` subdir doesn't exist.
+- [x] **Environment overrides**: `GHOST_LOCK_PATH`, `GHOST_LOG_PATH`, `MECRIS_MCP_URL` all respected.
 
 ## Pending Verification (Next Session)
 
-### HIGHEST PRIORITY: Goal 1 Phase 2 — Archivist Ghost Session
-- **Foundation**: `ghost/presence.py` is ready. Next step: wire it into the actual bot/cron workflow.
-- **Task**: Create `ghost/archivist.py` that:
-  1. Calls `check_presence()` at startup — if `human_present=True`, print "yielding" and exit 0.
-  2. Does a basic "pulse" (reads `get_narrator_context` or similar MCP call).
-  3. Logs to `logs/ghost_archivist.log` with timestamp.
-- **Goal**: A cron-invocable script that autonomously monitors system pulse without conflicting with human sessions.
+### HIGHEST PRIORITY: Goal 1 Phase 3 — Cron Integration
+- **Foundation**: `ghost/archivist.py` is ready and tested. Next step: register it as a cron entry.
+- **Task**: Add `ghost/archivist.py` to the scheduler or cron infrastructure:
+  1. Check `scheduler.py` for how other cron jobs are registered.
+  2. Add an archivist job that fires every N minutes (15? 30?) when no human session is active.
+  3. Verify that `logs/ghost_archivist.log` accumulates entries when the scheduler runs.
+- **Goal**: A fully autonomous ghost session that logs pulse entries on a schedule and defers to human sessions.
 
 ### Nag Ladder: Tier 2 message content (kingdonb/mecris#139)
 - Tier 2 currently sends `use_template: False` with a generic `fallback_message`.
@@ -39,4 +39,5 @@
     - Tier 2: WhatsApp Freeform (Escalated, 6h idle)
     - Tier 3: WhatsApp High Urgency (Critical, <2h runway)
 - **Global Rate Limit**: 2 messages per hour across ALL channels.
-- **ghost/ package**: New top-level package; import as `from ghost.presence import ...` with `PYTHONPATH=.`.
+- **ghost/ package**: Top-level package; import as `from ghost.presence import ...` or `from ghost.archivist import run` with `PYTHONPATH=.`.
+- **Test command**: `PYTHONPATH=. python3 -m pytest` (`.venv/bin/pytest` may not exist in CI; use `python3 -m pytest` directly).
