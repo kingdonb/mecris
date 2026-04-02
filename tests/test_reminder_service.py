@@ -942,3 +942,75 @@ async def test_tier3_not_promoted_by_idle_window():
         assert result["should_send"] is True
         assert result["type"] == "beeminder_emergency_tier3"
         assert result["tier"] == 3  # must remain tier 3
+
+
+@pytest.mark.asyncio
+async def test_tier3_on_cooldown_returns_should_send_false():
+    """Nag Ladder: tier 3 respects a 1h cooldown — suppressed if sent < 1h ago."""
+
+    MOCKED_NOW = datetime.datetime(2026, 3, 20, 8, 0, 0)
+    SENT_AT = MOCKED_NOW - datetime.timedelta(minutes=30)  # 30 min ago — within 1h cooldown
+
+    async def mock_last_sent(msg_type, user_id=None):
+        if msg_type == "beeminder_emergency_tier3":
+            return SENT_AT
+        return None
+
+    mock_context = {
+        "daily_walk_status": {"has_activity_today": True},
+        "beeminder_alerts": [],
+        "goal_runway": [
+            {"slug": "weight", "title": "Weight Goal", "derail_risk": "CRITICAL", "runway": "1.5 hours"}
+        ]
+    }
+    mock_insight = {"momentum": "low", "message": "Emergency!"}
+
+    rs = ReminderService(make_async_mock(mock_context), make_async_mock(mock_insight), log_provider=mock_last_sent)
+
+    class MockMorning(datetime.datetime):
+        @classmethod
+        def now(cls, *args, **kwargs):
+            return MOCKED_NOW
+
+    with patch('services.reminder_service.datetime', MockMorning):
+        result = await rs.check_reminder_needed()
+        assert result["should_send"] is False
+        assert "cooldown" in result.get("reason", "").lower()
+
+
+@pytest.mark.asyncio
+async def test_tier3_not_triggered_for_exactly_2h_runway():
+    """Nag Ladder: '2.0 hours' runway does NOT trigger tier 3 (condition is strictly < 2.0)."""
+
+    mock_context = {
+        "daily_walk_status": {"has_activity_today": True},
+        "beeminder_alerts": [],
+        "goal_runway": [
+            {"slug": "weight", "title": "Weight Goal", "derail_risk": "CRITICAL", "runway": "2.0 hours"}
+        ]
+    }
+    mock_insight = {"momentum": "low", "message": "Emergency!"}
+
+    rs = ReminderService(make_async_mock(mock_context), make_async_mock(mock_insight))
+
+    class MockMorning(datetime.datetime):
+        @classmethod
+        def now(cls, *args, **kwargs):
+            return cls(2026, 3, 20, 8, 0, 0)
+
+    with patch('services.reminder_service.datetime', MockMorning):
+        result = await rs.check_reminder_needed()
+        # 2.0h is NOT < 2.0 — falls through to beeminder_emergency (tier 1)
+        assert result["should_send"] is True
+        assert result["type"] == "beeminder_emergency"
+        assert result["tier"] == 1
+
+
+def test_parse_runway_hours_returns_hours_for_hours_unit():
+    """_parse_runway_hours: 'hours' unit returns float; 'days' unit returns sentinel 999.0."""
+    rs = ReminderService(None, None)
+    assert rs._parse_runway_hours({"runway": "1.5 hours"}) == 1.5
+    assert rs._parse_runway_hours({"runway": "0 days"}) == 999.0
+    assert rs._parse_runway_hours({"runway": "2.0 hours"}) == 2.0
+    assert rs._parse_runway_hours({"runway": ""}) == 999.0
+    assert rs._parse_runway_hours({}) == 999.0
