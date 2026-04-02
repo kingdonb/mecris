@@ -334,3 +334,21 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: Cron/scheduler registration (Phase 3) — out of scope for this plan issue. Carried forward.
 
 **Next**: Wire `ghost/archivist.py` into `scheduler.py` as a recurring cron job; verify `logs/ghost_archivist.log` accumulates entries autonomously.
+
+## 🏛️ 2026-04-02 — Session 11: Ghost Archivist — cron scheduler integration (complete)
+
+**Planned**: Register `ghost/archivist.run()` as a 15-minute interval leader job in `scheduler.py`. (yebyen/mecris#64)
+
+**Done**:
+- Orient: NEXT_SESSION.md identified Goal 1 Phase 3 (Cron Integration) as highest priority. No issues tagged needs-test/pr-review/bug on either repo.
+- Opened plan yebyen/mecris#64 before touching code.
+- Read `scheduler.py` in full to understand the leader-job pattern (`_start_leader_jobs` / `_stop_leader_jobs`).
+- Added `_global_archivist_job(user_id)` to `scheduler.py`: checks `is_leader`, imports and calls `ghost.archivist.run()`, catches all exceptions and logs errors.
+- Registered in `_start_leader_jobs` with `minutes=15`, `id=auto_archivist_{user_id}`; registered removal in `_stop_leader_jobs`.
+- Added `TestGlobalArchivistJob` to `tests/test_archivist.py` with 3 tests: leader fires run(), non-leader skips, exceptions are caught and logged. Used autouse fixture to mock psycopg2/apscheduler at import time.
+- Updated `tests/test_scheduler_election.py` leader job counts from 4→5 (adds/removes).
+- All 13 archivist tests pass; all 16 presence tests pass. Committed 205aed4.
+
+**Skipped**: Nothing — Goal 1 Phase 3 is complete.
+
+**Next**: Nag Ladder Tier 2 message content (kingdonb/mecris#139) — decide on coaching copy for escalated walk/Beeminder alerts.
