@@ -634,33 +634,61 @@ async fn handle_heartbeat_post(req: Request) -> anyhow::Result<Response> {
     let body_bytes = req.into_body();
     let body: serde_json::Value = serde_json::from_slice(&body_bytes)?;
     let pid = body.get("process_id").and_then(|v| v.as_str()).unwrap_or("unknown");
+    let role = body.get("role").and_then(|v| v.as_str()).unwrap_or("leader");
+
+    println!("HEARTBEAT: user={} role={} pid={}", user_id, role, pid);
 
     let db_url = variables::get("db_url")?;
     let connection = Connection::open(&db_url)?;
     
-    // Atomic leadership claim with user scoping
-    let update_query = "
-        INSERT INTO scheduler_election (user_id, role, process_id, heartbeat) 
-        VALUES ($1, 'leader', $2, CURRENT_TIMESTAMP) 
-        ON CONFLICT (user_id, role) DO UPDATE SET 
-            process_id = EXCLUDED.process_id, 
-            heartbeat = CURRENT_TIMESTAMP 
-        WHERE scheduler_election.process_id = $2 
-           OR scheduler_election.heartbeat < CURRENT_TIMESTAMP - INTERVAL '90 seconds'
-           OR scheduler_election.process_id IS NULL";
+    // Atomic leadership/heartbeat claim with user scoping
+    let update_query = if role == "leader" {
+        "INSERT INTO scheduler_election (user_id, role, process_id, heartbeat) 
+         VALUES ($1, 'leader', $2, CURRENT_TIMESTAMP) 
+         ON CONFLICT (user_id, role) DO UPDATE SET 
+             process_id = EXCLUDED.process_id, 
+             heartbeat = CURRENT_TIMESTAMP 
+         WHERE scheduler_election.process_id = $2 
+            OR scheduler_election.heartbeat < CURRENT_TIMESTAMP - INTERVAL '90 seconds'
+            OR scheduler_election.process_id IS NULL"
+    } else {
+        "INSERT INTO scheduler_election (user_id, role, process_id, heartbeat) 
+         VALUES ($1, $3, $2, CURRENT_TIMESTAMP) 
+         ON CONFLICT (user_id, role) DO UPDATE SET 
+             process_id = EXCLUDED.process_id, 
+             heartbeat = CURRENT_TIMESTAMP"
+    };
     
-    let result = connection.execute(update_query, &[ParameterValue::Str(user_id), ParameterValue::Str(pid.to_string())])?;
-    
+    let params = if role == "leader" {
+        vec![ParameterValue::Str(user_id.clone()), ParameterValue::Str(pid.to_string())]
+    } else {
+        vec![ParameterValue::Str(user_id.clone()), ParameterValue::Str(pid.to_string()), ParameterValue::Str(role.to_string())]
+    };
+
+    let result = connection.execute(update_query, &params)?;
     let claimed = result > 0;
+
+    // Check if MCP (home server) is active for this user
+    let mcp_active_query = "SELECT EXISTS(SELECT 1 FROM scheduler_election WHERE user_id = $1 AND role = 'leader' AND heartbeat > CURRENT_TIMESTAMP - INTERVAL '90 seconds')";
+    let mcp_rows = connection.query(mcp_active_query, &[ParameterValue::Str(user_id)])?;
+    let mcp_server_active = match mcp_rows.rows.first() {
+        Some(row) => match &row[0] {
+            DbValue::Boolean(b) => *b,
+            _ => false,
+        },
+        None => false,
+    };
 
     #[derive(Serialize)]
     struct HeartbeatResponse {
         status: String,
         is_leader: bool,
+        mcp_server_active: bool,
     }
     let resp = HeartbeatResponse { 
         status: "ok".to_string(), 
-        is_leader: claimed 
+        is_leader: claimed,
+        mcp_server_active
     };
 
     Ok(Response::builder()

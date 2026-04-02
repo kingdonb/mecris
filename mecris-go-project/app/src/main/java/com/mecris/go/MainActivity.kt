@@ -317,6 +317,17 @@ fun MecrisDashboard(
                             timezone = ZoneId.of("America/New_York").id
                         )
                         syncApi.uploadWalk("Bearer $token", dto)
+                        
+                        // Send heartbeat to register client presence in Neon
+                        try {
+                            syncApi.sendHeartbeat(
+                                "Bearer $token",
+                                com.mecris.go.sync.HeartbeatRequestDto(role = "android_client", process_id = "com.mecris.go.ui")
+                            )
+                        } catch (e: Exception) {
+                            Log.w("MecrisDashboard", "Heartbeat failed during sync (non-fatal): ${e.message}")
+                        }
+
                         syncStatus = "Success"
                         lastSyncTime = LocalDateTime.now().format(DateTimeFormatter.ofPattern("HH:mm"))
                     } catch (e: Exception) {
