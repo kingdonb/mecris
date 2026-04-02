@@ -55,6 +55,7 @@ Thumbs.db
 
 # Project specific
 mecris.log
+presence.lock
 
 # Todos
 /todos
