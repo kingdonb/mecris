@@ -69,6 +69,6 @@ allowed_outbound_hosts = ["https://*.neon.tech"]
 [component.arabic-skip-counter.variables]
 neon_db_url = "{{ neon_db_url }}"
 [component.arabic-skip-counter.build]
-command = "pip install -r requirements.txt && spin py2wasm app -o arabic-skip-counter.wasm"
+command = "python3 -m pip install --user --break-system-packages -r requirements.txt && spin py2wasm app -o arabic-skip-counter.wasm"
 workdir = "../arabic-skip-counter"
 watch = ["app.py", "wit/*.wit"]
