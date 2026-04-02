@@ -102,6 +102,23 @@ async def _global_walk_sync_job(user_id: str):
     except Exception as e:
         logger.error(f"Neon walk sync job failed for {user_id}: {e}")
 
+async def _global_archivist_job(user_id: str):
+    """
+    Background job that fires a ghost archivist pulse every 15 minutes.
+    Yields silently when a human session is active.
+    """
+    try:
+        from mcp_server import scheduler
+        if not scheduler.is_leader:
+            return
+
+        from ghost.archivist import run as archivist_run
+        archivist_run()
+        logger.info(f"Archivist pulse logged for {user_id}")
+    except Exception as e:
+        logger.error(f"Archivist job failed for {user_id}: {e}")
+
+
 async def _global_cooperative_monitor_job(user_id: str):
     """
     Background job that monitors the Android heartbeat and sends alerts if dark for > 4 hours.
@@ -264,6 +281,7 @@ class MecrisScheduler:
                 lang_sync_job_id = f'auto_language_sync_{self.user_id}'
                 walk_sync_job_id = f'auto_walk_sync_{self.user_id}'
                 monitor_job_id = f'auto_cooperative_monitor_{self.user_id}'
+                archivist_job_id = f'auto_archivist_{self.user_id}'
 
                 if not self.scheduler.get_job(reminder_job_id):
                     self.scheduler.add_job(
@@ -304,6 +322,16 @@ class MecrisScheduler:
                         args=[self.user_id],
                         replace_existing=True
                     )
+
+                if not self.scheduler.get_job(archivist_job_id):
+                    self.scheduler.add_job(
+                        _global_archivist_job,
+                        'interval',
+                        minutes=15,
+                        id=archivist_job_id,
+                        args=[self.user_id],
+                        replace_existing=True
+                    )
                 break
             except Exception as e:
                 if "database is locked" in str(e).lower() and attempt < 4:
@@ -321,6 +349,7 @@ class MecrisScheduler:
                 self.scheduler.remove_job(f'auto_language_sync_{self.user_id}')
                 self.scheduler.remove_job(f'auto_walk_sync_{self.user_id}')
                 self.scheduler.remove_job(f'auto_cooperative_monitor_{self.user_id}')
+                self.scheduler.remove_job(f'auto_archivist_{self.user_id}')
         except: pass
 
     def enqueue_delayed_message(self, message: str, delay_minutes: int, to_number: Optional[str] = None):

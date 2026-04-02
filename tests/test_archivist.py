@@ -7,12 +7,13 @@ Covers:
 - PULSE path (offline): no human → probe fails → log PULSE entry with error
 - Log file is created if it does not exist
 - pulse() function returns correct structure on success and failure
+- _global_archivist_job: calls archivist_run when leader, skips when not
 """
 
 import os
 import json
 import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch, MagicMock, AsyncMock
 
 from ghost.archivist import run, pulse, DEFAULT_LOG_PATH, DEFAULT_MCP_URL
 from ghost.presence import PresenceStatus
@@ -155,3 +156,81 @@ class TestRun:
         log_content = open(log_file).read()
         # ISO 8601 UTC timestamp should be present (ends with +00:00)
         assert "+00:00" in log_content or "Z" in log_content or "2026" in log_content
+
+
+# ---------------------------------------------------------------------------
+# _global_archivist_job scheduler integration tests
+# ---------------------------------------------------------------------------
+
+class TestGlobalArchivistJob:
+    """Tests for the _global_archivist_job scheduler entry point."""
+
+    @pytest.fixture(autouse=True)
+    def _mock_heavy_deps(self):
+        """Mock psycopg2 and apscheduler so scheduler.py can be imported without DB."""
+        import sys
+        mocks = {
+            "psycopg2": MagicMock(),
+            "apscheduler": MagicMock(),
+            "apscheduler.schedulers": MagicMock(),
+            "apscheduler.schedulers.asyncio": MagicMock(),
+            "apscheduler.triggers": MagicMock(),
+            "apscheduler.triggers.date": MagicMock(),
+            "apscheduler.jobstores": MagicMock(),
+            "apscheduler.jobstores.sqlalchemy": MagicMock(),
+        }
+        # Only inject mocks for modules not already loaded
+        to_restore = {}
+        for name, mock in mocks.items():
+            if name not in sys.modules:
+                sys.modules[name] = mock
+                to_restore[name] = None
+        # Ensure scheduler module is freshly importable
+        sys.modules.pop("scheduler", None)
+        yield
+        for name in to_restore:
+            sys.modules.pop(name, None)
+        sys.modules.pop("scheduler", None)
+
+    @pytest.mark.asyncio
+    async def test_calls_archivist_run_when_leader(self):
+        """When the scheduler is leader, archivist_run() must be called."""
+        mock_sched = MagicMock()
+        mock_sched.is_leader = True
+
+        with patch.dict("sys.modules", {"mcp_server": MagicMock(scheduler=mock_sched)}), \
+             patch("ghost.archivist.run") as mock_run:
+            from scheduler import _global_archivist_job
+            await _global_archivist_job("test-user")
+
+        mock_run.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_skips_archivist_run_when_not_leader(self):
+        """When the scheduler is not leader, archivist_run() must NOT be called."""
+        mock_sched = MagicMock()
+        mock_sched.is_leader = False
+
+        with patch.dict("sys.modules", {"mcp_server": MagicMock(scheduler=mock_sched)}), \
+             patch("ghost.archivist.run") as mock_run:
+            from scheduler import _global_archivist_job
+            await _global_archivist_job("test-user")
+
+        mock_run.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_logs_error_on_exception(self):
+        """Exceptions inside archivist_run must be caught and logged, not raised."""
+        import sys
+        mock_sched = MagicMock()
+        mock_sched.is_leader = True
+
+        with patch.dict("sys.modules", {"mcp_server": MagicMock(scheduler=mock_sched)}), \
+             patch("ghost.archivist.run", side_effect=RuntimeError("boom")):
+            from scheduler import _global_archivist_job
+            import scheduler as sched_mod
+            with patch.object(sched_mod, "logger") as mock_logger:
+                # Must not raise
+                await _global_archivist_job("test-user")
+            mock_logger.error.assert_called_once()
+            assert "boom" in mock_logger.error.call_args[0][0]

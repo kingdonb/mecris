@@ -37,7 +37,7 @@ async def test_scheduler_election_claims_leader(test_scheduler):
 
         # It should have marked itself as leader
         assert test_scheduler.is_leader is True
-        assert test_scheduler.scheduler.add_job.call_count == 4
+        assert test_scheduler.scheduler.add_job.call_count == 5
 
 @pytest.mark.asyncio
 async def test_scheduler_election_yields_leader(test_scheduler):
@@ -66,5 +66,5 @@ async def test_scheduler_election_yields_leader(test_scheduler):
 
         # It should demote itself
         assert test_scheduler.is_leader is False
-        # It should have removed its leader jobs (4 of them)
-        assert test_scheduler.scheduler.remove_job.call_count == 4
+        # It should have removed its leader jobs (5 of them)
+        assert test_scheduler.scheduler.remove_job.call_count == 5
