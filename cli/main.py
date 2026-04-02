@@ -57,39 +57,35 @@ async def run_nag_trigger(args):
 
 def run_presence(args):
     """Check for or take the presence lock."""
+    from ghost.presence import acquire_lock, release_lock, check_presence
     import os
-    import time
-    
+
     lock_path = os.path.join(os.getcwd(), "presence.lock")
-    
+
     if args.action == "take":
-        with open(lock_path, "w") as f:
-            f.write(str(int(time.time())))
+        acquire_lock(lock_path)
         print("✅ Presence lock taken.")
         return 0
-    
+
     if args.action == "release":
-        if os.path.exists(lock_path):
-            os.remove(lock_path)
+        removed = release_lock(lock_path)
+        if removed:
             print("✅ Presence lock released.")
         else:
             print("ℹ️ No presence lock to release.")
         return 0
-    
+
     # Default: check
-    if not os.path.exists(lock_path):
+    status = check_presence(lock_path)
+    if not status.lock_exists:
         print("✅ NO human presence detected (no lock file).")
         return 0
-    
-    # Check age
-    mtime = os.path.getmtime(lock_path)
-    age = time.time() - mtime
-    
-    if age < (30 * 60): # 30 minutes
-        print(f"⚠️ Human presence detected ({int(age)}s ago).")
+
+    if status.human_present:
+        print(f"⚠️ Human presence detected ({int(status.age_seconds)}s ago).")
         return 1
     else:
-        print(f"✅ Stale presence lock found ({int(age)}s old). Assuming human is gone.")
+        print(f"✅ Stale presence lock found ({int(status.age_seconds)}s old). Assuming human is gone.")
         return 0
 
 def main():
