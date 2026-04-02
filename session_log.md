@@ -413,3 +413,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: Nothing — plan complete. PR merge requires human (or bot with kingdonb/mecris write access).
 
 **Next**: kingdonb/mecris#164 (Ghost Presence Global Neon Evolution) — start in yebyen fork while #165 awaits merge.
+
+## 2026-04-02 — Ghost Presence Phase 1: Neon table, state machine, tests (session 16)
+
+**Planned**: Add SQL migration for `presence` table, refactor `ghost/presence.py` with Neon-backed store + POUND_SAND/SOFY state machine, write 17-test unit suite. Keep `mcp_server.py` changes to Phase 2. (yebyen/mecris#69)
+
+**Done**: All three deliverables complete. `scripts/migrations/001_presence_table.sql` created with `presence_status_type` enum (5 values). `ghost/presence.py` extended with `StatusType`, `PresenceRecord`, `NeonPresenceStore` (upsert, get, set_pound_sand, escalate_to_sofy), and `get_neon_store()` fallback — file-based lock API 100% unchanged. 17/17 new tests pass (`tests/test_presence_neon.py`); 29/29 existing ghost tests unaffected. Plan issue yebyen/mecris#69 closed.
+
+**Skipped**: `mcp_server.py` middleware integration (Phase 2) and `get_narrator_context` SOFY surfacing — explicitly deferred. SQL migration not yet applied to live Neon DB (requires human or live-env session).
+
+**Next**: kingdonb/mecris#164 Phase 2 — `mcp_server.py` middleware records ACTIVE_HUMAN on every tool call; `get_narrator_context` surfaces SOFY status. Apply `scripts/migrations/001_presence_table.sql` to live Neon DB first.
