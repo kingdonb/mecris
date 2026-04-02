@@ -4,7 +4,66 @@ import json
 import base64
 import time
 from unittest.mock import patch, MagicMock
+from services.encryption_service import EncryptionService
+from beeminder_client import BeeminderClient
+from scripts.clozemaster_scraper import ClozemasterScraper
 from services.neon_sync_checker import NeonSyncChecker
+
+def test_encryption_service_roundtrip():
+    key = "0" * 64 # 32-byte zero key in hex
+    svc = EncryptionService(key_hex=key)
+    plaintext = "super-secret-token-123"
+    
+    encrypted = svc.encrypt(plaintext)
+    assert encrypted != plaintext
+    assert len(encrypted) > 24 # nonce(12) + tag(16) + data
+    
+    decrypted = svc.decrypt(encrypted)
+    assert decrypted == plaintext
+
+@pytest.mark.asyncio
+@patch("psycopg2.connect")
+async def test_beeminder_client_loads_encrypted_creds(mock_connect):
+    key = "0" * 64
+    svc = EncryptionService(key_hex=key)
+    enc_token = svc.encrypt("secret-token")
+    
+    mock_conn = MagicMock()
+    mock_cur = MagicMock()
+    mock_connect.return_value.__enter__.return_value = mock_conn
+    mock_conn.cursor.return_value.__enter__.return_value = mock_cur
+    
+    # Return (username, encrypted_token)
+    mock_cur.fetchone.return_value = ("testuser", enc_token)
+    
+    with patch.dict(os.environ, {"MASTER_ENCRYPTION_KEY": key, "NEON_DB_URL": "postgres://fake"}):
+        client = BeeminderClient(user_id="user-123")
+        await client._load_credentials()
+        
+    assert client.username == "testuser"
+    assert client.auth_token == "secret-token"
+
+@pytest.mark.asyncio
+@patch("psycopg2.connect")
+async def test_clozemaster_scraper_loads_encrypted_creds(mock_connect):
+    key = "0" * 64
+    svc = EncryptionService(key_hex=key)
+    enc_email = svc.encrypt("user@example.com")
+    enc_pass = svc.encrypt("password123")
+    
+    mock_conn = MagicMock()
+    mock_cur = MagicMock()
+    mock_connect.return_value.__enter__.return_value = mock_conn
+    mock_conn.cursor.return_value.__enter__.return_value = mock_cur
+    
+    mock_cur.fetchone.return_value = (enc_email, enc_pass)
+    
+    with patch.dict(os.environ, {"MASTER_ENCRYPTION_KEY": key, "NEON_DB_URL": "postgres://fake"}):
+        scraper = ClozemasterScraper(user_id="user-456")
+        await scraper._load_credentials()
+        
+    assert scraper.email == "user@example.com"
+    assert scraper.password == "password123"
 
 # Dummy JWT for testing (unverified decoding)
 def create_dummy_jwt(sub, exp=None):

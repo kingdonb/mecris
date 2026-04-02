@@ -138,15 +138,27 @@ class LanguageSyncService:
         Perform a full sync: Scrape -> Beeminder (if not dry_run) -> Neon.
         Returns a summary of the sync.
         """
-        target_user_id = user_id or os.getenv("DEFAULT_USER_ID")
+        # Ensure we use the same resolved user_id throughout
+        from usage_tracker import UsageTracker
+        tracker = UsageTracker()
+        target_user_id = tracker.resolve_user_id(user_id)
+        
         try:
-            # 1. Scrape and push to Beeminder
-            scraper_data = await sync_clozemaster_to_beeminder(dry_run=dry_run)
+            # 1. Scrape and push to Beeminder (now takes user_id)
+            scraper_data = await sync_clozemaster_to_beeminder(dry_run=dry_run, user_id=target_user_id)
             if not scraper_data:
                 return {"success": False, "error": "No data returned from scraper"}
 
             # 2. Fetch fresh Beeminder goals to get safebuf and derail_risk
-            all_goals = await self.beeminder_client.get_all_goals()
+            # We must set the user_id on the client or create a new one
+            if self.beeminder_client.user_id != target_user_id:
+                # Create a temporary client for this user to avoid shared state issues
+                from beeminder_client import BeeminderClient
+                user_client = BeeminderClient(user_id=target_user_id)
+            else:
+                user_client = self.beeminder_client
+
+            all_goals = await user_client.get_all_goals()
             goal_map = {g.get("slug"): g for g in all_goals}
             
             summary = {

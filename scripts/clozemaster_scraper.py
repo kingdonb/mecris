@@ -23,6 +23,9 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 # Import Beeminder Client
 from beeminder_client import BeeminderClient
 
+from services.encryption_service import EncryptionService
+from usage_tracker import UsageTracker
+
 load_dotenv()
 log_level = os.getenv("LOG_LEVEL", "INFO").upper()
 logger = logging.getLogger("mecris.clozemaster")
@@ -32,9 +35,10 @@ logging.basicConfig(level=getattr(logging, log_level))
 logging.getLogger("httpx").setLevel(logging.WARNING)
 
 class ClozemasterScraper:
-    def __init__(self):
-        self.email = os.getenv("CLOZEMASTER_EMAIL")
-        self.password = os.getenv("CLOZEMASTER_PASSWORD")
+    def __init__(self, user_id: str = None):
+        self.user_id = user_id
+        self.email = None
+        self.password = None
         self.base_url = "https://www.clozemaster.com"
         self.csrf_token = ""
         self.cookies = {}
@@ -43,12 +47,49 @@ class ClozemasterScraper:
             "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36"
         }
         self.client = httpx.AsyncClient(timeout=30.0, follow_redirects=True, headers=self.headers)
+        self.encryption = EncryptionService()
+        self.tracker = UsageTracker()
+
+    async def _load_credentials(self):
+        """Fetch and decrypt credentials from Neon."""
+        target_user_id = self.tracker.resolve_user_id(self.user_id)
+        neon_url = os.getenv("NEON_DB_URL")
         
+        if not neon_url:
+            self.email = os.getenv("CLOZEMASTER_EMAIL")
+            self.password = os.getenv("CLOZEMASTER_PASSWORD")
+            if self.email and self.password:
+                logger.warning(f"Using legacy CLOZEMASTER_EMAIL env var for user {target_user_id}")
+                return
+            raise RuntimeError("NEON_DB_URL not set and legacy env vars missing")
+
+        try:
+            import psycopg2
+            with psycopg2.connect(neon_url) as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "SELECT clozemaster_email_encrypted, clozemaster_password_encrypted FROM users WHERE pocket_id_sub = %s",
+                        (target_user_id,)
+                    )
+                    row = cur.fetchone()
+                    if row and row[0] and row[1]:
+                        self.email = self.encryption.decrypt(row[0])
+                        self.password = self.encryption.decrypt(row[1])
+                        logger.info(f"Loaded encrypted Clozemaster credentials for user {target_user_id}")
+                    else:
+                        self.email = os.getenv("CLOZEMASTER_EMAIL")
+                        self.password = os.getenv("CLOZEMASTER_PASSWORD")
+                        if not (self.email and self.password):
+                            raise RuntimeError(f"No Clozemaster credentials found in DB or ENV for user {target_user_id}")
+                        logger.warning(f"Falling back to legacy env vars for user {target_user_id}")
+        except Exception as e:
+            logger.error(f"Failed to load Clozemaster credentials: {e}")
+            raise
+
     async def login(self) -> bool:
         """Simulate login to Clozemaster and establish a session."""
         if not self.email or not self.password:
-            logger.error("CLOZEMASTER_EMAIL or CLOZEMASTER_PASSWORD not set")
-            return False
+            await self._load_credentials()
             
         try:
             # 1. Get login page to extract CSRF token
@@ -224,9 +265,9 @@ class ClozemasterScraper:
     async def close(self):
         await self.client.aclose()
 
-async def sync_clozemaster_to_beeminder(dry_run: bool = False):
+async def sync_clozemaster_to_beeminder(dry_run: bool = False, user_id: str = None):
     """Main task to scrape and push to Beeminder."""
-    scraper = ClozemasterScraper()
+    scraper = ClozemasterScraper(user_id=user_id)
     beeminder = BeeminderClient()
     
     try:

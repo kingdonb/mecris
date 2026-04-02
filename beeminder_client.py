@@ -58,24 +58,68 @@ class BeeminderAPIError(Exception):
         super().__init__(message)
         self.status_code = status_code
 
+from services.encryption_service import EncryptionService
+
 class BeeminderClient:
     """Client for Beeminder API with derailment detection"""
     
-    def __init__(self):
-        self.username = os.getenv("BEEMINDER_USERNAME")
-        self.auth_token = os.getenv("BEEMINDER_AUTH_TOKEN")
+    def __init__(self, user_id: str = None):
+        self.user_id = user_id
+        self.username = None
+        self.auth_token = None
         self.base_url = os.getenv("BEEMINDER_API_BASE", "https://www.beeminder.com/api/v1")
-        
-        if not self.username or not self.auth_token:
-            logger.warning("Beeminder credentials not configured")
+        self.encryption = EncryptionService()
         
         # HTTP client with timeout
         self.client = httpx.AsyncClient(timeout=15.0)
-    
+
+    async def _load_credentials(self):
+        """Fetch and decrypt credentials from Neon."""
+        # Avoid circular import
+        from usage_tracker import UsageTracker
+        tracker = UsageTracker()
+        target_user_id = tracker.resolve_user_id(self.user_id)
+        neon_url = os.getenv("NEON_DB_URL")
+        
+        if not neon_url:
+            self.username = os.getenv("BEEMINDER_USERNAME")
+            self.auth_token = os.getenv("BEEMINDER_AUTH_TOKEN")
+            if self.username and self.auth_token:
+                logger.warning(f"Using legacy BEEMINDER_USERNAME env var for user {target_user_id}")
+                return
+            raise RuntimeError("NEON_DB_URL not set and legacy env vars missing")
+
+        try:
+            import psycopg2
+            with psycopg2.connect(neon_url) as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "SELECT beeminder_user, beeminder_token_encrypted FROM users WHERE pocket_id_sub = %s",
+                        (target_user_id,)
+                    )
+                    row = cur.fetchone()
+                    if row and row[0] and row[1]:
+                        self.username = row[0]
+                        self.auth_token = self.encryption.decrypt(row[1])
+                        logger.info(f"Loaded encrypted Beeminder credentials for user {target_user_id}")
+                    else:
+                        # Final fallback to env
+                        self.username = os.getenv("BEEMINDER_USERNAME")
+                        self.auth_token = os.getenv("BEEMINDER_AUTH_TOKEN")
+                        if not (self.username and self.auth_token):
+                            raise RuntimeError(f"No Beeminder credentials found in DB or ENV for user {target_user_id}")
+                        logger.warning(f"Falling back to legacy env vars for user {target_user_id}")
+        except Exception as e:
+            logger.error(f"Failed to load Beeminder credentials: {e}")
+            raise
+
     async def health_check(self) -> str:
         """Check if Beeminder API is accessible"""
         if not self.username or not self.auth_token:
-            return "not_configured"
+            try:
+                await self._load_credentials()
+            except Exception:
+                return "not_configured"
         
         try:
             response = await self.client.get(
@@ -90,8 +134,8 @@ class BeeminderClient:
     async def _api_call(self, endpoint: str, method: str = "GET", data: Dict = None) -> Optional[Dict]:
         """Make authenticated API call to Beeminder"""
         if not self.username or not self.auth_token:
-            raise BeeminderAPIError("Beeminder credentials not configured", status_code=401)
-        
+            await self._load_credentials()
+            
         url = f"{self.base_url}/{endpoint}"
         params = {"auth_token": self.auth_token}
         

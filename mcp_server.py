@@ -75,9 +75,9 @@ from scheduler import MecrisScheduler
 
 # Initialize clients
 obsidian_client = ObsidianMCPClient()
-beeminder_client = BeeminderClient()
+default_beeminder_client = BeeminderClient()
 neon_checker = NeonSyncChecker()
-language_sync_service = LanguageSyncService(beeminder_client)
+language_sync_service = LanguageSyncService(default_beeminder_client)
 # Trackers will use DEFAULT_USER_ID from env if not specified
 usage_tracker = UsageTracker()
 virtual_budget_manager = VirtualBudgetManager()
@@ -92,27 +92,35 @@ except Exception as e:
 
 # --- Cache Implementation ---
 daily_activity_cache = {}
-beeminder_goals_cache = {}
+# Multi-tenant cache: {user_id: {"data": [...], "cache_expires": ...}}
+beeminder_goals_cache: Dict[str, Dict[str, Any]] = {}
 
-async def get_cached_beeminder_goals() -> List[Dict[str, Any]]:
-    """Get Beeminder goals with 30-minute cache."""
+def get_user_beeminder_client(user_id: str = None) -> BeeminderClient:
+    """Return a BeeminderClient for the specific user."""
+    target_user_id = usage_tracker.resolve_user_id(user_id)
+    return BeeminderClient(user_id=target_user_id)
+
+async def get_cached_beeminder_goals(user_id: str = None) -> List[Dict[str, Any]]:
+    """Get Beeminder goals with 30-minute cache per user."""
+    target_user_id = usage_tracker.resolve_user_id(user_id)
     now = datetime.now()
-    if ("data" in beeminder_goals_cache and "cache_expires" in beeminder_goals_cache and now < beeminder_goals_cache["cache_expires"]):
-        beeminder_goals_cache["is_stale"] = False
-        return beeminder_goals_cache["data"]
+    
+    user_cache = beeminder_goals_cache.get(target_user_id, {})
+    if ("data" in user_cache and "cache_expires" in user_cache and now < user_cache["cache_expires"]):
+        return user_cache["data"]
     
     try:
-        goals_data = await beeminder_client.get_all_goals()
-        beeminder_goals_cache.update({
-            "data": goals_data, "last_check": now, "cache_expires": now + timedelta(minutes=30), "is_stale": False
-        })
+        client = get_user_beeminder_client(target_user_id)
+        goals_data = await client.get_all_goals()
+        beeminder_goals_cache[target_user_id] = {
+            "data": goals_data, 
+            "last_check": now, 
+            "cache_expires": now + timedelta(minutes=30)
+        }
         return goals_data
     except Exception as e:
-        logger.error(f"Failed to fetch Beeminder goals: {e}")
-        if "data" in beeminder_goals_cache:
-            beeminder_goals_cache["is_stale"] = True
-            return beeminder_goals_cache["data"]
-        return []
+        logger.error(f"Failed to fetch Beeminder goals for user {target_user_id}: {e}")
+        return user_cache.get("data", [])
 
 async def get_cached_daily_activity(goal_slug: str = "bike", user_id: str = None) -> Dict[str, Any]:
     """Get daily activity status with 15-minute cache (refreshed for Cloud sync)."""
@@ -160,7 +168,8 @@ async def get_cached_daily_activity(goal_slug: str = "bike", user_id: str = None
                 return activity_status
 
         # Fallback to Beeminder (Legacy or non-walk goals)
-        activity_status = await beeminder_client.get_daily_activity_status(goal_slug)
+        client = get_user_beeminder_client(target_user_id)
+        activity_status = await client.get_daily_activity_status(goal_slug)
         daily_activity_cache[cache_key] = {
             "last_check": local_now, 
             "has_activity_today": activity_status["has_activity_today"], 
@@ -190,9 +199,10 @@ async def get_narrator_context(user_id: str = None) -> Dict[str, Any]:
         except Exception:
             todos = []
         
-        beeminder_goals = await get_cached_beeminder_goals()
-        emergencies = await beeminder_client.get_emergencies(beeminder_goals)
-        goal_runway = await beeminder_client.get_runway_summary(limit=6, all_goals=beeminder_goals)
+        beeminder_goals = await get_cached_beeminder_goals(target_user_id)
+        client = get_user_beeminder_client(target_user_id)
+        emergencies = await client.get_emergencies(beeminder_goals)
+        goal_runway = await client.get_runway_summary(limit=6, all_goals=beeminder_goals)
         budget_status = await asyncio.to_thread(usage_tracker.get_budget_status, target_user_id)
         daily_walk_status = await get_cached_daily_activity("bike", target_user_id)
         groq_context = await asyncio.to_thread(get_groq_context_for_narrator, target_user_id)
@@ -286,11 +296,13 @@ async def get_narrator_context(user_id: str = None) -> Dict[str, Any]:
         return {"error": f"Failed to build narrator context: {e}"}
 
 @mcp.tool(description="Get Beeminder goal portfolio status with risk assessment.")
-async def get_beeminder_status() -> Dict[str, Any]:
+async def get_beeminder_status(user_id: str = None) -> Dict[str, Any]:
     """Get Beeminder goal portfolio status with risk assessment."""
+    target_user_id = usage_tracker.resolve_user_id(user_id)
     try:
-        goals = await beeminder_client.get_all_goals()
-        emergencies = await beeminder_client.get_emergencies()
+        client = get_user_beeminder_client(target_user_id)
+        goals = await client.get_all_goals()
+        emergencies = await client.get_emergencies()
         return {
             "goals": goals, "emergencies": emergencies,
             "safe_count": len([g for g in goals if g.get("derail_risk") == "SAFE"]),
@@ -394,9 +406,11 @@ async def get_real_anthropic_usage(days: int = 1) -> Dict[str, Any]:
         return {"error": str(e)}
 
 @mcp.tool(description="Check for beemergencies and send SMS alerts if critical.")
-async def send_beeminder_alert() -> Dict[str, Any]:
+async def send_beeminder_alert(user_id: str = None) -> Dict[str, Any]:
+    target_user_id = usage_tracker.resolve_user_id(user_id)
     try:
-        emergencies = await beeminder_client.get_emergencies()
+        client = get_user_beeminder_client(target_user_id)
+        emergencies = await client.get_emergencies()
         critical_emergencies = [e for e in emergencies if e.get("urgency") == "IMMEDIATE"]
         if critical_emergencies and usage_tracker.should_send_alert("beeminder", "critical", cooldown_minutes=90):
             alert_message = f"🚨 BEEMERGENCY: {len(critical_emergencies)} goals need immediate attention!"
