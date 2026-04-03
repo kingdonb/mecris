@@ -433,3 +433,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: Upstream PR for kingdonb/mecris#164 — Phase 1 + Phase 2 together need a bundled PR. Deferred to next session. SQL migration to live Neon DB (human action required).
 
 **Next**: Open upstream PR to kingdonb/mecris for Ghost Presence Phases 1+2 (referencing kingdonb/mecris#164). Use GITHUB_CLASSIC_PAT.
+
+## 2026-04-03 — Update PR #165 body to cover Ghost Presence + fix closes links (session 18)
+
+**Planned**: Update kingdonb/mecris#165 PR body to document Ghost Presence Phases 1+2 (sessions 16–17) alongside Nag Ladder, and add `Closes kingdonb/mecris#164` so the presence issue closes on merge. (yebyen/mecris#72)
+
+**Done**: PR #165 title updated to "feat: Complete Nag Ladder + Ghost Presence (Neon-backed coordination) — sessions 13-17". Body rewritten to cover all five sessions (13–17) with Ghost Presence state machine diagram, Phase 1 (Neon table + state machine) and Phase 2 (mcp_server middleware) detail, pending live-validation notes, and full test plan. `Closes kingdonb/mecris#139` and `Closes kingdonb/mecris#164` both confirmed present in body. Used GITHUB_CLASSIC_PAT for cross-repo PATCH via GitHub API.
+
+**Skipped**: Nothing — task was narrow and fully executed.
+
+**Next**: kingdonb/mecris#165 awaits human review + merge. After merge: sync yebyen fork from upstream and apply `scripts/migrations/001_presence_table.sql` to live Neon DB.
