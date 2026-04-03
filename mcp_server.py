@@ -28,6 +28,7 @@ from services.neon_sync_checker import NeonSyncChecker
 from services.reminder_service import ReminderService
 from services.language_sync_service import LanguageSyncService
 from services.review_pump import ReviewPump, ARABIC_POINTS_PER_CARD
+from ghost.presence import get_neon_store, StatusType
 
 # Load environment variables
 load_dotenv()
@@ -39,6 +40,29 @@ logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger("mecris")
+
+async def _record_presence(user_id: str) -> None:
+    """Record ACTIVE_HUMAN presence for user_id. No-op when Neon is unavailable."""
+    store = get_neon_store()
+    if store is None:
+        return
+    try:
+        await asyncio.to_thread(store.upsert, user_id, StatusType.ACTIVE_HUMAN, "mcp_server")
+    except Exception as e:
+        logger.warning(f"Presence record failed (non-fatal): {e}")
+
+
+async def _get_presence_status(user_id: str) -> Optional[str]:
+    """Return current presence status_type string for user_id, or None if unavailable."""
+    store = get_neon_store()
+    if store is None:
+        return None
+    try:
+        record = await asyncio.to_thread(store.get, user_id)
+        return record.status_type.value if record else None
+    except Exception:
+        return None
+
 
 # Initialize the MCP Server
 mcp = FastMCP("mecris")
@@ -191,6 +215,7 @@ async def get_cached_daily_activity(goal_slug: str = "bike", user_id: str = None
 async def get_narrator_context(user_id: str = None) -> Dict[str, Any]:
     """Get unified strategic context with goals, budget, and recommendations."""
     target_user_id = usage_tracker.resolve_user_id(user_id)
+    await _record_presence(target_user_id)
     try:
         goals = usage_tracker.get_goals(target_user_id)
         active_goals = [g for g in goals if g.get("status") == "active"]
@@ -289,6 +314,7 @@ async def get_narrator_context(user_id: str = None) -> Dict[str, Any]:
             "greek_backlog_boost": greek_backlog_boost,
             "greek_backlog_cards": greek_backlog_cards,
             "budget_governor": _budget_governor.get_narrator_summary(),
+            "presence_status": await _get_presence_status(target_user_id),
             "last_updated": datetime.now().isoformat()
         }
     except Exception as e:
