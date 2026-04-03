@@ -485,3 +485,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: Nothing — scope was small and fully delivered.
 
 **Next**: PR #165 still awaiting kingdonb review + merge. After merge: sync upstream, open new PR for session 22 fix (`d7945e3`) targeting kingdonb/mecris#130, then evaluate #162 (OIDC Submarine Mode) or #129 (Greek backlog booster).
+
+## 2026-04-03 — OIDC submarine mode root cause analysis (session 23) 🏛️
+
+**Planned**: Analyze `PocketIdAuth.kt` for submarine-mode token refresh failures, post technical report to kingdonb/mecris#162, update `docs/AUTH_CONFIGURATION.md` (yebyen/mecris#81).
+
+**Done**: Read `PocketIdAuth.kt` and `MainActivity.kt` in full. Identified four compounding bugs: (1) missing `offline_access` scope at line 67 — no durable refresh token issued; (2) network errors treated as permanent auth failures at lines 109–112 — `AuthState.Error` broadcast on `SocketTimeoutException`; (3) Error state triggers "Sign In" UI which abandons valid Refresh Token (`MainActivity.kt:1063–1074`); (4) no proactive token refresh in `WalkHeuristicsWorker`. Technical report posted to kingdonb/mecris#162 (comment #4185361982). `docs/AUTH_CONFIGURATION.md` updated with "Root Cause Analysis" section. Commit `e9cc1c0`.
+
+**Skipped**: Implementation of the fixes — analysis only was scoped. Android build/PR would need a dedicated session.
+
+**Next**: PR #165 still awaiting kingdonb review + merge. After merge: sync upstream, open PR for session 22 score-delta fix, then implement the OIDC fixes (4 items in NEXT_SESSION.md) as next Android engineering session.
