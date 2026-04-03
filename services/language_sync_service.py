@@ -70,13 +70,13 @@ class LanguageSyncService:
                             logger.info(f"Detected activity from upstream today: {daily_completions} for {name}")
                         
                         # 2. Backup Activity Detection: trust Score Diff (for multi-sync accuracy)
+                        # Clozemaster's numPointsToday resets at their midnight, which may differ from Eastern.
+                        # If both upstream "today" metrics are zero but total score increased, use the delta.
                         if points > last_points and last_points > 0:
                             diff = points - last_points
-                            # Only apply if it looks like we missed points in our local daily count
-                            # (Clozemaster's numPointsToday resets at their midnight, which might differ)
-                            if activity_metric < daily_completions + diff:
-                                # This handles the case where activity_metric might have reset but score still goes up
-                                pass 
+                            if activity_metric == 0 and diff > daily_completions:
+                                daily_completions = diff
+                                logger.info(f"Backup delta detection: {diff} points scored since last sync for {name}")
 
                         # 3. Detect Day Boundary (US/Eastern) for resetting local completions
                         eastern = zoneinfo.ZoneInfo("US/Eastern")

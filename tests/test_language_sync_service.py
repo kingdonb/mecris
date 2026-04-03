@@ -69,3 +69,53 @@ async def test_language_sync_service_coordination(mock_dependencies):
     arabic_call = next(c for c in insert_calls if c[0][1][1] == "ARABIC")
     arabic_params = arabic_call[0][1]
     assert arabic_params[6] == 6  # safebuf from reviewstack goal
+
+
+def test_score_delta_backup_detection_updates_daily_completions():
+    """When cards_today=0 and points_today=0 but score increased, delta is used as daily_completions."""
+    from unittest.mock import patch, MagicMock, call
+    from services.language_sync_service import LanguageSyncService
+
+    mock_beeminder = MagicMock()
+    service = LanguageSyncService(mock_beeminder)
+
+    # Simulate: last_points=500, current points=600 → delta=100; no upstream "today" data
+    scraper_data = {
+        "arabic": {
+            "count": 50,
+            "points": 600,
+            "points_today": 0,
+            "forecast": {"tomorrow": 0, "next_7_days": 0, "cards_today": 0},
+        }
+    }
+    goal_map = {}
+    summary = {"min_safebuf": 999}
+
+    captured_params = []
+
+    def fake_execute(sql, params=None):
+        if params:
+            captured_params.append((sql, params))
+
+    mock_conn = MagicMock()
+    mock_cur = MagicMock()
+    mock_cur.execute.side_effect = fake_execute
+    # First fetchone: return existing row with last_points=500, daily_completions=0
+    mock_cur.fetchone.return_value = (500, 0, datetime(2026, 4, 3, 10, 0, 0))
+    mock_conn.cursor.return_value.__enter__.return_value = mock_cur
+    mock_conn.__enter__ = lambda s: mock_conn
+    mock_conn.__exit__ = MagicMock(return_value=False)
+
+    with patch("psycopg2.connect", return_value=mock_conn):
+        service._update_neon_db(scraper_data, goal_map, summary, "test_user")
+
+    # Find the INSERT call
+    insert_calls = [(sql, params) for sql, params in captured_params if "INSERT INTO language_stats" in sql]
+    assert len(insert_calls) == 1, "Expected exactly one INSERT call"
+
+    # daily_completions is at index 9 in the INSERT parameter tuple
+    insert_params = insert_calls[0][1]
+    daily_completions_idx = 9  # (user_id, language_name, current, tomorrow, next_7, daily_rate, safebuf, derail_risk, slug, daily_completions, ...)
+    assert insert_params[daily_completions_idx] == 100, (
+        f"Expected daily_completions=100 (delta from score), got {insert_params[daily_completions_idx]}"
+    )
