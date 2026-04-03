@@ -1,32 +1,34 @@
-# Next Session: Ghost Presence Phase 2 — mcp_server.py middleware (kingdonb/mecris#164)
+# Next Session: Ghost Presence Phase 2 complete — open upstream PR for kingdonb/mecris#164
 
-## Current Status (Thursday, April 2, 2026 — session 16)
-- **Upstream PR open**: kingdonb/mecris#165 — "feat(nag-ladder): Complete Nag Ladder" (yebyen:main → kingdonb:main). Still awaiting human review + merge.
-- **Ghost Presence Phase 1 complete** (commit `2e6e11b`): Neon presence table DDL, `ghost/presence.py` Neon store + POUND_SAND/SOFY state machine, 17 new unit tests — all passing. Plan issue yebyen/mecris#69 closed.
-- **kingdonb/mecris#164** (Ghost Presence Neon Evolution): Phase 1 done. Phase 2 remaining: `mcp_server.py` middleware to record presence on every tool call, and `get_narrator_context` surfacing of SOFY status.
-- **yebyen/mecris is 5 commits ahead** of kingdonb/mecris (4 from Nag Ladder PR + 1 from Phase 1).
+## Current Status (Friday, April 3, 2026 — session 17)
+- **Ghost Presence Phase 2 complete** (commit `16c91ac`): `mcp_server.py` now calls `_record_presence(user_id)` in `get_narrator_context`, upserts `ACTIVE_HUMAN` on every invocation (no-op when `NEON_DB_URL` unset). `get_narrator_context` returns `presence_status` field (SOFY visible to narrator). 4 new unit tests pass in `tests/test_mcp_server.py`.
+- **kingdonb/mecris#164** (Ghost Presence Neon Evolution): Phases 1 and 2 both done in yebyen fork. Phase 3 remaining: open upstream PR to kingdonb/mecris.
+- **kingdonb/mecris#165** (Nag Ladder PR) still open — awaiting human review + merge.
+- **yebyen/mecris is 6 commits ahead** of kingdonb/mecris (4 Nag Ladder + 1 Phase 1 + 1 Phase 2).
 
 ## Verified This Session
-- [x] **SQL migration**: `scripts/migrations/001_presence_table.sql` created — `presence` table with `presence_status_type` enum (5 values).
-- [x] **Neon presence store**: `ghost/presence.py` extended with `StatusType`, `PresenceRecord`, `NeonPresenceStore`, `get_neon_store()`. File-based lock API fully unchanged.
-- [x] **17/17 new tests pass**: `tests/test_presence_neon.py` — upsert, get, POUND_SAND, SOFY escalation, fallback.
-- [x] **29/29 existing ghost tests pass**: `test_ghost_presence.py` and `test_archivist.py` unaffected.
-- [x] **Plan issue closed**: yebyen/mecris#69 closed as complete.
+- [x] **`_record_presence()` helper**: calls `NeonPresenceStore.upsert(user_id, ACTIVE_HUMAN, "mcp_server")` when Neon available; no-op when `get_neon_store()` returns None; swallows DB errors.
+- [x] **`_get_presence_status()` helper**: calls `NeonPresenceStore.get(user_id)`, returns `status_type.value` string or None.
+- [x] **`get_narrator_context` wired**: calls `_record_presence` before building response; returns `presence_status` key.
+- [x] **4/4 new tests pass**: `tests/test_mcp_server.py` — upsert with ACTIVE_HUMAN, no-op when None, exception swallowed, presence_status in narrator dict.
+- [x] **0 regressions**: 218 passing tests unchanged (5 pre-existing failures in test_sms_mock.py + test_language_sync_service.py confirmed pre-existing).
+- [x] **Plan issue closed**: yebyen/mecris#70 closed as complete.
 
 ## Pending Verification (Next Session)
 
-### Phase 2 — mcp_server.py middleware (kingdonb/mecris#164)
-- Add middleware to `mcp_server.py` that calls `NeonPresenceStore.upsert(user_id, StatusType.ACTIVE_HUMAN)` on every tool invocation (when NEON_DB_URL is set).
-- Expose `get_narrator_context` field surfacing current `status_type` — especially SOFY, so the narrator can warn the human when SHITS_ON_FIRE_YO is active.
-- Test: mock `NeonPresenceStore` in `mcp_server` tests to verify middleware fires.
-- Can only be E2E-validated in a live environment (Neon DB, running MCP server).
+### Open Upstream PR for Ghost Presence (kingdonb/mecris#164)
+- yebyen/mecris is 6 commits ahead. Commits `2e6e11b` (Phase 1) + `16c91ac` (Phase 2) represent the Ghost Presence work.
+- Need to open a PR to kingdonb/mecris for the full Ghost Presence feature (Phases 1 + 2).
+- Use `GITHUB_CLASSIC_PAT` for cross-repo PR creation (confirmed working session 15).
+- PR body should reference kingdonb/mecris#164 and include Phase 1 + Phase 2 summary.
 
 ### Run SQL Migration on Live Neon DB
 - `scripts/migrations/001_presence_table.sql` needs to be applied to the live Neon DB before the middleware can write presence records.
 - Command: `psql $NEON_DB_URL -f scripts/migrations/001_presence_table.sql`
+- Without this, `get_neon_store()` returns None in production (graceful no-op).
 
 ### PR Merge — Human Action Required
-- kingdonb/mecris#165 needs review + merge by kingdonb.
+- kingdonb/mecris#165 (Nag Ladder) needs review + merge by kingdonb.
 - After merge, yebyen/mecris should sync (pull from kingdonb/mecris main).
 
 ### Ghost Archivist Live Validation (carry-forward)
@@ -47,4 +49,5 @@
 - **`uv` not available in CI**: Use `python3 -m venv .venv && .venv/bin/pip install` instead.
 - **Scheduler election tests**: `tests/test_scheduler_election.py` requires psycopg2 — these fail in the bare CI environment. Pre-existing condition, not a regression.
 - **GITHUB_TOKEN scope**: Fine-grained PAT for yebyen/mecris only. Cannot comment on kingdonb/mecris issues. **Use GITHUB_CLASSIC_PAT** for cross-repo operations (comment, PR creation — confirmed working session 15).
-- **Presence table**: Schema in `scripts/migrations/001_presence_table.sql`. Must be applied to live Neon DB before Phase 2 middleware can write records. `NeonPresenceStore` gracefully returns None when NEON_DB_URL is unset.
+- **Presence table**: Schema in `scripts/migrations/001_presence_table.sql`. Must be applied to live Neon DB before Phase 2 middleware can write records. `get_neon_store()` gracefully returns None when NEON_DB_URL is unset or psycopg2 unavailable.
+- **Pre-existing test failures**: `tests/test_sms_mock.py` (3 failures + 1 subtest) and `tests/test_language_sync_service.py::test_language_sync_service_coordination` — not regressions, confirmed present before session 17 changes.

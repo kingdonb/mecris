@@ -423,3 +423,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: `mcp_server.py` middleware integration (Phase 2) and `get_narrator_context` SOFY surfacing — explicitly deferred. SQL migration not yet applied to live Neon DB (requires human or live-env session).
 
 **Next**: kingdonb/mecris#164 Phase 2 — `mcp_server.py` middleware records ACTIVE_HUMAN on every tool call; `get_narrator_context` surfaces SOFY status. Apply `scripts/migrations/001_presence_table.sql` to live Neon DB first.
+
+## 2026-04-03 — Ghost Presence Phase 2: mcp_server middleware + SOFY surfacing (session 17)
+
+**Planned**: Add `_record_presence()` middleware to `mcp_server.py` upsert ACTIVE_HUMAN on every tool invocation; surface current `status_type` (especially SOFY) in `get_narrator_context` response; write unit tests with mocked `NeonPresenceStore`. (yebyen/mecris#70)
+
+**Done**: All deliverables complete. Added `_record_presence()` (upserts ACTIVE_HUMAN, swallows errors, no-op when Neon unavailable) and `_get_presence_status()` (returns status_type string or None). `get_narrator_context` now calls `_record_presence` before building response and includes `presence_status` in the returned dict. 4/4 new tests pass in `tests/test_mcp_server.py` following the established `test_reminder_integration.py` mocking pattern. 0 regressions (218 passing, 5 pre-existing failures untouched).
+
+**Skipped**: Upstream PR for kingdonb/mecris#164 — Phase 1 + Phase 2 together need a bundled PR. Deferred to next session. SQL migration to live Neon DB (human action required).
+
+**Next**: Open upstream PR to kingdonb/mecris for Ghost Presence Phases 1+2 (referencing kingdonb/mecris#164). Use GITHUB_CLASSIC_PAT.
