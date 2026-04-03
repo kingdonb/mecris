@@ -1,16 +1,15 @@
-# Next Session: kingdonb/mecris#165 awaiting review + merge — SQL migration + live validation pending
+# Next Session: kingdonb/mecris#165 awaiting review + merge — open new PR for idempotent Beeminder pushes
 
-## Current Status (Friday, April 3, 2026 — session 19)
-- **kingdonb/mecris#165** (PR) is open, up-to-date with yebyen/mecris HEAD (`52136cb`), and fully describes all work: Nag Ladder (sessions 13–14) + Ghost Presence Phases 1+2 (sessions 16–17). Both `Closes kingdonb/mecris#139` and `Closes kingdonb/mecris#164` are in the body.
-- **session 19** delivered: `get_system_health` MCP tool (kingdonb/mecris#97) + pre-existing `test_language_sync_service_coordination` test failure fixed. Commit `52136cb`.
-- **yebyen/mecris is 11 commits ahead** of kingdonb/mecris main — all prior work captured by PR #165; session 19 commit is on top.
+## Current Status (Friday, April 3, 2026 — session 20)
+- **kingdonb/mecris#165** (PR) is open and fully describes Nag Ladder (sessions 13–14), Ghost Presence (sessions 16–17), and System Health (session 19). Body updated this session to include `get_system_health` description and `Closes kingdonb/mecris#97`.
+- **yebyen/mecris is 13 commits ahead** of kingdonb/mecris main — all prior work captured by PR #165 plus session 20 commit.
+- **Session 20** delivered: `requestid`-based idempotent Beeminder datapoint pushes (closes kingdonb/mecris#124). Commit `e2a5682`.
 
 ## Verified This Session
-- [x] `services/health_checker.py`: `HealthChecker.get_system_health()` reads `scheduler_election` table, returns `processes[]` (role, is_active, last_heartbeat ISO) + `overall_status` (healthy/degraded).
-- [x] `mcp_server.py`: `get_system_health` tool delegates to `HealthChecker`, appends `leader_process_id` and `is_leader` from live `MecrisScheduler`.
-- [x] `tests/test_system_health.py`: 6 new tests pass (all_active, stale, no_neon_url, db_error, heartbeat_serialized, mixed_active).
-- [x] `tests/test_language_sync_service.py`: pre-existing failure fixed — `mock_beeminder.user_id = None` + replaced fragile `call_count == 4` with content-based INSERT assertions. 1 pre-existing failure → 0.
-- [x] Full test suite: 214 passing, 0 new regressions (pre-existing: test_sms_mock 3+1, scheduler/coaching/mcp-server tests fail in bare CI due to missing SQLAlchemy/apscheduler).
+- [x] PR #165 body updated via REST API (GITHUB_CLASSIC_PAT) — now includes session 19 (`get_system_health`) description and `Closes kingdonb/mecris#97`.
+- [x] `scripts/clozemaster_scraper.py`: removed check-then-push pattern; `add_datapoint` now receives `requestid = f"{goal_slug}-{today_eastern.strftime('%Y-%m-%d')}"` on every push.
+- [x] `tests/test_clozemaster_idempotency.py`: 5 tests rewritten to assert `requestid` format, absence of `get_goal_datapoints` call, dry-run skip, and unknown-goal skip. 5/5 pass.
+- [x] Full test suite: 217 passing, 0 new regressions (pre-existing: test_sms_mock 3+1, SQLAlchemy CI failures).
 
 ## Pending Verification (Next Session)
 
@@ -18,23 +17,21 @@
 - kingdonb/mecris#165 needs review + merge by kingdonb.
 - Once merged: yebyen/mecris should sync from upstream (`git fetch https://github.com/kingdonb/mecris.git main && git merge FETCH_HEAD`).
 
-### Session 19 Additions — Not Yet in PR #165
-- `services/health_checker.py`, `mcp_server.py` (get_system_health), `tests/test_system_health.py`, updated `tests/test_language_sync_service.py` are committed to yebyen/mecris `main` (commit `52136cb`) but **not** in any open PR to kingdonb/mecris.
-- Next session should decide: fold into PR #165 (update branch) or open a new PR after #165 merges.
+### Open New PR for Session 20 Work
+- `scripts/clozemaster_scraper.py` + `tests/test_clozemaster_idempotency.py` (commit `e2a5682`) are on yebyen/mecris main but NOT in any PR to kingdonb/mecris.
+- Next session: decide whether to bundle into #165 (update) or open a new PR post-merge referencing `Closes kingdonb/mecris#124`.
 
 ### Run SQL Migration on Live Neon DB
-- `scripts/migrations/001_presence_table.sql` needs to be applied to the live Neon DB before the middleware can write presence records.
+- `scripts/migrations/001_presence_table.sql` needs to be applied before the Ghost Presence middleware can write records.
 - Command: `psql $NEON_DB_URL -f scripts/migrations/001_presence_table.sql`
-- Without this, `get_neon_store()` returns None in production (graceful no-op).
 
 ### get_system_health Live Validation
-- `get_system_health` returns `{"error": "NEON_DB_URL not configured", "processes": []}` if Neon is unavailable.
-- Live validation: call `get_system_health` from a running MCP session and verify `scheduler_election` rows are returned with accurate `is_active` flags.
+- `get_system_health` returns `{"error": "NEON_DB_URL not configured"}` if Neon unavailable.
+- Live validation: call `get_system_health` from a running MCP session and confirm `scheduler_election` rows are returned.
 
 ### Ghost Archivist Live Validation (carry-forward)
 - The archivist job fires every 15 minutes when `MecrisScheduler` is the leader.
-- Can only be validated in a live environment (Neon DB, running MCP server).
-- When next doing a live session, confirm `logs/ghost_archivist.log` accumulates PULSE entries.
+- Validate in a live environment: `logs/ghost_archivist.log` should accumulate PULSE entries.
 
 ## Infrastructure Notes
 - **NO RECURSIVE GLOBAL GREP**: Root-level `grep -r` is blacklisted. Use targeted `include_pattern` or `dir_path`.
@@ -47,9 +44,10 @@
 - **ghost/ package**: Top-level package; import as `from ghost.presence import ...` or `from ghost.archivist import run` with `PYTHONPATH=.`.
 - **Test command**: `PYTHONPATH=. .venv/bin/pytest` (create venv with `python3 -m venv .venv && .venv/bin/pip install -r requirements.txt pytest-cov pytest-asyncio mcp apscheduler`).
 - **`uv` not available in CI**: Use `python3 -m venv .venv && .venv/bin/pip install` instead.
-- **Scheduler election tests**: `tests/test_scheduler_election.py` requires psycopg2 + SQLAlchemy — these fail in the bare CI environment. Pre-existing condition, not a regression.
-- **GITHUB_TOKEN scope**: Fine-grained PAT for yebyen/mecris only. Cannot comment on kingdonb/mecris issues. **Use GITHUB_CLASSIC_PAT** for cross-repo operations (comment, PR update, PR creation — confirmed working sessions 15 + 18).
-- **Presence table**: Schema in `scripts/migrations/001_presence_table.sql`. Must be applied to live Neon DB before Phase 2 middleware can write records. `get_neon_store()` gracefully returns None when NEON_DB_URL is unset or psycopg2 unavailable.
+- **Scheduler election tests**: `tests/test_scheduler_election.py` requires psycopg2 + SQLAlchemy — these fail in bare CI. Pre-existing condition.
+- **GITHUB_TOKEN scope**: Fine-grained PAT for yebyen/mecris only. **Use GITHUB_CLASSIC_PAT** for cross-repo operations (PR update, comment, PR creation).
+- **Presence table**: Schema in `scripts/migrations/001_presence_table.sql`. Must be applied to live Neon DB before Phase 2 middleware can write records. `get_neon_store()` gracefully returns None when NEON_DB_URL is unset.
 - **Pre-existing test failures**: `tests/test_sms_mock.py` (3 failures + 1 subtest) and coaching/mcp-server/reminder-integration tests (fail in bare CI due to missing SQLAlchemy — not regressions).
-- **PR #165 state**: title and body fully updated session 18. Awaiting kingdonb review only.
-- **HealthChecker service**: `services/health_checker.py` — `get_system_health(user_id)` returns `{processes: [...], overall_status: healthy|degraded}`. Stale threshold: 90 seconds. Tests: `tests/test_system_health.py`.
+- **PR #165 state**: title and body fully updated sessions 18+20. Awaiting kingdonb review only.
+- **HealthChecker service**: `services/health_checker.py` — `get_system_health(user_id)` returns `{processes: [...], overall_status: healthy|degraded}`. Stale threshold: 90 seconds.
+- **Beeminder requestid**: `scripts/clozemaster_scraper.py` now passes `requestid = f"{goal_slug}-{today_eastern.strftime('%Y-%m-%d')}"` to `add_datapoint`. No prefetch call needed. Format documented in `tests/test_clozemaster_idempotency.py`.

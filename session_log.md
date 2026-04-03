@@ -453,3 +453,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: Nothing from the plan was skipped.
 
 **Next**: kingdonb/mecris#165 still awaits human review + merge. Session 19 additions (health_checker, get_system_health, test_system_health) are on yebyen/mecris main but not yet in a PR to kingdonb/mecris — next session should either fold into #165 or open a new PR post-merge.
+
+## 2026-04-03 — Idempotent Beeminder pushes via requestid + PR #165 body update (session 20) 🏛️
+
+**Planned**: Add deterministic `requestid` to `add_datapoint` calls in `clozemaster_scraper.py` so Beeminder upserts on retry (kingdonb/mecris#124); update PR #165 body to document session 19 `get_system_health` + `Closes kingdonb/mecris#97`. (yebyen/mecris#75)
+
+**Done**: Both deliverables complete. PR #165 body updated via REST API (GITHUB_CLASSIC_PAT) — now covers all six sessions and closes #97. `clozemaster_scraper.py` refactored: removed `get_goal_datapoints` prefetch loop, added `requestid = f"{goal_slug}-{today_eastern.strftime('%Y-%m-%d')}"` passed to `add_datapoint`. Beeminder deduplicates server-side via requestid — no race condition, no extra API call. `test_clozemaster_idempotency.py` rewritten with 5 focused tests asserting requestid format, absence of prefetch, dry-run skip, and unknown-goal skip. 217 passing, 0 regressions.
+
+**Skipped**: Nothing from the plan was skipped.
+
+**Next**: Open a new PR to kingdonb/mecris for session 20 work (`Closes kingdonb/mecris#124`) — either bundle into #165 before merge or open separately post-merge. kingdonb/mecris#165 still awaits human review.
