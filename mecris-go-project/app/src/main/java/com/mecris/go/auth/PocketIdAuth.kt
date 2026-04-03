@@ -64,7 +64,7 @@ class PocketIdAuth(private val context: Context) {
             ResponseTypeValues.CODE,
             redirectUri
         )
-        .setScopes(AuthorizationRequest.Scope.OPENID, AuthorizationRequest.Scope.PROFILE, AuthorizationRequest.Scope.EMAIL)
+        .setScopes(AuthorizationRequest.Scope.OPENID, AuthorizationRequest.Scope.PROFILE, AuthorizationRequest.Scope.EMAIL, "offline_access")
         .build()
 
         val authIntent = authService.getAuthorizationRequestIntent(authRequest)
@@ -108,7 +108,11 @@ class PocketIdAuth(private val context: Context) {
     fun getValidAccessToken(callback: (String?) -> Unit) {
         internalAuthState.performActionWithFreshTokens(authService) { accessToken, _, ex ->
             if (ex != null) {
-                _authState.value = AuthState.Error("Token refresh failed: ${ex.message}")
+                val isPermanent = ex.type == AuthorizationException.TYPE_OAUTH_TOKEN_ERROR
+                if (isPermanent) {
+                    _authState.value = AuthState.Error("Token refresh failed: ${ex.message}", isPermanent = true)
+                }
+                // Transient network error: preserve auth state; refresh token may still be valid
                 callback(null)
             } else {
                 if (accessToken != null) {
@@ -136,5 +140,5 @@ sealed class AuthState {
     object Idle : AuthState()
     object Loading : AuthState()
     data class Authenticated(val jwt: String) : AuthState()
-    data class Error(val message: String) : AuthState()
+    data class Error(val message: String, val isPermanent: Boolean = true) : AuthState()
 }

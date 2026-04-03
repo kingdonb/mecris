@@ -1061,15 +1061,28 @@ fun SystemHealthScreen(
 
     // Auth Status
     when (val state = authState) {
-        is AuthState.Idle, is AuthState.Error -> {
+        is AuthState.Idle -> {
             IntegrationCard(
                 name = "POCKET ID",
                 status = "Disconnected",
-                description = if (state is AuthState.Error) state.message else "Login required for cloud sync"
+                description = "Login required for cloud sync"
             )
             Spacer(modifier = Modifier.height(8.dp))
             Button(onClick = { auth.authenticateWithPasskey(authResultLauncher) }, modifier = Modifier.fillMaxWidth()) {
                 Text("Sign In with Pocket ID")
+            }
+        }
+        is AuthState.Error -> {
+            IntegrationCard(
+                name = "POCKET ID",
+                status = if (state.isPermanent) "Auth Failed" else "Network Unavailable",
+                description = state.message
+            )
+            if (state.isPermanent) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Button(onClick = { auth.authenticateWithPasskey(authResultLauncher) }, modifier = Modifier.fillMaxWidth()) {
+                    Text("Sign In with Pocket ID")
+                }
             }
         }
         AuthState.Loading -> CircularProgressIndicator()

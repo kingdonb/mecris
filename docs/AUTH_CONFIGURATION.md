@@ -57,31 +57,32 @@ To stay "underwater" for more than an hour, your OIDC client (e.g., the Android 
 2.  **Proactive Refresh**: Configure the client to refresh the token when it is 50-75% through its lifespan (e.g., every 30-45 minutes).
 3.  **Local Caching**: The client must securely store the Refresh Token locally so it can attempt a refresh as soon as the network becomes available again.
 
-### Root Cause Analysis (Issue #162 — Resolved in Analysis)
+### Root Cause Analysis (Issue #162 — Implemented)
 
-Four compounding bugs were identified in `mecris-go-project/.../auth/PocketIdAuth.kt`:
+Four compounding bugs were identified and fixed in `mecris-go-project/.../auth/PocketIdAuth.kt`:
 
-**Bug 1 — Missing `offline_access` scope** (`PocketIdAuth.kt:67`):
-The login request does not include `offline_access`, so Pocket-ID may not issue a
-durable Refresh Token at all. This is the primary cause of the submarine failure.
+**Bug 1 — Missing `offline_access` scope** (`PocketIdAuth.kt:67`) ✅ Fixed:
+The login request did not include `offline_access`, so Pocket-ID did not issue a
+durable Refresh Token. Fix applied: added `"offline_access"` to the scope list.
 ```kotlin
-// Fix: add "offline_access" to the scope list
 .setScopes(OPENID, PROFILE, EMAIL, "offline_access")
 ```
 
-**Bug 2 — Network errors treated as permanent auth failures** (`PocketIdAuth.kt:109–112`):
+**Bug 2 — Network errors treated as permanent auth failures** (`PocketIdAuth.kt:109–112`) ✅ Fixed:
 AppAuth distinguishes `invalid_grant` (real failure) from `IOException` (transient).
-The current code broadcasts `AuthState.Error` for both, which triggers Bug 3.
-Fix: check `ex.type == AuthorizationException.TYPE_OAUTH_TOKEN_ERROR` before broadcasting error.
+Fix applied: checks `ex.type == AuthorizationException.TYPE_OAUTH_TOKEN_ERROR` before
+broadcasting `AuthState.Error`. Transient network errors preserve auth state silently.
 
-**Bug 3 — Error state triggers re-auth UI** (`MainActivity.kt:1063–1074`):
-Any `AuthState.Error` shows a "Sign In" button. Tapping it creates a new
+**Bug 3 — Error state triggers re-auth UI** (`MainActivity.kt:1063–1074`) ✅ Fixed:
+Any `AuthState.Error` used to show a "Sign In" button. Tapping it would create a new
 `net.openid.appauth.AuthState()`, abandoning the still-valid Refresh Token.
-Fix: only show "Sign In" when the error is a permanent auth failure (not transient network error).
+Fix applied: `AuthState.Error` now carries `isPermanent: Boolean`; Sign In button is
+only shown when `isPermanent == true`. Transient errors show "Network Unavailable" only.
 
-**Bug 4 — No proactive refresh**:
-Tokens are refreshed reactively (on API call). `WalkHeuristicsWorker` (15-min interval)
-should proactively call `getValidAccessToken()` while on-network to refresh before going submarine.
+**Bug 4 — No proactive refresh** ✅ Fixed:
+`WalkHeuristicsWorker` (15-min interval) already called `getAccessTokenSuspend()` before
+all network I/O. After Bug 2 fix, this call is now safe on transient network errors and
+correctly acts as the proactive on-network refresh before going submarine.
 
 Full technical report: [kingdonb/mecris#162 comment](https://github.com/kingdonb/mecris/issues/162#issuecomment-4185361982)
 
