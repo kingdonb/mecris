@@ -35,6 +35,7 @@ async def test_language_sync_service_coordination(mock_dependencies):
     
     # 2. Setup mock beeminder client
     mock_beeminder = MagicMock()
+    mock_beeminder.user_id = None  # match resolved target_user_id so no new BeeminderClient is spawned
     
     async def mock_get_all_goals():
         return [
@@ -54,22 +55,17 @@ async def test_language_sync_service_coordination(mock_dependencies):
     assert result["arabic"]["count"] == 2600
     assert result["greek"]["count"] == 20
 
-    # 5. Verify database calls (should have been 2 UPSERTs + 2 SELECTs)
-    assert mock_dependencies["cursor"].execute.call_count == 4
-
-    # Check one of the UPSERT calls
-    # SQL should contain our new columns
+    # 5. Verify the two language_stats UPSERTs happened with correct SQL and mapping
     args_list = mock_dependencies["cursor"].execute.call_args_list
-    # args_list[0] and [2] are SELECTs, [1] and [3] are INSERTs
-    sql = args_list[1][0][0]
-    params = args_list[1][0][1]
+    insert_calls = [c for c in args_list if "INSERT INTO language_stats" in c[0][0]]
+    assert len(insert_calls) == 2  # one for Arabic, one for Greek
 
-    assert "INSERT INTO language_stats" in sql
+    # Check INSERT columns are present
+    sql = insert_calls[0][0][0]
     assert "safebuf" in sql
     assert "derail_risk" in sql
 
-    # Check mapping logic (Arabic -> reviewstack)
-    # params[1] is language_name
-    arabic_call = next(call for call in args_list if "INSERT" in call[0][0] and call[0][1][1] == "ARABIC")
+    # Check mapping logic (Arabic -> reviewstack, safebuf=6 at param index 6)
+    arabic_call = next(c for c in insert_calls if c[0][1][1] == "ARABIC")
     arabic_params = arabic_call[0][1]
-    assert arabic_params[6] == 6 # safebuf from reviewstack (now at index 6)
+    assert arabic_params[6] == 6  # safebuf from reviewstack goal

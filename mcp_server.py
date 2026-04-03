@@ -550,6 +550,19 @@ def get_scheduler_queue() -> Dict[str, Any]:
         "queue": scheduler.get_queue()
     }
 
+from services.health_checker import HealthChecker as _HealthChecker
+_health_checker = _HealthChecker()
+
+@mcp.tool(description="Get unified health status for all registered system processes (Python MCP, Android client, Spin failover) from the scheduler_election table.")
+async def get_system_health(user_id: str = None) -> Dict[str, Any]:
+    """Read the scheduler_election table and return active/stale status for every registered process."""
+    target_user_id = usage_tracker.resolve_user_id(user_id)
+    result = await asyncio.to_thread(_health_checker.get_system_health, target_user_id)
+    if "error" not in result:
+        result["leader_process_id"] = scheduler.process_id
+        result["is_leader"] = scheduler.is_leader
+    return result
+
 from services.coaching_service import CoachingService
 
 @mcp.tool(description="Get a personalized coaching insight based on momentum and current needs.")
