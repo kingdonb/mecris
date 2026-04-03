@@ -475,3 +475,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: Nothing — scope was small and bounded.
 
 **Next**: PR #165 still awaiting kingdonb review + merge. After merge: sync yebyen/mecris from upstream, then evaluate kingdonb/mecris#162 (OIDC Submarine Mode) or #130 (Clozemaster activity tracking) as next feature work.
+
+## 2026-04-03 — Fix score-delta backup detection in LanguageSyncService (session 22) 🏛️
+
+**Planned**: Replace no-op `pass` in `_update_neon_db()` backup activity detection with real delta logic; add test asserting delta=100 when last_points=500→points=600 with no upstream "today" data (yebyen/mecris#79).
+
+**Done**: Fixed `services/language_sync_service.py` lines 73–79: removed structural no-op, implemented `if activity_metric == 0 and diff > daily_completions: daily_completions = diff` with info log. Added `test_score_delta_backup_detection_updates_daily_completions` to `tests/test_language_sync_service.py` — test passes. 218 total passing (was 217), 0 regressions. Addresses kingdonb/mecris#130 (score-delta path now functional). Commit `d7945e3`.
+
+**Skipped**: Nothing — scope was small and fully delivered.
+
+**Next**: PR #165 still awaiting kingdonb review + merge. After merge: sync upstream, open new PR for session 22 fix (`d7945e3`) targeting kingdonb/mecris#130, then evaluate #162 (OIDC Submarine Mode) or #129 (Greek backlog booster).
