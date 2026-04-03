@@ -495,3 +495,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: Implementation of the fixes — analysis only was scoped. Android build/PR would need a dedicated session.
 
 **Next**: PR #165 still awaiting kingdonb review + merge. After merge: sync upstream, open PR for session 22 score-delta fix, then implement the OIDC fixes (4 items in NEXT_SESSION.md) as next Android engineering session.
+
+## 2026-04-03 — OIDC submarine mode fix implementation (session 24) 🏛️
+
+**Planned**: Implement 4 Android-side OIDC fixes in PocketIdAuth.kt, MainActivity.kt, WalkHeuristicsWorker; dispatch pr-test to confirm Android build (yebyen/mecris#82).
+
+**Done**: All 4 fixes implemented and committed (`1151698`). (1) Added `"offline_access"` to scopes in `PocketIdAuth.kt:67`. (2) Distinguished transient network errors from permanent OAuth failures in `getValidAccessToken` — only `TYPE_OAUTH_TOKEN_ERROR` broadcasts `AuthState.Error`. (3) Added `isPermanent: Boolean = true` to `AuthState.Error`; split Idle/Error branches in `MainActivity.kt:1063–1074` so Sign In button only appears for permanent failures. (4) Updated WalkHeuristicsWorker comment confirming `getAccessTokenSuspend()` at top of `doWork()` is the proactive refresh. `docs/AUTH_CONFIGURATION.md` updated to mark all 4 bugs ✅ Fixed. pr-test run 23966570693 ✅ success.
+
+**Skipped**: Nothing — all planned work delivered.
+
+**Next**: PR #165 still awaiting kingdonb review + merge. PR body needs updating to describe sessions 22–24. After merge: sync upstream; kingdonb/mecris#162 and #130 can be closed as partially addressed by merged work.

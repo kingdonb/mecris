@@ -1,35 +1,38 @@
-# Next Session: kingdonb/mecris#165 awaiting review + merge — OIDC analysis complete
+# Next Session: kingdonb/mecris#165 awaiting review + OIDC fixes implemented — update PR body
 
-## Current Status (Friday, April 3, 2026 — session 23)
+## Current Status (Friday, April 3, 2026 — session 24)
 - **kingdonb/mecris#165** (PR) is open and awaiting review from kingdonb. NOT yet merged.
-- **yebyen/mecris is 18 commits ahead** of kingdonb/mecris main — all work captured by PR #165 plus sessions 22–23 fixes.
-- **Session 23** delivered: Full root cause analysis for OIDC submarine mode failures (kingdonb/mecris#162). Technical report posted to kingdonb/mecris#162. `docs/AUTH_CONFIGURATION.md` updated with 4-bug analysis and fix proposals. Commit `e9cc1c0`. Plan issue yebyen/mecris#81 closed.
+- **yebyen/mecris is 20 commits ahead** of kingdonb/mecris main — PR #165 now includes sessions 13–24 (Nag Ladder, Ghost Presence, Idempotent Beeminder, score-delta fix, OIDC analysis + implementation).
+- **Session 24** delivered: All 4 OIDC submarine mode fixes implemented in `PocketIdAuth.kt`, `MainActivity.kt`, `WalkHeuristicsWorker.kt`. `docs/AUTH_CONFIGURATION.md` updated to reflect implementation status. Commit `1151698`.
+- **pr-test run 23966570693** completed with ✅ success (Android unit tests + pytest).
+- **PR #165 body is outdated** — still describes only sessions 13-20. Needs section added for sessions 22–24 (score-delta, OIDC analysis, OIDC implementation).
 
 ## Verified This Session
-- [x] `PocketIdAuth.kt:67` — missing `offline_access` scope identified as primary cause of Refresh Token loss
-- [x] `PocketIdAuth.kt:109–112` — network errors treated as permanent auth failures (no distinction from `invalid_grant`)
-- [x] `MainActivity.kt:1063–1074` — `AuthState.Error` shows "Sign In" button, which abandons valid Refresh Token on tap
-- [x] No proactive token refresh in `WalkHeuristicsWorker` — only reactive on API calls
-- [x] Technical report posted to kingdonb/mecris#162 (comment #4185361982)
-- [x] `docs/AUTH_CONFIGURATION.md` — new "Root Cause Analysis" section added with code-level references and fix proposals
+- [x] `PocketIdAuth.kt:67` — `"offline_access"` scope added; Pocket-ID will now issue durable Refresh Token
+- [x] `PocketIdAuth.kt:109–112` — transient network errors no longer set `AuthState.Error`; only `TYPE_OAUTH_TOKEN_ERROR` triggers permanent error state
+- [x] `AuthState.Error` — `isPermanent: Boolean = true` field added
+- [x] `MainActivity.kt:1063–1074` — Idle/Error branches split; Sign In button guarded behind `state.isPermanent`
+- [x] `WalkHeuristicsWorker.kt` — proactive refresh comment updated; existing `getAccessTokenSuspend()` call at top of `doWork()` confirmed as the proactive refresh
+- [x] `docs/AUTH_CONFIGURATION.md` — all 4 bugs marked ✅ Fixed
+- [x] pr-test run 23966570693 — ✅ success (Android + Python)
 
 ## Pending Verification (Next Session)
 
 ### PR Merge — Human Action Required
 - kingdonb/mecris#165 needs review + merge by kingdonb.
+- PR body should be updated to add session 22–24 sections (score-delta, OIDC analysis, OIDC implementation) before or after merge.
 - Once merged: yebyen/mecris should sync from upstream (`git fetch https://github.com/kingdonb/mecris.git main && git merge FETCH_HEAD`).
-- Session 22 fix (score-delta, `d7945e3`) is NOT in PR #165 — after merge, open a new PR for it targeting kingdonb/mecris#130.
 
-### OIDC Fix Implementation — Next Engineering Session
-- kingdonb/mecris#162 analysis is DONE (report posted). Implementation is next:
-  1. Add `"offline_access"` to scopes in `PocketIdAuth.kt:67`
-  2. Distinguish transient vs. permanent auth failures in `getValidAccessToken` (`PocketIdAuth.kt:109–112`)
-  3. Guard "Sign In" button behind `isPermanent` check in `SystemHealthScreen` (`MainActivity.kt:1063–1074`)
-  4. Add proactive `getValidAccessToken()` call in `WalkHeuristicsWorker`
-- Requires Android build to validate — can draft code in fork and dispatch pr-test.
+### Post-Merge PRs
+- After #165 merges, all 20 commits land (sessions 13–24). No separate PRs needed for score-delta or OIDC — they're already in the PR.
+- kingdonb/mecris#162 (OIDC) and kingdonb/mecris#130 (score-delta) can be closed once #165 merges.
+
+### OIDC Fix — Live Validation
+- The OIDC fixes are code-only; they require a live Android device + app build to validate end-to-end.
+- Specifically: verify app retains Refresh Token after 1h Access Token expiry with auth server unreachable.
+- Intermediate validation: Android unit tests already passing via pr-test.
 
 ### Other Open Work (after #165 merge)
-- kingdonb/mecris#130 — Upstream activity tracking (score-delta fix in session 22 partially addresses; new PR needed)
 - kingdonb/mecris#129 — Greek review backlog booster
 - kingdonb/mecris#127 — Investigate "Cloud: Failover" status in Spin App
 
@@ -60,8 +63,8 @@
 - **GITHUB_TOKEN scope**: Fine-grained PAT for yebyen/mecris only. **Use GITHUB_CLASSIC_PAT** for cross-repo operations (PR update, comment, PR creation, posting to kingdonb/mecris issues).
 - **Presence table**: Schema in `scripts/migrations/001_presence_table.sql`. Must be applied to live Neon DB before Phase 2 middleware can write records. `get_neon_store()` gracefully returns None when NEON_DB_URL is unset.
 - **Pre-existing test failures**: `tests/test_sms_mock.py` (3 failures + 1 subtest) and coaching/mcp-server/reminder-integration tests (fail in bare CI due to missing SQLAlchemy — not regressions).
-- **PR #165 state**: Title and body fully updated through session 21. Awaiting kingdonb review only. Closes #139, #164, #97, #124.
+- **PR #165 state**: Title and body describe sessions 13-20 only. Body needs sessions 22-24 sections. Awaiting kingdonb review. Closes #139, #164, #97, #124 (and now also partially addresses #162, #130).
 - **HealthChecker service**: `services/health_checker.py` — `get_system_health(user_id)` returns `{processes: [...], overall_status: healthy|degraded}`. Stale threshold: 90 seconds.
-- **Beeminder requestid**: `scripts/clozemaster_scraper.py` now passes `requestid = f"{goal_slug}-{today_eastern.strftime('%Y-%m-%d')}"` to `add_datapoint`. No prefetch call needed. Format documented in `tests/test_clozemaster_idempotency.py`.
-- **Score-delta backup detection**: `services/language_sync_service.py` `_update_neon_db()` now uses score delta to set `daily_completions` when both `cards_today` and `points_today` are zero. Only fires when `last_points > 0` and `diff > daily_completions`. Commit `d7945e3` — NOT in PR #165.
-- **OIDC submarine mode**: 4 bugs documented in `docs/AUTH_CONFIGURATION.md`. Technical report at kingdonb/mecris#162. Fix implementation is the next Android engineering task.
+- **Beeminder requestid**: `scripts/clozemaster_scraper.py` now passes `requestid = f"{goal_slug}-{today_eastern.strftime('%Y-%m-%d')}"` to `add_datapoint`. No prefetch call needed.
+- **Score-delta backup detection**: `services/language_sync_service.py` `_update_neon_db()` uses score delta to set `daily_completions` when both `cards_today` and `points_today` are zero. Commit `d7945e3`.
+- **OIDC submarine mode**: All 4 bugs fixed in commit `1151698`. `offline_access` scope added; transient errors distinguished from permanent; Sign In button guarded; proactive refresh confirmed in WalkHeuristicsWorker. Docs updated.
