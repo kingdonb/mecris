@@ -1,15 +1,15 @@
-# Next Session: kingdonb/mecris#165 awaiting review + merge — open new PR for idempotent Beeminder pushes
+# Next Session: kingdonb/mecris#165 awaiting review + merge — PR body complete through session 20
 
-## Current Status (Friday, April 3, 2026 — session 20)
-- **kingdonb/mecris#165** (PR) is open and fully describes Nag Ladder (sessions 13–14), Ghost Presence (sessions 16–17), and System Health (session 19). Body updated this session to include `get_system_health` description and `Closes kingdonb/mecris#97`.
-- **yebyen/mecris is 13 commits ahead** of kingdonb/mecris main — all prior work captured by PR #165 plus session 20 commit.
-- **Session 20** delivered: `requestid`-based idempotent Beeminder datapoint pushes (closes kingdonb/mecris#124). Commit `e2a5682`.
+## Current Status (Friday, April 3, 2026 — session 21)
+- **kingdonb/mecris#165** (PR) is open and fully describes all work: Nag Ladder (sessions 13–14), Ghost Presence (sessions 16–17), System Health (session 19), and Idempotent Beeminder (session 20). Title updated to "sessions 13-20".
+- **yebyen/mecris is 14 commits ahead** of kingdonb/mecris main — all work captured by PR #165.
+- **Session 21** delivered: PR #165 title + body updated to include session 20 (idempotent Beeminder `requestid`) and `Closes kingdonb/mecris#124`. Plan issue yebyen/mecris#77 closed.
 
 ## Verified This Session
-- [x] PR #165 body updated via REST API (GITHUB_CLASSIC_PAT) — now includes session 19 (`get_system_health`) description and `Closes kingdonb/mecris#97`.
-- [x] `scripts/clozemaster_scraper.py`: removed check-then-push pattern; `add_datapoint` now receives `requestid = f"{goal_slug}-{today_eastern.strftime('%Y-%m-%d')}"` on every push.
-- [x] `tests/test_clozemaster_idempotency.py`: 5 tests rewritten to assert `requestid` format, absence of `get_goal_datapoints` call, dry-run skip, and unknown-goal skip. 5/5 pass.
-- [x] Full test suite: 217 passing, 0 new regressions (pre-existing: test_sms_mock 3+1, SQLAlchemy CI failures).
+- [x] PR #165 title updated: "feat: Complete Nag Ladder + Ghost Presence + Idempotent Beeminder — sessions 13-20"
+- [x] PR #165 body: session 20 section added describing `requestid`-based idempotency in `scripts/clozemaster_scraper.py` and `tests/test_clozemaster_idempotency.py`.
+- [x] PR #165 closing keywords: `Closes kingdonb/mecris#124` appended — all four issues now listed (#139, #164, #97, #124).
+- [x] PR test plan updated: 5/5 `test_clozemaster_idempotency.py` + 217 passing total.
 
 ## Pending Verification (Next Session)
 
@@ -17,9 +17,11 @@
 - kingdonb/mecris#165 needs review + merge by kingdonb.
 - Once merged: yebyen/mecris should sync from upstream (`git fetch https://github.com/kingdonb/mecris.git main && git merge FETCH_HEAD`).
 
-### Open New PR for Session 20 Work
-- `scripts/clozemaster_scraper.py` + `tests/test_clozemaster_idempotency.py` (commit `e2a5682`) are on yebyen/mecris main but NOT in any PR to kingdonb/mecris.
-- Next session: decide whether to bundle into #165 (update) or open a new PR post-merge referencing `Closes kingdonb/mecris#124`.
+### Open New Work
+- After merge, consider new issue to tackle from the open list:
+  - kingdonb/mecris#162 — OIDC token refresh / Submarine Mode analysis
+  - kingdonb/mecris#130 — Upstream activity tracking from Clozemaster points
+  - kingdonb/mecris#129 — Greek review backlog booster
 
 ### Run SQL Migration on Live Neon DB
 - `scripts/migrations/001_presence_table.sql` needs to be applied before the Ghost Presence middleware can write records.
@@ -48,6 +50,6 @@
 - **GITHUB_TOKEN scope**: Fine-grained PAT for yebyen/mecris only. **Use GITHUB_CLASSIC_PAT** for cross-repo operations (PR update, comment, PR creation).
 - **Presence table**: Schema in `scripts/migrations/001_presence_table.sql`. Must be applied to live Neon DB before Phase 2 middleware can write records. `get_neon_store()` gracefully returns None when NEON_DB_URL is unset.
 - **Pre-existing test failures**: `tests/test_sms_mock.py` (3 failures + 1 subtest) and coaching/mcp-server/reminder-integration tests (fail in bare CI due to missing SQLAlchemy — not regressions).
-- **PR #165 state**: title and body fully updated sessions 18+20. Awaiting kingdonb review only.
+- **PR #165 state**: Title and body fully updated through session 21. Awaiting kingdonb review only. Closes #139, #164, #97, #124.
 - **HealthChecker service**: `services/health_checker.py` — `get_system_health(user_id)` returns `{processes: [...], overall_status: healthy|degraded}`. Stale threshold: 90 seconds.
 - **Beeminder requestid**: `scripts/clozemaster_scraper.py` now passes `requestid = f"{goal_slug}-{today_eastern.strftime('%Y-%m-%d')}"` to `add_datapoint`. No prefetch call needed. Format documented in `tests/test_clozemaster_idempotency.py`.
