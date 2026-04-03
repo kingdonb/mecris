@@ -443,3 +443,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: Nothing — task was narrow and fully executed.
 
 **Next**: kingdonb/mecris#165 awaits human review + merge. After merge: sync yebyen fork from upstream and apply `scripts/migrations/001_presence_table.sql` to live Neon DB.
+
+## 2026-04-03 — get_system_health MCP tool + fix pre-existing test failure (session 19) 🏛️
+
+**Planned**: Implement `get_system_health` MCP tool backed by `scheduler_election` table (kingdonb/mecris#97); fix pre-existing `test_language_sync_service_coordination` failure. (yebyen/mecris#74)
+
+**Done**: `services/health_checker.py` created — `HealthChecker.get_system_health()` reads `scheduler_election`, returns per-process `is_active` + ISO heartbeat string, and sets `overall_status` to "healthy"/"degraded". `mcp_server.py` tool delegates to `HealthChecker` and appends live scheduler leader metadata. 6 new unit tests in `tests/test_system_health.py` pass (all_active, stale, no_neon_url, db_error, heartbeat_serialized, mixed_active). `test_language_sync_service_coordination` fixed: added `mock_beeminder.user_id = None` + replaced fragile `call_count == 4` assertion with SQL content checks. 214 passing, 0 regressions.
+
+**Skipped**: Nothing from the plan was skipped.
+
+**Next**: kingdonb/mecris#165 still awaits human review + merge. Session 19 additions (health_checker, get_system_health, test_system_health) are on yebyen/mecris main but not yet in a PR to kingdonb/mecris — next session should either fold into #165 or open a new PR post-merge.
