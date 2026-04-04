@@ -28,6 +28,7 @@ from services.neon_sync_checker import NeonSyncChecker
 from services.reminder_service import ReminderService
 from services.language_sync_service import LanguageSyncService
 from services.review_pump import ReviewPump, ARABIC_POINTS_PER_CARD
+from services.credentials_manager import credentials_manager
 from ghost.presence import get_neon_store, StatusType
 
 # Load environment variables
@@ -214,7 +215,12 @@ async def get_cached_daily_activity(goal_slug: str = "bike", user_id: str = None
 @mcp.tool(description="Get unified strategic context with goals, budget, and recommendations.")
 async def get_narrator_context(user_id: str = None) -> Dict[str, Any]:
     """Get unified strategic context with goals, budget, and recommendations."""
-    target_user_id = usage_tracker.resolve_user_id(user_id)
+    target_user_id = resolve_target_user(user_id)
+    if not target_user_id:
+        return {
+            "error": "Authentication Required",
+            "instruction": "Please run `mecris login` in your terminal to authenticate."
+        }
     await _record_presence(target_user_id)
     try:
         goals = usage_tracker.get_goals(target_user_id)
@@ -286,7 +292,7 @@ async def get_narrator_context(user_id: str = None) -> Dict[str, Any]:
         
         # Majesty Cake: surface aggregate daily goal status early for discoverability (kingdonb/mecris#170)
         try:
-            daily_aggregate = await get_daily_aggregate_status(user_id)
+            daily_aggregate = await get_daily_aggregate_status(target_user_id)
             if not daily_aggregate.get("error"):
                 if daily_aggregate.get("all_clear"):
                     recommendations.insert(0, f"🎂 Majesty Cake! All daily goals complete ({daily_aggregate.get('score', '?/?')})")
@@ -344,7 +350,9 @@ async def get_narrator_context(user_id: str = None) -> Dict[str, Any]:
 @mcp.tool(description="Get Beeminder goal portfolio status with risk assessment.")
 async def get_beeminder_status(user_id: str = None) -> Dict[str, Any]:
     """Get Beeminder goal portfolio status with risk assessment."""
-    target_user_id = usage_tracker.resolve_user_id(user_id)
+    target_user_id = resolve_target_user(user_id)
+    if not target_user_id:
+        return {"error": "Authentication Required"}
     try:
         client = get_user_beeminder_client(target_user_id)
         goals = await client.get_all_goals()
@@ -359,20 +367,33 @@ async def get_beeminder_status(user_id: str = None) -> Dict[str, Any]:
         logger.error(f"Failed to fetch Beeminder status: {e}")
         return {"error": f"Failed to fetch Beeminder status: {e}"}
 
+def resolve_target_user(user_id: Optional[str]) -> Optional[str]:
+    """Resolve user ID and enforce authentication if required."""
+    return credentials_manager.resolve_user_id(user_id)
+
 @mcp.tool(description="Get current usage and budget status with days remaining.")
 def get_budget_status(user_id: str = None) -> Dict[str, Any]:
-    return usage_tracker.get_budget_status(user_id)
+    target_user_id = resolve_target_user(user_id)
+    if not target_user_id:
+        return {"error": "Authentication Required"}
+    return usage_tracker.get_budget_status(target_user_id)
 
 @mcp.tool(description="Get recent usage sessions.")
 def get_recent_usage(limit: int = 10, user_id: str = None) -> List[Dict[str, Any]]:
-    return usage_tracker.get_recent_sessions(limit, user_id)
+    target_user_id = resolve_target_user(user_id)
+    if not target_user_id:
+        return [{"error": "Authentication Required"}]
+    return usage_tracker.get_recent_sessions(limit, target_user_id)
 
 @mcp.tool(description="Record Claude usage session with token counts.")
 def record_usage_session(input_tokens: int, output_tokens: int, model: str = "claude-3-5-haiku-20241022", session_type: str = "interactive", notes: str = "", user_id: str = None) -> Dict[str, Any]:
+    target_user_id = resolve_target_user(user_id)
+    if not target_user_id:
+        return {"error": "Authentication Required"}
     try:
-        cost = record_usage(input_tokens, output_tokens, model, session_type, notes, user_id)
+        cost = record_usage(input_tokens, output_tokens, model, session_type, notes, target_user_id)
         _record_governor_spend(model, cost)
-        return {"recorded": True, "estimated_cost": cost, "updated_status": usage_tracker.get_budget_status(user_id)}
+        return {"recorded": True, "estimated_cost": cost, "updated_status": usage_tracker.get_budget_status(target_user_id)}
     except Exception as e:
         logger.error(f"Failed to record usage: {e}")
         return {"error": f"Failed to record usage: {e}"}
@@ -380,14 +401,17 @@ def record_usage_session(input_tokens: int, output_tokens: int, model: str = "cl
 @mcp.tool(description="Record Claude Code CLI usage specifically.")
 def record_claude_code_usage(input_tokens: int, output_tokens: int, model: str = "claude-3- Haiku", notes: str = "", user_id: str = None) -> Dict[str, Any]:
     """Specific tool for Claude Code CLI to report its own usage."""
+    target_user_id = resolve_target_user(user_id)
+    if not target_user_id:
+        return {"error": "Authentication Required"}
     try:
-        cost = record_usage(input_tokens, output_tokens, model, "claude-code", notes, user_id)
+        cost = record_usage(input_tokens, output_tokens, model, "claude-code", notes, target_user_id)
         _record_governor_spend(model, cost)
         return {
             "recorded": True, 
             "estimated_cost": cost, 
             "message": f"Recorded ${cost:.4f} usage for Claude Code session.",
-            "updated_status": usage_tracker.get_budget_status(user_id)
+            "updated_status": usage_tracker.get_budget_status(target_user_id)
         }
     except Exception as e:
         logger.error(f"Failed to record Claude Code usage: {e}")
@@ -453,7 +477,9 @@ async def get_real_anthropic_usage(days: int = 1) -> Dict[str, Any]:
 
 @mcp.tool(description="Check for beemergencies and send SMS alerts if critical.")
 async def send_beeminder_alert(user_id: str = None) -> Dict[str, Any]:
-    target_user_id = usage_tracker.resolve_user_id(user_id)
+    target_user_id = resolve_target_user(user_id)
+    if not target_user_id:
+        return {"error": "Authentication Required"}
     try:
         client = get_user_beeminder_client(target_user_id)
         emergencies = await client.get_emergencies()
@@ -470,7 +496,10 @@ async def send_beeminder_alert(user_id: str = None) -> Dict[str, Any]:
 
 @mcp.tool(description="Check if daily activity was logged for a specific goal.")
 async def get_daily_activity(goal_slug: str = "bike", user_id: str = None) -> Dict[str, Any]:
-    return await get_cached_daily_activity(goal_slug, user_id)
+    target_user_id = resolve_target_user(user_id)
+    if not target_user_id:
+        return {"error": "Authentication Required"}
+    return await get_cached_daily_activity(goal_slug, target_user_id)
 
 @mcp.tool(description="Get current weather and a recommendation for outdoor activity.")
 def get_weather_report() -> Dict[str, Any]:
@@ -501,46 +530,70 @@ async def trigger_language_sync() -> Dict[str, Any]:
 
 @mcp.tool(description="Add a new goal to the local database.")
 def add_goal(title: str, description: str = "", priority: str = "medium", due_date: Optional[str] = None, user_id: str = None) -> Dict[str, Any]:
-    return usage_tracker.add_goal(title, description, priority, due_date, user_id)
+    target_user_id = resolve_target_user(user_id)
+    if not target_user_id:
+        return {"error": "Authentication Required"}
+    return usage_tracker.add_goal(title, description, priority, due_date, target_user_id)
 
 @mcp.tool(description="Mark a goal as completed.")
 def complete_goal(goal_id: int, user_id: str = None) -> Dict[str, Any]:
-    return usage_tracker.complete_goal(goal_id, user_id)
+    target_user_id = resolve_target_user(user_id)
+    if not target_user_id:
+        return {"error": "Authentication Required"}
+    return usage_tracker.complete_goal(goal_id, target_user_id)
 
 @mcp.tool(description="Manually update budget information.")
 def update_budget(remaining_budget: float, total_budget: Optional[float] = None, period_end: Optional[str] = None, user_id: str = None) -> Dict[str, Any]:
-    return usage_tracker.update_budget(remaining_budget, total_budget, period_end, user_id)
+    target_user_id = resolve_target_user(user_id)
+    if not target_user_id:
+        return {"error": "Authentication Required"}
+    return usage_tracker.update_budget(remaining_budget, total_budget, period_end, target_user_id)
 
 @mcp.tool(description="Record manual Groq odometer reading with cumulative cost.")
 def record_groq_reading(value: float, notes: str = "", month: Optional[str] = None, user_id: str = None) -> Dict[str, Any]:
+    target_user_id = resolve_target_user(user_id)
+    if not target_user_id:
+        return {"error": "Authentication Required"}
     from groq_odometer_tracker import record_groq_reading as record_groq
-    return record_groq(value, notes, month, user_id)
+    return record_groq(value, notes, month, target_user_id)
 
 @mcp.tool(description="Get Groq odometer status and usage reminders.")
 def get_groq_status(user_id: str = None) -> Dict[str, Any]:
+    target_user_id = resolve_target_user(user_id)
+    if not target_user_id:
+        return {"error": "Authentication Required"}
     from groq_odometer_tracker import get_groq_reminder_status
-    return get_groq_reminder_status(user_id)
+    return get_groq_reminder_status(target_user_id)
 
 @mcp.tool(description="Get Groq odometer context for narrator integration.")
 def get_groq_context(user_id: str = None) -> Dict[str, Any]:
-    return get_groq_context_for_narrator(user_id)
+    target_user_id = resolve_target_user(user_id)
+    if not target_user_id:
+        return {"error": "Authentication Required"}
+    return get_groq_context_for_narrator(target_user_id)
 
 @mcp.tool(description="Get unified cost status combining Claude budget and Groq usage data.")
 async def get_unified_cost_status(user_id: str = None) -> Dict[str, Any]:
+    target_user_id = resolve_target_user(user_id)
+    if not target_user_id:
+        return {"error": "Authentication Required"}
     try:
         from groq_odometer_tracker import _get_tracker
-        budget_data = await asyncio.to_thread(usage_tracker.get_budget_status, user_id)
+        budget_data = await asyncio.to_thread(usage_tracker.get_budget_status, target_user_id)
         groq_tracker = _get_tracker()
-        groq_status = await asyncio.to_thread(groq_tracker.check_reminder_needs, user_id)
-        groq_usage = await asyncio.to_thread(groq_tracker.get_usage_for_virtual_budget, user_id)
+        groq_status = await asyncio.to_thread(groq_tracker.check_reminder_needs, target_user_id)
+        groq_usage = await asyncio.to_thread(groq_tracker.get_usage_for_virtual_budget, target_user_id)
         return {"claude": budget_data, "groq": {**groq_status, **groq_usage}}
     except Exception as e:
         logger.error(f"Failed to get unified cost status: {e}")
         return {"error": f"Failed to get unified cost status: {e}"}
+
 @mcp.tool(description="Check for needed reminders and send them intelligently.")
 async def trigger_reminder_check(user_id: str = None, apply_fuzz: bool = False) -> Dict[str, Any]:
     """Manually trigger the reminder logic. If apply_fuzz is True, delays the actual check/send by a random interval."""
-    target_user_id = user_id or os.getenv("DEFAULT_USER_ID")
+    target_user_id = resolve_target_user(user_id)
+    if not target_user_id:
+        return {"error": "Authentication Required. Run `mecris login`."}
     try:
         check_result = await check_reminder_needed(target_user_id)
         if not check_result.get("should_send"):
@@ -597,7 +650,9 @@ _health_checker = _HealthChecker()
 @mcp.tool(description="Get unified health status for all registered system processes (Python MCP, Android client, Spin cloud) from the scheduler_election table.")
 async def get_system_health(user_id: str = None) -> Dict[str, Any]:
     """Read the scheduler_election table and return active/stale status for every registered process."""
-    target_user_id = usage_tracker.resolve_user_id(user_id)
+    target_user_id = resolve_target_user(user_id)
+    if not target_user_id:
+        return {"error": "Authentication Required"}
     result = await asyncio.to_thread(_health_checker.get_system_health, target_user_id)
     if "error" not in result:
         result["leader_process_id"] = scheduler.process_id
@@ -609,6 +664,9 @@ from services.coaching_service import CoachingService
 @mcp.tool(description="Get a personalized coaching insight based on momentum and current needs.")
 async def get_coaching_insight(user_id: str = None) -> Dict[str, Any]:
     """Analyze current state and provide a momentum-aware coaching pivot."""
+    target_user_id = resolve_target_user(user_id)
+    if not target_user_id:
+        return {"error": "Authentication Required"}
     guard = _budget_governor.budget_gate("anthropic_api")
     if guard and guard.get("budget_halted"):
         return guard
@@ -619,7 +677,7 @@ async def get_coaching_insight(user_id: str = None) -> Dict[str, Any]:
             return await obsidian_client.get_daily_note(today)
 
         service = CoachingService(
-            context_provider=lambda: get_narrator_context(user_id),
+            context_provider=lambda: get_narrator_context(target_user_id),
             goal_provider=get_cached_beeminder_goals,
             obsidian_provider=_get_obsidian_context
         )
@@ -634,11 +692,14 @@ async def get_coaching_insight(user_id: str = None) -> Dict[str, Any]:
 @mcp.tool(description="Set the Review Pump intensity multiplier (1.0, 2.0, 4.0, 10.0).")
 async def set_review_pump_lever(language: str, multiplier: float, user_id: str = None) -> Dict[str, Any]:
     """Adjust how fast the backlog should be cleared. 1.0=Maintenance, 4.0=Aggressive, 10.0=Blitz."""
+    target_user_id = resolve_target_user(user_id)
+    if not target_user_id:
+        return {"error": "Authentication Required"}
     valid_multipliers = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 10.0]
     if multiplier not in valid_multipliers:
         return {"error": f"Invalid multiplier. Must be one of {valid_multipliers}"}
 
-    success = await asyncio.to_thread(neon_checker.update_pump_multiplier, language, multiplier, user_id)
+    success = await asyncio.to_thread(neon_checker.update_pump_multiplier, language, multiplier, target_user_id)
     if success:
         return {"success": True, "message": f"Review Pump for {language} set to {multiplier}x"}
     else:
@@ -647,9 +708,12 @@ async def set_review_pump_lever(language: str, multiplier: float, user_id: str =
 @mcp.tool(description="Calculate the language review velocity (Review Pump) required to hit 0 reviews.")
 async def get_language_velocity_stats(user_id: str = None) -> Dict[str, Any]:
     """Calculate the velocity required to hit 0 reviews based on current debt, forecasted liabilities, and chosen lever."""
+    target_user_id = resolve_target_user(user_id)
+    if not target_user_id:
+        return {"error": "Authentication Required"}
     try:
         # 1. Get stats from Neon (cached from last scraper run) - use to_thread to avoid blocking event loop
-        db_stats = await asyncio.to_thread(neon_checker.get_language_stats, user_id)
+        db_stats = await asyncio.to_thread(neon_checker.get_language_stats, target_user_id)
         if not db_stats:
             # Fallback to scrape if DB is empty
             scraper_data = await sync_clozemaster_to_beeminder(dry_run=True)
@@ -856,7 +920,9 @@ def get_budget_governor_status() -> Dict[str, Any]:
 @mcp.tool(description="Get unified daily goal completion status for the Majesty Cake widget (kingdonb/mecris#170). Returns X/Y goals satisfied and all_clear flag.")
 async def get_daily_aggregate_status(user_id: str = None) -> Dict[str, Any]:
     """Returns aggregated daily goal completion: daily walk (>=2000 steps), Arabic review pump, Greek review pump."""
-    target_user_id = usage_tracker.resolve_user_id(user_id)
+    target_user_id = resolve_target_user(user_id)
+    if not target_user_id:
+        return {"error": "Authentication Required"}
     goals = []
 
     # Goal 1: Daily Walk (>=2000 steps via Neon or Beeminder)
