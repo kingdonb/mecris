@@ -89,7 +89,7 @@ curl http://127.0.0.1:8000/health
 - Integrated with background task processing
 - Configurable alert thresholds
 
-#### 🚧 Obsidian Integration - **PARTIAL**
+#### ✅ Obsidian Integration - **CONFIGURED**
 - File reading capabilities implemented
 - Vault structure parsing in progress
 
@@ -113,9 +113,9 @@ curl http://127.0.0.1:8000/health
 - **Documentation**: Organized into `/docs` directory
 
 ### 📋 Next Priorities
-- **Claude API Balance Scraper**: Automated balance retrieval
-- **Periodic Check-ins**: Cron-based autonomous sessions
-- **Enhanced Narrator Context**: Deeper strategic insights
+- **Majesty Cake UI**: Implement the visual reward widget in the Android app.
+- **Multi-User Twilio**: Migrate Twilio logic to the WASM brain for full multi-tenancy.
+- **Rust Reminder Engine**: Port heuristic logic from Python to Rust/WASM.
 
 ## Design Principles
 
@@ -193,7 +193,7 @@ LOG_LEVEL=INFO                # Logging level
 
 ## Budget Management
 
-### Current Budget: $18.21 remaining (as of Aug 2025)
+### Current Budget: $20.88 remaining (as of April 2026)
 - **Daily burn rate**: Automatically calculated from usage
 - **Budget alerts**: SMS notifications for critical states
 - **Manual updates**: Use `/usage/update_budget` endpoint

@@ -6,7 +6,7 @@
 
 ## Overview
 
-Mecris transforms from a Claude Code CLI tool into a production SMS accountability system that:
+Mecris is a production-grade accountability system featuring a 29-tool MCP server and a WASM-based cloud brain that:
 - Processes messages through persistent message queues
 - Runs autonomously without manual intervention  
 - Provides intelligent, context-aware responses

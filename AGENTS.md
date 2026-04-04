@@ -40,6 +40,14 @@ Copy `.github/skills/` into your project's `.claude/skills/` directory.
 /mecris-archive → close spec, update NEXT_SESSION.md, append SESSION_LOG
 ```
 
+## Integrated MCP Tools
+
+The system features 29 distinct tools for agent interaction, including:
+- **Strategic Context**: `get_narrator_context`
+- **Goal Mastery**: `get_beeminder_status`
+- **System Health**: `get_system_health`
+- **Daily Aggregate**: `get_daily_aggregate_status`
+
 ## Update
 
 ```shell

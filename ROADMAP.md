@@ -3,9 +3,9 @@
 > **Mission**: Transform Mecris from reactive MCP server to autonomous cognitive agent with rich contextual awareness
 
 ## 📊 Current Status
-- **Budget**: $23.19 remaining (43 days @ $30/month ceiling)
+- **Budget**: $20.88 remaining (Expires 2026-04-14)
 - **Foundation**: Production-ready MCP server with Beeminder, Budget, and Twilio integrations ✅
-- **Gap**: No autonomous wake-up/nagging capability — *this is the core missing piece*
+- **Progress**: Autonomous nagging implemented via MCP Scheduler and Android Heartbeat ✅ — *this is the core missing piece*
 
 ---
 
@@ -60,10 +60,10 @@
 - Uses the `mecris` CLI handles for all internal state transitions and "private entrypoints".
 
 **Deliverables**:
-- [ ] **The `mecris` CLI**: A Python-based CLI entry point with subcommands for `budget`, `goals`, `sync`, and `internal`.
+- [x] **The `mecris` CLI**: A Python-based CLI entry point with subcommands for `budget`, `goals`, `sync`, and `internal`.
 - [ ] **Headless Loopback**: Subprocess wrapper for `gemini --yolo` and `gh copilot`.
 - [ ] **Secret Manager Integration**: Hardened token injection for autonomous turns.
-- [ ] Heuristic decision engine for notification triggers
+- [x] Heuristic decision engine (Nag Ladder implemented) for notification triggers
 - [ ] Smart nagging algorithms (time-of-day, goal urgency, success patterns)
 - [ ] Web dashboard for check-in status (optional, lightweight)
 
