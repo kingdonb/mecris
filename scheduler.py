@@ -258,12 +258,18 @@ class MecrisScheduler:
                                 self.is_leader = True
                         else:
                             # Check if WE are currently the leader
-                            cur.execute("SELECT process_id FROM scheduler_election WHERE user_id = %s AND role = 'leader'", (self.user_id,))
+                            cur.execute("SELECT process_id, heartbeat FROM scheduler_election WHERE user_id = %s AND role = 'leader'", (self.user_id,))
                             row = cur.fetchone()
-                            if self.is_leader and (not row or row[0] != self.process_id):
-                                logger.warning(f"🏳️ Process {self.process_id} lost leadership for {self.user_id} (Neon).")
-                                self.is_leader = False
-                                self._stop_leader_jobs()
+                            if self.is_leader:
+                                if not row or row[0] != self.process_id:
+                                    logger.warning(f"🏳️ Process {self.process_id} LOST leadership for {self.user_id} (Neon). Current leader: {row[0] if row else 'None'}")
+                                    self.is_leader = False
+                                    self._stop_leader_jobs()
+                                else:
+                                    # We are still leader, maintain heartbeat
+                                    cur.execute("UPDATE scheduler_election SET heartbeat = %s WHERE user_id = %s AND role = 'leader' AND process_id = %s", (now, self.user_id, self.process_id))
+                                    if attempt % 20 == 0: # Log roughly every 10 minutes
+                                        logger.info(f"💓 Leader {self.process_id} heartbeat active.")
                 if self.is_leader:
                     await self._start_leader_jobs()
                 return
