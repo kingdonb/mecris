@@ -30,10 +30,10 @@ def mock_beeminder():
 async def test_clozemaster_sync_pushes_with_requestid(mock_scraper, mock_beeminder):
     """add_datapoint is always called with a deterministic requestid."""
     mock_scraper.get_review_forecast.side_effect = [
-        {"today": 2600, "tomorrow": 5, "next_7_days": 100}
+        {"today": 2600, "tomorrow": 5, "next_7_days": 100},
+        {"today": 10, "tomorrow": 1, "next_7_days": 5}
     ]
     mock_beeminder.get_all_goals.return_value = [{"slug": "reviewstack"}]
-
     await sync_clozemaster_to_beeminder(dry_run=False)
 
     assert mock_beeminder.add_datapoint.call_count == 1
@@ -46,10 +46,10 @@ async def test_clozemaster_sync_pushes_with_requestid(mock_scraper, mock_beemind
 async def test_clozemaster_sync_requestid_format(mock_scraper, mock_beeminder):
     """requestid is {goal_slug}-{YYYY-MM-DD} in Eastern time."""
     mock_scraper.get_review_forecast.side_effect = [
-        {"today": 42, "tomorrow": 0, "next_7_days": 0}
+        {"today": 42, "tomorrow": 0, "next_7_days": 0},
+        {"today": 0, "tomorrow": 0, "next_7_days": 0}
     ]
     mock_beeminder.get_all_goals.return_value = [{"slug": "reviewstack"}]
-
     eastern = zoneinfo.ZoneInfo("US/Eastern")
     expected_date = datetime.now(eastern).strftime("%Y-%m-%d")
     expected_requestid = f"reviewstack-{expected_date}"
@@ -64,10 +64,10 @@ async def test_clozemaster_sync_requestid_format(mock_scraper, mock_beeminder):
 async def test_clozemaster_sync_does_not_prefetch_datapoints(mock_scraper, mock_beeminder):
     """get_goal_datapoints is never called — requestid handles deduplication server-side."""
     mock_scraper.get_review_forecast.side_effect = [
-        {"today": 2600, "tomorrow": 5, "next_7_days": 100}
+        {"today": 2600, "tomorrow": 5, "next_7_days": 100},
+        {"today": 0, "tomorrow": 0, "next_7_days": 0}
     ]
     mock_beeminder.get_all_goals.return_value = [{"slug": "reviewstack"}]
-
     await sync_clozemaster_to_beeminder(dry_run=False)
 
     assert mock_beeminder.get_goal_datapoints.call_count == 0
@@ -77,10 +77,10 @@ async def test_clozemaster_sync_does_not_prefetch_datapoints(mock_scraper, mock_
 async def test_clozemaster_sync_dry_run_no_push(mock_scraper, mock_beeminder):
     """Dry run skips both the push and requestid generation."""
     mock_scraper.get_review_forecast.side_effect = [
-        {"today": 2600, "tomorrow": 5, "next_7_days": 100}
+        {"today": 2600, "tomorrow": 5, "next_7_days": 100},
+        {"today": 0, "tomorrow": 0, "next_7_days": 0}
     ]
     mock_beeminder.get_all_goals.return_value = [{"slug": "reviewstack"}]
-
     results = await sync_clozemaster_to_beeminder(dry_run=True)
 
     assert results["arabic"]["count"] == 2600
@@ -91,10 +91,10 @@ async def test_clozemaster_sync_dry_run_no_push(mock_scraper, mock_beeminder):
 async def test_clozemaster_sync_skips_unknown_goal(mock_scraper, mock_beeminder):
     """Goals not on Beeminder are skipped without calling add_datapoint."""
     mock_scraper.get_review_forecast.side_effect = [
-        {"today": 2600, "tomorrow": 5, "next_7_days": 100}
+        {"today": 2600, "tomorrow": 5, "next_7_days": 100},
+        {"today": 0, "tomorrow": 0, "next_7_days": 0}
     ]
     mock_beeminder.get_all_goals.return_value = []  # reviewstack not present
-
     await sync_clozemaster_to_beeminder(dry_run=False)
 
     assert mock_beeminder.add_datapoint.call_count == 0

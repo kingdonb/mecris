@@ -100,7 +100,8 @@ def test_score_delta_backup_detection_updates_daily_completions():
     mock_cur = MagicMock()
     mock_cur.execute.side_effect = fake_execute
     # First fetchone: return existing row with last_points=500, daily_completions=0
-    mock_cur.fetchone.return_value = (500, 0, datetime(2026, 4, 3, 10, 0, 0))
+    # Use a very recent date to avoid day boundary reset in the test
+    mock_cur.fetchone.return_value = (500, 0, datetime.now())
     mock_conn.cursor.return_value.__enter__.return_value = mock_cur
     mock_conn.__enter__ = lambda s: mock_conn
     mock_conn.__exit__ = MagicMock(return_value=False)

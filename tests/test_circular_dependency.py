@@ -16,11 +16,10 @@ async def test_scheduler_to_mcp_circular_import_safety():
     
     # Mock the trigger function
     mock_trigger = MagicMock()
-    async def async_trigger(user_id=None):
+    async def async_trigger(user_id=None, **kwargs):
         mock_trigger(user_id)
         return {"triggered": True}
-    mock_mcp_server.trigger_reminder_check = async_trigger
-    
+    mock_mcp_server.trigger_reminder_check = async_trigger    
     with patch.dict("sys.modules", {"mcp_server": mock_mcp_server}):
         from scheduler import _global_reminder_job
 
