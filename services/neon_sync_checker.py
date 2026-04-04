@@ -56,12 +56,19 @@ class NeonSyncChecker:
             local_now = datetime.now(eastern)
             today_start = local_now.replace(hour=0, minute=0, second=0, microsecond=0)
 
-            # Convert stored UTC strings to TIMESTAMPTZ, then at time zone 'US/Eastern'
-            # and compare with today_start at 00:00:00
+            # A walk counts if:
+            # 1. Step count >= threshold
+            # 2. Distance >= 1 mile (1609.34m)
+            # 3. Source indicates an explicit workout/activity session
             query = """
                 SELECT COUNT(*) FROM walk_inferences 
                 WHERE (start_time::TIMESTAMPTZ AT TIME ZONE 'US/Eastern') >= %s
-                AND CAST(step_count AS INTEGER) >= %s
+                AND (
+                    CAST(step_count AS INTEGER) >= %s 
+                    OR CAST(distance_meters AS FLOAT) >= 1609.34
+                    OR distance_source LIKE '%%Workouts%%'
+                    OR distance_source LIKE '%%Activity%%'
+                )
             """
             params = [today_start.replace(tzinfo=None), min_steps]
 

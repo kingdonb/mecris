@@ -41,6 +41,10 @@ class PocketIdAuth(private val context: Context) {
                     val jwt = internalAuthState.accessToken ?: internalAuthState.idToken
                     if (jwt != null) {
                         _authState.value = AuthState.Authenticated(jwt)
+                    } else {
+                        // Authorized (has refresh token) but no access token ready.
+                        // Trigger a silent refresh to restore the Authenticated state.
+                        getValidAccessToken { _ -> /* state will be updated by getValidAccessToken */ }
                     }
                 }
             } catch (e: Exception) {
@@ -117,6 +121,8 @@ class PocketIdAuth(private val context: Context) {
             } else {
                 if (accessToken != null) {
                     saveAuthState()
+                    // Update state so observers get the fresh token
+                    _authState.value = AuthState.Authenticated(accessToken)
                 }
                 callback(accessToken)
             }
