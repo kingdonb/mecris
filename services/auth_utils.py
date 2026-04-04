@@ -1,7 +1,9 @@
 import secrets
 import base64
 import hashlib
+import os
 from typing import Tuple
+from urllib.parse import urlencode
 
 def generate_code_verifier() -> str:
     """
@@ -24,3 +26,21 @@ def generate_pkce_pair() -> Tuple[str, str]:
     verifier = generate_code_verifier()
     challenge = generate_code_challenge(verifier)
     return verifier, challenge
+
+def build_auth_url(challenge: str, state: str, port: int) -> str:
+    """Build the authorization URL for PKCE flow."""
+    base_url = os.getenv("POCKET_ID_AUTH_ENDPOINT", "https://metnoom.urmanac.com/authorize")
+    client_id = os.getenv("POCKET_ID_CLIENT_ID")
+    redirect_uri = f"http://localhost:{port}"
+    
+    params = {
+        "client_id": client_id,
+        "redirect_uri": redirect_uri,
+        "response_type": "code",
+        "scope": "openid profile email offline_access",
+        "code_challenge": challenge,
+        "code_challenge_method": "S256",
+        "state": state
+    }
+    
+    return f"{base_url}?{urlencode(params)}"
