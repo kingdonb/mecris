@@ -13,6 +13,9 @@ import psycopg2
 from psycopg2.extras import RealDictCursor
 import logging
 
+from services.credentials_manager import credentials_manager
+from services.encryption_service import EncryptionService
+
 logger = logging.getLogger("mecris.usage")
 
 @dataclass
@@ -28,8 +31,9 @@ class UsageSession:
 class UsageTracker:
     def __init__(self, user_id: str = None):
         self.neon_url = os.getenv("NEON_DB_URL")
-        self.user_id = user_id or os.getenv("DEFAULT_USER_ID")
+        self.user_id = credentials_manager.resolve_user_id(user_id)
         self.use_neon = False
+        self.encryption = EncryptionService()
         self.init_database()
         
         # Current pricing (as of 2025) - Claude 3.5 Sonnet
@@ -183,6 +187,14 @@ class UsageTracker:
         cost = self.calculate_cost(model, input_tokens, output_tokens)
         now = datetime.now()
         
+        # Encrypt notes if they are not empty and encryption is active
+        stored_notes = notes
+        if notes and self.encryption.aesgcm:
+            try:
+                stored_notes = self.encryption.encrypt(notes)
+            except Exception as e:
+                logger.error(f"UsageTracker: Failed to encrypt session notes: {e}")
+        
         if self.use_neon:
             try:
                 with psycopg2.connect(self.neon_url) as conn:
@@ -191,7 +203,7 @@ class UsageTracker:
                             INSERT INTO usage_sessions 
                             (timestamp, model, input_tokens, output_tokens, estimated_cost, session_type, notes, user_id)
                             VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-                        """, (now, model, input_tokens, output_tokens, cost, session_type, notes, target_user_id))
+                        """, (now, model, input_tokens, output_tokens, cost, session_type, stored_notes, target_user_id))
                         
                         # Update remaining budget
                         cur.execute("""
@@ -282,9 +294,20 @@ class UsageTracker:
                             LIMIT %s
                         """, (target_user_id, limit,))
                         sessions = cur.fetchall()
+                        results = []
                         for s in sessions:
-                            s['timestamp'] = s['timestamp'].isoformat()
-                        return [dict(s) for s in sessions]
+                            s_dict = dict(s)
+                            s_dict['timestamp'] = s_dict['timestamp'].isoformat()
+                            
+                            # Decrypt notes if encrypted
+                            if s_dict.get('notes') and self.encryption.aesgcm:
+                                try:
+                                    s_dict['notes'] = self.encryption.decrypt(s_dict['notes'])
+                                except Exception:
+                                    # Fallback if decryption fails (e.g. legacy plaintext data)
+                                    pass
+                            results.append(s_dict)
+                        return results
             except Exception as e:
                 logger.error(f"UsageTracker: Neon get_recent_sessions failed: {e}")
                 raise

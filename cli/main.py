@@ -3,6 +3,7 @@ import sys
 import asyncio
 import json
 import logging
+from services.credentials_manager import credentials_manager
 
 # We import the required parts lazily to make the CLI fast, 
 # but for the main entrypoint we set up the parser.
@@ -15,12 +16,29 @@ def setup_logging(verbose: bool):
     logging.getLogger("httpx").setLevel(logging.WARNING)
     logging.getLogger("urllib3").setLevel(logging.WARNING)
 
+def resolve_user_id(args):
+    """Resolve user ID from args or credentials manager."""
+    user_id = credentials_manager.resolve_user_id(args.user_id)
+    if not user_id:
+        print("❌ Authentication Required.")
+        print("Please run `mecris login` to authenticate your session.")
+        sys.exit(1)
+    return user_id
+
+async def run_login(args):
+    """Initiate the OIDC login flow."""
+    print("Initiating login flow via Pocket ID...")
+    print("Implementation of browser-based PKCE flow pending.")
+    # In the future, this will start a local server and open a browser.
+    # For now, it's a stub.
+
 async def run_nag_eval(args):
     """Evaluate the reminder heuristics without triggering a send."""
     from mcp_server import check_reminder_needed
+    user_id = resolve_user_id(args)
     
-    print(f"Evaluating nagging heuristics for user_id='{args.user_id}'...")
-    result = await check_reminder_needed(args.user_id)
+    print(f"Evaluating nagging heuristics for user_id='{user_id}'...")
+    result = await check_reminder_needed(user_id)
     print("\n--- Heuristic Result ---")
     print(json.dumps(result, indent=2))
 
@@ -33,12 +51,13 @@ async def run_nag_eval(args):
 async def run_nag_trigger(args):
     """Evaluate and actually send the reminder if needed, or force it."""
     from mcp_server import trigger_reminder_check, send_reminder_message, check_reminder_needed
+    user_id = resolve_user_id(args)
     
     if args.force:
-        print(f"FORCING a reminder evaluation and send for user_id='{args.user_id}'...")
+        print(f"FORCING a reminder evaluation and send for user_id='{user_id}'...")
         # Since we are forcing, we bypass the "should_send" logic.
         # But we still need the data of what *would* have been sent.
-        check_result = await check_reminder_needed(args.user_id)
+        check_result = await check_reminder_needed(user_id)
         if not check_result.get("should_send"):
             print("⚠️ The heuristic didn't want to send anything. We are forcing a test payload.")
             check_result = {
@@ -48,11 +67,11 @@ async def run_nag_trigger(args):
             }
             print(f"Payload: {json.dumps(check_result, indent=2)}")
         
-        send_result = await send_reminder_message(check_result, args.user_id)
+        send_result = await send_reminder_message(check_result, user_id)
         print(f"Send result: {json.dumps(send_result, indent=2)}")
     else:
-        print(f"Triggering normal reminder check for user_id='{args.user_id}'...")
-        result = await trigger_reminder_check(args.user_id)
+        print(f"Triggering normal reminder check for user_id='{user_id}'...")
+        result = await trigger_reminder_check(user_id)
         print(json.dumps(result, indent=2))
 
 def run_presence(args):
@@ -91,9 +110,12 @@ def run_presence(args):
 def main():
     parser = argparse.ArgumentParser(description="Mecris CLI - The Ground Truth")
     parser.add_argument("-v", "--verbose", action="store_true", help="Enable debug logging")
-    parser.add_argument("--user-id", type=str, default=None, help="Target user ID (defaults to DEFAULT_USER_ID)")
+    parser.add_argument("--user-id", type=str, default=None, help="Target user ID (overrides local credentials)")
     
     subparsers = parser.add_subparsers(dest="command", help="Sub-commands")
+    
+    # --- Login Subcommand ---
+    login_parser = subparsers.add_parser("login", help="Log in to Mecris via Pocket ID")
     
     # --- Presence Subcommand ---
     presence_parser = subparsers.add_parser("presence", help="Manage human presence lock for ghost sessions")
@@ -112,7 +134,9 @@ def main():
     
     setup_logging(args.verbose)
     
-    if args.command == "presence":
+    if args.command == "login":
+        asyncio.run(run_login(args))
+    elif args.command == "presence":
         sys.exit(run_presence(args))
     elif args.command == "nag":
         if args.nag_command == "eval":

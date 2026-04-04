@@ -15,6 +15,8 @@ import psycopg2
 from psycopg2.extras import RealDictCursor
 import logging
 
+from services.credentials_manager import credentials_manager
+
 logger = logging.getLogger("mecris.virtual_budget")
 
 class Provider(Enum):
@@ -35,7 +37,7 @@ class ProviderUsage:
 class VirtualBudgetManager:
     def __init__(self, user_id: str = None):
         self.neon_url = os.getenv("NEON_DB_URL")
-        self.user_id = user_id or os.getenv("DEFAULT_USER_ID")
+        self.user_id = credentials_manager.resolve_user_id(user_id)
         if not self.neon_url:
             logger.warning("NEON_DB_URL not set in VirtualBudgetManager. Budgeting will fail.")
             

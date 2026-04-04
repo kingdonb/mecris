@@ -5,6 +5,8 @@ from typing import Dict, Any, Optional
 import psycopg2
 from dotenv import load_dotenv
 
+from services.credentials_manager import credentials_manager
+
 load_dotenv()
 logger = logging.getLogger("mecris.neon")
 
@@ -13,26 +15,26 @@ class NeonSyncChecker:
 
     def __init__(self):
         self.db_url = os.getenv("NEON_DB_URL")
-        self.default_user_id = os.getenv("DEFAULT_USER_ID")
         if not self.db_url:
             logger.warning("NEON_DB_URL not configured. Cloud walk sync checks will be skipped.")
 
     def resolve_user_id(self, user_id: str) -> str:
         """Resolve familiar_id (e.g. 'yebyen') to pocket_id_sub (UUID)."""
-        if not self.db_url or not user_id:
-            return user_id or self.default_user_id
-            
+        target_user_id = credentials_manager.resolve_user_id(user_id)
+        if not self.db_url or not target_user_id:
+            return target_user_id
+
         try:
             with psycopg2.connect(self.db_url) as conn:
                 with conn.cursor() as cur:
-                    cur.execute("SELECT pocket_id_sub FROM users WHERE familiar_id = %s", (user_id,))
+                    cur.execute("SELECT pocket_id_sub FROM users WHERE familiar_id = %s", (target_user_id,))
                     row = cur.fetchone()
                     if row:
                         return row[0]
         except Exception as e:
-            logger.error(f"NeonSyncChecker: resolve_user_id failed: {e}")
-            
-        return user_id
+            logger.error(f"Failed to resolve user_id '{target_user_id}': {e}")
+
+        return target_user_id
 
     def has_walk_today(self, user_id: str = None, min_steps: int = 2000) -> bool:
         """
