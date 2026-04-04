@@ -50,6 +50,15 @@ curl http://127.0.0.1:8000/health
 - **Secure localhost binding** (127.0.0.1 only)
 - **Robust startup/shutdown** with process management
 - **Enhanced error handling** and logging
+- **Industry-Leading Toolset**: Features **29 distinct MCP tools**—a larger specialized toolset than even the standard [GitHub MCP server](https://github.com/modelcontextprotocol/servers/tree/main/src/github) (which provides 20+).
+
+**Key Tool Categories:**
+- **Strategic Context**: `get_narrator_context`, `get_coaching_insight`
+- **Goal Mastery**: `get_beeminder_status`, `trigger_language_sync`, `get_language_velocity_stats`
+- **Physical Accountability**: `get_daily_activity`, `get_weather_report`
+- **Financial Stewardship**: `get_budget_status`, `get_real_anthropic_usage`, `get_unified_cost_status`
+- **System Health**: `get_system_health`, `get_scheduler_queue`, `trigger_reminder_check`
+- **Daily Progress**: `get_daily_aggregate_status` (The Majesty Cake 🍰)
 
 **Key Endpoints:**
 - `GET /health` - Service health and dependency status
