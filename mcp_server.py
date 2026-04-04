@@ -297,12 +297,26 @@ async def get_narrator_context(user_id: str = None) -> Dict[str, Any]:
                 urgent_items.append(f"GROQ: {groq_urgent}")
                 recommendations.append(groq_urgent)
 
+        # Majesty Cake: surface aggregate daily goal status for discoverability (kingdonb/mecris#170)
+        try:
+            daily_aggregate = await get_daily_aggregate_status(user_id)
+            if not daily_aggregate.get("error"):
+                if daily_aggregate.get("all_clear"):
+                    recommendations.append(f"🎂 Majesty Cake! All daily goals complete ({daily_aggregate.get('score', '?/?')})")
+                else:
+                    score = daily_aggregate.get("score", "?/?")
+                    recommendations.append(f"🎯 Daily goals progress: {score} — keep going!")
+        except Exception as e:
+            logger.error(f"get_narrator_context: daily aggregate status failed: {e}")
+            daily_aggregate = {"error": str(e)}
+
         return {
             "summary": summary, "goals_status": {"total": len(active_goals)},
             "urgent_items": urgent_items, "beeminder_alerts": [e.get("message", "") for e in emergencies[:5]],
             "goal_runway": goal_runway, "budget_status": budget_status, "recommendations": recommendations,
             "daily_walk_status": daily_walk_status,
             "latest_cloud_walk": latest_cloud_walk,
+            "daily_aggregate_status": daily_aggregate,
             "system_pulse": {
                 "running": scheduler.running,
                 "is_leader": scheduler.is_leader,
