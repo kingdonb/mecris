@@ -111,5 +111,5 @@ The integrity of the loop depends on honesty here. The next instance will trust 
 
 - Archive commits on behalf of the bot identity (`mecris-bot <mecris-bot@noreply>`) — git config is already set in the workflow
 - Push is handled by the workflow's final step — archive does not push
-- If no plan issue exists (orient → work → archive without plan), create a retrospective issue instead: title `[retro] {date} — {what was done}` and close it immediately
+- **No Plan Issue?**: If no plan issue exists, **DO NOT** create a "placeholder" or "retro" issue unless you actually modified code or reached a significant technical milestone that needs recording. If you just oriented and did nothing, just update `NEXT_SESSION.md` and stop.
 - SESSION_LOG lives at `session_log.md` in the repo root

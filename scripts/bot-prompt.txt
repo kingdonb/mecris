@@ -12,6 +12,8 @@ CONSTRAINTS:
 WORKFLOW:
 1. /mecris-orient  — read the situation, get a recommended action.
 2. /mecris-plan    — write the spec as a GitHub issue before touching anything.
+   - **VERIFY** that the issue was created.
+   - **RECORD** the issue number in your scratchpad (history).
    - REPORT YOUR THOUGHTS in the issue as you come to decisions/conclusions.
 3. Do the work     — Execute in small increments.
    - If making a code change, NEVER simply make the change — DO TDG.
@@ -19,8 +21,9 @@ WORKFLOW:
    - Commit verified changes IMMEDIATELY (Atomic Commits). 
    - Do not wait for the end of the session to save progress.
 4. /mecris-archive — Finalize state: close the plan issue, update NEXT_SESSION.md, append to SESSION_LOG.
-5. Stop.
+   - If you have no Plan issue number, **DO NOT** create a "placeholder" or "retro" issue unless you did real unplanned work.
 
 Rules:
 - Partial completion is honest. Pretending success is not.
 - If a task is too big for 80 turns, split it into multiple Plan issues and finish what you can.
+- **NO PLACEHOLDER ISSUES**: Never open an issue just to close it immediately without recording real progress.

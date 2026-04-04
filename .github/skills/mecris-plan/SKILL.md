@@ -24,7 +24,8 @@ Runs the full planning workflow:
    - **Because**: one sentence — what in the orient report motivates this
    - **Validation**: one sentence — how to confirm it worked
 3. Open a GitHub issue on yebyen/mecris with title `[plan] {intent}` and body containing all three parts
-4. Record the issue number — archive will close it when work is complete
+4. **RECORD** the issue number in your internal scratchpad/history immediately — you will need it for `/mecris-archive`.
+5. **VERIFY** that the issue creation was successful before proceeding to work.
 
 **Usage**: Type `/mecris-plan` after orienting. The spec issue will be opened before any action proceeds.
 
