@@ -754,18 +754,31 @@ async def send_reminder_message(message_data: Dict[str, Any], user_id: str = Non
         message = message_data.get("message") or message_data.get("fallback_message")
         delivery_result = smart_send_message(message)
 
-    if delivery_result["sent"]:
-        # Log to Neon
-        def _write_log():
-            import psycopg2
-            with psycopg2.connect(neon_url) as conn:
-                with conn.cursor() as cur:
-                    cur.execute("INSERT INTO message_log (date, type, sent_at, user_id) VALUES (%s, %s, %s, %s)", (today, msg_type, now, target_user_id))
+    # Log to Neon, regardless of success or failure
+    status_val = "sent" if delivery_result.get("sent") else "failed"
+    error_val = None if delivery_result.get("sent") else "Failed to send (check twilio_sender logs)"
+    
+    def _write_log():
+        import psycopg2
+        with psycopg2.connect(neon_url) as conn:
+            with conn.cursor() as cur:
+                try:
+                    cur.execute(
+                        "INSERT INTO message_log (date, type, sent_at, user_id, status, error_msg) VALUES (%s, %s, %s, %s, %s, %s)", 
+                        (today, msg_type, now, target_user_id, status_val, error_val)
+                    )
+                except psycopg2.errors.UndefinedColumn:
+                    # Fallback if schema wasn't migrated
+                    conn.rollback()
+                    cur.execute(
+                        "INSERT INTO message_log (date, type, sent_at, user_id) VALUES (%s, %s, %s, %s)", 
+                        (today, msg_type, now, target_user_id)
+                    )
 
-        try:
-            await asyncio.to_thread(_write_log)
-        except Exception as e:
-            logger.error(f"Failed to log message to Neon: {e}")
+    try:
+        await asyncio.to_thread(_write_log)
+    except Exception as e:
+        logger.error(f"Failed to log message to Neon: {e}")
 
     return delivery_result
 

@@ -493,15 +493,15 @@ async fn run_clozemaster_scraper(db_url: &str, user_id: &str) -> anyhow::Result<
 }
 
 async fn fetch_from_beeminder(user_id: &str, slug: &str, connection: &Connection) -> anyhow::Result<(i32, String, f64)> {
-    // 1. Fetch encrypted token
-    let query = "SELECT beeminder_token_encrypted, beeminder_user FROM users WHERE pocket_id_sub = $1";
+    // 1. Fetch encrypted token and user
+    let query = "SELECT beeminder_token_encrypted, beeminder_user_encrypted FROM users WHERE pocket_id_sub = $1";
     let row_set = connection.query(query, &[ParameterValue::Str(user_id.to_string())])?;
     if row_set.rows.is_empty() {
         return Err(anyhow::anyhow!("User not found"));
     }
     
     let token_raw = match &row_set.rows[0][0] { DbValue::Str(s) => s.clone(), _ => return Err(anyhow::anyhow!("No token")) };
-    let beeminder_user = match &row_set.rows[0][1] { DbValue::Str(s) if !s.is_empty() => s.clone(), _ => "me".to_string() };
+    let enc_beeminder_user = match &row_set.rows[0][1] { DbValue::Str(s) if !s.is_empty() => s.clone(), _ => "".to_string() };
 
     let master_key = variables::get("master_encryption_key")
         .map_err(|_| anyhow::anyhow!("MASTER_ENCRYPTION_KEY missing from environment"))?;
@@ -510,6 +510,11 @@ async fn fetch_from_beeminder(user_id: &str, slug: &str, connection: &Connection
     }
 
     let token = decrypt_token(&token_raw).await?;
+    let beeminder_user = if !enc_beeminder_user.is_empty() {
+        decrypt_token(&enc_beeminder_user).await.unwrap_or_else(|_| "me".to_string())
+    } else {
+        "me".to_string()
+    };
 
     // 2. GET goal details
     let url = format!("https://www.beeminder.com/api/v1/users/{}/goals/{}.json?auth_token={}", beeminder_user, slug, token);
@@ -538,7 +543,7 @@ async fn fetch_from_beeminder(user_id: &str, slug: &str, connection: &Connection
 
 async fn push_to_beeminder(user_id: &str, slug: &str, value: f64, comment: &str, connection: &Connection) -> anyhow::Result<()> {
     // Fetch user's Beeminder token (encrypted) from Neon
-    let query = "SELECT beeminder_token_encrypted, beeminder_user FROM users WHERE pocket_id_sub = $1";
+    let query = "SELECT beeminder_token_encrypted, beeminder_user_encrypted FROM users WHERE pocket_id_sub = $1";
     let row_set = connection.query(query, &[ParameterValue::Str(user_id.to_string())])?;
     if row_set.rows.is_empty() {
         return Err(anyhow::anyhow!("User not found for Beeminder sync"));
@@ -549,9 +554,9 @@ async fn push_to_beeminder(user_id: &str, slug: &str, value: f64, comment: &str,
         _ => return Err(anyhow::anyhow!("Token missing")),
     };
     
-    let beeminder_user = match &row_set.rows[0][1] {
+    let enc_beeminder_user = match &row_set.rows[0][1] {
         DbValue::Str(s) if !s.is_empty() => s.clone(),
-        _ => "me".to_string(),
+        _ => "".to_string(),
     };
 
     let master_key = variables::get("master_encryption_key")
@@ -561,6 +566,11 @@ async fn push_to_beeminder(user_id: &str, slug: &str, value: f64, comment: &str,
     }
 
     let token = decrypt_token(&encrypted_token).await?;
+    let beeminder_user = if !enc_beeminder_user.is_empty() {
+        decrypt_token(&enc_beeminder_user).await.unwrap_or_else(|_| "me".to_string())
+    } else {
+        "me".to_string()
+    };
 
     let url = format!("https://www.beeminder.com/api/v1/users/{}/goals/{}/datapoints.json", beeminder_user, slug);
     let body = format!("auth_token={}&value={}&comment={}", 

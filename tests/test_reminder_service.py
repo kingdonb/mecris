@@ -1006,6 +1006,32 @@ async def test_tier3_not_triggered_for_exactly_2h_runway():
         assert result["tier"] == 1
 
 
+@pytest.mark.asyncio
+async def test_reminder_service_respects_sleep_window_at_3am():
+    """Test that all non-Tier 3 reminders are silenced during the 8 PM - 8 AM window."""
+    mock_context = {
+        "daily_walk_status": {"has_activity_today": False},
+        "beeminder_alerts": [],
+        "goal_runway": [
+            {"slug": "reviewstack", "title": "Arabic Reviews", "derail_risk": "CRITICAL", "runway": "0 days"}
+        ]
+    }
+    mock_insight = {"momentum": "low", "message": "Do your Arabic!"}
+
+    rs = ReminderService(make_async_mock(mock_context), make_async_mock(mock_insight))
+
+    # Mock time to 3:00 AM (Deep sleep, should be quiet!)
+    class MockNight(datetime.datetime):
+        @classmethod
+        def now(cls, *args, **kwargs):
+            return cls(2026, 3, 30, 3, 0, 0)
+
+    with patch('services.reminder_service.datetime', MockNight):
+        result = await rs.check_reminder_needed()
+        assert result["should_send"] is False
+        assert "Sleep window active" in result["reason"]
+
+
 def test_parse_runway_hours_returns_hours_for_hours_unit():
     """_parse_runway_hours: 'hours' unit returns float; 'days' unit returns sentinel 999.0."""
     rs = ReminderService(None, None)

@@ -34,11 +34,11 @@ class NeonSyncChecker:
             
         return user_id
 
-    def has_walk_today(self, user_id: str = None) -> bool:
+    def has_walk_today(self, user_id: str = None, min_steps: int = 2000) -> bool:
         """
-        Queries the Neon walk_inferences table for any walk starting today.
+        Queries the Neon walk_inferences table for any walk starting today
+        with a step_count >= min_steps.
         Aligns 'today' to US/Eastern midnight.
-        Correctly handles UTC-to-Eastern conversion for stored timestamps.
         """
         if not self.db_url:
             return False
@@ -61,8 +61,9 @@ class NeonSyncChecker:
             query = """
                 SELECT COUNT(*) FROM walk_inferences 
                 WHERE (start_time::TIMESTAMPTZ AT TIME ZONE 'US/Eastern') >= %s
+                AND step_count >= %s
             """
-            params = [today_start.replace(tzinfo=None)] # AT TIME ZONE returns a naive timestamp in that zone
+            params = [today_start.replace(tzinfo=None), min_steps]
 
             if target_user_id:
                 query += " AND user_id = %s"
@@ -74,7 +75,7 @@ class NeonSyncChecker:
             cur.close()
             conn.close()
 
-            logger.info(f"Neon walk check for {today_start}: found {count} walks")
+            logger.info(f"Neon walk check for {today_start} (min {min_steps} steps): found {count} walks")
             return count > 0
 
         except Exception as e:

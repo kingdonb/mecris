@@ -35,8 +35,7 @@ async def test_language_sync_service_coordination(mock_dependencies):
     
     # 2. Setup mock beeminder client
     mock_beeminder = MagicMock()
-    mock_beeminder.user_id = None  # match resolved target_user_id so no new BeeminderClient is spawned
-    
+    mock_beeminder.user_id = "c0a81a4b-115a-4eb6-bc2c-40908c58bf64"  # match resolved target_user_id so no new BeeminderClient is spawned    
     async def mock_get_all_goals():
         return [
             {"slug": "reviewstack", "safebuf": 6, "derail_risk": "CAUTION"},

@@ -140,7 +140,8 @@ class UsageTracker:
                 # Initialize budget if not exists
                 if self.user_id:
                     cur.execute("SELECT COUNT(*) FROM budget_tracking WHERE user_id = %s", (self.user_id,))
-                    if cur.fetchone()[0] == 0:
+                    row = cur.fetchone()
+                    if row and row[0] == 0:
                         cur.execute("""
                             INSERT INTO budget_tracking 
                             (user_id, total_budget, remaining_budget, budget_period_start, budget_period_end, last_updated)

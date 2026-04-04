@@ -5,11 +5,12 @@ CREATE TABLE IF NOT EXISTS users (
     pocket_id_sub VARCHAR(255) PRIMARY KEY, -- From Pocket ID JWT
     familiar_id VARCHAR(255) UNIQUE,        -- e.g., 'yebyen'
     beeminder_token_encrypted TEXT,
-    beeminder_user VARCHAR(255),
+    beeminder_user_encrypted TEXT,          -- Encrypted PII (changed from plaintext beeminder_user)
     beeminder_goal VARCHAR(255) DEFAULT 'bike',
     clozemaster_email_encrypted TEXT,
     clozemaster_password_encrypted TEXT,
-    notification_prefs JSONB DEFAULT '{}',
+    phone_number_encrypted TEXT,            -- Encrypted PII for Twilio delivery
+    notification_prefs JSONB DEFAULT '{}',  -- Tier settings, sleep windows, thresholds
     timezone VARCHAR(50) DEFAULT 'UTC',
     budget_limit NUMERIC(10, 2) DEFAULT 0.00,
     budget_spent_groq NUMERIC(10, 2) DEFAULT 0.00,
