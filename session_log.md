@@ -555,3 +555,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: No code changes this session — housekeeping only. Next epic (Greek Backlog Booster #129, language sorting #121, or multiplier race #122) carries forward. Gemini live discoverability validation still requires live env.
 
 **Next**: Start next meaningful epic — read kingdonb/mecris#129 (Greek Backlog Booster) or #121 (language dashboard sorting) and plan implementation. Majesty Cake epic kingdonb/mecris#170 is now feature-complete across all 4 phases.
+
+## 2026-04-04 — Audit session: verified #121 and #122 already complete (session 30) 🏛️
+
+**Planned**: Investigate and implement "visually dim languages without Beeminder goals" for kingdonb/mecris#121; then audit `surgicalUpdateInProgress` flag against kingdonb/mecris#122 race condition (yebyen/mecris#90, #91).
+
+**Done**: Both epics were already fully implemented. #121: sort-by-safebuf (line 833), alpha-dim (line 861), NO GOAL badge (lines 881-889) — all present. #122: `surgicalUpdateInProgress` provides 5 protection layers (early-return guard, write-site guards, click-disable, synchronous flag set, 2s settle delay) that fully prevent multiplier snap-back. Posted audit comments on kingdonb/mecris#121 and #122 recommending closure. Two plan issues (yebyen/mecris#90, #91) opened and closed with findings.
+
+**Skipped**: No code changes — pure validation session. kingdonb/mecris#129 (Greek Backlog Booster) carries forward as the next uncharted epic.
+
+**Next**: Read the comment on kingdonb/mecris#129 to understand the Greek backlog booster scope, then design and implement. #129 issue body is null — the context is in the one existing comment.
