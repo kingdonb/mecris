@@ -22,8 +22,8 @@ async def _global_reminder_job(trigger_func_name: str, user_id: str):
         if not scheduler.is_leader:
             return
             
-        logger.info(f"Background job (Leader) for {user_id}: Checking for reminders...")
-        result = await trigger_reminder_check(user_id=user_id)
+        logger.info(f"Background job (Leader) for {user_id}: Checking for reminders (with fuzz)...")
+        result = await trigger_reminder_check(user_id=user_id, apply_fuzz=True)
         if result.get("triggered"):
             logger.info(f"Reminder sent for {user_id}: {result.get('send', {}).get('method')}")
     except Exception as e:

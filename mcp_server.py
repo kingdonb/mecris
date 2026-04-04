@@ -518,13 +518,34 @@ async def get_unified_cost_status(user_id: str = None) -> Dict[str, Any]:
         logger.error(f"Failed to get unified cost status: {e}")
         return {"error": f"Failed to get unified cost status: {e}"}
 @mcp.tool(description="Check for needed reminders and send them intelligently.")
-async def trigger_reminder_check(user_id: str = None) -> Dict[str, Any]:
-    """Manually trigger the reminder logic."""
+async def trigger_reminder_check(user_id: str = None, apply_fuzz: bool = False) -> Dict[str, Any]:
+    """Manually trigger the reminder logic. If apply_fuzz is True, delays the actual check/send by a random interval."""
     target_user_id = user_id or os.getenv("DEFAULT_USER_ID")
     try:
         check_result = await check_reminder_needed(target_user_id)
         if not check_result.get("should_send"):
             return {"triggered": False, "reason": check_result.get("reason")}
+
+        # If we want to fuzz the delivery time and this is the initial background check
+        if apply_fuzz:
+            import random
+            from datetime import datetime, timedelta, timezone
+            from apscheduler.triggers.date import DateTrigger
+            
+            # Fuzz between 3 and 25 minutes to break up exact 2-hour formulas
+            fuzz_minutes = random.randint(3, 25)
+            run_time = datetime.now(timezone.utc) + timedelta(minutes=fuzz_minutes)
+            job_id = f"fuzzed_reminder_{int(run_time.timestamp())}"
+            
+            # Enqueue a one-off job to actually send the reminder after the fuzz delay
+            scheduler.scheduler.add_job(
+                trigger_reminder_check,
+                trigger=DateTrigger(run_date=run_time),
+                args=[target_user_id, False],
+                id=job_id
+            )
+            logger.info(f"Fuzzed reminder scheduled for {fuzz_minutes} minutes from now (Job: {job_id})")
+            return {"triggered": False, "reason": f"Fuzzed for {fuzz_minutes} minutes"}
 
         send_result = await send_reminder_message(check_result, target_user_id)
         return {"triggered": True, "check": check_result, "send": send_result}

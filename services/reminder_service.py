@@ -98,6 +98,24 @@ class ReminderService:
             result["fallback_message"] = self._build_tier2_message(result["type"], hours_idle, result)
         return result
 
+    def _calculate_dynamic_cooldown(self, base_cooldown: float, current_hour: int) -> float:
+        """
+        Calculate a dynamic cooldown that gets shorter as the evening progresses,
+        with added randomness (fuzz) so it doesn't feel like a rigid formula.
+        """
+        import random
+        reduction = 0.0
+        # If it's evening (after 4 PM/16:00), start reducing the cooldown
+        if current_hour >= 16:
+            # Reduce by 0.15 hours (9 mins) for every hour past 4 PM
+            reduction = (current_hour - 16) * 0.15
+            
+        # Add random fuzz between -0.25 and +0.25 hours (-15 to +15 mins)
+        fuzz = random.uniform(-0.25, 0.25)
+        
+        # Ensure cooldown doesn't drop below 45 minutes
+        return max(0.75, base_cooldown - reduction + fuzz)
+
     async def check_reminder_needed(self, user_id: str = None) -> Dict[str, Any]:
         """Core logic for proactive nudges."""
         # 1. ENFORCE GLOBAL RATE LIMIT: No more than 2 messages per hour (30m cooldown)
@@ -110,6 +128,8 @@ class ReminderService:
 
         context = await self.context_provider(user_id)
         insight = await self.coaching_provider(user_id)
+        if not isinstance(insight, dict):
+            insight = {}
         
         now = datetime.now()
         current_hour = now.hour
@@ -117,9 +137,9 @@ class ReminderService:
         has_walked = walk_status.get("has_activity_today", False)
         vacation_mode = context.get("vacation_mode", False)
 
-        # 1a. ENFORCE SLEEP WINDOW (8 PM - 8 AM)
-        # Only Tier 3 (sub-2h emergency) can bypass this.
-        is_sleep_time = current_hour >= 20 or current_hour < 8
+        # 1a. ENFORCE SLEEP WINDOWS
+        is_normal_sleep_time = current_hour >= 20 or current_hour < 8
+        is_emergency_sleep_time = current_hour < 8
         
         # 1. Beeminder Emergencies (Higher Priority, any time)
         beeminder_alerts = context.get("beeminder_alerts", [])
@@ -143,87 +163,103 @@ class ReminderService:
             else:
                 return {"should_send": False, "reason": f"Tier 3 emergency on cooldown ({hours_since_urgent:.1f}h since last)"}
 
-        # ALL OTHER REMINDERS RESPECT THE SLEEP WINDOW
-        if is_sleep_time:
-            return {"should_send": False, "reason": f"Sleep window active (8pm-8am, current hour: {current_hour})"}
-
-        # 1a. Arabic Review Emergency (obnoxious — 2h cooldown, fires before generic)
-        arabic_critical = [g for g in critical_goals if g.get("slug") == "reviewstack"]
-        if arabic_critical:
-            # Phase 3: escalation ladder — if ignored 3+ consecutive cycles, use more aggressive reminder
-            if self.skip_count_provider:
-                try:
-                    skip_count = await self.skip_count_provider(user_id)
-                    if skip_count >= 3:
-                        hours_since_escalation = await self._get_hours_since_last("arabic_review_escalation", user_id)
-                        if hours_since_escalation >= 1.0:
-                            target = arabic_critical[0]
-                            return {
-                                "should_send": True,
-                                "type": "arabic_review_escalation",
-                                "tier": 2,
-                                "template_sid": self.urgency_template_sid,
-                                "variables": {
-                                    "1": target.get("title", "Arabic Clozemaster"),
-                                    "2": target.get("runway", "0 days"),
-                                    "3": str(skip_count)
-                                },
-                                "fallback_message": f"🚨🚨 Arabic IGNORED {skip_count}x — OPEN CLOZEMASTER NOW. No excuses."
-                            }
-                        else:
-                            logger.info(f"Arabic escalation suppressed by cooldown ({hours_since_escalation:.1f}h since last)")
-                            return {"should_send": False, "reason": f"Arabic escalation on cooldown ({hours_since_escalation:.1f}h since last)"}
-                except Exception:
-                    logger.warning("skip_count_provider failed; falling back to arabic_review_reminder")
-
-            hours_since_arabic = await self._get_hours_since_last("arabic_review_reminder", user_id)
-            if hours_since_arabic >= 2.0:
-                target = arabic_critical[0]
-                variables = {
-                    "1": target.get("title", "Arabic Clozemaster"),
-                    "2": target.get("runway", "0 days")
-                }
-                if self.velocity_provider:
+        # EMERGENCIES RESPECT THE EMERGENCY SLEEP WINDOW (12am-8am)
+        if not is_emergency_sleep_time:
+            is_lever_push = insight.get("type") == "lever_push"
+            
+            # 1a. Arabic Review Emergency or Lever Push
+            arabic_critical = [g for g in critical_goals if g.get("slug") == "reviewstack"]
+            
+            if arabic_critical or (is_lever_push and insight.get("target_slug") in ["reviewstack", "ellinika"]):
+                if self.skip_count_provider and arabic_critical:
                     try:
-                        velocity = await self.velocity_provider(user_id)
-                        arabic_stats = velocity.get("arabic") or velocity.get("Arabic")
-                        if arabic_stats and "target_flow_rate" in arabic_stats:
-                            variables["3"] = str(arabic_stats["target_flow_rate"])
+                        skip_count = await self.skip_count_provider(user_id)
+                        if skip_count >= 3:
+                            hours_since_escalation = await self._get_hours_since_last("arabic_review_escalation", user_id)
+                            if hours_since_escalation >= 1.0:
+                                target = arabic_critical[0]
+                                return {
+                                    "should_send": True,
+                                    "type": "arabic_review_escalation",
+                                    "tier": 2,
+                                    "template_sid": self.urgency_template_sid,
+                                    "variables": {
+                                        "1": target.get("title", "Arabic Clozemaster"),
+                                        "2": target.get("runway", "0 days"),
+                                        "3": str(skip_count)
+                                    },
+                                    "fallback_message": f"🚨🚨 Arabic IGNORED {skip_count}x — OPEN CLOZEMASTER NOW. No excuses."
+                                }
+                            else:
+                                logger.info(f"Arabic escalation suppressed by cooldown ({hours_since_escalation:.1f}h since last)")
+                                return {"should_send": False, "reason": f"Arabic escalation on cooldown ({hours_since_escalation:.1f}h since last)"}
                     except Exception:
-                        logger.warning("velocity_provider failed; omitting cards_needed from arabic reminder")
-                result = {
-                    "should_send": True,
-                    "type": "arabic_review_reminder",
-                    "tier": 1,
-                    "template_sid": self.urgency_template_sid,
-                    "variables": variables,
-                    "fallback_message": "🚨 Arabic reviewstack is CRITICAL — open Clozemaster and do reviews NOW!"
-                }
-                return await self._apply_tier2_escalation(result, user_id)
-            else:
-                logger.info(f"Arabic reminder suppressed by cooldown ({hours_since_arabic:.1f}h since last)")
-                return {"should_send": False, "reason": f"Arabic review reminder on cooldown ({hours_since_arabic:.1f}h since last)"}
+                        logger.warning("skip_count_provider failed; falling back to arabic_review_reminder")
 
-        if critical_goals:
-            # Cooldown: 4 hours for emergencies
-            hours_since_emergency = await self._get_hours_since_last("beeminder_emergency", user_id)
-            if hours_since_emergency >= 4.0:
-                target = critical_goals[0]
-                result = {
-                    "should_send": True,
-                    "type": "beeminder_emergency",
-                    "tier": 1,
-                    "template_sid": self.urgency_template_sid,
-                    "variables": {
-                        "1": target.get("title", target.get("slug")),
-                        "2": target.get("runway", "0 days")
-                    },
-                    "fallback_message": insight.get("message")
-                }
-                return await self._apply_tier2_escalation(result, user_id)
-            else:
-                logger.info(f"Emergency reminder suppressed by cooldown ({hours_since_emergency:.1f}h since last)")
+                dynamic_arabic_cooldown = self._calculate_dynamic_cooldown(2.0, current_hour)
+                hours_since_arabic = await self._get_hours_since_last("arabic_review_reminder", user_id)
+                
+                if hours_since_arabic >= dynamic_arabic_cooldown:
+                    target_title = "Language Review"
+                    runway = "0 days"
+                    if arabic_critical:
+                        target_title = arabic_critical[0].get("title", "Arabic Clozemaster")
+                        runway = arabic_critical[0].get("runway", "0 days")
+                    elif is_lever_push:
+                        target_title = insight.get("target_slug", "Language Review")
+                    
+                    variables = {
+                        "1": target_title,
+                        "2": runway
+                    }
+                    if self.velocity_provider:
+                        try:
+                            velocity = await self.velocity_provider(user_id)
+                            arabic_stats = velocity.get("arabic") or velocity.get("Arabic")
+                            if arabic_stats and "target_flow_rate" in arabic_stats:
+                                variables["3"] = str(arabic_stats["target_flow_rate"])
+                        except Exception:
+                            logger.warning("velocity_provider failed; omitting cards_needed from arabic reminder")
+                            
+                    fallback_message = insight.get("message") if is_lever_push else "🚨 Language reviews are CRITICAL — open Clozemaster and do reviews NOW!"
+                            
+                    result = {
+                        "should_send": True,
+                        "type": "arabic_review_reminder",
+                        "tier": 1,
+                        "template_sid": self.urgency_template_sid,
+                        "variables": variables,
+                        "fallback_message": fallback_message
+                    }
+                    return await self._apply_tier2_escalation(result, user_id)
+                else:
+                    logger.info(f"Language reminder suppressed by dynamic cooldown ({hours_since_arabic:.1f}h < {dynamic_arabic_cooldown:.1f}h)")
+                    return {"should_send": False, "reason": f"Arabic review reminder on cooldown ({hours_since_arabic:.1f}h since last)"}
 
+            if critical_goals:
+                dynamic_emerg_cooldown = self._calculate_dynamic_cooldown(4.0, current_hour)
+                hours_since_emergency = await self._get_hours_since_last("beeminder_emergency", user_id)
+                if hours_since_emergency >= dynamic_emerg_cooldown:
+                    target = critical_goals[0]
+                    result = {
+                        "should_send": True,
+                        "type": "beeminder_emergency",
+                        "tier": 1,
+                        "template_sid": self.urgency_template_sid,
+                        "variables": {
+                            "1": target.get("title", target.get("slug")),
+                            "2": target.get("runway", "0 days")
+                        },
+                        "fallback_message": insight.get("message")
+                    }
+                    return await self._apply_tier2_escalation(result, user_id)
+                else:
+                    logger.info(f"Emergency reminder suppressed by dynamic cooldown ({hours_since_emergency:.1f}h < {dynamic_emerg_cooldown:.1f}h)")
+
+        # ALL NORMAL REMINDERS RESPECT THE NORMAL SLEEP WINDOW (8pm-8am)
+        if is_normal_sleep_time:
+            return {"should_send": False, "reason": f"Sleep window active (8pm-8am, current hour: {current_hour})"}
+            
         # 2. Walk Reminders (Dynamic window based on user preferences)
         time_window_start = context.get("time_window_start", 13)
         time_window_end = context.get("time_window_end", 17)
@@ -251,7 +287,7 @@ class ReminderService:
                     return await self._apply_tier2_escalation(result, user_id)
                 else:
                     return {"should_send": False, "reason": f"Walk reminder on cooldown ({hours_since_walk:.1f}h since last)"}
-            elif insight.get("momentum") == "high" and current_hour >= 16:
+            elif insight and insight.get("momentum") == "high" and current_hour >= 16:
                 # Coaching pivot for high achievers late in the day
                 hours_since_coaching = await self._get_hours_since_last("momentum_coaching", user_id)
                 if hours_since_coaching >= 12.0: # Once a day max
