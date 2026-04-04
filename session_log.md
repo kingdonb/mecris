@@ -535,3 +535,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: Android widget integration (Phase 3) — requires Kotlin/Android build environment; carry forward.
 
 **Next**: kingdonb/mecris#170 Phase 3 — Android widget: wire `HomeFragment` to call `get_daily_aggregate_status`, display X/Y counter, show Majesty Cake animation on all_clear.
+
+## 2026-04-04 — Majesty Cake Phase 3: promote aggregate recommendation in narrator context
+
+🏛️ **Planned**: Move `daily_aggregate_status` recommendation from last position to early in `get_narrator_context` recommendations list; add ordering test confirming it appears before informational items (yebyen/mecris#87).
+
+**Done**: Restructured the recommendations block in `mcp_server.py`. Majesty Cake try/except moved to run immediately after critical Beeminder/budget checks (position 3 in list). When `all_clear=True`, uses `insert(0, ...)` so the celebration leads the entire list. When partial, appended after critical items but before walk/anthropic/groq recommendations. Added 2 new ordering tests: `test_narrator_all_clear_cake_is_first_recommendation` and `test_narrator_partial_progress_precedes_informational_recommendations`. All 6 tests in the file pass. Total: 247 passing (was 245), 1 pre-existing failure unchanged.
+
+**Skipped**: Android widget integration and Gemini live discoverability validation (require live env / Android build). kingdonb/mecris#162, #130, #132 remain open (require kingdonb to close).
+
+**Next**: Gemini discoverability live validation (no code change needed), or Android widget integration for Majesty Cake counter display (kingdonb/mecris#170 Phase 4).
