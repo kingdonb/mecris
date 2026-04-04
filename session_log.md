@@ -565,3 +565,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: No code changes — pure validation session. kingdonb/mecris#129 (Greek Backlog Booster) carries forward as the next uncharted epic.
 
 **Next**: Read the comment on kingdonb/mecris#129 to understand the Greek backlog booster scope, then design and implement. #129 issue body is null — the context is in the one existing comment.
+
+## 2026-04-04 — Fix recommendation ordering: Greek coaching after Majesty Cake (session 31) 🏛️
+
+**Planned**: Fix `get_narrator_context` so Greek Stack Vitality coaching follows (not precedes) the Majesty Cake daily aggregate recommendation, restoring correct priority ordering (yebyen/mecris#92).
+
+**Done**: Moved the Greek coaching block ~15 lines down in `mcp_server.py`, after the Majesty Cake try/except block. All 21 tests now pass: 8 Greek backlog booster + 7 daily aggregate status + 6 narrator aggregate integration. Committed as `9039ac7`.
+
+**Skipped**: No new features this session — this was a regression fix from the previous session's commit `f90bbff`.
+
+**Next**: Consider closing kingdonb/mecris#129 (Greek Backlog Booster is implemented and tested). Investigate Ghost Archivist Phase A implementation (`user_presence` table schema) or Majesty Cake Phase 4 Android widget verification.
