@@ -1,5 +1,8 @@
+import logging
 from datetime import datetime, time, timezone
 from ghost.presence import PresenceRecord, get_neon_store, StatusType
+
+logger = logging.getLogger("mecris.ghost")
 
 # Configuration for Ghost Archivist
 SILENCE_THRESHOLD_SECONDS = 12 * 3600  # 12 hours
@@ -45,12 +48,22 @@ async def archivists_round_robin():
     """
     store = get_neon_store()
     if not store:
+        logger.warning("Archivist: Neon store unavailable.")
         return
         
-    user_ids = store.get_all_users()
+    try:
+        user_ids = store.get_all_users()
+    except Exception as e:
+        logger.error(f"Archivist: Failed to fetch users: {e}")
+        return
+
     current_time = datetime.now(timezone.utc)
     
     for user_id in user_ids:
-        record = store.get(user_id)
-        if record and should_ghost_wake_up(record, current_time):
-            await perform_archival_sync(user_id)
+        try:
+            record = store.get(user_id)
+            if record and should_ghost_wake_up(record, current_time):
+                logger.info(f"Archivist: Waking up for user {user_id}")
+                await perform_archival_sync(user_id)
+        except Exception as e:
+            logger.error(f"Archivist: Failed processing user {user_id}: {e}")
