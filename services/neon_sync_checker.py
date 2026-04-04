@@ -61,7 +61,7 @@ class NeonSyncChecker:
             query = """
                 SELECT COUNT(*) FROM walk_inferences 
                 WHERE (start_time::TIMESTAMPTZ AT TIME ZONE 'US/Eastern') >= %s
-                AND step_count >= %s
+                AND CAST(step_count AS INTEGER) >= %s
             """
             params = [today_start.replace(tzinfo=None), min_steps]
 
