@@ -278,6 +278,12 @@ async def get_narrator_context(user_id: str = None) -> Dict[str, Any]:
         if critical_beeminder: recommendations.append("Address critical Beeminder goals immediately")
         if budget_days <= 2: recommendations.append("Urgent: Focus on highest-value work due to budget constraints")
 
+        # Greek Stack Vitality Coaching (kingdonb/mecris#129)
+        if greek_backlog_boost:
+            recommendations.append(f"🏺 Greek Overload: {greek_backlog_cards} cards pending. Focus on REVIEWS to clear the backlog.")
+        elif greek_backlog_cards < 100 and not vacation_mode:
+            recommendations.append("🏺 Greek Pipe Thinning: Future reviews are low. Consider PLAYING new cards to build future momentum.")
+        
         # Majesty Cake: surface aggregate daily goal status early for discoverability (kingdonb/mecris#170)
         try:
             daily_aggregate = await get_daily_aggregate_status(user_id)
