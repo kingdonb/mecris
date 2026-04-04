@@ -93,7 +93,7 @@ def test_get_system_health_heartbeat_serialized(mock_neon_env):
         mock_connect.return_value.__enter__.return_value = mock_conn
         mock_conn.cursor.return_value.__enter__.return_value = mock_cur
         mock_cur.fetchall.return_value = [
-            ("spin_failover", "pid-spin", ts, True),
+            ("spin_cloud", "pid-spin", ts, True),
         ]
 
         checker = HealthChecker()

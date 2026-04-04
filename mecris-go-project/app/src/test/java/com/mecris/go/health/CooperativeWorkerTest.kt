@@ -36,35 +36,35 @@ class CooperativeWorkerTest {
         every { sharedPrefs.edit() } returns prefsEditor
         every { sharedPrefs.getString("last_synced_day", "") } returns ""
         every { sharedPrefs.getLong("last_step_count", 0L) } returns 0L
-        every { sharedPrefs.getLong("last_failover_trigger", 0L) } returns 0L
+        every { sharedPrefs.getLong("last_cloud_sync_trigger", 0L) } returns 0L
         
         coEvery { pocketIdAuth.getAccessTokenSuspend() } returns "fake_token"
     }
 
-    @Test
-    fun `worker triggers failover when MCP is dark`() = runBlocking {
+        @Test
+        fun `worker triggers cloud sync when MCP is dark`() = runBlocking {
         // GIVEN: MCP is reported as NOT active
         coEvery { syncApi.sendHeartbeat(any(), any()) } returns retrofit2.Response.success(
             HeartbeatResponseDto("ok", mcp_server_active = false)
         )
-        coEvery { syncApi.triggerFailoverSync(any()) } returns retrofit2.Response.success(
-            SyncResponse("ok", "failover triggered")
+        coEvery { syncApi.triggerCloudSync(any()) } returns retrofit2.Response.success(
+            SyncResponse("ok", "cloud sync triggered")
         )
         coEvery { syncApi.getLanguages(any()) } returns retrofit2.Response.success(
             com.mecris.go.sync.LanguagesResponseDto(emptyList())
         )
-        
+
         // GIVEN: We use the injected dependencies
         val worker = WalkHeuristicsWorker(context, workerParams, pocketIdAuth, syncApi)
-        
+
         worker.doWork()
 
-        // VERIFY: The failover sync was triggered
-        coVerify(exactly = 1) { syncApi.triggerFailoverSync(any()) }
-    }
+        // VERIFY: The cloud sync was triggered
+        coVerify(exactly = 1) { syncApi.triggerCloudSync(any()) }
+        }
 
-    @Test
-    fun `worker DOES NOT trigger failover when MCP is active`() = runBlocking {
+        @Test
+        fun `worker DOES NOT trigger cloud sync when MCP is active`() = runBlocking {
         // GIVEN: MCP is reported as active
         coEvery { syncApi.sendHeartbeat(any(), any()) } returns retrofit2.Response.success(
             HeartbeatResponseDto("ok", mcp_server_active = true)
@@ -72,12 +72,13 @@ class CooperativeWorkerTest {
         coEvery { syncApi.getLanguages(any()) } returns retrofit2.Response.success(
             com.mecris.go.sync.LanguagesResponseDto(emptyList())
         )
-        
+
         val worker = WalkHeuristicsWorker(context, workerParams, pocketIdAuth, syncApi)
-        
+
         worker.doWork()
 
-        // VERIFY: The failover sync was NOT triggered
-        coVerify(exactly = 0) { syncApi.triggerFailoverSync(any()) }
-    }
+        // VERIFY: The cloud sync was NOT triggered
+        coVerify(exactly = 0) { syncApi.triggerCloudSync(any()) }
+        }
+
 }

@@ -15,7 +15,7 @@ STALE_THRESHOLD_SECONDS = 90
 class HealthChecker:
     """
     Queries the scheduler_election table to report liveness for all registered processes
-    (Python MCP server, Android client, Spin failover).  Returns a list of process dicts,
+    (Python MCP server, Android client, Spin cloud).  Returns a list of process dicts,
     each with: role, process_id, last_heartbeat (ISO string), is_active (bool).
     """
 

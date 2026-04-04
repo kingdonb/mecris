@@ -10,6 +10,7 @@ data class DashboardCache(
     val walkData: WalkDataSummary?,
     val budgetAmount: Double?,
     val languageStats: List<LanguageStatDto>,
+    val aggregateStatus: AggregateStatusResponseDto? = null,
     val homeServerActive: Boolean?,
     val lastSyncTime: String,
     val lastUpdatedMillis: Long = System.currentTimeMillis()

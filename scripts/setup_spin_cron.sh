@@ -1,10 +1,10 @@
 #!/bin/bash
 # setup_spin_cron.sh
-# Sets up the native autonomous failover cron using the Akamai (aka) Spin plugin.
+# Sets up the native autonomous cloud sync cron using the Akamai (aka) Spin plugin.
 
 set -e
 
-echo "Setting up Spin AKA Cron for Mecris Failover..."
+echo "Setting up Spin AKA Cron for Mecris Cloud Sync..."
 
 # Ensure the plugin is installed
 spin plugin install aka --yes
@@ -16,8 +16,8 @@ echo "If this fails, run: spin aka login"
 cd mecris-go-spin/sync-service
 spin aka cron create \
   --app-name mecris-go-api \
-  --path-and-query "/internal/failover-sync" \
+  --path-and-query "/internal/cloud-sync" \
   --schedule "0 */2 * * *" \
-  --name "failover-cron"
+  --name "cloud-sync-cron"
 
 echo "Cron job created successfully!"

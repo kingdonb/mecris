@@ -41,17 +41,19 @@ The deployed **sync-service** provides:
 
 Update the `spinBaseUrl` in `MainActivity.kt` to point to your new Fermyon Cloud URL (e.g., `https://sync-service-xxxx.fermyon.app/`).
 
-## 5. Setting up Failover Mode
+## 5. Setting up Cloud Mode (Autonomous)
 
-To ensure Beeminder and language stats continue to update even if your local Python MCP server goes offline, you can enable Failover Mode:
+To ensure Beeminder and language stats continue to update even if your local Python MCP server goes offline, you can enable Cloud Mode:
 
 1.  **Set Credentials**: In Fermyon Cloud, add your Clozemaster credentials to the application's variables:
     ```bash
     spin cloud variable set clozemaster_email="your_email@example.com"
     spin cloud variable set clozemaster_password="your_password"
     ```
-2.  **Configure a Cron Trigger**: Because this app uses standard HTTP triggers, you must set up an external cron service (like [cron-job.org](https://cron-job.org) or a GitHub Actions scheduled workflow) to ping the failover endpoint periodically (e.g., every 15-30 minutes):
+
+2.  **Configure a Cron Trigger**: Because this app uses standard HTTP triggers, you must set up an external cron service (like [cron-job.org](https://cron-job.org) or a Akamai Spin Cron) to ping the cloud sync endpoint periodically (e.g., every 15-30 minutes):
     ```
-    GET https://sync-service-xxxx.fermyon.app/internal/failover-sync
+    POST https://sync-service-xxxx.fermyon.app/internal/cloud-sync
     ```
     The endpoint will check the `scheduler_election` table in Neon. If the Python server's heartbeat is fresh (<90 seconds old), the Spin backend will safely ignore the request. If the heartbeat is missing or stale, the Spin backend will autonomously scrape Clozemaster and push updates.
+

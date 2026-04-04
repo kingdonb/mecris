@@ -182,11 +182,11 @@ async fn handle_sync_service(req: Request) -> anyhow::Result<impl IntoResponse> 
             return Ok(Response::builder().status(405).body("Method Not Allowed").build());
         }
         return handle_heartbeat_post(req).await;
-    } else if path == "/internal/failover-sync" {
+    } else if path == "/internal/cloud-sync" {
         if req.method() != &spin_sdk::http::Method::Post {
             return Ok(Response::builder().status(405).body("Method Not Allowed").build());
         }
-        return handle_failover_sync(req).await;
+        return handle_cloud_sync(req).await;
     } else if path == "/aggregate-status" {
         if req.method() != &spin_sdk::http::Method::Get {
             return Ok(Response::builder().status(405).body("Method Not Allowed").build());
@@ -308,7 +308,7 @@ async fn handle_aggregate_status_get(req: Request) -> anyhow::Result<Response> {
         .build())
 }
 
-async fn handle_failover_sync(req: Request) -> anyhow::Result<Response> {
+async fn handle_cloud_sync(req: Request) -> anyhow::Result<Response> {
     let auth_header = req.header("authorization");
     let user_id = match extract_user_id(auth_header).await {
         Some(id) => id,
@@ -316,21 +316,20 @@ async fn handle_failover_sync(req: Request) -> anyhow::Result<Response> {
     };
 
     let db_url = variables::get("db_url").map_err(|e| anyhow::anyhow!("db_url fetch failed: {:?}", e))?;
-    
+
     match run_clozemaster_scraper(&db_url, &user_id).await {
         Ok(_) => {
-            let resp = StatusResponse { status: "success".to_string(), message: "Failover sync complete".to_string() };
+            let resp = StatusResponse { status: "success".to_string(), message: "Cloud sync complete".to_string() };
             Ok(Response::builder().status(200).header("content-type", "application/json").body(serde_json::to_string(&resp).unwrap()).build())
         }
         Err(e) => {
-            let error_msg = format!("Failover sync failed: {}", e);
+            let error_msg = format!("Cloud sync failed: {}", e);
             eprintln!("{}", error_msg);
             let resp = StatusResponse { status: "error".to_string(), message: error_msg };
             Ok(Response::builder().status(500).header("content-type", "application/json").body(serde_json::to_string(&resp).unwrap()).build())
         }
     }
 }
-
 async fn run_clozemaster_scraper(db_url: &str, user_id: &str) -> anyhow::Result<()> {
     // ENFORCE ENCRYPTION SECURITY
     let master_key = variables::get("master_encryption_key")
@@ -568,7 +567,7 @@ async fn run_clozemaster_scraper(db_url: &str, user_id: &str) -> anyhow::Result<
                 let force_push = current != prev_reviews || is_new_day;
                 if force_push {
                     let now = chrono::Local::now().format("%Y-%m-%d %H:%M").to_string();
-                    let mut comment = format!("Auto-synced from Clozemaster (Failover) at {}", now);
+                    let mut comment = format!("Auto-synced from Clozemaster (Cloud) at {}", now);
                     if tomorrow > 0 { comment += &format!(" | Tomorrow: {}", tomorrow); }
                     if next_7 > 0 { comment += &format!(" | 7-day: {}", next_7); }
                     

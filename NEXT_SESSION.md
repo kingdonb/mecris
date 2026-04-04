@@ -22,7 +22,7 @@
 ### Issues to Close (Requires kingdonb)
 - **kingdonb/mecris#162** — OIDC fixes implemented + merged. Comment posted. Needs kingdonb to close.
 - **kingdonb/mecris#130** — Score-delta tracking implemented + merged. Comment posted. Needs kingdonb to close.
-- **kingdonb/mecris#132** — "FIXED: Failover sync" — title says FIXED, still open. Needs triage/close.
+- **kingdonb/mecris#132** — "FIXED: Cloud sync" — title says FIXED, still open. Needs triage/close.
 
 ### Next Feature Work (Majesty Cake — kingdonb/mecris#170)
 Phase 1 (backend endpoint) ✅ done. Phase 2 (discoverability in narrator context) ✅ done. Phase 3 options:

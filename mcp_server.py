@@ -588,7 +588,7 @@ def get_scheduler_queue() -> Dict[str, Any]:
 from services.health_checker import HealthChecker as _HealthChecker
 _health_checker = _HealthChecker()
 
-@mcp.tool(description="Get unified health status for all registered system processes (Python MCP, Android client, Spin failover) from the scheduler_election table.")
+@mcp.tool(description="Get unified health status for all registered system processes (Python MCP, Android client, Spin cloud) from the scheduler_election table.")
 async def get_system_health(user_id: str = None) -> Dict[str, Any]:
     """Read the scheduler_election table and return active/stale status for every registered process."""
     target_user_id = usage_tracker.resolve_user_id(user_id)
@@ -727,52 +727,6 @@ async def get_language_velocity_stats(user_id: str = None) -> Dict[str, Any]:
 
     except Exception as e:
         logger.error(f"Failed to calculate Review Pump stats: {e}")
-        return {"error": str(e)}
-
-@mcp.tool(description="Get the daily aggregate status for the Majesty Cake UI.")
-async def get_daily_aggregate_status(user_id: str = None) -> Dict[str, Any]:
-    """Returns a unified score (e.g. 2/3) and boolean all_clear state for core daily goals."""
-    try:
-        target_user_id = usage_tracker.resolve_user_id(user_id)
-        
-        # 1. Check Walk Status
-        # We need to call the sync checker directly as get_narrator_context is large
-        has_walked = neon_checker.has_walk_today(target_user_id)
-        
-        # 2. Check Language Levers
-        velocity = await get_language_velocity_stats(target_user_id)
-        if "error" in velocity:
-            velocity = {}
-            
-        goals_met = 0
-        total_goals = 1  # Base goal: Walk
-        
-        if has_walked:
-            goals_met += 1
-            
-        if "arabic" in velocity:
-            total_goals += 1
-            if velocity["arabic"].get("goal_met", False):
-                goals_met += 1
-                
-        if "greek" in velocity:
-            total_goals += 1
-            if velocity["greek"].get("goal_met", False):
-                goals_met += 1
-                
-        return {
-            "score": f"{goals_met}/{total_goals}",
-            "goals_met": goals_met,
-            "total_goals": total_goals,
-            "all_clear": goals_met == total_goals,
-            "components": {
-                "walk": has_walked,
-                "arabic": velocity.get("arabic", {}).get("goal_met", False),
-                "greek": velocity.get("greek", {}).get("goal_met", False)
-            }
-        }
-    except Exception as e:
-        logger.error(f"Failed to get aggregate status: {e}")
         return {"error": str(e)}
 
 async def check_reminder_needed(user_id: str = None) -> Dict[str, Any]:

@@ -35,7 +35,7 @@ class WalkHeuristicsWorker @JvmOverloads constructor(
         // 1. Inertia Logic: Check if we already hit the "COMPLETED" state today
         val lastSyncedDay = prefs.getString("last_synced_day", "")
         val lastStepCount = prefs.getLong("last_step_count", 0L)
-        val lastFailoverTrigger = prefs.getLong("last_failover_trigger", 0L)
+        val lastCloudSyncTrigger = prefs.getLong("last_cloud_sync_trigger", 0L)
         
         Log.d("WalkHeuristicsWorker", "Executing background check for $today (Last steps: $lastStepCount)")
         
@@ -55,12 +55,12 @@ class WalkHeuristicsWorker @JvmOverloads constructor(
                     val body = hbResponse.body()
                     Log.i("WalkHeuristicsWorker", "Heartbeat SUCCESS. MCP Active: ${body?.mcp_server_active}")
 
-                    // Cooperative Failover: If MCP is dark and we haven't triggered in 2 hours
+                    // Cooperative Cloud Sync: If MCP is dark and we haven't triggered in 2 hours
                     val twoHoursAgo = Instant.now().minusSeconds(7200).toEpochMilli()
-                    if (body?.mcp_server_active == false && lastFailoverTrigger < twoHoursAgo) {
-                        Log.w("WalkHeuristicsWorker", "MCP Server is DARK. Triggering Autonomous Failover Sync.")
-                        syncApi.triggerFailoverSync("Bearer $token")
-                        prefs.edit().putLong("last_failover_trigger", Instant.now().toEpochMilli()).apply()
+                    if (body?.mcp_server_active == false && lastCloudSyncTrigger < twoHoursAgo) {
+                        Log.w("WalkHeuristicsWorker", "MCP Server is DARK. Triggering Autonomous Cloud Sync.")
+                        syncApi.triggerCloudSync("Bearer $token")
+                        prefs.edit().putLong("last_cloud_sync_trigger", Instant.now().toEpochMilli()).apply()
                     }
                 } else {
                     Log.w("WalkHeuristicsWorker", "Heartbeat failed with code: ${hbResponse.code()}")

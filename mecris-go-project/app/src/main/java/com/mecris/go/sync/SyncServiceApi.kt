@@ -31,8 +31,8 @@ interface SyncServiceApi {
         @Header("Authorization") authHeader: String
     ): retrofit2.Response<HealthResponseDto>
 
-    @POST("internal/failover-sync")
-    suspend fun triggerFailoverSync(
+    @POST("internal/cloud-sync")
+    suspend fun triggerCloudSync(
         @Header("Authorization") authHeader: String
     ): retrofit2.Response<SyncResponse>
 

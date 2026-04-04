@@ -249,7 +249,7 @@ fun MecrisDashboard(
     var walkData by remember { mutableStateOf<WalkDataSummary?>(cache?.walkData) }
     var budgetAmount by remember { mutableStateOf<Double?>(cache?.budgetAmount) }
     var languageStats by remember { mutableStateOf<List<com.mecris.go.sync.LanguageStatDto>>(cache?.languageStats ?: emptyList()) }
-    var aggregateStatus by remember { mutableStateOf<com.mecris.go.sync.AggregateStatusResponseDto?>(null) }
+    var aggregateStatus by remember { mutableStateOf<com.mecris.go.sync.AggregateStatusResponseDto?>(cache?.aggregateStatus) }
     var homeServerActive by remember { mutableStateOf<Boolean?>(cache?.homeServerActive) }
     var isLoading by remember { mutableStateOf(false) }
     var isFetching by remember { mutableStateOf(cache?.languageStats.isNullOrEmpty() && cache?.budgetAmount == null) }
@@ -408,14 +408,19 @@ fun MecrisDashboard(
                     // We have DB data, so release the UI block immediately
                     isFetching = false
 
-                    // 2. SLOW SYNC: Proactively trigger failover sync (Spin will skip if Home is active)
+                    // 2. SLOW SYNC: Proactively trigger cloud sync (Spin will skip if Home is active)
                     try {
-                        syncApi.triggerFailoverSync("Bearer $token")
+                        syncApi.triggerCloudSync("Bearer $token")
                         
                         // 3. FRESH FETCH: Grab the updated stats after the sync completes
                         langResponse = syncApi.getLanguages("Bearer $token")
                         if (langResponse.isSuccessful && !surgicalUpdateInProgress) {
                             languageStats = langResponse.body()?.languages ?: emptyList()
+                        }
+                        
+                        val freshAggregateResponse = syncApi.getAggregateStatus("Bearer $token")
+                        if (freshAggregateResponse.isSuccessful) {
+                            aggregateStatus = freshAggregateResponse.body()
                         }
                     } catch (se: HttpException) {
                         val errorBody = se.response()?.errorBody()?.string()
@@ -424,9 +429,9 @@ fun MecrisDashboard(
                         } catch (e: Exception) {
                             errorBody ?: se.message()
                         }
-                        Log.w("MecrisDashboard", "Failover sync trigger failed ($detail)")
+                        Log.w("MecrisDashboard", "Cloud sync trigger failed ($detail)")
                     } catch (se: Exception) {
-                        Log.w("MecrisDashboard", "Failover sync trigger skipped/failed: ${se.message}")
+                        Log.w("MecrisDashboard", "Cloud sync trigger skipped/failed: ${se.message}")
                     }
 
                     // Save to cache
@@ -436,6 +441,7 @@ fun MecrisDashboard(
                         walkData = walkData,
                         budgetAmount = budgetAmount,
                         languageStats = languageStats,
+                        aggregateStatus = aggregateStatus,
                         homeServerActive = homeServerActive,
                         lastSyncTime = now
                     ))
@@ -461,7 +467,7 @@ fun MecrisDashboard(
             } else {
                 isFetching = false
                 isLoading = false
-                syncStatus = "Auth Required"
+                syncStatus = if (authState is AuthState.Authenticated) "Network Error" else "Auth Required"
             }
         } catch (e: Exception) {
             Log.e("MecrisDashboard", "Auth refresh failed: ${e.message}")
@@ -665,7 +671,7 @@ fun MainNeuralDashboard(
         // System Health Indicator
         if (homeServerActive != null) {
             val statusColor = if (homeServerActive!!) Color(0xFF00C853) else Color(0xFFFFD600)
-            val statusLabel = if (homeServerActive!!) "HOME: ONLINE" else "CLOUD: FAILOVER"
+            val statusLabel = if (homeServerActive!!) "HOME: ONLINE" else "CLOUD: AUTONOMOUS"
             Surface(
                 color = statusColor.copy(alpha = 0.2f),
                 shape = RoundedCornerShape(4.dp),
