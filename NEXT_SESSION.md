@@ -1,24 +1,26 @@
 # Next Session: Start next meaningful epic — Greek Backlog Booster (#129) or language dashboard sorting (#121)
 
 ## Current Status (Saturday, April 4, 2026 — session 29)
+- **Actual Card Count tracking logic RE-INTEGRATED**: Pop'd from stash and reconciled with session 29 tree.
 - **Stale issue housekeeping complete**: Closure comments confirmed/posted on kingdonb/mecris#162, #130, #132. All three await kingdonb to click Close.
 - **Android Majesty Cake widget already done**: `MajestyCakeWidget` composable (MainActivity.kt:1404-1508) was implemented in commit `db7ba41` — Phase 4 was complete before this session began.
-- **6 tests** in `tests/test_narrator_aggregate_integration.py` — all passing. Total: 247 passing, 1 pre-existing failure (`test_language_sync_service_coordination` — Beeminder credentials not in env).
-- **yebyen/mecris == kingdonb/mecris** (0 commits ahead/behind as of session start). Session 29 has no code changes — housekeeping only.
+- **249 passed** in full test suite. Total: 252 items (3 skipped). 
+- **yebyen/mecris == kingdonb/mecris** (0 commits ahead/behind as of session start).
 - **Plan issue yebyen/mecris#88** — closed ✅ this session.
 
 ## Verified This Session
-- [x] kingdonb/mecris#162 — closure comment already present from session 24 ✅
-- [x] kingdonb/mecris#130 — closure comment already present from session 24 ✅
-- [x] kingdonb/mecris#132 — closure comment posted this session (session 29) ✅
-- [x] Android MajestyCakeWidget already implemented (commit db7ba41) — no Phase 4 coding needed
-- [x] `aggregateStatus` fetched via `syncApi.getAggregateStatus("Bearer $token")` at MainActivity.kt:397-400
+- [x] Clozemaster actual card count (`cards_today`) extraction from `ttmNumPlayedByDate` confirmed.
+- [x] `LanguageSyncService` prioritizes `cards_today` for Arabic normalization.
+- [x] `mcp_server.py` uses `ARABIC_POINTS_PER_CARD` and avoids double-normalization.
+- [x] kingdonb/mecris#162, #130, #132 — closure comments present ✅
+- [x] Android MajestyCakeWidget already implemented (commit db7ba41) ✅
+- [x] `aggregateStatus` fetched via `syncApi.getAggregateStatus` at MainActivity.kt:397-400 ✅
 
 ## Pending Verification (Next Session)
 
 ### Issues to Close (Requires kingdonb)
-- **kingdonb/mecris#162** — OIDC fixes implemented + merged. Comment posted. Needs kingdonb to close.
-- **kingdonb/mecris#130** — Score-delta tracking implemented + merged. Comment posted. Needs kingdonb to close.
+- **kingdonb/mecris#162** — OIDC fixes implemented + merged. Needs kingdonb to close.
+- **kingdonb/mecris#130** — Score-delta tracking implemented + merged. Needs kingdonb to close.
 - **kingdonb/mecris#132** — "FIXED: Failover sync" — comment posted session 29. Needs kingdonb to close.
 
 ### Next Feature Work
