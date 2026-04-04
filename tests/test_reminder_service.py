@@ -696,8 +696,10 @@ async def test_tier2_escalation_resets_after_tier2_message_sent():
     (6h) → no escalation. No explicit last_acknowledged field is needed.
     """
     MOCKED_NOW = datetime.datetime(2026, 3, 20, 12, 0, 0)
-    # Simulates: Tier 2 was sent 4h ago (logged as "beeminder_emergency", same type)
-    TIER2_SENT_AT = MOCKED_NOW - datetime.timedelta(hours=4)
+    # Simulates: Tier 2 was sent 4.5h ago (logged as "beeminder_emergency", same type).
+    # 4.5h chosen to safely exceed the dynamic cooldown ceiling (4.0 + 0.25 fuzz = 4.25h max)
+    # while remaining below TIER2_IDLE_HOURS (6h), ensuring no re-escalation.
+    TIER2_SENT_AT = MOCKED_NOW - datetime.timedelta(hours=4, minutes=30)
 
     async def mock_last_sent(msg_type, user_id=None):
         if msg_type is None:  # global rate limit check (any type)
@@ -1040,3 +1042,102 @@ def test_parse_runway_hours_returns_hours_for_hours_unit():
     assert rs._parse_runway_hours({"runway": "2.0 hours"}) == 2.0
     assert rs._parse_runway_hours({"runway": ""}) == 999.0
     assert rs._parse_runway_hours({}) == 999.0
+
+
+# --- Dynamic cooldown + sleep window exception tests (d58771f) ---
+
+def test_calculate_dynamic_cooldown_floor_at_45_minutes():
+    """_calculate_dynamic_cooldown: return value never drops below 0.75h (45 min) regardless of fuzz."""
+    rs = ReminderService(None, None)
+    # Hour 23, tiny base cooldown — reduction=(23-16)*0.15=1.05, fuzz up to -0.25 → floor kicks in
+    for _ in range(50):
+        result = rs._calculate_dynamic_cooldown(0.5, 23)
+        assert result >= 0.75, f"Floor violated: got {result}"
+
+
+def test_calculate_dynamic_cooldown_shorter_in_evening():
+    """_calculate_dynamic_cooldown: evening reduction applies at hour 20 vs hour 10 (no fuzz)."""
+    import random
+    rs = ReminderService(None, None)
+    with patch('random.uniform', return_value=0.0):
+        daytime = rs._calculate_dynamic_cooldown(4.0, 10)   # hour < 16 → no reduction
+        evening = rs._calculate_dynamic_cooldown(4.0, 20)   # hour 20 → reduction = (20-16)*0.15 = 0.6
+    assert daytime == pytest.approx(4.0)
+    assert evening == pytest.approx(3.4, abs=0.01)
+    assert evening < daytime
+
+
+@pytest.mark.asyncio
+async def test_tier3_fires_at_3am_during_emergency_sleep():
+    """Sleep exception: Tier 3 (sub-2h runway) fires even during emergency sleep (midnight-8am)."""
+    mock_context = {
+        "daily_walk_status": {"has_activity_today": True},
+        "beeminder_alerts": [],
+        "goal_runway": [
+            {"slug": "weight", "title": "Weight Goal", "derail_risk": "CRITICAL", "runway": "1.5 hours"}
+        ]
+    }
+    mock_insight = {"momentum": "low", "message": "Emergency!"}
+
+    rs = ReminderService(make_async_mock(mock_context), make_async_mock(mock_insight))
+
+    class MockNight(datetime.datetime):
+        @classmethod
+        def now(cls, *args, **kwargs):
+            return cls(2026, 4, 4, 3, 0, 0)
+
+    with patch('services.reminder_service.datetime', MockNight):
+        result = await rs.check_reminder_needed()
+        assert result["should_send"] is True
+        assert result["type"] == "beeminder_emergency_tier3"
+        assert result["tier"] == 3
+
+
+@pytest.mark.asyncio
+async def test_beeminder_emergency_fires_at_10pm_normal_sleep_not_emergency():
+    """Sleep exception: non-Tier-3 beeminder emergency fires at 22:00 (normal sleep, but NOT emergency sleep)."""
+    mock_context = {
+        "daily_walk_status": {"has_activity_today": True},
+        "beeminder_alerts": [],
+        "goal_runway": [
+            {"slug": "weight", "title": "Weight Goal", "derail_risk": "CRITICAL", "runway": "0 days"}
+        ]
+    }
+    mock_insight = {"momentum": "low", "message": "Emergency!"}
+
+    rs = ReminderService(make_async_mock(mock_context), make_async_mock(mock_insight))
+
+    class MockEvening(datetime.datetime):
+        @classmethod
+        def now(cls, *args, **kwargs):
+            return cls(2026, 4, 4, 22, 0, 0)
+
+    with patch('services.reminder_service.datetime', MockEvening):
+        result = await rs.check_reminder_needed()
+        assert result["should_send"] is True
+        assert result["type"] == "beeminder_emergency"
+
+
+@pytest.mark.asyncio
+async def test_beeminder_emergency_suppressed_at_3am_by_emergency_sleep():
+    """Sleep window: non-Tier-3 beeminder emergency is suppressed during emergency sleep (midnight-8am)."""
+    mock_context = {
+        "daily_walk_status": {"has_activity_today": True},
+        "beeminder_alerts": [],
+        "goal_runway": [
+            {"slug": "weight", "title": "Weight Goal", "derail_risk": "CRITICAL", "runway": "0 days"}
+        ]
+    }
+    mock_insight = {"momentum": "low", "message": "Emergency!"}
+
+    rs = ReminderService(make_async_mock(mock_context), make_async_mock(mock_insight))
+
+    class MockNight(datetime.datetime):
+        @classmethod
+        def now(cls, *args, **kwargs):
+            return cls(2026, 4, 4, 3, 0, 0)
+
+    with patch('services.reminder_service.datetime', MockNight):
+        result = await rs.check_reminder_needed()
+        assert result["should_send"] is False
+        assert "Sleep window active" in result.get("reason", "")

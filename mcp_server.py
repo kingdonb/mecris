@@ -879,6 +879,54 @@ def get_budget_governor_status() -> Dict[str, Any]:
     """Returns per-bucket consumption, envelope status, and a routing recommendation."""
     return _budget_governor.get_status()
 
+@mcp.tool(description="Get unified daily goal completion status for the Majesty Cake widget (kingdonb/mecris#170). Returns X/Y goals satisfied and all_clear flag.")
+async def get_daily_aggregate_status(user_id: str = None) -> Dict[str, Any]:
+    """Returns aggregated daily goal completion: daily walk (>=2000 steps), Arabic review pump, Greek review pump."""
+    target_user_id = usage_tracker.resolve_user_id(user_id)
+    goals = []
+
+    # Goal 1: Daily Walk (>=2000 steps via Neon or Beeminder)
+    try:
+        walk_status = await get_cached_daily_activity("bike", target_user_id)
+        goals.append({
+            "name": "daily_walk",
+            "label": "Daily Walk (2000 steps)",
+            "satisfied": bool(walk_status.get("has_activity_today", False)),
+            "source": walk_status.get("source", "unknown"),
+        })
+    except Exception as e:
+        logger.error(f"get_daily_aggregate_status: walk check failed: {e}")
+        goals.append({"name": "daily_walk", "label": "Daily Walk (2000 steps)", "satisfied": False, "error": str(e)})
+
+    # Goals 2 & 3: Arabic and Greek Review Pump (goal_met from velocity stats)
+    try:
+        lang_stats = await get_language_velocity_stats(target_user_id)
+        for lang_key, label in [("arabic", "Arabic Review Pump"), ("greek", "Greek Review Pump")]:
+            stat = next((v for k, v in lang_stats.items() if isinstance(v, dict) and k.lower() == lang_key), None)
+            if stat:
+                goals.append({
+                    "name": f"{lang_key}_review",
+                    "label": label,
+                    "satisfied": bool(stat.get("goal_met", False)),
+                    "status": stat.get("status", "unknown"),
+                })
+            else:
+                goals.append({"name": f"{lang_key}_review", "label": label, "satisfied": False, "error": "no data"})
+    except Exception as e:
+        logger.error(f"get_daily_aggregate_status: language stats failed: {e}")
+        for lang_key, label in [("arabic", "Arabic Review Pump"), ("greek", "Greek Review Pump")]:
+            goals.append({"name": f"{lang_key}_review", "label": label, "satisfied": False, "error": str(e)})
+
+    satisfied_count = sum(1 for g in goals if g["satisfied"])
+    total_count = len(goals)
+    return {
+        "goals": goals,
+        "satisfied_count": satisfied_count,
+        "total_count": total_count,
+        "all_clear": satisfied_count == total_count,
+        "score": f"{satisfied_count}/{total_count}",
+    }
+
 if __name__ == "__main__":
     import sys
     import asyncio

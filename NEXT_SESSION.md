@@ -1,70 +1,55 @@
-# Next Session: kingdonb/mecris#165 awaiting review + OIDC fixes implemented — update PR body
+# Next Session: Continue Majesty Cake epic — phase 2 (Android integration / scoring refinement)
 
-## Current Status (Friday, April 3, 2026 — session 24)
-- **kingdonb/mecris#165** (PR) is open and awaiting review from kingdonb. NOT yet merged.
-- **yebyen/mecris is 20 commits ahead** of kingdonb/mecris main — PR #165 now includes sessions 13–24 (Nag Ladder, Ghost Presence, Idempotent Beeminder, score-delta fix, OIDC analysis + implementation).
-- **Session 24** delivered: All 4 OIDC submarine mode fixes implemented in `PocketIdAuth.kt`, `MainActivity.kt`, `WalkHeuristicsWorker.kt`. `docs/AUTH_CONFIGURATION.md` updated to reflect implementation status. Commit `1151698`.
-- **pr-test run 23966570693** completed with ✅ success (Android unit tests + pytest).
-- **PR #165 body is outdated** — still describes only sessions 13-20. Needs section added for sessions 22–24 (score-delta, OIDC analysis, OIDC implementation).
+## Current Status (Saturday, April 4, 2026 — session 26)
+- **get_daily_aggregate_status MCP tool IMPLEMENTED** in `mcp_server.py` (commit `6543fa6`). Returns `{goals, satisfied_count, total_count, all_clear, score}` for daily walk (≥2000 steps), Arabic review pump, and Greek review pump.
+- **7 new tests** in `tests/test_daily_aggregate_status.py` — all passing (7/7). No regressions.
+- **240 total tests** (239 passing, 3 pre-existing failures: test_circular_dependency, test_language_sync_service_coordination, test_score_delta_backup_detection_updates_daily_completions). None are regressions.
+- **yebyen/mecris == kingdonb/mecris** (0 commits ahead/behind as of last sync). Single commit added this session.
+- **Plan issue yebyen/mecris#84** — closed ✅ this session.
 
 ## Verified This Session
-- [x] `PocketIdAuth.kt:67` — `"offline_access"` scope added; Pocket-ID will now issue durable Refresh Token
-- [x] `PocketIdAuth.kt:109–112` — transient network errors no longer set `AuthState.Error`; only `TYPE_OAUTH_TOKEN_ERROR` triggers permanent error state
-- [x] `AuthState.Error` — `isPermanent: Boolean = true` field added
-- [x] `MainActivity.kt:1063–1074` — Idle/Error branches split; Sign In button guarded behind `state.isPermanent`
-- [x] `WalkHeuristicsWorker.kt` — proactive refresh comment updated; existing `getAccessTokenSuspend()` call at top of `doWork()` confirmed as the proactive refresh
-- [x] `docs/AUTH_CONFIGURATION.md` — all 4 bugs marked ✅ Fixed
-- [x] pr-test run 23966570693 — ✅ success (Android + Python)
+- [x] `get_daily_aggregate_status` tool registered with `@mcp.tool` in `mcp_server.py:836`
+- [x] Walk goal: delegates to `get_cached_daily_activity("bike")` → `has_activity_today`
+- [x] Language goals: delegates to `get_language_velocity_stats()` → `goal_met` for arabic/greek
+- [x] Exception resilience: walk or language failures → goal marked unsatisfied with `error` key, other goals still evaluated
+- [x] Missing language key → goal marked unsatisfied with `error: "no data"` (not crash)
+- [x] 7/7 tests passing in `tests/test_daily_aggregate_status.py`
+- [x] No regressions in broader suite (239 passing vs 233 pre-session, +6 net after excluding pre-existing failures)
 
 ## Pending Verification (Next Session)
 
-### PR Merge — Human Action Required
-- kingdonb/mecris#165 needs review + merge by kingdonb.
-- PR body should be updated to add session 22–24 sections (score-delta, OIDC analysis, OIDC implementation) before or after merge.
-- Once merged: yebyen/mecris should sync from upstream (`git fetch https://github.com/kingdonb/mecris.git main && git merge FETCH_HEAD`).
+### Issues to Close (Requires kingdonb)
+- **kingdonb/mecris#162** — OIDC fixes implemented + merged. Comment posted. Needs kingdonb to close.
+- **kingdonb/mecris#130** — Score-delta tracking implemented + merged. Comment posted. Needs kingdonb to close.
+- **kingdonb/mecris#132** — "FIXED: Failover sync" — title says FIXED, still open. Needs triage/close.
 
-### Post-Merge PRs
-- After #165 merges, all 20 commits land (sessions 13–24). No separate PRs needed for score-delta or OIDC — they're already in the PR.
-- kingdonb/mecris#162 (OIDC) and kingdonb/mecris#130 (score-delta) can be closed once #165 merges.
+### Next Feature Work (Majesty Cake — kingdonb/mecris#170)
+Phase 1 (backend endpoint) is **done**. Phase 2 options:
+- **Android integration**: wire the Android app to call `get_daily_aggregate_status` and display the X/Y counter widget
+- **Score refinement**: the current `goal_met` logic for Arabic/Greek uses existing ReviewPump — consider whether threshold is correct for "daily pump met" vs. "pump at capacity"
+- **Endpoint discoverability**: consider whether `get_daily_aggregate_status` should be called in `get_narrator_context` and surfaced in the recommendations array
+- **Other epics**: kingdonb/mecris#166 (Multi-User Twilio), #169 (Rust Reminder Engine), #129 (Greek Backlog Booster)
 
-### OIDC Fix — Live Validation
-- The OIDC fixes are code-only; they require a live Android device + app build to validate end-to-end.
-- Specifically: verify app retains Refresh Token after 1h Access Token expiry with auth server unreachable.
-- Intermediate validation: Android unit tests already passing via pr-test.
-
-### Other Open Work (after #165 merge)
-- kingdonb/mecris#129 — Greek review backlog booster
-- kingdonb/mecris#127 — Investigate "Cloud: Failover" status in Spin App
-
-### Run SQL Migration on Live Neon DB
-- `scripts/migrations/001_presence_table.sql` needs to be applied before the Ghost Presence middleware can write records.
-- Command: `psql $NEON_DB_URL -f scripts/migrations/001_presence_table.sql`
-
-### get_system_health Live Validation
-- `get_system_health` returns `{"error": "NEON_DB_URL not configured"}` if Neon unavailable.
-- Live validation: call `get_system_health` from a running MCP session and confirm `scheduler_election` rows are returned.
-
-### Ghost Archivist Live Validation (carry-forward)
-- The archivist job fires every 15 minutes when `MecrisScheduler` is the leader.
-- Validate in a live environment: `logs/ghost_archivist.log` should accumulate PULSE entries.
+### Live Validation (carry-forward, requires live env)
+- SQL migration: `psql $NEON_DB_URL -f scripts/migrations/001_presence_table.sql`
+- `get_system_health` live validation: should return `scheduler_election` rows, not error
+- Ghost Archivist: `logs/ghost_archivist.log` should accumulate PULSE entries
+- **New**: `get_daily_aggregate_status` live call — verify walk status reflects actual Neon DB state
 
 ## Infrastructure Notes
-- **NO RECURSIVE GLOBAL GREP**: Root-level `grep -r` is blacklisted. Use targeted `include_pattern` or `dir_path`.
+- **NO RECURSIVE GLOBAL GREP**: Root-level `grep -r` is blacklisted.
 - **MASTER_ENCRYPTION_KEY**: Required in `.env` for all local PII decryption.
+- **Test command**: `PYTHONPATH=. .venv/bin/pytest` (with SQLAlchemy, mcp, apscheduler, cryptography, fastapi, playwright, requests, twilio installed in .venv)
+- **Pre-existing failures**: `test_circular_dependency` (mock not called — credential issue), `test_language_sync_service_coordination` (Beeminder credentials not in env), `test_score_delta_backup_detection_updates_daily_completions` (pre-existing in this venv). Not regressions.
+- **GITHUB_TOKEN scope**: Fine-grained PAT for yebyen/mecris only. **Use GITHUB_CLASSIC_PAT** for cross-repo operations (comment on kingdonb/mecris issues). Cannot close issues on kingdonb/mecris — requires kingdonb.
 - **Nag Ladder tier semantics**:
     - Tier 1: WhatsApp Template (Gentle)
-    - Tier 2: WhatsApp Freeform (Escalated, 6h idle) — coaching copy fully contextual for all types
+    - Tier 2: WhatsApp Freeform (Escalated, 6h idle)
     - Tier 3: WhatsApp Freeform High Urgency (Critical, runway < 2.0 hours — strictly less than)
-- **Global Rate Limit**: 2 messages per hour across ALL channels.
-- **ghost/ package**: Top-level package; import as `from ghost.presence import ...` or `from ghost.archivist import run` with `PYTHONPATH=.`.
-- **Test command**: `PYTHONPATH=. .venv/bin/pytest` (create venv with `python3 -m venv .venv && .venv/bin/pip install -r requirements.txt pytest-cov pytest-asyncio mcp apscheduler`).
-- **`uv` not available in CI**: Use `python3 -m venv .venv && .venv/bin/pip install` instead.
-- **Scheduler election tests**: `tests/test_scheduler_election.py` requires psycopg2 + SQLAlchemy — these fail in bare CI. Pre-existing condition.
-- **GITHUB_TOKEN scope**: Fine-grained PAT for yebyen/mecris only. **Use GITHUB_CLASSIC_PAT** for cross-repo operations (PR update, comment, PR creation, posting to kingdonb/mecris issues).
-- **Presence table**: Schema in `scripts/migrations/001_presence_table.sql`. Must be applied to live Neon DB before Phase 2 middleware can write records. `get_neon_store()` gracefully returns None when NEON_DB_URL is unset.
-- **Pre-existing test failures**: `tests/test_sms_mock.py` (3 failures + 1 subtest) and coaching/mcp-server/reminder-integration tests (fail in bare CI due to missing SQLAlchemy — not regressions).
-- **PR #165 state**: Title and body describe sessions 13-20 only. Body needs sessions 22-24 sections. Awaiting kingdonb review. Closes #139, #164, #97, #124 (and now also partially addresses #162, #130).
-- **HealthChecker service**: `services/health_checker.py` — `get_system_health(user_id)` returns `{processes: [...], overall_status: healthy|degraded}`. Stale threshold: 90 seconds.
-- **Beeminder requestid**: `scripts/clozemaster_scraper.py` now passes `requestid = f"{goal_slug}-{today_eastern.strftime('%Y-%m-%d')}"` to `add_datapoint`. No prefetch call needed.
-- **Score-delta backup detection**: `services/language_sync_service.py` `_update_neon_db()` uses score delta to set `daily_completions` when both `cards_today` and `points_today` are zero. Commit `d7945e3`.
-- **OIDC submarine mode**: All 4 bugs fixed in commit `1151698`. `offline_access` scope added; transient errors distinguished from permanent; Sign In button guarded; proactive refresh confirmed in WalkHeuristicsWorker. Docs updated.
+    - Tier 3 exempt from ALL sleep windows; non-Tier-3 emergencies exempt from normal sleep (8pm-8am) but blocked during emergency sleep (midnight-8am)
+- **Dynamic cooldown**: `_calculate_dynamic_cooldown(base, hour)` — reduces 0.15h per hour past 4pm, fuzz ±0.25h, floor 0.75h. Applied to: arabic_review_reminder (base=2.0h), beeminder_emergency (base=4.0h).
+- **`uv` not available in CI**: Use `python3 -m venv .venv && .venv/bin/pip install`.
+- **Scheduler election tests**: `tests/test_scheduler_election.py` requires psycopg2 + Neon DB — skip in CI.
+- **Presence table**: Schema in `scripts/migrations/001_presence_table.sql`. Must be applied to live Neon DB.
+- **HealthChecker service**: `services/health_checker.py` — stale threshold: 90 seconds.
+- **get_daily_aggregate_status**: New MCP tool at `mcp_server.py:836`. Composes `get_cached_daily_activity` + `get_language_velocity_stats`. No DB writes, purely read-through.

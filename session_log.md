@@ -505,3 +505,23 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: Nothing — all planned work delivered.
 
 **Next**: PR #165 still awaiting kingdonb review + merge. PR body needs updating to describe sessions 22–24. After merge: sync upstream; kingdonb/mecris#162 and #130 can be closed as partially addressed by merged work.
+
+## 2026-04-04 — Test coverage for sleep window exceptions + fuzzed dynamic cooldown (session 25) 🏛️
+
+**Planned**: Write pytest coverage for sleep window exceptions and fuzzed dynamic cooldown logic added in d58771f, then close stale issues kingdonb/mecris#162 and #130 (yebyen/mecris#83).
+
+**Done**: 5 new tests added to `tests/test_reminder_service.py`: (1) `test_calculate_dynamic_cooldown_floor_at_45_minutes` — verifies floor never < 0.75h over 50 random runs. (2) `test_calculate_dynamic_cooldown_shorter_in_evening` — confirms 0.6h reduction at hour=20 with fuzz patched to 0. (3) `test_tier3_fires_at_3am_during_emergency_sleep` — Tier 3 exempt from all sleep windows. (4) `test_beeminder_emergency_fires_at_10pm_normal_sleep_not_emergency` — non-Tier-3 beeminder fires at 22:00 since it's not emergency sleep. (5) `test_beeminder_emergency_suppressed_at_3am_by_emergency_sleep` — non-Tier-3 blocked at 3am. Fixed pre-existing `test_tier2_escalation_resets_after_tier2_message_sent` (4.0h → 4.5h threshold broken by fuzz). 233 passing, 0 new regressions. Comments posted on kingdonb/mecris#162 and #130.
+
+**Skipped**: Cannot directly close kingdonb/mecris issues (write access not granted to yebyen PAT). PR body update for sessions 22–24 deferred (PR already merged, lower priority).
+
+**Next**: Decide on next feature from open epics: #170 (Majesty Cake widget), #166 (Multi-user Twilio), #169 (Rust reminder engine), or smaller scope items #129/#127.
+
+## 2026-04-04 — Majesty Cake backend: get_daily_aggregate_status MCP tool (session 26) 🏛️
+
+**Planned**: Implement `get_daily_aggregate_status` MCP tool returning daily goal completion count (X/Y) and all_clear flag for walk, Arabic review pump, and Greek review pump (yebyen/mecris#84).
+
+**Done**: Tool implemented at `mcp_server.py:836` using `@mcp.tool`. Composes existing `get_cached_daily_activity("bike")` for walk goal and `get_language_velocity_stats()` for Arabic/Greek `goal_met`. Returns `{goals, satisfied_count, total_count, all_clear, score}`. Exception-resilient: each goal independently handled — failure in one goal does not prevent others from being evaluated. 7 new tests in `tests/test_daily_aggregate_status.py` covering all satisfaction states, partial completion, missing language data, and walk exception handling. Committed `6543fa6`. 239 tests passing (240 total, 3 pre-existing failures — no regressions).
+
+**Skipped**: Phase 2 Android integration — wiring Android app to call the new endpoint. Too large for this session; carry forward to next.
+
+**Next**: kingdonb/mecris#170 Phase 2 — either (a) surface `get_daily_aggregate_status` in `get_narrator_context` recommendations array for immediate LLM utility, or (b) plan Android app widget integration. Option (a) is smaller scope and immediately testable.
