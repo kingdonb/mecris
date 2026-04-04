@@ -274,8 +274,8 @@ async def sync_clozemaster_to_beeminder(dry_run: bool = False, user_id: str = No
         if await scraper.login():
             # Language configuration
             languages = {
-                "arabic": {"slug": "ara-eng", "goal": "reviewstack"}
-                # Greek (ellinika) is an odometer goal; do not push snapshots here.
+                "arabic": {"slug": "ara-eng", "goal": "reviewstack", "push_to_beeminder": True},
+                "greek": {"slug": "ell-eng", "goal": "ellinika", "push_to_beeminder": False} # Odometer goal
             }
             
             # Fetch today's date in Eastern Time for Beeminder datapoint checks
@@ -297,12 +297,23 @@ async def sync_clozemaster_to_beeminder(dry_run: bool = False, user_id: str = No
                     "count": count, 
                     "forecast": scraper_data,
                     "points": scraper_data.get("points", 0),
+                    "points_today": scraper_data.get("points_today", 0),
                     "mastery": scraper_data.get("mastery", 0.0)
                 }
+                
+                # Map specific keys expected by LanguageSyncService
+                results[name]["forecast"]["cards_today"] = scraper_data.get("cards_today", 0)
+                results[name]["forecast"]["tomorrow"] = scraper_data.get("tomorrow", 0)
+                results[name]["forecast"]["next_7_days"] = scraper_data.get("next_7_days", 0)
+
                 logger.info(f"Scraped {name}: {count} reviews ready, {results[name]['points']} points")
                 
                 if dry_run:
                     logger.info(f"[DRY RUN] Would push {count} to {goal_slug}")
+                    continue
+
+                if not config.get("push_to_beeminder", True):
+                    logger.info(f"Skipping Beeminder push for {name} (odometer goal)")
                     continue
 
                 if goal_slug not in existing_slugs:

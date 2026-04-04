@@ -38,10 +38,12 @@ class LanguageSyncService:
     def _update_neon_db(self, scraper_data: Dict, goal_map: Dict, summary: Dict, user_id: str) -> None:
         """Synchronous helper method to update Neon DB."""
         try:
+            logger.info(f"Updating Neon DB with scraper data for user {user_id}. Languages found: {list(scraper_data.keys())}")
             with psycopg2.connect(self.neon_url) as conn:
                 with conn.cursor() as cur:
                     for lang, data in scraper_data.items():
                         name = lang.upper()
+                        logger.info(f"Processing language: {name}")
                         count = data.get("count", 0)
                         points = data.get("points", 0) # Total Score
                         points_today = data.get("points_today", 0) # Upstream "Today" metric
