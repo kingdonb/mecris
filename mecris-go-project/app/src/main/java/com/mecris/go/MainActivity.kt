@@ -634,7 +634,7 @@ fun MainNeuralDashboard(
             .height(200.dp)
     ) {
         val hasWalked = walkData?.isWalkInferred == true
-        val hasSteps = (walkData?.totalSteps ?: 0L) > 1500
+        val hasSteps = (walkData?.totalSteps ?: 0L) >= 2000
         val isStable = hasWalked || hasSteps
 
         val momentumValue = if (isFetching) 0.5f else if (isStable) 0.9f else 0.2f

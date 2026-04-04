@@ -91,7 +91,7 @@ class HealthConnectManager(private val context: Context) {
 
     suspend fun fetchRecentWalkData(): WalkDataSummary {
         val report = fetchFullActivityReport()
-        val likelyWalked = report.steps > 1500 || report.walkingSessionsCount > 0
+        val likelyWalked = report.steps >= 2000 || report.walkingSessionsCount > 0
         return WalkDataSummary(
             totalSteps = report.steps,
             totalDistanceMeters = report.distanceMeters,

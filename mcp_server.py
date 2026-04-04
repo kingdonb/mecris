@@ -893,6 +893,11 @@ async def get_daily_aggregate_status(user_id: str = None) -> Dict[str, Any]:
         "total_count": total_count,
         "all_clear": satisfied_count == total_count,
         "score": f"{satisfied_count}/{total_count}",
+        "components": {
+            "walk": next((g["satisfied"] for g in goals if g["name"] == "daily_walk"), False),
+            "arabic": next((g["satisfied"] for g in goals if g["name"] == "arabic_review"), False),
+            "greek": next((g["satisfied"] for g in goals if g["name"] == "greek_review"), False)
+        }
     }
 
 if __name__ == "__main__":
