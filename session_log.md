@@ -525,3 +525,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: Phase 2 Android integration — wiring Android app to call the new endpoint. Too large for this session; carry forward to next.
 
 **Next**: kingdonb/mecris#170 Phase 2 — either (a) surface `get_daily_aggregate_status` in `get_narrator_context` recommendations array for immediate LLM utility, or (b) plan Android app widget integration. Option (a) is smaller scope and immediately testable.
+
+## 2026-04-04 — Majesty Cake Phase 2: surface aggregate status in get_narrator_context (session 27) 🏛️
+
+**Planned**: Add a call to `get_daily_aggregate_status` inside `get_narrator_context` so the aggregate goal score (X/Y) and `all_clear` flag are surfaced without a separate MCP tool call (yebyen/mecris#86).
+
+**Done**: Added 14 lines to `get_narrator_context` (mcp_server.py:299–309): calls `get_daily_aggregate_status(user_id)`, appends a 🎂 Majesty Cake recommendation on all_clear or 🎯 progress recommendation otherwise, adds `daily_aggregate_status` key to the return dict. Exception-wrapped so narrator context never crashes due to aggregate failure. 4 new tests in `tests/test_narrator_aggregate_integration.py` cover: key presence, partial-score recommendation, all_clear celebration, error resilience. 245 tests passing (was 239), 1 pre-existing failure unchanged. Committed `6de9d2b`.
+
+**Skipped**: Android widget integration (Phase 3) — requires Kotlin/Android build environment; carry forward.
+
+**Next**: kingdonb/mecris#170 Phase 3 — Android widget: wire `HomeFragment` to call `get_daily_aggregate_status`, display X/Y counter, show Majesty Cake animation on all_clear.
