@@ -249,6 +249,7 @@ fun MecrisDashboard(
     var walkData by remember { mutableStateOf<WalkDataSummary?>(cache?.walkData) }
     var budgetAmount by remember { mutableStateOf<Double?>(cache?.budgetAmount) }
     var languageStats by remember { mutableStateOf<List<com.mecris.go.sync.LanguageStatDto>>(cache?.languageStats ?: emptyList()) }
+    var aggregateStatus by remember { mutableStateOf<com.mecris.go.sync.AggregateStatusResponseDto?>(null) }
     var homeServerActive by remember { mutableStateOf<Boolean?>(cache?.homeServerActive) }
     var isLoading by remember { mutableStateOf(false) }
     var isFetching by remember { mutableStateOf(cache?.languageStats.isNullOrEmpty() && cache?.budgetAmount == null) }
@@ -392,6 +393,11 @@ fun MecrisDashboard(
                     if (healthResponse.isSuccessful) {
                         homeServerActive = healthResponse.body()?.home_server_active == true
                     }
+
+                    val aggregateResponse = syncApi.getAggregateStatus("Bearer $token")
+                    if (aggregateResponse.isSuccessful) {
+                        aggregateStatus = aggregateResponse.body()
+                    }
                     
                     // 1. QUICK FETCH: Get currently known languages first
                     var langResponse = syncApi.getLanguages("Bearer $token")
@@ -517,6 +523,7 @@ fun MecrisDashboard(
                     walkData = walkData,
                     budgetAmount = budgetAmount,
                     languageStats = languageStats,
+                    aggregateStatus = aggregateStatus,
                     homeServerActive = homeServerActive,
                     syncStatus = syncStatus,
                     lastSyncTime = lastSyncTime,
@@ -593,6 +600,7 @@ fun MainNeuralDashboard(
     walkData: WalkDataSummary?,
     budgetAmount: Double?,
     languageStats: List<com.mecris.go.sync.LanguageStatDto>,
+    aggregateStatus: com.mecris.go.sync.AggregateStatusResponseDto?,
     homeServerActive: Boolean?,
     syncStatus: String,
     lastSyncTime: String,
@@ -607,6 +615,8 @@ fun MainNeuralDashboard(
     surgicalUpdateInProgress: Boolean,
     onMultiplierChange: (String, Double) -> Unit
 ) {
+    MajestyCakeWidget(status = aggregateStatus)
+
     Text(
         text = "SYSTEM MOMENTUM",
         style = MaterialTheme.typography.labelSmall,
@@ -1386,6 +1396,113 @@ fun PermissionCard(title: String, description: String, buttonText: String, onGra
                 }
                 Button(onClick = onGrant) { Text(buttonText) }
             }
+        }
+    }
+}
+
+@Composable
+fun MajestyCakeWidget(status: com.mecris.go.sync.AggregateStatusResponseDto?) {
+    if (status == null) return
+
+    val infiniteTransition = rememberInfiniteTransition(label = "majesty")
+    val glowAlpha by infiniteTransition.animateFloat(
+        initialValue = 0.3f,
+        targetValue = 0.8f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1500, easing = LinearOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "glow"
+    )
+
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(bottom = 16.dp),
+        color = Color(0xFF121212),
+        shape = RoundedCornerShape(16.dp),
+        border = if (status.all_clear) 
+            androidx.compose.foundation.BorderStroke(2.dp, Color(0xFFFFD600).copy(alpha = glowAlpha))
+            else null
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            if (status.all_clear) {
+                Text(
+                    text = "✨ THE MAJESTY CAKE ✨",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = Color(0xFFFFD600),
+                    fontWeight = FontWeight.Black,
+                    letterSpacing = 2.sp
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                // Majestic Cake Emoji with Glow
+                Box(contentAlignment = Alignment.Center) {
+                    Canvas(modifier = Modifier.size(80.dp)) {
+                        drawCircle(
+                            brush = Brush.radialGradient(
+                                colors = listOf(Color(0xFFFFD600).copy(alpha = 0.4f), Color.Transparent),
+                                center = center,
+                                radius = size.minDimension / 1.5f
+                            ),
+                            radius = size.minDimension / 1.5f * glowAlpha
+                        )
+                    }
+                    Text("🍰", fontSize = 48.sp)
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "ALL GOALS SATISFIED",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Color.White,
+                    fontWeight = FontWeight.Bold
+                )
+            } else {
+                Text(
+                    text = "DAILY ACCOUNTABILITY",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Color.Gray,
+                    letterSpacing = 1.sp
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+                
+                // Progress Counter
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = status.score,
+                        style = MaterialTheme.typography.headlineMedium,
+                        color = Color.White,
+                        fontWeight = FontWeight.Black
+                    )
+                    Spacer(modifier = Modifier.width(16.dp))
+                    
+                    // Mini icons
+                    GoalStatusIcon(label = "🚶", met = status.components.walk)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    GoalStatusIcon(label = "🇦", met = status.components.arabic)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    GoalStatusIcon(label = "🇬", met = status.components.greek)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun GoalStatusIcon(label: String, met: Boolean) {
+    Surface(
+        color = if (met) Color(0xFF004D40) else Color(0xFF333333),
+        shape = RoundedCornerShape(4.dp),
+        border = if (met) androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF00C853)) else null
+    ) {
+        Box(modifier = Modifier.padding(4.dp), contentAlignment = Alignment.Center) {
+            Text(
+                text = label, 
+                fontSize = 14.sp, 
+                modifier = Modifier.alpha(if (met) 1f else 0.4f)
+            )
         }
     }
 }

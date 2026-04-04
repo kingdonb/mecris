@@ -48,6 +48,11 @@ interface SyncServiceApi {
         @Body request: MultiplierRequestDto
     ): retrofit2.Response<Unit>
 
+    @GET("aggregate-status")
+    suspend fun getAggregateStatus(
+        @Header("Authorization") authHeader: String
+    ): retrofit2.Response<AggregateStatusResponseDto>
+
     companion object {
         fun create(baseUrl: String): SyncServiceApi {
             val client = OkHttpClient.Builder()
@@ -123,4 +128,18 @@ data class HeartbeatResponseDto(
 data class MultiplierRequestDto(
     val name: String,
     val multiplier: Double
+)
+
+data class AggregateComponentsDto(
+    val walk: Boolean,
+    val arabic: Boolean,
+    val greek: Boolean
+)
+
+data class AggregateStatusResponseDto(
+    val score: String,
+    val goals_met: Int,
+    val total_goals: Int,
+    val all_clear: Boolean,
+    val components: AggregateComponentsDto
 )
