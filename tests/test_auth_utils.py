@@ -2,7 +2,36 @@ import pytest
 import re
 import base64
 import hashlib
-from services.auth_utils import generate_code_verifier, generate_code_challenge
+from urllib.parse import urlparse, parse_qs
+from unittest.mock import patch
+from services.auth_utils import generate_code_verifier, generate_code_challenge, build_auth_url
+
+def test_build_auth_url_contains_required_params():
+    """Build URL must contain all OIDC and PKCE parameters."""
+    challenge = "fake_challenge"
+    state = "fake_state"
+    port = 54321
+    
+    with patch.dict('os.environ', {
+        'POCKET_ID_CLIENT_ID': 'test_client',
+        'POCKET_ID_AUTH_ENDPOINT': 'https://auth.example.com/authorize'
+    }):
+        url = build_auth_url(challenge, state, port)
+        
+    parsed = urlparse(url)
+    assert parsed.scheme == "https"
+    assert parsed.netloc == "auth.example.com"
+    assert parsed.path == "/authorize"
+    
+    params = parse_qs(parsed.query)
+    assert params['client_id'] == ['test_client']
+    assert params['redirect_uri'] == [f'http://localhost:{port}']
+    assert params['response_type'] == ['code']
+    assert 'openid' in params['scope'][0]
+    assert 'offline_access' in params['scope'][0]
+    assert params['code_challenge'] == [challenge]
+    assert params['code_challenge_method'] == ['S256']
+    assert params['state'] == [state]
 
 def test_generate_code_verifier_properties():
     """Verifier must be 43-128 chars and use unreserved characters."""
