@@ -138,3 +138,30 @@ async def test_narrator_aggregate_error_does_not_crash_context():
     recommendations = result.get("recommendations", [])
     assert not any("Majesty Cake" in r for r in recommendations)
     assert not any("Daily goals progress" in r for r in recommendations)
+
+
+@pytest.mark.asyncio
+async def test_narrator_all_clear_cake_is_first_recommendation():
+    """When all_clear=True and no critical items, Majesty Cake is the first recommendation."""
+    aggregate = {"score": "3/3", "satisfied_count": 3, "total_count": 3, "all_clear": True, "goals": []}
+    result = await _run_narrator_context_with_aggregate(aggregate)
+    recommendations = result.get("recommendations", [])
+    assert recommendations, "Expected at least one recommendation"
+    assert "Majesty Cake" in recommendations[0], (
+        f"Expected Majesty Cake as first recommendation, got: {recommendations}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_narrator_partial_progress_precedes_informational_recommendations():
+    """When partial and no critical items (no budget/beeminder/walk alerts), progress rec is first."""
+    aggregate = {"score": "1/3", "satisfied_count": 1, "total_count": 3, "all_clear": False, "goals": []}
+    result = await _run_narrator_context_with_aggregate(aggregate)
+    recommendations = result.get("recommendations", [])
+    assert recommendations, "Expected at least one recommendation"
+    progress_idx = next((i for i, r in enumerate(recommendations) if "Daily goals progress" in r), None)
+    assert progress_idx is not None, f"Progress recommendation not found in: {recommendations}"
+    # In the test environment (no budget/beeminder/backlog warnings), progress should be first
+    assert progress_idx == 0, (
+        f"Expected progress rec at index 0, got index {progress_idx}: {recommendations}"
+    )

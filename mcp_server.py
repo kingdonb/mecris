@@ -277,7 +277,20 @@ async def get_narrator_context(user_id: str = None) -> Dict[str, Any]:
         if len(pending_todos) > 10: recommendations.append("Consider prioritizing todos - large backlog detected")
         if critical_beeminder: recommendations.append("Address critical Beeminder goals immediately")
         if budget_days <= 2: recommendations.append("Urgent: Focus on highest-value work due to budget constraints")
-        
+
+        # Majesty Cake: surface aggregate daily goal status early for discoverability (kingdonb/mecris#170)
+        try:
+            daily_aggregate = await get_daily_aggregate_status(user_id)
+            if not daily_aggregate.get("error"):
+                if daily_aggregate.get("all_clear"):
+                    recommendations.insert(0, f"🎂 Majesty Cake! All daily goals complete ({daily_aggregate.get('score', '?/?')})")
+                else:
+                    score = daily_aggregate.get("score", "?/?")
+                    recommendations.append(f"🎯 Daily goals progress: {score} — keep going!")
+        except Exception as e:
+            logger.error(f"get_narrator_context: daily aggregate status failed: {e}")
+            daily_aggregate = {"error": str(e)}
+
         # Enhanced walk logic: Only recommend if walk needed AND weather/sun is appropriate
         if daily_walk_status.get("status") == "needed":
             if vacation_mode:
@@ -287,7 +300,7 @@ async def get_narrator_context(user_id: str = None) -> Dict[str, Any]:
                 urgent_items.append("WALK NEEDED: Activity Log")
             else:
                 recommendations.append(f"🐕 Walk status: Needed, but {weather_msg}")
-        
+
         if anthropic_cost_tracker:
             recommendations.append("📊 Real-time budget tracking is active via Anthropic Admin API")
 
@@ -296,19 +309,6 @@ async def get_narrator_context(user_id: str = None) -> Dict[str, Any]:
             if groq_urgent:
                 urgent_items.append(f"GROQ: {groq_urgent}")
                 recommendations.append(groq_urgent)
-
-        # Majesty Cake: surface aggregate daily goal status for discoverability (kingdonb/mecris#170)
-        try:
-            daily_aggregate = await get_daily_aggregate_status(user_id)
-            if not daily_aggregate.get("error"):
-                if daily_aggregate.get("all_clear"):
-                    recommendations.append(f"🎂 Majesty Cake! All daily goals complete ({daily_aggregate.get('score', '?/?')})")
-                else:
-                    score = daily_aggregate.get("score", "?/?")
-                    recommendations.append(f"🎯 Daily goals progress: {score} — keep going!")
-        except Exception as e:
-            logger.error(f"get_narrator_context: daily aggregate status failed: {e}")
-            daily_aggregate = {"error": str(e)}
 
         return {
             "summary": summary, "goals_status": {"total": len(active_goals)},
