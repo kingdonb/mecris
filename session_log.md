@@ -535,3 +535,23 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: Android widget integration (Phase 3) — requires Kotlin/Android build environment; carry forward.
 
 **Next**: kingdonb/mecris#170 Phase 3 — Android widget: wire `HomeFragment` to call `get_daily_aggregate_status`, display X/Y counter, show Majesty Cake animation on all_clear.
+
+## 2026-04-04 — Majesty Cake Phase 3: promote aggregate recommendation in narrator context
+
+🏛️ **Planned**: Move `daily_aggregate_status` recommendation from last position to early in `get_narrator_context` recommendations list; add ordering test confirming it appears before informational items (yebyen/mecris#87).
+
+**Done**: Restructured the recommendations block in `mcp_server.py`. Majesty Cake try/except moved to run immediately after critical Beeminder/budget checks (position 3 in list). When `all_clear=True`, uses `insert(0, ...)` so the celebration leads the entire list. When partial, appended after critical items but before walk/anthropic/groq recommendations. Added 2 new ordering tests: `test_narrator_all_clear_cake_is_first_recommendation` and `test_narrator_partial_progress_precedes_informational_recommendations`. All 6 tests in the file pass. Total: 247 passing (was 245), 1 pre-existing failure unchanged.
+
+**Skipped**: Android widget integration and Gemini live discoverability validation (require live env / Android build). kingdonb/mecris#162, #130, #132 remain open (require kingdonb to close).
+
+**Next**: Gemini discoverability live validation (no code change needed), or Android widget integration for Majesty Cake counter display (kingdonb/mecris#170 Phase 4).
+
+## 2026-04-04 — Stale issue housekeeping: closure comments on kingdonb/mecris#162, #130, #132 (session 29) 🏛️
+
+**Planned**: Check and post/refresh closure comments on kingdonb/mecris issues #162, #130, and #132 (yebyen/mecris#88).
+
+**Done**: Discovered #162 and #130 already had solid closure comments from session 24. Posted fresh closure comment on #132 ("FIXED: Failover sync" — 0 prior comments) via GITHUB_CLASSIC_PAT. Also discovered Android MajestyCakeWidget was already fully implemented in commit `db7ba41` — the originally-planned Majesty Cake Phase 4 coding work was already complete before this session.
+
+**Skipped**: No code changes this session — housekeeping only. Next epic (Greek Backlog Booster #129, language sorting #121, or multiplier race #122) carries forward. Gemini live discoverability validation still requires live env.
+
+**Next**: Start next meaningful epic — read kingdonb/mecris#129 (Greek Backlog Booster) or #121 (language dashboard sorting) and plan implementation. Majesty Cake epic kingdonb/mecris#170 is now feature-complete across all 4 phases.

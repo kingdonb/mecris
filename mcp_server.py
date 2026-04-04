@@ -277,7 +277,7 @@ async def get_narrator_context(user_id: str = None) -> Dict[str, Any]:
         if len(pending_todos) > 10: recommendations.append("Consider prioritizing todos - large backlog detected")
         if critical_beeminder: recommendations.append("Address critical Beeminder goals immediately")
         if budget_days <= 2: recommendations.append("Urgent: Focus on highest-value work due to budget constraints")
-        
+
         # Majesty Cake: surface aggregate daily goal status early for discoverability (kingdonb/mecris#170)
         try:
             daily_aggregate = await get_daily_aggregate_status(user_id)
@@ -300,7 +300,7 @@ async def get_narrator_context(user_id: str = None) -> Dict[str, Any]:
                 urgent_items.append("WALK NEEDED: Activity Log")
             else:
                 recommendations.append(f"🐕 Walk status: Needed, but {weather_msg}")
-        
+
         if anthropic_cost_tracker:
             recommendations.append("📊 Real-time budget tracking is active via Anthropic Admin API")
 
