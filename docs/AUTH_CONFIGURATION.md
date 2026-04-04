@@ -57,10 +57,34 @@ To stay "underwater" for more than an hour, your OIDC client (e.g., the Android 
 2.  **Proactive Refresh**: Configure the client to refresh the token when it is 50-75% through its lifespan (e.g., every 30-45 minutes).
 3.  **Local Caching**: The client must securely store the Refresh Token locally so it can attempt a refresh as soon as the network becomes available again.
 
-### Known Limitations & Research (Issue #162)
-There is currently a known issue where the OIDC client may incorrectly invalidate or dispose of the Refresh Token if a refresh attempt fails due to a network timeout (e.g., being off-VPN). This results in a "null" error in the UI and requires manual re-authentication.
+### Root Cause Analysis (Issue #162 — Implemented)
 
-Ongoing research in [kingdonb/mecris#162](https://github.com/kingdonb/mecris/issues/162) aims to "smooth these rough edges" by implementing better retry logic and preventing the disposal of valid credentials during transient network failures.
+Four compounding bugs were identified and fixed in `mecris-go-project/.../auth/PocketIdAuth.kt`:
+
+**Bug 1 — Missing `offline_access` scope** (`PocketIdAuth.kt:67`) ✅ Fixed:
+The login request did not include `offline_access`, so Pocket-ID did not issue a
+durable Refresh Token. Fix applied: added `"offline_access"` to the scope list.
+```kotlin
+.setScopes(OPENID, PROFILE, EMAIL, "offline_access")
+```
+
+**Bug 2 — Network errors treated as permanent auth failures** (`PocketIdAuth.kt:109–112`) ✅ Fixed:
+AppAuth distinguishes `invalid_grant` (real failure) from `IOException` (transient).
+Fix applied: checks `ex.type == AuthorizationException.TYPE_OAUTH_TOKEN_ERROR` before
+broadcasting `AuthState.Error`. Transient network errors preserve auth state silently.
+
+**Bug 3 — Error state triggers re-auth UI** (`MainActivity.kt:1063–1074`) ✅ Fixed:
+Any `AuthState.Error` used to show a "Sign In" button. Tapping it would create a new
+`net.openid.appauth.AuthState()`, abandoning the still-valid Refresh Token.
+Fix applied: `AuthState.Error` now carries `isPermanent: Boolean`; Sign In button is
+only shown when `isPermanent == true`. Transient errors show "Network Unavailable" only.
+
+**Bug 4 — No proactive refresh** ✅ Fixed:
+`WalkHeuristicsWorker` (15-min interval) already called `getAccessTokenSuspend()` before
+all network I/O. After Bug 2 fix, this call is now safe on transient network errors and
+correctly acts as the proactive on-network refresh before going submarine.
+
+Full technical report: [kingdonb/mecris#162 comment](https://github.com/kingdonb/mecris/issues/162#issuecomment-4185361982)
 
 ### Configuration Values to Consider (If/When Supported)
 If future versions of Pocket-ID allow customization, these variables are the most likely candidates:

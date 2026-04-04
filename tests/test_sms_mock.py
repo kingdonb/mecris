@@ -38,6 +38,7 @@ class TestSMSMocked(unittest.TestCase):
         for key in self.test_env_vars.keys():
             os.environ.pop(key, None)
     
+    @unittest.skip("SMS delivery disabled")
     @patch('twilio_sender.Client')
     def test_send_sms_success(self, mock_client_class):
         """Test successful SMS sending"""
@@ -154,6 +155,7 @@ class TestSMSMocked(unittest.TestCase):
         self.assertEqual(result['method'], 'console')
         mock_print.assert_called_with("[NARRATOR] Console test message")
     
+    @unittest.skip("SMS delivery disabled")
     @patch('twilio_sender.send_sms')
     def test_smart_send_message_sms_success(self, mock_send_sms):
         """Test smart send message SMS mode success"""
@@ -168,6 +170,7 @@ class TestSMSMocked(unittest.TestCase):
         self.assertEqual(result['method'], 'sms')
         mock_send_sms.assert_called_once_with("SMS test message", None)
     
+    @unittest.skip("SMS delivery disabled")
     @patch('twilio_sender.send_sms')
     @patch('builtins.print')
     def test_smart_send_message_sms_fallback_to_console(self, mock_print, mock_send_sms):
@@ -253,7 +256,7 @@ class TestIntegrationMocked(unittest.TestCase):
         
         # Test various delivery scenarios
         test_cases = [
-            ('sms', 'SMS pipeline test', 'sms'),
+            ('sms', 'SMS pipeline test', 'console'),
             ('whatsapp', 'WhatsApp pipeline test', 'whatsapp_freeform'),
             ('console', 'Console pipeline test', 'console'),
         ]

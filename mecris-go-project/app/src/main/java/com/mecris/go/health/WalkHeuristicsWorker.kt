@@ -39,7 +39,8 @@ class WalkHeuristicsWorker @JvmOverloads constructor(
         
         Log.d("WalkHeuristicsWorker", "Executing background check for $today (Last steps: $lastStepCount)")
         
-        // 4. Reliable Token Retrieval
+        // 4. Proactive Token Refresh: runs before any network I/O so the token is refreshed while
+        //    on-network. Transient network errors no longer corrupt AuthState (see PocketIdAuth).
         val token = pocketIdAuth.getAccessTokenSuspend()
 
         // --- Heartbeat & Cooperation Phase (Agnostic of Health Permissions) ---

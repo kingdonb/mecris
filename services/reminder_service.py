@@ -72,6 +72,11 @@ class ReminderService:
                 f"🚨 ESCALATED: '{goal_title}' is still at risk after {hours_str} of silence. "
                 f"You've ignored this long enough — address it NOW before it derails. 📉"
             )
+        if msg_type == "arabic_review_reminder":
+            return (
+                f"🚨 Arabic reviews still overdue after {hours_str}. "
+                f"reviewstack won't fix itself — open Clozemaster NOW. 📚"
+            )
         return (
             f"⚠️ Escalated reminder after {hours_str} idle: this situation hasn't resolved itself. "
             f"Take action NOW. 🔥"
@@ -106,10 +111,15 @@ class ReminderService:
         context = await self.context_provider(user_id)
         insight = await self.coaching_provider(user_id)
         
-        current_hour = datetime.now().hour
+        now = datetime.now()
+        current_hour = now.hour
         walk_status = context.get("daily_walk_status", {})
         has_walked = walk_status.get("has_activity_today", False)
         vacation_mode = context.get("vacation_mode", False)
+
+        # 1a. ENFORCE SLEEP WINDOW (8 PM - 8 AM)
+        # Only Tier 3 (sub-2h emergency) can bypass this.
+        is_sleep_time = current_hour >= 20 or current_hour < 8
         
         # 1. Beeminder Emergencies (Higher Priority, any time)
         beeminder_alerts = context.get("beeminder_alerts", [])
@@ -132,6 +142,10 @@ class ReminderService:
                 }
             else:
                 return {"should_send": False, "reason": f"Tier 3 emergency on cooldown ({hours_since_urgent:.1f}h since last)"}
+
+        # ALL OTHER REMINDERS RESPECT THE SLEEP WINDOW
+        if is_sleep_time:
+            return {"should_send": False, "reason": f"Sleep window active (8pm-8am, current hour: {current_hour})"}
 
         # 1a. Arabic Review Emergency (obnoxious — 2h cooldown, fires before generic)
         arabic_critical = [g for g in critical_goals if g.get("slug") == "reviewstack"]

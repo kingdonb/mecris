@@ -35,7 +35,7 @@ async def test_language_sync_service_coordination(mock_dependencies):
     
     # 2. Setup mock beeminder client
     mock_beeminder = MagicMock()
-    
+    mock_beeminder.user_id = "c0a81a4b-115a-4eb6-bc2c-40908c58bf64"  # match resolved target_user_id so no new BeeminderClient is spawned    
     async def mock_get_all_goals():
         return [
             {"slug": "reviewstack", "safebuf": 6, "derail_risk": "CAUTION"},
@@ -54,22 +54,67 @@ async def test_language_sync_service_coordination(mock_dependencies):
     assert result["arabic"]["count"] == 2600
     assert result["greek"]["count"] == 20
 
-    # 5. Verify database calls (should have been 2 UPSERTs + 2 SELECTs)
-    assert mock_dependencies["cursor"].execute.call_count == 4
-
-    # Check one of the UPSERT calls
-    # SQL should contain our new columns
+    # 5. Verify the two language_stats UPSERTs happened with correct SQL and mapping
     args_list = mock_dependencies["cursor"].execute.call_args_list
-    # args_list[0] and [2] are SELECTs, [1] and [3] are INSERTs
-    sql = args_list[1][0][0]
-    params = args_list[1][0][1]
+    insert_calls = [c for c in args_list if "INSERT INTO language_stats" in c[0][0]]
+    assert len(insert_calls) == 2  # one for Arabic, one for Greek
 
-    assert "INSERT INTO language_stats" in sql
+    # Check INSERT columns are present
+    sql = insert_calls[0][0][0]
     assert "safebuf" in sql
     assert "derail_risk" in sql
 
-    # Check mapping logic (Arabic -> reviewstack)
-    # params[1] is language_name
-    arabic_call = next(call for call in args_list if "INSERT" in call[0][0] and call[0][1][1] == "ARABIC")
+    # Check mapping logic (Arabic -> reviewstack, safebuf=6 at param index 6)
+    arabic_call = next(c for c in insert_calls if c[0][1][1] == "ARABIC")
     arabic_params = arabic_call[0][1]
-    assert arabic_params[6] == 6 # safebuf from reviewstack (now at index 6)
+    assert arabic_params[6] == 6  # safebuf from reviewstack goal
+
+
+def test_score_delta_backup_detection_updates_daily_completions():
+    """When cards_today=0 and points_today=0 but score increased, delta is used as daily_completions."""
+    from unittest.mock import patch, MagicMock, call
+    from services.language_sync_service import LanguageSyncService
+
+    mock_beeminder = MagicMock()
+    service = LanguageSyncService(mock_beeminder)
+
+    # Simulate: last_points=500, current points=600 → delta=100; no upstream "today" data
+    scraper_data = {
+        "arabic": {
+            "count": 50,
+            "points": 600,
+            "points_today": 0,
+            "forecast": {"tomorrow": 0, "next_7_days": 0, "cards_today": 0},
+        }
+    }
+    goal_map = {}
+    summary = {"min_safebuf": 999}
+
+    captured_params = []
+
+    def fake_execute(sql, params=None):
+        if params:
+            captured_params.append((sql, params))
+
+    mock_conn = MagicMock()
+    mock_cur = MagicMock()
+    mock_cur.execute.side_effect = fake_execute
+    # First fetchone: return existing row with last_points=500, daily_completions=0
+    mock_cur.fetchone.return_value = (500, 0, datetime(2026, 4, 3, 10, 0, 0))
+    mock_conn.cursor.return_value.__enter__.return_value = mock_cur
+    mock_conn.__enter__ = lambda s: mock_conn
+    mock_conn.__exit__ = MagicMock(return_value=False)
+
+    with patch("psycopg2.connect", return_value=mock_conn):
+        service._update_neon_db(scraper_data, goal_map, summary, "test_user")
+
+    # Find the INSERT call
+    insert_calls = [(sql, params) for sql, params in captured_params if "INSERT INTO language_stats" in sql]
+    assert len(insert_calls) == 1, "Expected exactly one INSERT call"
+
+    # daily_completions is at index 9 in the INSERT parameter tuple
+    insert_params = insert_calls[0][1]
+    daily_completions_idx = 9  # (user_id, language_name, current, tomorrow, next_7, daily_rate, safebuf, derail_risk, slug, daily_completions, ...)
+    assert insert_params[daily_completions_idx] == 100, (
+        f"Expected daily_completions=100 (delta from score), got {insert_params[daily_completions_idx]}"
+    )

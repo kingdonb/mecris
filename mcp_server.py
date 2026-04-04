@@ -28,6 +28,7 @@ from services.neon_sync_checker import NeonSyncChecker
 from services.reminder_service import ReminderService
 from services.language_sync_service import LanguageSyncService
 from services.review_pump import ReviewPump, ARABIC_POINTS_PER_CARD
+from ghost.presence import get_neon_store, StatusType
 
 # Load environment variables
 load_dotenv()
@@ -39,6 +40,29 @@ logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger("mecris")
+
+async def _record_presence(user_id: str) -> None:
+    """Record ACTIVE_HUMAN presence for user_id. No-op when Neon is unavailable."""
+    store = get_neon_store()
+    if store is None:
+        return
+    try:
+        await asyncio.to_thread(store.upsert, user_id, StatusType.ACTIVE_HUMAN, "mcp_server")
+    except Exception as e:
+        logger.warning(f"Presence record failed (non-fatal): {e}")
+
+
+async def _get_presence_status(user_id: str) -> Optional[str]:
+    """Return current presence status_type string for user_id, or None if unavailable."""
+    store = get_neon_store()
+    if store is None:
+        return None
+    try:
+        record = await asyncio.to_thread(store.get, user_id)
+        return record.status_type.value if record else None
+    except Exception:
+        return None
+
 
 # Initialize the MCP Server
 mcp = FastMCP("mecris")
@@ -191,6 +215,7 @@ async def get_cached_daily_activity(goal_slug: str = "bike", user_id: str = None
 async def get_narrator_context(user_id: str = None) -> Dict[str, Any]:
     """Get unified strategic context with goals, budget, and recommendations."""
     target_user_id = usage_tracker.resolve_user_id(user_id)
+    await _record_presence(target_user_id)
     try:
         goals = usage_tracker.get_goals(target_user_id)
         active_goals = [g for g in goals if g.get("status") == "active"]
@@ -289,6 +314,7 @@ async def get_narrator_context(user_id: str = None) -> Dict[str, Any]:
             "greek_backlog_boost": greek_backlog_boost,
             "greek_backlog_cards": greek_backlog_cards,
             "budget_governor": _budget_governor.get_narrator_summary(),
+            "presence_status": await _get_presence_status(target_user_id),
             "last_updated": datetime.now().isoformat()
         }
     except Exception as e:
@@ -524,6 +550,19 @@ def get_scheduler_queue() -> Dict[str, Any]:
         "queue": scheduler.get_queue()
     }
 
+from services.health_checker import HealthChecker as _HealthChecker
+_health_checker = _HealthChecker()
+
+@mcp.tool(description="Get unified health status for all registered system processes (Python MCP, Android client, Spin failover) from the scheduler_election table.")
+async def get_system_health(user_id: str = None) -> Dict[str, Any]:
+    """Read the scheduler_election table and return active/stale status for every registered process."""
+    target_user_id = usage_tracker.resolve_user_id(user_id)
+    result = await asyncio.to_thread(_health_checker.get_system_health, target_user_id)
+    if "error" not in result:
+        result["leader_process_id"] = scheduler.process_id
+        result["is_leader"] = scheduler.is_leader
+    return result
+
 from services.coaching_service import CoachingService
 
 @mcp.tool(description="Get a personalized coaching insight based on momentum and current needs.")
@@ -715,18 +754,31 @@ async def send_reminder_message(message_data: Dict[str, Any], user_id: str = Non
         message = message_data.get("message") or message_data.get("fallback_message")
         delivery_result = smart_send_message(message)
 
-    if delivery_result["sent"]:
-        # Log to Neon
-        def _write_log():
-            import psycopg2
-            with psycopg2.connect(neon_url) as conn:
-                with conn.cursor() as cur:
-                    cur.execute("INSERT INTO message_log (date, type, sent_at, user_id) VALUES (%s, %s, %s, %s)", (today, msg_type, now, target_user_id))
+    # Log to Neon, regardless of success or failure
+    status_val = "sent" if delivery_result.get("sent") else "failed"
+    error_val = None if delivery_result.get("sent") else "Failed to send (check twilio_sender logs)"
+    
+    def _write_log():
+        import psycopg2
+        with psycopg2.connect(neon_url) as conn:
+            with conn.cursor() as cur:
+                try:
+                    cur.execute(
+                        "INSERT INTO message_log (date, type, sent_at, user_id, status, error_msg) VALUES (%s, %s, %s, %s, %s, %s)", 
+                        (today, msg_type, now, target_user_id, status_val, error_val)
+                    )
+                except psycopg2.errors.UndefinedColumn:
+                    # Fallback if schema wasn't migrated
+                    conn.rollback()
+                    cur.execute(
+                        "INSERT INTO message_log (date, type, sent_at, user_id) VALUES (%s, %s, %s, %s)", 
+                        (today, msg_type, now, target_user_id)
+                    )
 
-        try:
-            await asyncio.to_thread(_write_log)
-        except Exception as e:
-            logger.error(f"Failed to log message to Neon: {e}")
+    try:
+        await asyncio.to_thread(_write_log)
+    except Exception as e:
+        logger.error(f"Failed to log message to Neon: {e}")
 
     return delivery_result
 

@@ -282,7 +282,6 @@ async def sync_clozemaster_to_beeminder(dry_run: bool = False, user_id: str = No
             import zoneinfo
             eastern = zoneinfo.ZoneInfo("US/Eastern")
             today_eastern = datetime.now(eastern).replace(hour=0, minute=0, second=0, microsecond=0)
-            today_timestamp = int(today_eastern.timestamp())
 
             # Pre-fetch all goals to check existence
             all_goals = await beeminder.get_all_goals()
@@ -310,32 +309,12 @@ async def sync_clozemaster_to_beeminder(dry_run: bool = False, user_id: str = No
                     logger.warning(f"⚠️ Goal {goal_slug} does not exist on Beeminder. Skipping push for {name}.")
                     continue
                 
-                # Idempotency Check: Only push if the value has changed for today
-                try:
-                    # Fetch today's datapoints for this goal
-                    datapoints_today = await beeminder.get_goal_datapoints(goal_slug, since=today_eastern, count=10)
-                    
-                    # Check if a datapoint with today's timestamp already exists and has the same value
-                    datapoint_exists_today = False
-                    for dp in datapoints_today:
-                        # Beeminder timestamps are Unix timestamps (seconds since epoch)
-                        dp_timestamp = dp.get("timestamp", 0)
-                        if dp_timestamp >= today_timestamp:
-                            dp_value = float(dp.get("value", 0.0))
-                            if dp_value == float(count):
-                                datapoint_exists_today = True
-                                logger.info(f"Skipping push for {name}: Datapoint with value {count} already exists today for {goal_slug}.")
-                                break
-                    
-                    if datapoint_exists_today:
-                        continue # Skip push if value already recorded today
-
-                except Exception as e:
-                    logger.error(f"Error checking existing Beeminder datapoints for {goal_slug}: {e}. Proceeding with push.")
-                    # Continue with the push if check fails, to avoid missing data
-
                 logger.info(f"Pushing {name} count ({count}) to Beeminder goal {goal_slug}...")
-                
+
+                # Deterministic requestid lets Beeminder upsert rather than insert on retries.
+                # Format: {goal_slug}-{YYYY-MM-DD} ensures exactly one datapoint per goal per day.
+                requestid = f"{goal_slug}-{today_eastern.strftime('%Y-%m-%d')}"
+
                 # Predictable Liabilities note
                 comment = f"Auto-synced from Clozemaster ({datetime.now().strftime('%Y-%m-%d %H:%M')})"
                 if scraper_data.get("tomorrow", 0) > 0:
@@ -344,9 +323,10 @@ async def sync_clozemaster_to_beeminder(dry_run: bool = False, user_id: str = No
                     comment += f" | 7-day liability: {scraper_data['next_7_days']}"
 
                 success = await beeminder.add_datapoint(
-                    goal_slug, 
-                    float(count), 
-                    comment=comment
+                    goal_slug,
+                    float(count),
+                    comment=comment,
+                    requestid=requestid,
                 )
                 
                 if success:
