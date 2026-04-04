@@ -5,12 +5,15 @@ import os
 from typing import Tuple
 from urllib.parse import urlencode
 
+# OIDC Configuration Defaults
+DEFAULT_AUTH_ENDPOINT = "https://metnoom.urmanac.com/authorize"
+DEFAULT_SCOPES = "openid profile email offline_access"
+
 def generate_code_verifier() -> str:
     """
     Generate a PKCE-compliant code verifier.
     A high-entropy cryptographic random string using unreserved characters.
     """
-    # 32 bytes of entropy results in 43 characters after base64url encoding
     return secrets.token_urlsafe(32)
 
 def generate_code_challenge(verifier: str) -> str:
@@ -21,6 +24,10 @@ def generate_code_challenge(verifier: str) -> str:
     sha256_hash = hashlib.sha256(verifier.encode('utf-8')).digest()
     return base64.urlsafe_b64encode(sha256_hash).decode('utf-8').replace('=', '')
 
+def generate_state() -> str:
+    """Generate a cryptographically secure random state string."""
+    return secrets.token_urlsafe(16)
+
 def generate_pkce_pair() -> Tuple[str, str]:
     """Generate a (verifier, challenge) pair for PKCE."""
     verifier = generate_code_verifier()
@@ -29,7 +36,7 @@ def generate_pkce_pair() -> Tuple[str, str]:
 
 def build_auth_url(challenge: str, state: str, port: int) -> str:
     """Build the authorization URL for PKCE flow."""
-    base_url = os.getenv("POCKET_ID_AUTH_ENDPOINT", "https://metnoom.urmanac.com/authorize")
+    base_url = os.getenv("POCKET_ID_AUTH_ENDPOINT", DEFAULT_AUTH_ENDPOINT)
     client_id = os.getenv("POCKET_ID_CLIENT_ID")
     redirect_uri = f"http://localhost:{port}"
     
@@ -37,7 +44,7 @@ def build_auth_url(challenge: str, state: str, port: int) -> str:
         "client_id": client_id,
         "redirect_uri": redirect_uri,
         "response_type": "code",
-        "scope": "openid profile email offline_access",
+        "scope": DEFAULT_SCOPES,
         "code_challenge": challenge,
         "code_challenge_method": "S256",
         "state": state
