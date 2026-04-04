@@ -545,3 +545,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: Android widget integration and Gemini live discoverability validation (require live env / Android build). kingdonb/mecris#162, #130, #132 remain open (require kingdonb to close).
 
 **Next**: Gemini discoverability live validation (no code change needed), or Android widget integration for Majesty Cake counter display (kingdonb/mecris#170 Phase 4).
+
+## 2026-04-04 — Stale issue housekeeping: closure comments on kingdonb/mecris#162, #130, #132 (session 29) 🏛️
+
+**Planned**: Check and post/refresh closure comments on kingdonb/mecris issues #162, #130, and #132 (yebyen/mecris#88).
+
+**Done**: Discovered #162 and #130 already had solid closure comments from session 24. Posted fresh closure comment on #132 ("FIXED: Failover sync" — 0 prior comments) via GITHUB_CLASSIC_PAT. Also discovered Android MajestyCakeWidget was already fully implemented in commit `db7ba41` — the originally-planned Majesty Cake Phase 4 coding work was already complete before this session.
+
+**Skipped**: No code changes this session — housekeeping only. Next epic (Greek Backlog Booster #129, language sorting #121, or multiplier race #122) carries forward. Gemini live discoverability validation still requires live env.
+
+**Next**: Start next meaningful epic — read kingdonb/mecris#129 (Greek Backlog Booster) or #121 (language dashboard sorting) and plan implementation. Majesty Cake epic kingdonb/mecris#170 is now feature-complete across all 4 phases.

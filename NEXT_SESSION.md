@@ -1,30 +1,34 @@
-# Next Session: Majesty Cake Phase 3 — Gemini discoverability or Android widget
+# Next Session: Start next meaningful epic — Greek Backlog Booster (#129) or language dashboard sorting (#121)
 
-## Current Status (Saturday, April 4, 2026 — session 28)
-- **Recommendation ordering fixed**: Majesty Cake/aggregate rec now appears early in `get_narrator_context`. When `all_clear=True`, it is inserted at index 0 (leads the list). When partial, it appears after critical alerts (budget/Beeminder) but before walk/informational items. (`mcp_server.py:280-292`)
+## Current Status (Saturday, April 4, 2026 — session 29)
+- **Stale issue housekeeping complete**: Closure comments confirmed/posted on kingdonb/mecris#162, #130, #132. All three await kingdonb to click Close.
+- **Android Majesty Cake widget already done**: `MajestyCakeWidget` composable (MainActivity.kt:1404-1508) was implemented in commit `db7ba41` — Phase 4 was complete before this session began.
 - **6 tests** in `tests/test_narrator_aggregate_integration.py` — all passing. Total: 247 passing, 1 pre-existing failure (`test_language_sync_service_coordination` — Beeminder credentials not in env).
-- **yebyen/mecris == kingdonb/mecris** (0 commits ahead/behind after PR #171 merge). One commit added this session (`b1a4986`).
-- **Plan issue yebyen/mecris#87** — closed ✅ this session.
+- **yebyen/mecris == kingdonb/mecris** (0 commits ahead/behind as of session start). Session 29 has no code changes — housekeeping only.
+- **Plan issue yebyen/mecris#88** — closed ✅ this session.
 
 ## Verified This Session
-- [x] Majesty Cake recommendation moved before walk/informational items in `get_narrator_context`
-- [x] When `all_clear=True`: recommendation is inserted at index 0 (first in list)
-- [x] When partial (not all_clear): recommendation appended after critical budget/Beeminder checks, before walk/groq
-- [x] 6/6 tests passing in `tests/test_narrator_aggregate_integration.py`
-- [x] No regressions (247 passing, same 1 pre-existing failure)
+- [x] kingdonb/mecris#162 — closure comment already present from session 24 ✅
+- [x] kingdonb/mecris#130 — closure comment already present from session 24 ✅
+- [x] kingdonb/mecris#132 — closure comment posted this session (session 29) ✅
+- [x] Android MajestyCakeWidget already implemented (commit db7ba41) — no Phase 4 coding needed
+- [x] `aggregateStatus` fetched via `syncApi.getAggregateStatus("Bearer $token")` at MainActivity.kt:397-400
 
 ## Pending Verification (Next Session)
 
 ### Issues to Close (Requires kingdonb)
 - **kingdonb/mecris#162** — OIDC fixes implemented + merged. Comment posted. Needs kingdonb to close.
 - **kingdonb/mecris#130** — Score-delta tracking implemented + merged. Comment posted. Needs kingdonb to close.
-- **kingdonb/mecris#132** — "FIXED: Failover sync" — title says FIXED, still open. Needs triage/close.
+- **kingdonb/mecris#132** — "FIXED: Failover sync" — comment posted session 29. Needs kingdonb to close.
 
-### Next Feature Work (Majesty Cake — kingdonb/mecris#170)
-Phase 1 (backend endpoint) ✅ done. Phase 2 (discoverability in narrator context) ✅ done. Phase 3 ordering ✅ done. Phase 4 options:
-- **Gemini discoverability**: Verify that Gemini sessions actually pick up `daily_aggregate_status` from their context fetch. No code change needed — just a live validation step.
-- **Android widget integration**: Wire the Android app's `HomeFragment` or a new widget to call `get_daily_aggregate_status` and display the X/Y counter. Show Majesty Cake animation when `all_clear=True`.
-- **Other epics**: kingdonb/mecris#166 (Multi-User Twilio), #169 (Rust Reminder Engine), #129 (Greek Backlog Booster)
+### Next Feature Work
+Phase 1 (backend endpoint) ✅, Phase 2 (discoverability in narrator context) ✅, Phase 3 (ordering) ✅, Phase 4 (Android widget) ✅. Majesty Cake epic kingdonb/mecris#170 is feature-complete.
+
+Next actionable epics (pick one):
+- **kingdonb/mecris#129 — Greek Backlog Booster**: Design a mechanism to boost Greek review throughput when backlog exceeds a threshold. Scope unclear — start by reading the issue and designing an implementation approach.
+- **kingdonb/mecris#121 — Language dashboard sorting**: Language stats already sorted by safebuf (MainActivity.kt:827). Re-read issue to see if there's additional sorting/visibility work still needed.
+- **kingdonb/mecris#122 — Multiplier persistence race condition**: `surgicalUpdateInProgress` flag exists but review whether it fully prevents the race described in the issue.
+- **Gemini discoverability live validation**: Verify Gemini sessions pick up `daily_aggregate_status`. No code change needed — requires live env.
 
 ### Live Validation (carry-forward, requires live env)
 - SQL migration: `psql $NEON_DB_URL -f scripts/migrations/001_presence_table.sql`
@@ -55,3 +59,4 @@ Phase 1 (backend endpoint) ✅ done. Phase 2 (discoverability in narrator contex
     5. Walk status (needed/not needed)
     6. Anthropic budget tracking active
     7. Groq tracking urgent
+- **Android Majesty Cake widget** (MainActivity.kt:1404-1508): `MajestyCakeWidget(status = aggregateStatus)` called at line 618 of `MainNeuralDashboard`. `aggregateStatus` fetched via `syncApi.getAggregateStatus` at lines 397-400. Widget shows full 🍰 animation + golden glow on `all_clear=True`; shows X/Y score + goal icons when partial.
