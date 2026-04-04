@@ -1,5 +1,5 @@
-from datetime import datetime, time
-from ghost.presence import PresenceRecord
+from datetime import datetime, time, timezone
+from ghost.presence import PresenceRecord, get_neon_store, StatusType
 
 # Configuration for Ghost Archivist
 SILENCE_THRESHOLD_SECONDS = 12 * 3600  # 12 hours
@@ -28,3 +28,29 @@ def should_ghost_wake_up(record: PresenceRecord, current_time: datetime) -> bool
             return False
             
     return True
+
+async def perform_archival_sync(user_id: str):
+    """
+    Stub for the actual archival sync actions (trigger_language_sync, upload_walk, etc).
+    """
+    # In a real implementation, this would import and call the tools.
+    # For now, we update the ghost activity timestamp.
+    store = get_neon_store()
+    if store:
+        store.upsert(user_id, StatusType.ACTIVE_GHOST, source="archivist")
+
+async def archivists_round_robin():
+    """
+    Iterates through all users and performs archival sync if needed.
+    """
+    store = get_neon_store()
+    if not store:
+        return
+        
+    user_ids = store.get_all_users()
+    current_time = datetime.now(timezone.utc)
+    
+    for user_id in user_ids:
+        record = store.get(user_id)
+        if record and should_ghost_wake_up(record, current_time):
+            await perform_archival_sync(user_id)

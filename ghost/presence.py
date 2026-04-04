@@ -139,9 +139,11 @@ class StatusType(Enum):
     """Presence/attention state stored in the Neon ``presence`` table."""
     PULSE = "pulse"
     ACTIVE_HUMAN = "active_human"
+    ACTIVE_GHOST = "active_ghost"
     NEEDS_ATTENTION = "needs_attention"
     POUND_SAND = "pound_sand"
     SHITS_ON_FIRE_YO = "shits_on_fire_yo"
+    SILENT = "silent"
 
 
 @dataclass
@@ -149,22 +151,28 @@ class PresenceRecord:
     """A row from the Neon ``presence`` table."""
     user_id: str
     last_active: datetime
+    last_human_activity: Optional[datetime]
+    last_ghost_activity: Optional[datetime]
     source: str
     status_type: StatusType
 
 
 _UPSERT_SQL = """
-    INSERT INTO presence (user_id, last_active, source, status_type)
-    VALUES (%s, NOW() AT TIME ZONE 'UTC', %s, %s)
+    INSERT INTO presence (user_id, last_active, source, status_type, last_human_activity, last_ghost_activity)
+    VALUES (%s, NOW() AT TIME ZONE 'UTC', %s, %s, 
+            CASE WHEN %s = 'active_human' THEN NOW() AT TIME ZONE 'UTC' ELSE NULL END,
+            CASE WHEN %s = 'active_ghost' THEN NOW() AT TIME ZONE 'UTC' ELSE NULL END)
     ON CONFLICT (user_id) DO UPDATE
         SET last_active  = NOW() AT TIME ZONE 'UTC',
             source       = EXCLUDED.source,
-            status_type  = EXCLUDED.status_type
-    RETURNING user_id, last_active, source, status_type
+            status_type  = EXCLUDED.status_type,
+            last_human_activity = CASE WHEN EXCLUDED.status_type = 'active_human' THEN NOW() AT TIME ZONE 'UTC' ELSE presence.last_human_activity END,
+            last_ghost_activity = CASE WHEN EXCLUDED.status_type = 'active_ghost' THEN NOW() AT TIME ZONE 'UTC' ELSE presence.last_ghost_activity END
+    RETURNING user_id, last_active, last_human_activity, last_ghost_activity, source, status_type
 """
 
 _GET_SQL = """
-    SELECT user_id, last_active, source, status_type
+    SELECT user_id, last_active, last_human_activity, last_ghost_activity, source, status_type
     FROM presence
     WHERE user_id = %s
 """
@@ -181,10 +189,12 @@ class NeonPresenceStore:
         self.neon_url = neon_url
 
     def _row_to_record(self, row) -> PresenceRecord:
-        user_id, last_active, source, status_type_str = row
+        user_id, last_active, last_human, last_ghost, source, status_type_str = row
         return PresenceRecord(
             user_id=user_id,
             last_active=last_active,
+            last_human_activity=last_human,
+            last_ghost_activity=last_ghost,
             source=source,
             status_type=StatusType(status_type_str),
         )
@@ -193,7 +203,7 @@ class NeonPresenceStore:
         """Upsert a presence record. Creates or overwrites the row for user_id."""
         with psycopg2.connect(self.neon_url) as conn:
             with conn.cursor() as cur:
-                cur.execute(_UPSERT_SQL, (user_id, source, status_type.value))
+                cur.execute(_UPSERT_SQL, (user_id, source, status_type.value, status_type.value, status_type.value))
                 row = cur.fetchone()
         return self._row_to_record(row)
 
@@ -206,6 +216,14 @@ class NeonPresenceStore:
         if row is None:
             return None
         return self._row_to_record(row)
+
+    def get_all_users(self) -> list[str]:
+        """Return a list of all user_ids in the presence table."""
+        with psycopg2.connect(self.neon_url) as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT user_id FROM presence")
+                rows = cur.fetchall()
+        return [row[0] for row in rows]
 
     def set_pound_sand(self, user_id: str, source: str = "cli") -> PresenceRecord:
         """Human-triggered: deny bot attention. Signals bot to back off."""
