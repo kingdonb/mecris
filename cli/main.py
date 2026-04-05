@@ -30,11 +30,59 @@ def resolve_user_id(args):
     # Familiar ID is mostly for display/logging if available
     return user_id
 
+async def try_token_refresh() -> bool:
+    """Attempt a silent token refresh using the stored refresh_token.
+
+    Returns True if the session was refreshed or is still valid; False if the
+    caller should fall through to the full browser login flow.
+    """
+    import time
+    import jwt
+    from services.auth_utils import exchange_refresh_token
+
+    creds = credentials_manager.load_credentials()
+    refresh_token = creds.get("refresh_token")
+    if not refresh_token:
+        return False
+
+    # Check if the current access token is still valid.
+    access_token = creds.get("access_token")
+    if access_token:
+        try:
+            decoded = jwt.decode(access_token, options={"verify_signature": False})
+            if decoded.get("exp", 0) > time.time() + 60:
+                print(f"✅ Already logged in as: {creds.get('familiar_id', creds.get('user_id'))}")
+                return True
+        except Exception:
+            pass
+
+    print("Access token expired. Attempting silent refresh...")
+    try:
+        tokens = exchange_refresh_token(refresh_token)
+        if "access_token" not in tokens:
+            return False
+        creds["access_token"] = tokens.get("access_token")
+        if tokens.get("refresh_token"):
+            creds["refresh_token"] = tokens.get("refresh_token")
+        if tokens.get("id_token"):
+            creds["id_token"] = tokens.get("id_token")
+        if tokens.get("expires_in"):
+            creds["expires_in"] = tokens.get("expires_in")
+        credentials_manager.save_credentials(creds)
+        print(f"✅ Token refreshed. Logged in as: {creds.get('familiar_id', creds.get('user_id'))}")
+        return True
+    except Exception as e:
+        print(f"⚠️ Silent refresh failed ({e}). Falling back to browser login...")
+        return False
+
 async def run_login(args):
     """Initiate the OIDC login flow via PKCE and loopback server."""
     from services.auth_utils import generate_pkce_pair, generate_state, build_auth_url, get_redirect_port
     from services.auth_server import start_loopback_server, wait_for_code
     import webbrowser
+
+    if await try_token_refresh():
+        return
 
     print("Initiating login flow via Pocket ID...")
     
