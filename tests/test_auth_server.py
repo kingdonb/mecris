@@ -2,37 +2,60 @@ import pytest
 import threading
 import requests
 import time
-from services.auth_server import start_loopback_server
+from services.auth_server import start_loopback_server, wait_for_code
 
 def test_loopback_server_captures_code():
     """Server must start, capture code from URL, and return it."""
     state = "test_state"
-    captured_code = []
     
-    def run_server():
-        code = start_loopback_server(expected_state=state, port=0, timeout=5)
-        captured_code.append(code)
+    server_info = start_loopback_server(port=0)
+    port = server_info["port"]
+    server = server_info["server"]
+    
+    captured_wrapper = []
+    
+    def run_wait():
+        code = wait_for_code(server, expected_state=state, timeout=5)
+        captured_wrapper.append(code)
         
-    # Start server in background thread
-    server_thread = threading.Thread(target=run_server)
-    server_thread.start()
-    
-    # Wait for server to start (we need to find which port it's on)
-    # Since we can't easily find the random port in this draft, 
-    # we'll fix the port for the test.
-    time.sleep(1) 
+    # Start waiting in background thread
+    wait_thread = threading.Thread(target=run_wait)
+    wait_thread.start()
     
     # Simulate browser redirect
-    # Assuming the server is on localhost:54321 for this test case
+    # Wait for server to be ready
+    time.sleep(1.0)
     try:
-        requests.get("http://localhost:54321/?code=xyz123&state=test_state")
+        requests.get(f"http://127.0.0.1:{port}/?code=xyz123&state=test_state", timeout=1)
     except:
         pass
         
-    server_thread.join(timeout=5)
-    assert "xyz123" in captured_code
+    wait_thread.join(timeout=5)
+    assert captured_wrapper == ["xyz123"]
 
 def test_loopback_server_validates_state():
     """Server must reject request if state doesn't match."""
-    # Implementation pending...
-    pass
+    state = "expected_state"
+    
+    server_info = start_loopback_server(port=0)
+    port = server_info["port"]
+    server = server_info["server"]
+    
+    captured_wrapper = []
+    
+    def run_wait():
+        code = wait_for_code(server, expected_state=state, timeout=5)
+        captured_wrapper.append(code)
+        
+    wait_thread = threading.Thread(target=run_wait)
+    wait_thread.start()
+    
+    # Send WRONG state
+    time.sleep(0.1)
+    try:
+        requests.get(f"http://127.0.0.1:{port}/?code=xyz123&state=wrong_state", timeout=1)
+    except:
+        pass
+        
+    wait_thread.join(timeout=5)
+    assert captured_wrapper == [None]
