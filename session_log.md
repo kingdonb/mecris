@@ -625,3 +625,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: Proactive refresh threshold (`exp < now + 1800`) and `docs/AUTH_CONFIGURATION.md` update — both low urgency, carried to Pending.
 
 **Next**: CI full-venv verification of `test_auth_service.py` (7 tests); `docs/AUTH_CONFIGURATION.md` submarine mode section (draft ready in #162 comment).
+
+## 2026-04-05 — Proactive refresh threshold + AUTH_CONFIGURATION docs (session 37) 🏛️
+
+**Planned**: Write `docs/AUTH_CONFIGURATION.md` §5 (CLI token refresh) and §6 (JWKS verification); bump `try_token_refresh()` threshold from 60s → 1800s (yebyen/mecris#98).
+
+**Done**: `try_token_refresh()` threshold raised to `exp < now + 1800` in `cli/main.py`. `docs/AUTH_CONFIGURATION.md` §5 and §6 written — CLI submarine mode guarantee, env var table, standalone vs cloud verification modes. `test_auth_utils.py` 6/6 pass post-change. Committed as `18b7bbc`. All three NEXT_SESSION.md pending items from session 36 cleared.
+
+**Skipped**: CI full-venv verification of `test_auth_service.py` — bot env lacks psycopg2/mcp/fastapi; known limitation, deferred to CI.
+
+**Next**: CI verification of `test_auth_service.py` (7 tests) in full venv; optionally open upstream PR for `18b7bbc`; consider closing kingdonb/mecris#162.
