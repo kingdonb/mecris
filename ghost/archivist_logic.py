@@ -7,33 +7,14 @@ from ghost.presence import PresenceRecord, get_neon_store, StatusType
 logger = logging.getLogger("mecris.ghost")
 
 # Configuration for Ghost Archivist
-SILENCE_THRESHOLD_SECONDS = 12 * 3600  # 12 hours
-NIGHT_WINDOW_START = 22                # 10 PM
-NIGHT_WINDOW_END = 23                  # 11:59 PM
 GHOST_COOLDOWN_SECONDS = 12 * 3600     # 12 hours
 
 def should_ghost_wake_up(record: PresenceRecord, current_time: datetime) -> bool:
     """
     Returns True if the ghost should perform an archival sync.
-    Uses US/Eastern for the night window check.
+    Operates continuously based on idempotency (cooldown), regardless of human presence.
     """
-    # 1. Silence Check: Is the human actually gone?
-    if record.last_human_activity:
-        silence_duration = (current_time - record.last_human_activity).total_seconds()
-        if silence_duration < SILENCE_THRESHOLD_SECONDS:
-            return False
-    elif record.status_type != StatusType.SILENT:
-        # If no last_human_activity but status is not silent, something is odd, 
-        # but we'll assume they are silent if we haven't seen them.
-        pass
-            
-    # 2. Night Window Check: Is it the right time of day in US/Eastern?
-    eastern = zoneinfo.ZoneInfo("US/Eastern")
-    current_time_eastern = current_time.astimezone(eastern)
-    if not (NIGHT_WINDOW_START <= current_time_eastern.hour <= NIGHT_WINDOW_END):
-        return False
-        
-    # 3. Ghost Activity De-duplication: Did we already do this today?
+    # Ghost Activity De-duplication (Idempotency): Did we already do this recently?
     if record.last_ghost_activity:
         ghost_silence = (current_time - record.last_ghost_activity).total_seconds()
         if ghost_silence < GHOST_COOLDOWN_SECONDS:
