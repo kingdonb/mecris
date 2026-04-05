@@ -12,7 +12,8 @@ from typing import List, Dict, Any, Optional
 
 from dotenv import load_dotenv
 from mcp.server.fastmcp import FastMCP
-from fastapi import FastAPI
+from fastapi import FastAPI, Depends, HTTPException, Security
+from services.auth_service import get_current_user, is_standalone_mode
 
 from obsidian_client import ObsidianMCPClient
 from beeminder_client import BeeminderClient
@@ -71,25 +72,35 @@ mcp = FastMCP("mecris")
 # Create FastAPI app for HTTP endpoints
 app = FastAPI(title="Mecris API")
 
+async def get_authorized_user(user_id: Optional[str] = Depends(get_current_user)):
+    """FastAPI Dependency: Only enforces token if not in standalone mode."""
+    if is_standalone_mode():
+        # In standalone mode, we fallback to the local default user if no token is provided
+        return user_id or credentials_manager.resolve_user_id()
+    
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Authentication Required")
+    return user_id
+
 @app.get("/health")
 async def health_check():
     return {"status": "ok", "timestamp": datetime.now().isoformat()}
 
 @app.post("/intelligent-reminder/trigger")
-async def trigger_reminder_endpoint():
-    return await trigger_reminder_check()
+async def trigger_reminder_endpoint(user_id: str = Depends(get_authorized_user)):
+    return await trigger_reminder_check(user_id)
 
 @app.get("/narrator/context")
-async def narrator_context_endpoint():
-    return await get_narrator_context()
+async def narrator_context_endpoint(user_id: str = Depends(get_authorized_user)):
+    return await get_narrator_context(user_id)
 
 @app.get("/beeminder/status")
-async def beeminder_status_endpoint():
-    return await get_beeminder_status()
+async def beeminder_status_endpoint(user_id: str = Depends(get_authorized_user)):
+    return await get_beeminder_status(user_id)
 
 @app.get("/budget/status")
-async def budget_status_endpoint():
-    return get_budget_status()
+async def budget_status_endpoint(user_id: str = Depends(get_authorized_user)):
+    return get_budget_status(user_id)
 
 # Mount the MCP server's ASGI app
 # This allows the same process to serve both the MCP protocol (via stdio or SSE) 
