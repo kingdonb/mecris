@@ -80,11 +80,12 @@ class TestPulse:
 # ---------------------------------------------------------------------------
 
 class TestRun:
-    def test_yield_when_human_present(self, lock_file, log_file, capsys):
+    @pytest.mark.asyncio
+    async def test_yield_when_human_present(self, lock_file, log_file, capsys):
         status = _make_status(human_present=True, age=120.0)
 
         with patch("ghost.archivist.check_presence", return_value=status):
-            rc = run(lock_path=lock_file, log_path=log_file, mcp_url="http://fake:9999")
+            rc = await run(lock_path=lock_file, log_path=log_file, mcp_url="http://fake:9999")
 
         assert rc == 0
         captured = capsys.readouterr()
@@ -94,13 +95,14 @@ class TestRun:
         assert "[YIELD]" in log_content
         assert "human_present=True" in log_content
 
-    def test_pulse_logged_when_no_human_online(self, lock_file, log_file, capsys):
+    @pytest.mark.asyncio
+    async def test_pulse_logged_when_no_human_online(self, lock_file, log_file, capsys):
         status = _make_status(human_present=False, lock_exists=False, age=0)
         online_result = {"status": "online", "server_ts": "2026-04-02T12:00:00"}
 
         with patch("ghost.archivist.check_presence", return_value=status), \
              patch("ghost.archivist.pulse", return_value=online_result):
-            rc = run(lock_path=lock_file, log_path=log_file, mcp_url="http://fake:9999")
+            rc = await run(lock_path=lock_file, log_path=log_file, mcp_url="http://fake:9999")
 
         assert rc == 0
         log_content = open(log_file).read()
@@ -108,13 +110,14 @@ class TestRun:
         assert "mcp=online" in log_content
         assert "2026-04-02T12:00:00" in log_content
 
-    def test_pulse_logged_when_no_human_offline(self, lock_file, log_file, capsys):
+    @pytest.mark.asyncio
+    async def test_pulse_logged_when_no_human_offline(self, lock_file, log_file, capsys):
         status = _make_status(human_present=False, lock_exists=False, age=0)
         offline_result = {"status": "offline", "error": "connection refused"}
 
         with patch("ghost.archivist.check_presence", return_value=status), \
              patch("ghost.archivist.pulse", return_value=offline_result):
-            rc = run(lock_path=lock_file, log_path=log_file, mcp_url="http://fake:9999")
+            rc = await run(lock_path=lock_file, log_path=log_file, mcp_url="http://fake:9999")
 
         assert rc == 0
         log_content = open(log_file).read()
@@ -122,36 +125,40 @@ class TestRun:
         assert "mcp=offline" in log_content
         assert "connection refused" in log_content
 
-    def test_log_file_created_if_missing(self, lock_file, tmp_path):
+    @pytest.mark.asyncio
+    async def test_log_file_created_if_missing(self, lock_file, tmp_path):
         log_path = str(tmp_path / "subdir" / "ghost_archivist.log")
         status = _make_status(human_present=False, lock_exists=False, age=0)
         offline_result = {"status": "offline", "error": "server not running"}
 
         with patch("ghost.archivist.check_presence", return_value=status), \
              patch("ghost.archivist.pulse", return_value=offline_result):
-            rc = run(lock_path=lock_file, log_path=log_path, mcp_url="http://fake:9999")
+            rc = await run(lock_path=lock_file, log_path=log_path, mcp_url="http://fake:9999")
 
         assert rc == 0
         assert os.path.exists(log_path)
 
-    def test_returns_0_on_yield(self, lock_file, log_file):
+    @pytest.mark.asyncio
+    async def test_returns_0_on_yield(self, lock_file, log_file):
         status = _make_status(human_present=True, age=30.0)
         with patch("ghost.archivist.check_presence", return_value=status):
-            assert run(lock_path=lock_file, log_path=log_file) == 0
+            assert await run(lock_path=lock_file, log_path=log_file) == 0
 
-    def test_returns_0_on_pulse(self, lock_file, log_file):
+    @pytest.mark.asyncio
+    async def test_returns_0_on_pulse(self, lock_file, log_file):
         status = _make_status(human_present=False, lock_exists=False, age=0)
         offline_result = {"status": "offline", "error": "x"}
         with patch("ghost.archivist.check_presence", return_value=status), \
              patch("ghost.archivist.pulse", return_value=offline_result):
-            assert run(lock_path=lock_file, log_path=log_file) == 0
+            assert await run(lock_path=lock_file, log_path=log_file) == 0
 
-    def test_log_entry_has_iso_timestamp(self, lock_file, log_file):
+    @pytest.mark.asyncio
+    async def test_log_entry_has_iso_timestamp(self, lock_file, log_file):
         status = _make_status(human_present=False, lock_exists=False, age=0)
         offline_result = {"status": "offline", "error": "x"}
         with patch("ghost.archivist.check_presence", return_value=status), \
              patch("ghost.archivist.pulse", return_value=offline_result):
-            run(lock_path=lock_file, log_path=log_file)
+            await run(lock_path=lock_file, log_path=log_file)
 
         log_content = open(log_file).read()
         # ISO 8601 UTC timestamp should be present (ends with +00:00)
