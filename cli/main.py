@@ -62,8 +62,46 @@ async def run_login(args):
         print("❌ Login failed: Timed out or invalid state received.")
         return
 
-    print(f"✅ Authorization code received: {code[:10]}...")
-    print("Token exchange implementation pending.")
+    print(f"✅ Authorization code received.")
+    
+    # 5. Token Exchange
+    try:
+        from services.auth_utils import exchange_code_for_tokens
+        print("Exchanging code for tokens...")
+        tokens = exchange_code_for_tokens(code, verifier, port)
+        
+        if "access_token" not in tokens:
+            print(f"❌ Login failed: No access token received. Response: {tokens}")
+            return
+            
+        # 6. Extract User ID (sub)
+        # We can use the access token or ID token. 
+        # Pocket ID provides 'sub' in both usually.
+        import jwt # We might need to install this or just decode manually
+        token = tokens.get("id_token") or tokens.get("access_token")
+        decoded = jwt.decode(token, options={"verify_signature": False})
+        user_id = decoded.get("sub")
+        
+        if not user_id:
+            print("❌ Login failed: Could not determine user ID from token.")
+            return
+            
+        # 7. Save Credentials
+        creds_data = {
+            "user_id": user_id,
+            "access_token": tokens.get("access_token"),
+            "refresh_token": tokens.get("refresh_token"),
+            "id_token": tokens.get("id_token"),
+            "expires_in": tokens.get("expires_in")
+        }
+        credentials_manager.save_credentials(creds_data)
+        
+        print(f"\n✅ Login Successful!")
+        print(f"Logged in as: {user_id}")
+        print("You can now use Mecris CLI and MCP server tools.")
+        
+    except Exception as e:
+        print(f"❌ Login failed during token exchange: {e}")
 
 async def run_nag_eval(args):
     """Evaluate the reminder heuristics without triggering a send."""
