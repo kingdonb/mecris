@@ -110,6 +110,15 @@ async def upload_walk(walk_data: Dict[str, Any], user_id: str = Depends(get_auth
     try:
         import psycopg2
         neon_url = os.getenv("NEON_DB_URL")
+        
+        # Encrypt gps_route_points if present and encryption is active
+        gps_points = str(walk_data.get("gps_route_points", "0"))
+        if gps_points != "0" and usage_tracker.encryption.aesgcm:
+            try:
+                gps_points = usage_tracker.encryption.encrypt(gps_points)
+            except Exception as e:
+                logger.warning(f"Failed to encrypt gps_route_points: {e}")
+
         with psycopg2.connect(neon_url) as conn:
             with conn.cursor() as cur:
                 # Mirror Rust logic: Insert as 'logging' status
@@ -121,6 +130,7 @@ async def upload_walk(walk_data: Dict[str, Any], user_id: str = Depends(get_auth
                         end_time = EXCLUDED.end_time, 
                         step_count = EXCLUDED.step_count,
                         distance_meters = EXCLUDED.distance_meters,
+                        gps_route_points = EXCLUDED.gps_route_points,
                         status = 'logging'
                 """, (
                     user_id,
@@ -130,7 +140,8 @@ async def upload_walk(walk_data: Dict[str, Any], user_id: str = Depends(get_auth
                     walk_data.get("distance_meters"),
                     walk_data.get("distance_source"),
                     walk_data.get("confidence_score", 0.9),
-                    walk_data.get("gps_route_points", 0)
+                    gps_points,
+                    'logging'
                 ))
         
         # Trigger immediate sync for this user
@@ -966,6 +977,7 @@ async def send_reminder_message(message_data: Dict[str, Any], user_id: str = Non
     # Cooldown logic is now handled by the ReminderService heuristics.
     # We trust the engine.
 
+    message = message_data.get("message") or message_data.get("fallback_message")
     if use_template:
         from twilio_sender import send_whatsapp_template
         template_sid = message_data.get("template_sid")
@@ -977,14 +989,25 @@ async def send_reminder_message(message_data: Dict[str, Any], user_id: str = Non
             "template_sid": template_sid
         }
     else:
-        message = message_data.get("message") or message_data.get("fallback_message")
         delivery_result = smart_send_message(message)
 
     # Log to Neon, regardless of success or failure
     status_val = "sent" if delivery_result.get("sent") else "failed"
     error_val = None if delivery_result.get("sent") else "Failed to send (check twilio_sender logs)"
+    
+    # Encrypt PII fields (error_msg, content) before storing
+    encrypted_content = None
+    if message and usage_tracker.encryption.aesgcm:
+        try:
+            encrypted_content = usage_tracker.encryption.encrypt(message)
+        except Exception as e:
+            logger.warning(f"Failed to encrypt message content: {e}")
+
     if error_val and usage_tracker.encryption.aesgcm:
-        error_val = usage_tracker.encryption.encrypt(error_val)
+        try:
+            error_val = usage_tracker.encryption.encrypt(error_val)
+        except Exception as e:
+            logger.warning(f"Failed to encrypt error_msg: {e}")
     
     def _write_log():
         import psycopg2
@@ -992,8 +1015,8 @@ async def send_reminder_message(message_data: Dict[str, Any], user_id: str = Non
             with conn.cursor() as cur:
                 try:
                     cur.execute(
-                        "INSERT INTO message_log (date, type, sent_at, user_id, status, error_msg) VALUES (%s, %s, %s, %s, %s, %s)", 
-                        (today, msg_type, now, target_user_id, status_val, error_val)
+                        "INSERT INTO message_log (date, type, sent_at, user_id, status, error_msg, content) VALUES (%s, %s, %s, %s, %s, %s, %s)", 
+                        (today, msg_type, now, target_user_id, status_val, error_val, encrypted_content)
                     )
                 except psycopg2.errors.UndefinedColumn:
                     # Fallback if schema wasn't migrated

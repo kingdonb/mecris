@@ -126,6 +126,20 @@ class UsageTracker:
                 """)
 
                 cur.execute("""
+                    CREATE TABLE IF NOT EXISTS message_log (
+                        id SERIAL PRIMARY KEY,
+                        user_id TEXT REFERENCES users(pocket_id_sub) ON DELETE CASCADE,
+                        date DATE DEFAULT CURRENT_DATE,
+                        type TEXT NOT NULL,
+                        sent_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+                        content TEXT,
+                        status TEXT,
+                        error_msg TEXT,
+                        channel TEXT DEFAULT 'whatsapp'
+                    )
+                """)
+
+                cur.execute("""
                     CREATE TABLE IF NOT EXISTS autonomous_turns (
                         id SERIAL PRIMARY KEY,
                         timestamp TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -481,6 +495,39 @@ class UsageTracker:
             except Exception as e:
                 logger.error(f"UsageTracker: Neon log_alert failed: {e}")
                 raise
+
+    def record_autonomous_turn(self, agent_type: str, agenda_slug: str, input_tokens: int, output_tokens: int, 
+                               cost: float, summary: str, outcome: str = "success", container_id: str = "local", 
+                               user_id: str = None):
+        """Record an autonomous turn and encrypt the summary/outcome if possible."""
+        target_user_id = self.resolve_user_id(user_id)
+        now = datetime.now()
+        
+        # Encrypt PII fields (summary, outcome) before storing
+        stored_summary = summary
+        stored_outcome = outcome
+        if self.encryption.aesgcm:
+            try:
+                if summary: stored_summary = self.encryption.encrypt(summary)
+                if outcome: stored_outcome = self.encryption.encrypt(outcome)
+            except Exception as e:
+                logger.error(f"UsageTracker: Failed to encrypt autonomous turn data: {e}")
+
+        if self.use_neon:
+            try:
+                with psycopg2.connect(self.neon_url) as conn:
+                    with conn.cursor() as cur:
+                        cur.execute("""
+                            INSERT INTO autonomous_turns 
+                            (timestamp, agent_type, agenda_slug, input_tokens, output_tokens, cost, summary, outcome, container_id, user_id)
+                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        """, (now, agent_type, agenda_slug, input_tokens, output_tokens, cost, stored_summary, stored_outcome, container_id, target_user_id))
+                return
+            except Exception as e:
+                logger.error(f"UsageTracker: Neon record_autonomous_turn failed: {e}")
+                raise
+
+        raise RuntimeError("UsageTracker: Neon connection not active. Cannot record autonomous turn.")
 
     def get_usage_summary(self, days: int = 7, user_id: str = None) -> Dict:
         """Get usage summary for the last N days."""

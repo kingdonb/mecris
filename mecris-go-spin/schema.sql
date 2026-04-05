@@ -78,6 +78,8 @@ CREATE TABLE IF NOT EXISTS message_log (
     type VARCHAR(100) NOT NULL,
     sent_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     content TEXT,
+    status VARCHAR(50),
+    error_msg TEXT,
     channel VARCHAR(50) DEFAULT 'whatsapp'
 );
 
@@ -101,10 +103,12 @@ CREATE TABLE IF NOT EXISTS autonomous_turns (
     timestamp TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     agent_type VARCHAR(100) NOT NULL,
     agenda_slug VARCHAR(100) NOT NULL,
-    status VARCHAR(50) DEFAULT 'success',
-    tokens_consumed INTEGER DEFAULT 0,
+    input_tokens INTEGER NOT NULL,
+    output_tokens INTEGER NOT NULL,
     cost NUMERIC(10, 6) DEFAULT 0.00,
-    output TEXT
+    summary TEXT,
+    outcome VARCHAR(50) DEFAULT 'success',
+    container_id VARCHAR(100) DEFAULT 'local'
 );
 
 -- 8. Budget Tracking
