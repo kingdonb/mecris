@@ -83,7 +83,8 @@ class UsageTracker:
                 """)
                 cur.execute("""
                     CREATE TABLE IF NOT EXISTS budget_tracking (
-                        user_id TEXT PRIMARY KEY REFERENCES users(pocket_id_sub),
+                        id SERIAL PRIMARY KEY,
+                        user_id TEXT UNIQUE REFERENCES users(pocket_id_sub),
                         total_budget DOUBLE PRECISION NOT NULL,
                         remaining_budget DOUBLE PRECISION NOT NULL,
                         budget_period_start TEXT NOT NULL,
@@ -102,6 +103,14 @@ class UsageTracker:
                         completed_at TIMESTAMPTZ DEFAULT NULL,
                         due_date TEXT DEFAULT NULL,
                         user_id TEXT REFERENCES users(pocket_id_sub)
+                    )
+                """)
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS user_presence (
+                        user_id TEXT PRIMARY KEY REFERENCES users(pocket_id_sub),
+                        last_human_activity TIMESTAMPTZ,
+                        last_ghost_activity TIMESTAMPTZ,
+                        status TEXT DEFAULT 'silent'
                     )
                 """)
                 cur.execute("""

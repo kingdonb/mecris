@@ -28,8 +28,9 @@ from ghost.presence import (
 # ---------------------------------------------------------------------------
 
 def _fake_row(user_id="user1", status="pulse", source="cli"):
-    """Return a DB row tuple matching (user_id, last_active, source, status_type)."""
-    return (user_id, datetime(2026, 4, 2, 12, 0, 0, tzinfo=timezone.utc), source, status)
+    """Return a DB row tuple matching (user_id, last_active, last_human, last_ghost, source, status_type)."""
+    ts = datetime(2026, 4, 2, 12, 0, 0, tzinfo=timezone.utc)
+    return (user_id, ts, ts if status == "active_human" else None, ts if status == "active_ghost" else None, source, status)
 
 
 def _mock_conn(fetchone_row):
@@ -57,9 +58,11 @@ class TestStatusTypeEnum:
         assert values == {
             "pulse",
             "active_human",
+            "active_ghost",
             "needs_attention",
             "pound_sand",
             "shits_on_fire_yo",
+            "silent",
         }
 
     def test_round_trip_from_string(self):
@@ -150,7 +153,7 @@ class TestNeonPresenceStoreGet:
 
     def test_get_preserves_last_active_timestamp(self):
         ts = datetime(2026, 4, 2, 12, 0, 0, tzinfo=timezone.utc)
-        row = ("user1", ts, "cli", "pulse")
+        row = ("user1", ts, None, None, "cli", "pulse")
         mock_conn, _ = _mock_conn(row)
 
         with patch("ghost.presence.psycopg2.connect", return_value=mock_conn):
