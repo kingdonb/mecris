@@ -40,7 +40,7 @@ def build_auth_url(challenge: str, state: str, port: int) -> str:
     """Build the authorization URL for PKCE flow."""
     base_url = os.getenv("POCKET_ID_AUTH_ENDPOINT", DEFAULT_AUTH_ENDPOINT)
     client_id = os.getenv("POCKET_ID_CLIENT_ID", "21f65a91-c4df-468d-a256-3b66a54c6d5f")
-    redirect_uri = f"http://localhost:{port}"
+    redirect_uri = os.getenv("POCKET_ID_REDIRECT_URI", f"http://localhost:{port}")
     
     params = {
         "client_id": client_id,
@@ -58,7 +58,7 @@ def exchange_code_for_tokens(code: str, verifier: str, port: int) -> Dict[str, A
     """Exchange authorization code for tokens using PKCE."""
     token_url = os.getenv("POCKET_ID_TOKEN_ENDPOINT", DEFAULT_TOKEN_ENDPOINT)
     client_id = os.getenv("POCKET_ID_CLIENT_ID", "21f65a91-c4df-468d-a256-3b66a54c6d5f")
-    redirect_uri = f"http://localhost:{port}"
+    redirect_uri = os.getenv("POCKET_ID_REDIRECT_URI", f"http://localhost:{port}")
     
     data = {
         "grant_type": "authorization_code",

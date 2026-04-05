@@ -63,14 +63,23 @@ def start_loopback_server(port: int = 0) -> dict:
 def wait_for_code(server: HTTPServer, expected_state: str, timeout: int = 300) -> str:
     """Run the server and block until a code is captured or timeout."""
     def run_server():
-        server.serve_forever()
+        try:
+            server.serve_forever()
+        except Exception:
+            pass
         
     server_thread = threading.Thread(target=run_server)
     server_thread.daemon = True
     server_thread.start()
     
-    # Wait for the event (triggered in do_GET)
-    success = server.completion_event.wait(timeout=timeout)
+    try:
+        # Wait for the event (triggered in do_GET)
+        success = server.completion_event.wait(timeout=timeout)
+    except KeyboardInterrupt:
+        print("\nStopping authentication server...")
+        server.shutdown()
+        server_thread.join()
+        raise
     
     # Shutdown cleanly
     server.shutdown()

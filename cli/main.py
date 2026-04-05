@@ -56,7 +56,11 @@ async def run_login(args):
     webbrowser.open(auth_url)
     
     # 4. Wait for code
-    code = await asyncio.to_thread(wait_for_code, server, state, timeout=300)
+    try:
+        code = await asyncio.to_thread(wait_for_code, server, state, timeout=300)
+    except KeyboardInterrupt:
+        print("\nLogin process interrupted by user.")
+        return
     
     if not code:
         print("❌ Login failed: Timed out or invalid state received.")
