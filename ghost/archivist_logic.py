@@ -66,18 +66,16 @@ async def perform_archival_sync(user_id: str):
         logger.error(f"Archivist: Language sync failed for {user_id}: {e}")
 
     # 2. Physical Activity Sync (The "Ghost Heartbeat")
-    # If no activity today, push 0.0 to prevent derailment if the user is silent.
+    # We no longer push 0.0 to odometer goals (like 'bike') to prevent derailment.
+    # Reality Enforcement: If the user didn't walk, they derail.
     try:
         activity_status = await beeminder_client.get_daily_activity_status("bike")
         if not activity_status.get("has_activity_today"):
-            logger.info(f"Archivist: No activity today for 'bike'. Pushing 0.0 ghost heartbeat.")
-            # Note: 0.0 satisfies the 'bike' goal which requires > 0 steps (logged in miles).
-            # A 0.0 value with a comment acts as a safety datapoint.
-            await beeminder_client.add_datapoint("bike", 0.0, comment="[GHOST] Archivist automated sync (0 steps)")
+            logger.info(f"Archivist: No activity today for 'bike' for {user_id}. Reality Enforcement: No safety datapoint pushed.")
         else:
             logger.info(f"Archivist: Activity already detected for 'bike' goal for {user_id}.")
     except Exception as e:
-        logger.error(f"Archivist: Physical activity sync failed for {user_id}: {e}")
+        logger.error(f"Archivist: Physical activity sync check failed for {user_id}: {e}")
 
     # 3. Update Presence
     store = get_neon_store()
