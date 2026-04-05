@@ -1,16 +1,23 @@
-# Next Session: PII Encryption & OIDC Hardening
+# Next Session: JWKS Integration & OIDC Token Rotation
 
-## 🎯 Primary Goal: Database PII Encryption
-- [ ] **Audit high-risk tables**: `message_log` (SMS content), `walk_inferences` (GPS/telemetry), `usage_sessions` (LLM notes).
-- [ ] **Implement Field-Level Encryption**: Use the existing `EncryptionService` (AES-256-GCM) to migrate these columns from plaintext to encrypted storage.
-- [ ] **TDG Verification**: Write tests to ensure that unauthenticated database access (e.g. via direct SQL) yields only ciphertext, while the application layer transparently decrypts for the authorized user.
+## Current Status (2026-04-05)
+- `message_log.error_msg` is now **encrypted at rest** (AES-256-GCM via `EncryptionService`) — committed in `4de2ebd`.
+- `usage_sessions.notes` was already encrypted; regression test added to guard against regressions.
+- `walk_inferences` columns (step_count, distance_meters, etc.) are intentionally **not** field-level encrypted — column encryption would break SQL filter queries; Neon at-rest encryption is the correct control.
+- Auth endpoints enforce JWT (`MECRIS_MODE=cloud`); standalone mode still available for local dev.
 
-## 🔒 Auth Hardening (The "Last Mile")
-- [ ] **JWKS Integration**: Replace the "relaxed" signature check with real public key validation against the OIDC discovery endpoint.
-- [ ] **Token Rotation**: Ensure the CLI can use `refresh_token` to maintain a session without re-opening the browser.
+## Verified This Session
+- [x] **`usage_sessions.notes` encrypted**: `usage_tracker.py:199-206` already applies `EncryptionService.encrypt()` before INSERT — confirmed by new test.
+- [x] **`message_log.error_msg` encrypted**: Added 2-line encryption guard in `mcp_server.py:send_reminder_message` — confirmed by `test_pii_encryption.py` (3/3 tests pass).
+- [x] **`walk_inferences` scope decision**: Field-level encryption not applicable; documented and confirmed with team via yebyen/mecris#94 comment.
 
-## ✅ Recently Completed
-- [x] **Enforced JWT Authorization** on all FastAPI endpoints in `mcp_server.py`.
-- [x] **Implemented Standalone vs Cloud Mode**: `MECRIS_MODE` toggle for local convenience vs cloud security.
-- [x] **Familiar ID Resolution**: Login flow now resolves UUIDs to human-friendly usernames via Neon.
-- [x] **Graceful CLI Interrupts**: Fixed the "double Ctrl-C" hang in the login loop.
+## Pending Verification (Next Session)
+- [ ] **JWKS Integration**: Replace the "relaxed" JWT signature check in `services/auth_utils.py` with real public key validation against the OIDC discovery endpoint (`metnoom.urmanac.com`). The current check trusts the token without verifying the RSA signature against the JWKS endpoint.
+- [ ] **Token Rotation**: Ensure `cli/main.py` uses `refresh_token` to maintain a session without re-opening the browser. The `credentials.json` saves the `refresh_token` but the CLI does not attempt to use it on expiry.
+- [ ] **Existing test suite**: `test_pii_encryption.py` passes in the stripped-down bot env; verify it also passes in CI (requires `mcp`, `playwright`, full venv). Commit hash: `4de2ebd`.
+
+## Infrastructure Notes
+- Spin Cron trigger is **DISABLED** in `spin.toml` — do not re-enable.
+- `MECRIS_MODE=standalone` bypasses JWT for local dev; `MECRIS_MODE=cloud` enforces it.
+- `MASTER_ENCRYPTION_KEY` must be a 64-char hex string (32-byte AES-256 key) — if unset, encryption silently skips and logs a warning (check `usage_tracker.py:201`).
+- Plan issue for this session: yebyen/mecris#94 (closed partial).

@@ -585,3 +585,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: Ghost Archivist Phase B + C not started (Phases B and C need new CLI subcommand and scheduler job respectively).
 
 **Next**: Implement Ghost Archivist Phase B — `mecris internal presence` CLI handle in `cli/main.py`. Check what presence-related commands already exist before writing new ones.
+
+## 2026-04-05 — Encrypt message_log.error_msg; audit PII table coverage (session 33) 🏛️
+
+**Planned**: Audit `message_log`, `walk_inferences`, `usage_sessions` for plaintext PII; apply `EncryptionService` (AES-256-GCM) to vulnerable columns; write TDG tests proving unauthenticated SQL yields only ciphertext (yebyen/mecris#94).
+
+**Done**: Full audit completed. `usage_sessions.notes` was already encrypted (added regression guard test). `message_log.error_msg` was plaintext — added 2-line encryption guard in `mcp_server.py:send_reminder_message` and 3 passing tests in `tests/test_pii_encryption.py`. `walk_inferences` documented as out-of-scope for field-level encryption (column encryption breaks SQL filter queries; Neon at-rest encryption is the correct control). Committed as `4de2ebd`.
+
+**Skipped**: JWKS integration (real RSA signature validation) and CLI token rotation — both carry forward as the next auth hardening priorities. These are independent of the PII encryption work.
+
+**Next**: Implement JWKS integration in `services/auth_utils.py` — replace relaxed signature check with real public key fetch from `metnoom.urmanac.com/.well-known/jwks.json`. Then add refresh_token usage in `cli/main.py` so the CLI can renew sessions without re-opening the browser.
