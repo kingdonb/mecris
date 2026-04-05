@@ -1,4 +1,6 @@
 import logging
+import zoneinfo
+import asyncio
 from datetime import datetime, time, timezone
 from ghost.presence import PresenceRecord, get_neon_store, StatusType
 
@@ -13,15 +15,22 @@ GHOST_COOLDOWN_SECONDS = 12 * 3600     # 12 hours
 def should_ghost_wake_up(record: PresenceRecord, current_time: datetime) -> bool:
     """
     Returns True if the ghost should perform an archival sync.
+    Uses US/Eastern for the night window check.
     """
     # 1. Silence Check: Is the human actually gone?
     if record.last_human_activity:
         silence_duration = (current_time - record.last_human_activity).total_seconds()
         if silence_duration < SILENCE_THRESHOLD_SECONDS:
             return False
+    elif record.status_type != StatusType.SILENT:
+        # If no last_human_activity but status is not silent, something is odd, 
+        # but we'll assume they are silent if we haven't seen them.
+        pass
             
-    # 2. Night Window Check: Is it the right time of day?
-    if not (NIGHT_WINDOW_START <= current_time.hour <= NIGHT_WINDOW_END):
+    # 2. Night Window Check: Is it the right time of day in US/Eastern?
+    eastern = zoneinfo.ZoneInfo("US/Eastern")
+    current_time_eastern = current_time.astimezone(eastern)
+    if not (NIGHT_WINDOW_START <= current_time_eastern.hour <= NIGHT_WINDOW_END):
         return False
         
     # 3. Ghost Activity De-duplication: Did we already do this today?
@@ -34,13 +43,50 @@ def should_ghost_wake_up(record: PresenceRecord, current_time: datetime) -> bool
 
 async def perform_archival_sync(user_id: str):
     """
-    Stub for the actual archival sync actions (trigger_language_sync, upload_walk, etc).
+    Performs archival sync actions:
+    1. Language sync (Clozemaster -> Beeminder).
+    2. Physical activity sync (Push 0.0 if no activity to prevent derailment).
+    3. Update presence status in Neon.
     """
-    # In a real implementation, this would import and call the tools.
-    # For now, we update the ghost activity timestamp.
+    from services.language_sync_service import LanguageSyncService
+    from beeminder_client import BeeminderClient
+    
+    logger.info(f"Archivist: Performing archival sync for user {user_id}")
+    beeminder_client = BeeminderClient(user_id=user_id)
+    
+    # 1. Language Sync
+    try:
+        lang_service = LanguageSyncService(beeminder_client)
+        sync_result = await lang_service.sync_all(user_id=user_id)
+        if sync_result.get("success"):
+            logger.info(f"Archivist: Language sync completed for {user_id}")
+        else:
+            logger.warning(f"Archivist: Language sync reported failure for {user_id}: {sync_result.get('error')}")
+    except Exception as e:
+        logger.error(f"Archivist: Language sync failed for {user_id}: {e}")
+
+    # 2. Physical Activity Sync (The "Ghost Heartbeat")
+    # If no activity today, push 0.0 to prevent derailment if the user is silent.
+    try:
+        activity_status = await beeminder_client.get_daily_activity_status("bike")
+        if not activity_status.get("has_activity_today"):
+            logger.info(f"Archivist: No activity today for 'bike'. Pushing 0.0 ghost heartbeat.")
+            # Note: 0.0 satisfies the 'bike' goal which requires > 0 steps (logged in miles).
+            # A 0.0 value with a comment acts as a safety datapoint.
+            await beeminder_client.add_datapoint("bike", 0.0, comment="[GHOST] Archivist automated sync (0 steps)")
+        else:
+            logger.info(f"Archivist: Activity already detected for 'bike' goal for {user_id}.")
+    except Exception as e:
+        logger.error(f"Archivist: Physical activity sync failed for {user_id}: {e}")
+
+    # 3. Update Presence
     store = get_neon_store()
     if store:
-        store.upsert(user_id, StatusType.ACTIVE_GHOST, source="archivist")
+        try:
+            store.upsert(user_id, StatusType.ACTIVE_GHOST, source="archivist")
+            logger.info(f"Archivist: Presence updated to ACTIVE_GHOST for {user_id}")
+        except Exception as e:
+            logger.error(f"Archivist: Failed to update presence for {user_id}: {e}")
 
 async def archivists_round_robin():
     """

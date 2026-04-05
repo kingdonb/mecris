@@ -140,7 +140,7 @@ async def _global_archivist_job(user_id: str):
             return
 
         from ghost.archivist import run as archivist_run
-        archivist_run()
+        await archivist_run(user_id=user_id)
         logger.info(f"Archivist pulse logged for {user_id}")
     except Exception as e:
         logger.error(f"Archivist job failed for {user_id}: {e}")
