@@ -23,7 +23,7 @@ def _get_jwks_client() -> PyJWKClient:
     global _jwks_client
     if _jwks_client is None:
         jwks_uri = os.getenv("OIDC_JWKS_URI", f"{POCKET_ID_URL}/.well-known/jwks.json")
-        _jwks_client = PyJWKClient(jwks_uri)
+        _jwks_client = PyJWKClient(jwks_uri, lifespan=300)
     return _jwks_client
 
 

@@ -50,7 +50,7 @@ async def try_token_refresh() -> bool:
     if access_token:
         try:
             decoded = jwt.decode(access_token, options={"verify_signature": False})
-            if decoded.get("exp", 0) > time.time() + 60:
+            if decoded.get("exp", 0) > time.time() + 1800:
                 print(f"✅ Already logged in as: {creds.get('familiar_id', creds.get('user_id'))}")
                 return True
         except Exception:
