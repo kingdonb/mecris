@@ -410,7 +410,10 @@ fun MecrisDashboard(
 
                     // 2. SLOW SYNC: Proactively trigger cloud sync (Spin will skip if Home is active)
                     try {
-                        syncApi.triggerCloudSync("Bearer $token")
+                        val syncResponse = syncApi.triggerCloudSync("Bearer $token")
+                        if (!syncResponse.isSuccessful) {
+                            throw retrofit2.HttpException(syncResponse)
+                        }
                         
                         // 3. FRESH FETCH: Grab the updated stats after the sync completes
                         langResponse = syncApi.getLanguages("Bearer $token")
@@ -422,16 +425,20 @@ fun MecrisDashboard(
                         if (freshAggregateResponse.isSuccessful) {
                             aggregateStatus = freshAggregateResponse.body()
                         }
-                    } catch (se: HttpException) {
+                    } catch (se: retrofit2.HttpException) {
                         val errorBody = se.response()?.errorBody()?.string()
                         val detail = try {
-                            Gson().fromJson(errorBody, SyncResponse::class.java).message
+                            com.google.gson.Gson().fromJson(errorBody, com.mecris.go.sync.SyncResponse::class.java).message
                         } catch (e: Exception) {
                             errorBody ?: se.message()
                         }
-                        Log.w("MecrisDashboard", "Cloud sync trigger failed ($detail)")
+                        Log.e("MecrisDashboard", "Cloud sync trigger failed ($detail)")
+                        fetchError = "Sync Failed: $detail"
+                        syncStatus = "Error"
                     } catch (se: Exception) {
-                        Log.w("MecrisDashboard", "Cloud sync trigger skipped/failed: ${se.message}")
+                        Log.e("MecrisDashboard", "Cloud sync trigger skipped/failed: ${se.message}")
+                        fetchError = "Sync Error: ${se.message}"
+                        syncStatus = "Error"
                     }
 
                     // Save to cache

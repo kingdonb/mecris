@@ -59,7 +59,10 @@ class WalkHeuristicsWorker @JvmOverloads constructor(
                     val twoHoursAgo = Instant.now().minusSeconds(7200).toEpochMilli()
                     if (body?.mcp_server_active == false && lastCloudSyncTrigger < twoHoursAgo) {
                         Log.w("WalkHeuristicsWorker", "MCP Server is DARK. Triggering Autonomous Cloud Sync.")
-                        syncApi.triggerCloudSync("Bearer $token")
+                        val syncResponse = syncApi.triggerCloudSync("Bearer $token")
+                        if (!syncResponse.isSuccessful) {
+                            throw retrofit2.HttpException(syncResponse)
+                        }
                         prefs.edit().putLong("last_cloud_sync_trigger", Instant.now().toEpochMilli()).apply()
                     }
                 } else {
