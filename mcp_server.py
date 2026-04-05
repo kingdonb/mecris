@@ -873,6 +873,8 @@ async def send_reminder_message(message_data: Dict[str, Any], user_id: str = Non
     # Log to Neon, regardless of success or failure
     status_val = "sent" if delivery_result.get("sent") else "failed"
     error_val = None if delivery_result.get("sent") else "Failed to send (check twilio_sender logs)"
+    if error_val and usage_tracker.encryption.aesgcm:
+        error_val = usage_tracker.encryption.encrypt(error_val)
     
     def _write_log():
         import psycopg2
