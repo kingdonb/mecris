@@ -645,3 +645,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: Actual close of kingdonb/mecris#162 — yebyen token lacks `CloseIssue` permission on kingdonb/mecris; GraphQL returned permission denied. Comment is posted; close requires kingdonb action. CI verification of `test_auth_service.py` also deferred — fastapi/psycopg2 not in bot env.
 
 **Next**: Kingdonb to close kingdonb/mecris#162 manually (comment is ready). CI `test_auth_service.py` verification still outstanding.
+
+## 2026-04-05 — Fix async/await mismatch in ghost archivist tests (TestRun)
+
+**Planned**: Run post-DEFECT-003 test suite health check and audit ghost archivist coverage (yebyen/mecris#100).
+
+**Done**: Ran bot-compatible test suite across 5 test files (39 tests). Discovered 7 failures in `tests/test_archivist.py::TestRun` — all caused by calling `async def run()` without `await`, returning a coroutine object instead of int. Fixed by adding `@pytest.mark.asyncio` + `async def` to all 7 TestRun methods and adding `await` to each `run(...)` call. All 39 tests now pass (1 expected skip for network-bound loopback test).
+
+**Skipped**: Encryption audit (requires live Neon DB), `test_auth_service.py` CI run (requires full venv with fastapi/mcp/psycopg2), kingdonb/mecris#162 close (blocked on kingdonb permissions).
+
+**Next**: CI verification of `test_auth_service.py` (7 tests) in GitHub Actions full venv — this is the last remaining pending item from the auth hardening stack.
