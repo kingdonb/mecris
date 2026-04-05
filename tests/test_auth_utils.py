@@ -4,7 +4,35 @@ import base64
 import hashlib
 from urllib.parse import urlparse, parse_qs
 from unittest.mock import patch
-from services.auth_utils import generate_code_verifier, generate_code_challenge, build_auth_url
+from services.auth_utils import generate_code_verifier, generate_code_challenge, build_auth_url, exchange_code_for_tokens
+
+@patch('requests.post')
+def test_exchange_code_for_tokens(mock_post):
+    """Function must send correct POST request to token endpoint."""
+    mock_post.return_value.json.return_value = {"access_token": "abc", "refresh_token": "def"}
+    mock_post.return_value.status_code = 200
+    
+    code = "fake_code"
+    verifier = "fake_verifier"
+    port = 1234
+    
+    with patch.dict('os.environ', {
+        'POCKET_ID_CLIENT_ID': 'test_client',
+        'POCKET_ID_TOKEN_ENDPOINT': 'https://auth.example.com/token'
+    }):
+        tokens = exchange_code_for_tokens(code, verifier, port)
+        
+    assert tokens == {"access_token": "abc", "refresh_token": "def"}
+    
+    # Verify request
+    args, kwargs = mock_post.call_args
+    assert args[0] == 'https://auth.example.com/token'
+    data = kwargs['data']
+    assert data['grant_type'] == 'authorization_code'
+    assert data['code'] == code
+    assert data['code_verifier'] == verifier
+    assert data['client_id'] == 'test_client'
+    assert data['redirect_uri'] == f'http://localhost:{port}'
 
 def test_build_auth_url_contains_required_params():
     """Build URL must contain all OIDC and PKCE parameters."""
