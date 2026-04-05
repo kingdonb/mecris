@@ -9,8 +9,6 @@ from datetime import datetime, timedelta, date
 from typing import Dict, List, Optional, Tuple, Any
 from dataclasses import dataclass
 import os
-import psycopg2
-from psycopg2.extras import RealDictCursor
 import logging
 
 from services.credentials_manager import credentials_manager
@@ -53,6 +51,7 @@ class UsageTracker:
         """Initialize database for usage tracking."""
         if self.neon_url:
             try:
+                import psycopg2
                 self._init_neon()
                 self.use_neon = True
                 logger.info("UsageTracker: Neon database initialized successfully.")
@@ -181,6 +180,7 @@ class UsageTracker:
             return user_id or self.user_id
             
         try:
+            import psycopg2
             with psycopg2.connect(self.neon_url) as conn:
                 with conn.cursor() as cur:
                     cur.execute("SELECT pocket_id_sub FROM users WHERE familiar_id = %s", (user_id,))
@@ -220,6 +220,8 @@ class UsageTracker:
         
         if self.use_neon:
             try:
+                import psycopg2
+                from psycopg2.extras import RealDictCursor
                 with psycopg2.connect(self.neon_url) as conn:
                     with conn.cursor() as cur:
                         cur.execute("""
@@ -246,6 +248,8 @@ class UsageTracker:
         target_user_id = self.resolve_user_id(user_id)
         if self.use_neon:
             try:
+                import psycopg2
+                from psycopg2.extras import RealDictCursor
                 with psycopg2.connect(self.neon_url) as conn:
                     with conn.cursor(cursor_factory=RealDictCursor) as cur:
                         cur.execute("SELECT * FROM budget_tracking WHERE user_id = %s", (target_user_id,))
@@ -307,6 +311,8 @@ class UsageTracker:
         target_user_id = self.resolve_user_id(user_id)
         if self.use_neon:
             try:
+                import psycopg2
+                from psycopg2.extras import RealDictCursor
                 with psycopg2.connect(self.neon_url) as conn:
                     with conn.cursor(cursor_factory=RealDictCursor) as cur:
                         cur.execute("""
@@ -345,6 +351,8 @@ class UsageTracker:
         
         if self.use_neon:
             try:
+                import psycopg2
+                from psycopg2.extras import RealDictCursor
                 with psycopg2.connect(self.neon_url) as conn:
                     with conn.cursor(cursor_factory=RealDictCursor) as cur:
                         if total_budget and period_end:
@@ -380,6 +388,8 @@ class UsageTracker:
         target_user_id = self.resolve_user_id(user_id)
         if self.use_neon:
             try:
+                import psycopg2
+                from psycopg2.extras import RealDictCursor
                 with psycopg2.connect(self.neon_url) as conn:
                     with conn.cursor(cursor_factory=RealDictCursor) as cur:
                         cur.execute("""
@@ -413,6 +423,8 @@ class UsageTracker:
         
         if self.use_neon:
             try:
+                import psycopg2
+                from psycopg2.extras import RealDictCursor
                 with psycopg2.connect(self.neon_url) as conn:
                     with conn.cursor(cursor_factory=RealDictCursor) as cur:
                         cur.execute("SELECT title FROM goals WHERE id = %s AND user_id = %s", (goal_id, target_user_id))
@@ -443,6 +455,8 @@ class UsageTracker:
         
         if self.use_neon:
             try:
+                import psycopg2
+                from psycopg2.extras import RealDictCursor
                 with psycopg2.connect(self.neon_url) as conn:
                     with conn.cursor() as cur:
                         cur.execute("""
@@ -465,6 +479,8 @@ class UsageTracker:
         
         if self.use_neon:
             try:
+                import psycopg2
+                from psycopg2.extras import RealDictCursor
                 with psycopg2.connect(self.neon_url) as conn:
                     with conn.cursor() as cur:
                         cur.execute("""
@@ -485,6 +501,8 @@ class UsageTracker:
         
         if self.use_neon:
             try:
+                import psycopg2
+                from psycopg2.extras import RealDictCursor
                 with psycopg2.connect(self.neon_url) as conn:
                     with conn.cursor() as cur:
                         cur.execute("""
@@ -515,6 +533,8 @@ class UsageTracker:
 
         if self.use_neon:
             try:
+                import psycopg2
+                from psycopg2.extras import RealDictCursor
                 with psycopg2.connect(self.neon_url) as conn:
                     with conn.cursor() as cur:
                         cur.execute("""
@@ -536,6 +556,8 @@ class UsageTracker:
         
         if self.use_neon:
             try:
+                import psycopg2
+                from psycopg2.extras import RealDictCursor
                 with psycopg2.connect(self.neon_url) as conn:
                     with conn.cursor(cursor_factory=RealDictCursor) as cur:
                         # Daily usage
