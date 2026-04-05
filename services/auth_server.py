@@ -28,13 +28,13 @@ class AuthHandler(BaseHTTPRequestHandler):
         self.server.captured_state = state
         
         self.send_response(200)
-        self.send_header('Content-type', 'text/html')
+        self.send_header('Content-type', 'text/html; charset=utf-8')
         self.end_headers()
         
         success_msg = """
         <html>
             <body style="font-family: sans-serif; text-align: center; padding-top: 50px;">
-                <h1 style="color: #00C853;">✅ Login Successful</h1>
+                <h1 style="color: #00C853;">&#x2705; Login Successful</h1>
                 <p>You can now close this window and return to your terminal.</p>
             </body>
         </html>
@@ -67,26 +67,31 @@ def wait_for_code(server: HTTPServer, expected_state: str, timeout: int = 300) -
             server.serve_forever()
         except Exception:
             pass
+        # If serve_forever exits, ensure we signal the completion event
+        # so the wait() below doesn't hang if shutdown was external.
+        if hasattr(server, 'completion_event'):
+            server.completion_event.set()
         
     server_thread = threading.Thread(target=run_server)
     server_thread.daemon = True
     server_thread.start()
     
     try:
-        # Wait for the event (triggered in do_GET)
+        # Wait for the event (triggered in do_GET or by thread exit)
         success = server.completion_event.wait(timeout=timeout)
     except KeyboardInterrupt:
-        print("\nStopping authentication server...")
+        # This will likely only be caught if wait_for_code is called from the main thread
+        # without asyncio.to_thread masking it.
         server.shutdown()
         server_thread.join()
         raise
     
-    # Shutdown cleanly
+    # Ensure shutdown
     server.shutdown()
     server_thread.join()
     
-    if not success:
-        logger.warning("Auth server: Timed out waiting for redirect.")
+    if server.captured_code is None:
+        # If we reached here without a code, it was either a timeout or an external shutdown
         return None
         
     if server.captured_state != expected_state:

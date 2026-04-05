@@ -3,10 +3,13 @@ import sys
 import asyncio
 import json
 import logging
+import os
+from typing import Optional
+from dotenv import load_dotenv
 from services.credentials_manager import credentials_manager
 
-# We import the required parts lazily to make the CLI fast, 
-# but for the main entrypoint we set up the parser.
+# Load environment variables from .env if present
+load_dotenv()
 
 def setup_logging(verbose: bool):
     level = logging.DEBUG if verbose else logging.INFO
@@ -23,11 +26,13 @@ def resolve_user_id(args):
         print("❌ Authentication Required.")
         print("Please run `mecris login` to authenticate your session.")
         sys.exit(1)
+    
+    # Familiar ID is mostly for display/logging if available
     return user_id
 
 async def run_login(args):
     """Initiate the OIDC login flow via PKCE and loopback server."""
-    from services.auth_utils import generate_pkce_pair, generate_state, build_auth_url
+    from services.auth_utils import generate_pkce_pair, generate_state, build_auth_url, get_redirect_port
     from services.auth_server import start_loopback_server, wait_for_code
     import webbrowser
 
@@ -36,11 +41,17 @@ async def run_login(args):
     verifier, challenge = generate_pkce_pair()
     state = generate_state()
     
+    # 0. Get Port
+    port_preference = get_redirect_port()
+    
     # 1. Start loopback server
+    server = None
     try:
-        server_info = start_loopback_server(port=0)
+        server_info = start_loopback_server(port=port_preference)
         port = server_info["port"]
         server = server_info["server"]
+        if port_preference != 0 and port != port_preference:
+            print(f"⚠️ Could not bind to preferred port {port_preference}. Using port {port} instead.")
     except Exception as e:
         print(f"❌ Failed to start local loopback server: {e}")
         return
@@ -57,9 +68,17 @@ async def run_login(args):
     
     # 4. Wait for code
     try:
+        # We wrap wait_for_code in a thread but we keep a reference to server to shut it down if we interrupt.
         code = await asyncio.to_thread(wait_for_code, server, state, timeout=300)
-    except KeyboardInterrupt:
-        print("\nLogin process interrupted by user.")
+    except (KeyboardInterrupt, asyncio.CancelledError):
+        print("\n\nLogin process interrupted by user.")
+        if server:
+            server.shutdown()
+        return
+    except Exception as e:
+        print(f"❌ An error occurred during login: {e}")
+        if server:
+            server.shutdown()
         return
     
     if not code:
@@ -79,9 +98,7 @@ async def run_login(args):
             return
             
         # 6. Extract User ID (sub)
-        # We can use the access token or ID token. 
-        # Pocket ID provides 'sub' in both usually.
-        import jwt # We might need to install this or just decode manually
+        import jwt
         token = tokens.get("id_token") or tokens.get("access_token")
         decoded = jwt.decode(token, options={"verify_signature": False})
         user_id = decoded.get("sub")
@@ -89,10 +106,27 @@ async def run_login(args):
         if not user_id:
             print("❌ Login failed: Could not determine user ID from token.")
             return
+
+        # 7. Resolve Familiar ID from Neon if possible
+        familiar_id = user_id
+        from services.neon_sync_checker import NeonSyncChecker
+        try:
+            checker = NeonSyncChecker()
+            if checker.db_url:
+                import psycopg2
+                with psycopg2.connect(checker.db_url) as conn:
+                    with conn.cursor() as cur:
+                        cur.execute("SELECT familiar_id FROM users WHERE pocket_id_sub = %s", (user_id,))
+                        row = cur.fetchone()
+                        if row and row[0]:
+                            familiar_id = row[0]
+        except Exception:
+            pass # Fallback to UUID is fine
             
-        # 7. Save Credentials
+        # 8. Save Credentials
         creds_data = {
             "user_id": user_id,
+            "familiar_id": familiar_id,
             "access_token": tokens.get("access_token"),
             "refresh_token": tokens.get("refresh_token"),
             "id_token": tokens.get("id_token"),
@@ -101,7 +135,7 @@ async def run_login(args):
         credentials_manager.save_credentials(creds_data)
         
         print(f"\n✅ Login Successful!")
-        print(f"Logged in as: {user_id}")
+        print(f"Logged in as: {familiar_id} ({user_id})")
         print("You can now use Mecris CLI and MCP server tools.")
         
     except Exception as e:
@@ -130,8 +164,6 @@ async def run_nag_trigger(args):
     
     if args.force:
         print(f"FORCING a reminder evaluation and send for user_id='{user_id}'...")
-        # Since we are forcing, we bypass the "should_send" logic.
-        # But we still need the data of what *would* have been sent.
         check_result = await check_reminder_needed(user_id)
         if not check_result.get("should_send"):
             print("⚠️ The heuristic didn't want to send anything. We are forcing a test payload.")
@@ -201,6 +233,13 @@ async def run_internal_presence(args):
         sys.exit(1)
 
 def main():
+    try:
+        _actual_main()
+    except KeyboardInterrupt:
+        print("\nInterrupted by user.")
+        sys.exit(0)
+
+def _actual_main():
     parser = argparse.ArgumentParser(description="Mecris CLI - The Ground Truth")
     parser.add_argument("-v", "--verbose", action="store_true", help="Enable debug logging")
     parser.add_argument("--user-id", type=str, default=None, help="Target user ID (overrides local credentials)")

@@ -36,11 +36,31 @@ def generate_pkce_pair() -> Tuple[str, str]:
     challenge = generate_code_challenge(verifier)
     return verifier, challenge
 
+def get_redirect_port() -> int:
+    """Extract the port from POCKET_ID_REDIRECT_URI or return 0 for random."""
+    env_uri = os.getenv("POCKET_ID_REDIRECT_URI")
+    if env_uri:
+        from urllib.parse import urlparse
+        try:
+            parsed = urlparse(env_uri)
+            if parsed.port:
+                return int(parsed.port)
+        except Exception:
+            pass
+    return 0
+
+def get_redirect_uri(port: int) -> str:
+    """Determine the redirect URI to use, prioritizing the environment variable."""
+    env_uri = os.getenv("POCKET_ID_REDIRECT_URI")
+    if env_uri:
+        return env_uri
+    return f"http://localhost:{port}"
+
 def build_auth_url(challenge: str, state: str, port: int) -> str:
     """Build the authorization URL for PKCE flow."""
     base_url = os.getenv("POCKET_ID_AUTH_ENDPOINT", DEFAULT_AUTH_ENDPOINT)
     client_id = os.getenv("POCKET_ID_CLIENT_ID", "21f65a91-c4df-468d-a256-3b66a54c6d5f")
-    redirect_uri = os.getenv("POCKET_ID_REDIRECT_URI", f"http://localhost:{port}")
+    redirect_uri = get_redirect_uri(port)
     
     params = {
         "client_id": client_id,
@@ -58,7 +78,7 @@ def exchange_code_for_tokens(code: str, verifier: str, port: int) -> Dict[str, A
     """Exchange authorization code for tokens using PKCE."""
     token_url = os.getenv("POCKET_ID_TOKEN_ENDPOINT", DEFAULT_TOKEN_ENDPOINT)
     client_id = os.getenv("POCKET_ID_CLIENT_ID", "21f65a91-c4df-468d-a256-3b66a54c6d5f")
-    redirect_uri = os.getenv("POCKET_ID_REDIRECT_URI", f"http://localhost:{port}")
+    redirect_uri = get_redirect_uri(port)
     
     data = {
         "grant_type": "authorization_code",
