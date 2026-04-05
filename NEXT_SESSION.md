@@ -1,34 +1,16 @@
-# Next Session: Start Ghost Archivist Phase C — Background Job Integration
+# Next Session: PII Encryption & OIDC Hardening
 
-## Current Status (Saturday, April 4, 2026 — session 30)
-- **CLI PKCE Login FLOW COMPLETE**: The `mecris login` command now performs a full OIDC PKCE handshake.
-    - [x] Secure Verifier/Challenge generation.
-    - [x] Local Loopback Server captures redirects.
-    - [x] Token Exchange implemented.
-    - [x] JWT Decoding extracts User ID.
-    - [x] Persistence to `~/.mecris/credentials.json`.
-- **Ghost Archivist Foundation DONE**:
-    - [x] `presence` table updated for human/ghost separation.
-    - [x] `should_ghost_wake_up` logic implemented (12h silence + night window).
-    - [x] `archivists_round_robin` implemented and tested.
-- **Security & Stability**:
-    - [x] All MCP tools enforced with `resolve_target_user`.
-    - [x] Neon schema bugs fixed (budget_tracking SERIAL).
-    - [x] 263 tests passed (4 skipped).
-- **Repos in sync**: Reconciled with `mecris-bot` fixes.
+## 🎯 Primary Goal: Database PII Encryption
+- [ ] **Audit high-risk tables**: `message_log` (SMS content), `walk_inferences` (GPS/telemetry), `usage_sessions` (LLM notes).
+- [ ] **Implement Field-Level Encryption**: Use the existing `EncryptionService` (AES-256-GCM) to migrate these columns from plaintext to encrypted storage.
+- [ ] **TDG Verification**: Write tests to ensure that unauthenticated database access (e.g. via direct SQL) yields only ciphertext, while the application layer transparently decrypts for the authorized user.
 
-## Verified This Session
-- [x] `mecris login` opens browser and receives code. ✅
-- [x] `mecris internal presence` reports correctly to Neon. ✅
-- [x] Ghost wake-up logic handles silence/window correctly. ✅
-- [x] Language sync service coordination test passing in CI. ✅
+## 🔒 Auth Hardening (The "Last Mile")
+- [ ] **JWKS Integration**: Replace the "relaxed" signature check with real public key validation against the OIDC discovery endpoint.
+- [ ] **Token Rotation**: Ensure the CLI can use `refresh_token` to maintain a session without re-opening the browser.
 
-## Pending Verification (Next Session)
-- [ ] **Ghost Phase C**: Integrate `archivists_round_robin` into `scheduler.py`'s 4-hour cycle.
-- [ ] **Live CLI Login**: Perform a real login against metnoom.urmanac.com and verify token storage.
-
-## Infrastructure Notes
-- **PKCE Client ID**: Uses `POCKET_ID_CLIENT_ID` from `.env`.
-- **Loopback Port**: Server binds to port 0 (random) and tells the redirect URI.
-- **Test Exclusions**: `tests/test_scheduler_election.py` (requires live Neon).
-- **Skipped Tests**: `test_loopback_server_captures_code` (timing flaky) + SMS tests (disabled).
+## ✅ Recently Completed
+- [x] **Enforced JWT Authorization** on all FastAPI endpoints in `mcp_server.py`.
+- [x] **Implemented Standalone vs Cloud Mode**: `MECRIS_MODE` toggle for local convenience vs cloud security.
+- [x] **Familiar ID Resolution**: Login flow now resolves UUIDs to human-friendly usernames via Neon.
+- [x] **Graceful CLI Interrupts**: Fixed the "double Ctrl-C" hang in the login loop.
