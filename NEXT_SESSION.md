@@ -9,17 +9,19 @@
 - kingdonb/mecris#162 is **still open** — yebyen token lacks `CloseIssue` permission on kingdonb/mecris; requires kingdonb action.
 
 ## Verified This Session (2026-04-05)
-- [x] **Archivist Ghost Session**: Implemented `ghost/archivist_logic.py` and `ghost/archivist.py` with autonomous wake-up heuristic (silence + US/Eastern night window) and archival sync (Clozemaster + 0-step Beeminder heartbeat).
+- [x] **Archivist Ghost Session**: Implemented `ghost/archivist_logic.py` and `ghost/archivist.py` with autonomous wake-up heuristic (silence + US/Eastern night window) and archival sync (Clozemaster).
+- [x] **Reality Enforcement (DEFECT-003)**: Removed the "savior" 0.0 ghost heartbeat logic from `perform_archival_sync`. The system now correctly allows derailment if no actual activity is found.
 - [x] **Database PII Encryption**: Audited and implemented encryption for high-risk fields: `message_log.content`, `walk_inferences.gps_route_points`, and `autonomous_turns` (summary/outcome).
+- [x] **Infrastructure Portability**: Fixed `.mcp.json` to use relative paths and `uv` from system PATH.
+- [x] **Import Resilience**: Refactored `usage_tracker.py` to use lazy imports for `psycopg2`, allowing the MCP server to initialize in environments (like GitHub Actions runners) without Postgres system headers.
 - [x] **Schema Alignment**: Harmonized Neon database schema between `UsageTracker.py`, `mcp_server.py`, and `schema.sql`.
+- [x] **`try_token_refresh()` threshold bump**: `exp < now + 1800` committed as `18b7bbc`.
 - [x] **`test_auth_utils.py`**: 6/6 passed in bot env (Python 3.12, no venv) ✅
 - [x] **`test_auth_server.py`**: 1 passed, 1 skipped (network-bound test expected) ✅
 - [x] **Closing comment posted on kingdonb/mecris#162**: all deliverables documented, test results recorded.
 - [x] **Upstream PR for `18b7bbc` is moot**: already merged into kingdonb/mecris main via `1ffb4a2`.
-- [x] **`try_token_refresh()` threshold bump**: `exp < now + 1800` committed as `18b7bbc`.
 
 ## Pending Verification (Next Session)
-- [ ] **Ghost Heartbeat Verification**: Manually trigger an archivist pulse and verify the `[GHOST]` datapoint appears in Beeminder for the `bike` goal.
 - [ ] **Encryption Audit**: Verify that `message_log.content` is actually being stored as ciphertext in Neon.
 - [ ] **CI verification of `test_auth_service.py`** (7 tests): Requires `fastapi`, `mcp`, `psycopg2` — bot env lacks these. Should pass in CI (GitHub Actions full venv).
 - [ ] **kingdonb/mecris#162 close**: Closing comment is posted. Kingdonb needs to close it manually.
