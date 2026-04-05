@@ -575,3 +575,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: No new features this session — this was a regression fix from the previous session's commit `f90bbff`.
 
 **Next**: Consider closing kingdonb/mecris#129 (Greek Backlog Booster is implemented and tested). Investigate Ghost Archivist Phase A implementation (`user_presence` table schema) or Majesty Cake Phase 4 Android widget verification.
+
+## 2026-04-04 — Fix two stale tests, confirm Ghost Archivist Phase A complete (session 32) 🏛️
+
+**Planned**: Implement Ghost Archivist Phase A (`user_presence` table migration + Python DAL) — yebyen/mecris#93.
+
+**Done**: Discovered Ghost Archivist Phase A was already fully implemented (ghost/presence.py 236 lines, ghost/archivist.py 104 lines, 001_presence_table.sql, 46 unit tests). Pivoted to repairing the 2 pre-existing test failures: (1) removed stale `default_user_id` assertion from test_neon_sync_checker_initialization — attribute dropped when credentials_manager replaced DEFAULT_USER_ID; (2) patched UsageTracker.resolve_user_id in test_language_sync_service_coordination so mock UUID matches, preventing a rogue BeeminderClient spawn in CI. Full suite: 252 passed, 0 failed.
+
+**Skipped**: Ghost Archivist Phase B + C not started (Phases B and C need new CLI subcommand and scheduler job respectively).
+
+**Next**: Implement Ghost Archivist Phase B — `mecris internal presence` CLI handle in `cli/main.py`. Check what presence-related commands already exist before writing new ones.

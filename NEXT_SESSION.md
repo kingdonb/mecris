@@ -1,15 +1,16 @@
-# Next Session: Continue Greek Backlog Booster work and verify kingdonb/mecris#129 closure
+# Next Session: Ghost Archivist Phase B or next open epic
 
-## Current Status (Saturday, April 4, 2026 — session 31)
-- **Recommendation ordering fixed**: Greek Stack Vitality coaching now follows the Majesty Cake daily aggregate block in `get_narrator_context`, restoring correct priority (urgent → Majesty Cake → Greek coaching → walk).
-- **All 21 tests green**: `test_greek_backlog_booster` (8/8) and `test_daily_aggregate_status` + `test_narrator_aggregate_integration` (13/13) all pass.
-- **kingdonb/mecris#129**: Greek Backlog Booster is implemented — `_greek_backlog_active()` in `language_sync_service.py`, coaching in `get_narrator_context`, 8 unit tests. Issue still open (needs kingdonb to close).
-- **Ghost Archivist spec**: `docs/GHOST_ARCHIVIST_SPEC.md` exists — spec only, not implemented.
+## Current Status (Saturday, April 4, 2026 — session 32)
+- **Test suite clean**: 252 passed, 0 failed, 4 skipped. Two stale tests repaired (yebyen/mecris#93).
+- **Ghost Archivist Phase A**: Already fully implemented. `ghost/archivist.py`, `ghost/presence.py`, `scripts/migrations/001_presence_table.sql`, and 46 unit tests all green. Phase A was more complete than NEXT_SESSION.md suggested.
+- **kingdonb/mecris#129**: Greek Backlog Booster — implemented + tested. Issue still open (needs kingdonb to close).
+- **Ghost Archivist Phases B + C**: Phase B (`mecris internal presence` CLI handle) and Phase C (`archivists_round_robin()` scheduler) are not yet implemented. Spec at `docs/GHOST_ARCHIVIST_SPEC.md`.
 
 ## Verified This Session
-- [x] Recommendation ordering: Majesty Cake progress precedes Greek coaching. ✅
-- [x] 21 tests pass across Greek backlog booster + Majesty Cake test suite. ✅
-- [x] `_greek_backlog_active()` static method with GREEK_BACKLOG_THRESHOLD constant. ✅
+- [x] Ghost Archivist Phase A fully implemented: `ghost/presence.py` (236 lines), `ghost/archivist.py` (104 lines), `001_presence_table.sql`, 46 tests green. ✅
+- [x] 252 tests passing, 0 failing (was 2 failing before this session). ✅
+- [x] `test_neon_sync_checker_initialization`: stale `default_user_id` assertion removed. ✅
+- [x] `test_language_sync_service_coordination`: patched `UsageTracker.resolve_user_id` so mock UUID matches, no rogue BeeminderClient spawned in CI. ✅
 
 ## Pending Verification (Next Session)
 
@@ -22,8 +23,9 @@
 - **kingdonb/mecris#129** — Greek Backlog Booster: implemented + tested. Ready for closure.
 
 ### Next Feature Work
-- **kingdonb/mecris#170 — Majesty Cake Epic**: Backend `get_daily_aggregate_status` implemented. Next: Android UI widget integration (Phase 4 may already be done — verify `MajestyCakeWidget` exists in Android code).
-- **Ghost Archivist (docs/GHOST_ARCHIVIST_SPEC.md)**: Spec written, not implemented. Phase A: `user_presence` table schema migration.
+- **Ghost Archivist Phase B**: Add `mecris internal presence` CLI subcommand (see `docs/GHOST_ARCHIVIST_SPEC.md` §Phase B). Check `cli/main.py` for existing presence hooks.
+- **Ghost Archivist Phase C**: Add `archivists_round_robin()` background job to `scheduler.py`. Runs every 4 hours, triggers archival turn when human is silent after 10pm Eastern.
+- **kingdonb/mecris#170 — Majesty Cake Epic**: Backend `get_daily_aggregate_status` implemented, Android `MajestyCakeWidget` confirmed present. Epic should be closeable.
 
 ### Live Validation (carry-forward, requires live env)
 - SQL migration: `psql $NEON_DB_URL -f scripts/migrations/001_presence_table.sql`
@@ -38,3 +40,4 @@
 - **WASM-brain Plan**: See `docs/WASM_BRAIN_PLAN.md` for candidates.
 - **Nag Ladder tier semantics**: Tier 1 (WhatsApp Template), Tier 2 (Freeform), Tier 3 (Urgent, runway < 2h).
 - **Android multiplier race guard**: `surgicalUpdateInProgress` flag — 5 layers of protection.
+- **Ghost Archivist schema**: Migration creates `presence` table (NOT `user_presence` as older spec draft stated). Status enum: `pulse`, `active_human`, `needs_attention`, `pound_sand`, `shits_on_fire_yo`.

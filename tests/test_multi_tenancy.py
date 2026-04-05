@@ -90,6 +90,8 @@ def neon_checker():
 
 def test_neon_sync_checker_initialization(neon_checker):
     assert neon_checker.db_url == "postgres://user:pass@localhost/db"
+    # default_user_id was removed when credentials_manager replaced DEFAULT_USER_ID env-var lookup
+
 
 @patch("psycopg2.connect")
 def test_has_walk_today_with_user_id(mock_connect, neon_checker):

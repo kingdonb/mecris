@@ -43,11 +43,13 @@ async def test_language_sync_service_coordination(mock_dependencies):
         ]
     mock_beeminder.get_all_goals = mock_get_all_goals
     
+    _expected_user_id = mock_beeminder.user_id
     with patch.dict("os.environ", {"NEON_DB_URL": "postgres://fake"}):
-        service = LanguageSyncService(mock_beeminder)
+        with patch("usage_tracker.UsageTracker.resolve_user_id", return_value=_expected_user_id):
+            service = LanguageSyncService(mock_beeminder)
 
-        # 3. Run sync
-        result = await service.sync_all(dry_run=False)
+            # 3. Run sync
+            result = await service.sync_all(dry_run=False)
     # 4. Verify results
     assert result["success"] is True
     assert result["min_safebuf"] == 6
