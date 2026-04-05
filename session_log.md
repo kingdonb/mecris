@@ -605,3 +605,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: Token rotation (`cli/main.py` refresh_token flow) — deferred, not in scope for this plan. CI full-venv verification — bot env lacks psycopg2/mcp.
 
 **Next**: Implement `exchange_refresh_token()` so the CLI uses `refresh_token` to silently renew the session instead of re-opening the browser on token expiry.
+
+## 2026-04-05 — Implement token refresh flow in CLI (session 35) 🏛️
+
+**Planned**: Add `exchange_refresh_token()` to `services/auth_utils.py` and wire into `cli/main.py` so the CLI silently renews the session when the access token is expired (yebyen/mecris#96).
+
+**Done**: `exchange_refresh_token()` added to `auth_utils.py` (refresh_token grant, no PKCE params). `try_token_refresh()` added to `cli/main.py` — checks JWT expiry, calls refresh, saves updated creds (including rotating refresh_token if returned), falls back to browser on failure. `test_exchange_refresh_token()` added to `test_auth_utils.py` — 6/6 pass. Committed as `a5bc50d`.
+
+**Skipped**: JWKS cache TTL config (low urgency, one-liner — deferred). CI full-venv verification — bot env lacks psycopg2/mcp; known limitation.
+
+**Next**: JWKS cache TTL (set `lifespan` on `PyJWKClient`), then open a PR from yebyen to kingdonb with the 4-commit auth hardening stack.

@@ -1,25 +1,25 @@
-# Next Session: Token Rotation — cli/main.py refresh_token flow
+# Next Session: JWKS cache TTL + CI verification of auth test suites
 
 ## Current Status (2026-04-05)
-- `services/auth_service.py` now performs **real RSA signature verification** via `PyJWKClient` in cloud mode — commit `3e41841`.
-- Standalone mode (`MECRIS_MODE=standalone`) retains relaxed decode (expiry-only check) for local dev.
-- Issuer claim is now enforced after signature verification (was silently ignored with `pass`).
-- `tests/test_auth_service.py` added: 7 tests covering valid token, wrong-key 401, expiry 401, issuer mismatch 401, standalone passthrough, standalone expiry, and JWKS non-invocation in standalone.
-- `message_log.error_msg` is encrypted at rest (AES-256-GCM) — committed in `4de2ebd`.
+- `exchange_refresh_token()` is implemented in `services/auth_utils.py` — posts `grant_type=refresh_token` to the OIDC token endpoint (commit `a5bc50d`).
+- `try_token_refresh()` added to `cli/main.py` — checks expiry, silently refreshes if a `refresh_token` exists, falls back to the full browser flow on failure. Called at the top of `run_login()`.
+- `tests/test_auth_utils.py` extended with `test_exchange_refresh_token()` — 6/6 pass in bot env.
+- JWKS RSA signature verification fully in place (`services/auth_service.py`, commit `3e41841`).
+- `message_log.error_msg` is encrypted at rest (AES-256-GCM, commit `4de2ebd`).
 
 ## Verified This Session
-- [x] **JWKS signature verification**: `PyJWKClient` fetches keys from `{POCKET_ID_URL}/.well-known/jwks.json`; forged tokens (wrong RSA key) receive 401 — confirmed by `tests/test_auth_service.py` (7/7 pass).
-- [x] **Issuer enforcement**: tokens with `iss != OIDC_ISSUER` raise 401 after signature is verified.
-- [x] **Standalone mode unchanged**: no JWKS call, expiry-only check preserved.
+- [x] **Token refresh function**: `exchange_refresh_token()` POSTs `grant_type=refresh_token` to the token endpoint without `code_verifier` or `redirect_uri` — confirmed by `test_exchange_refresh_token()` (6/6 pass).
+- [x] **Silent refresh in CLI**: `try_token_refresh()` checks token expiry, refreshes silently, saves updated credentials (including rotating `refresh_token` if returned), and returns True — no browser required.
+- [x] **Fallback behaviour**: if refresh fails (e.g. expired refresh token), prints a warning and falls through to the full browser PKCE flow.
 
 ## Pending Verification (Next Session)
-- [ ] **Token Rotation**: `cli/main.py` saves `refresh_token` in `credentials.json` but does not attempt to use it on expiry — the user is re-prompted to open the browser. Implement `exchange_refresh_token()` in `services/auth_utils.py` and call it in the CLI login flow when the access token is expired.
-- [ ] **CI verification**: Confirm `test_pii_encryption.py` (commit `4de2ebd`) and `test_auth_service.py` (commit `3e41841`) pass in the full CI venv (requires `mcp`, `playwright`, `psycopg2`). The psycopg2 test (`test_usage_sessions_notes_are_encrypted_at_rest`) fails in the stripped bot env — expected.
-- [ ] **JWKS cache behavior**: `PyJWKClient` caches keys in-process. Verify that key rotation at the IdP side is handled (PyJWT's `PyJWKClient` supports cache TTL via `lifespan` param — consider whether to set it explicitly).
+- [ ] **CI verification**: Confirm `test_auth_service.py` (7 tests) and `test_auth_utils.py` (6 tests) pass in the full CI venv (requires `mcp`, `playwright`, `psycopg2`). The psycopg2 test (`test_usage_sessions_notes_are_encrypted_at_rest`) fails in the stripped bot env — expected.
+- [ ] **JWKS cache TTL**: `PyJWKClient` caches keys in-process. Consider setting the `lifespan` param explicitly (e.g. `lifespan=300`) to bound how long a rotated key would be missed. Low urgency but worth a one-liner config.
+- [ ] **PR to upstream**: yebyen/mecris is 4 commits ahead of kingdonb/mecris — the auth hardening stack (`3e41841`, `4de2ebd`, `f716d43`, `a5bc50d`) is ready to PR upstream when kingdonb is ready to review.
 
 ## Infrastructure Notes
 - Spin Cron trigger is **DISABLED** in `spin.toml` — do not re-enable.
 - `MECRIS_MODE=standalone` bypasses JWKS for local dev; `MECRIS_MODE=cloud` enforces it.
 - `MASTER_ENCRYPTION_KEY` must be a 64-char hex string (32-byte AES-256 key) — if unset, encryption silently skips and logs a warning.
 - JWKS URI defaults to `{POCKET_ID_URL}/.well-known/jwks.json`; override via `OIDC_JWKS_URI` env var.
-- Plan issue for this session: yebyen/mecris#95 (closed complete).
+- Plan issue for this session: yebyen/mecris#96 (closed complete).

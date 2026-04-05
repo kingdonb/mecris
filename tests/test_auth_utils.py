@@ -4,7 +4,7 @@ import base64
 import hashlib
 from urllib.parse import urlparse, parse_qs
 from unittest.mock import patch
-from services.auth_utils import generate_code_verifier, generate_code_challenge, build_auth_url, exchange_code_for_tokens
+from services.auth_utils import generate_code_verifier, generate_code_challenge, build_auth_url, exchange_code_for_tokens, exchange_refresh_token
 
 @patch('requests.post')
 def test_exchange_code_for_tokens(mock_post):
@@ -87,3 +87,32 @@ def test_verifiers_are_unique():
     v1 = generate_code_verifier()
     v2 = generate_code_verifier()
     assert v1 != v2
+
+@patch('requests.post')
+def test_exchange_refresh_token(mock_post):
+    """exchange_refresh_token must POST refresh_token grant without code_verifier or redirect_uri."""
+    mock_post.return_value.json.return_value = {
+        "access_token": "new_access",
+        "refresh_token": "new_refresh",
+        "expires_in": 3600
+    }
+    mock_post.return_value.status_code = 200
+    mock_post.return_value.raise_for_status = lambda: None
+
+    with patch.dict('os.environ', {
+        'POCKET_ID_CLIENT_ID': 'test_client',
+        'POCKET_ID_TOKEN_ENDPOINT': 'https://auth.example.com/token'
+    }):
+        tokens = exchange_refresh_token("old_refresh_token")
+
+    assert tokens["access_token"] == "new_access"
+    assert tokens["refresh_token"] == "new_refresh"
+
+    args, kwargs = mock_post.call_args
+    assert args[0] == 'https://auth.example.com/token'
+    data = kwargs['data']
+    assert data['grant_type'] == 'refresh_token'
+    assert data['refresh_token'] == 'old_refresh_token'
+    assert data['client_id'] == 'test_client'
+    assert 'code_verifier' not in data
+    assert 'redirect_uri' not in data

@@ -79,7 +79,7 @@ def exchange_code_for_tokens(code: str, verifier: str, port: int) -> Dict[str, A
     token_url = os.getenv("POCKET_ID_TOKEN_ENDPOINT", DEFAULT_TOKEN_ENDPOINT)
     client_id = os.getenv("POCKET_ID_CLIENT_ID", "21f65a91-c4df-468d-a256-3b66a54c6d5f")
     redirect_uri = get_redirect_uri(port)
-    
+
     data = {
         "grant_type": "authorization_code",
         "client_id": client_id,
@@ -87,7 +87,22 @@ def exchange_code_for_tokens(code: str, verifier: str, port: int) -> Dict[str, A
         "code_verifier": verifier,
         "redirect_uri": redirect_uri
     }
-    
+
+    resp = requests.post(token_url, data=data)
+    resp.raise_for_status()
+    return resp.json()
+
+def exchange_refresh_token(refresh_token: str) -> Dict[str, Any]:
+    """Exchange a refresh token for new tokens."""
+    token_url = os.getenv("POCKET_ID_TOKEN_ENDPOINT", DEFAULT_TOKEN_ENDPOINT)
+    client_id = os.getenv("POCKET_ID_CLIENT_ID", "21f65a91-c4df-468d-a256-3b66a54c6d5f")
+
+    data = {
+        "grant_type": "refresh_token",
+        "client_id": client_id,
+        "refresh_token": refresh_token,
+    }
+
     resp = requests.post(token_url, data=data)
     resp.raise_for_status()
     return resp.json()
