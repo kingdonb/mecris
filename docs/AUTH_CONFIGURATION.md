@@ -97,3 +97,54 @@ If you cannot reach the OAuth server while on VPN:
 1.  Verify that `metnoom.urmanac.com` is resolvable and reachable from your VPN subnets.
 2.  Check if your VPN is split-tunneling and excluding the auth server's IP.
 3.  Perform a "Surface for Air" sync: Connect to the home network, open the app to trigger a token refresh, and then return to the VPN. This buys you another 60 minutes of Access Token life.
+
+## 5. CLI Token Refresh (`cli/main.py`)
+
+The Python CLI implements silent token refresh via `try_token_refresh()` before every `login` command.
+
+### Behavior
+
+1. Loads `~/.mecris/credentials.json` and checks for a stored `refresh_token`.
+2. Decodes the current `access_token` without signature verification and checks expiry.
+3. If the token is valid with **≥ 30 minutes** remaining, skips refresh entirely (avoids unnecessary round-trips to the auth server).
+4. Otherwise, calls `exchange_refresh_token()` using `grant_type=refresh_token`.
+5. On success: updates `credentials.json` with the new `access_token` (and rotated `refresh_token` if the server returns one).
+6. On any exception (network timeout, DNS failure, HTTP 5xx): **the existing `refresh_token` is preserved**. The CLI prints a warning and falls back to the full browser PKCE flow.
+
+### Submarine Mode Guarantee
+
+The 30-minute pre-expiry window (`exp < now + 1800`) means the CLI will attempt a refresh before the last 30 minutes of token life. If the auth server is reachable, the access token is renewed proactively. If unreachable, the stored refresh token remains intact — no re-authentication is needed once connectivity is restored, as long as the 30-day refresh token has not expired.
+
+```
+Access token valid for ≥ 30 min → skip refresh, proceed
+Access token valid for < 30 min → attempt silent refresh
+  ├── server reachable → new access token stored ✅
+  └── server unreachable → refresh_token preserved, falls back to browser PKCE ⚠️
+```
+
+## 6. Server-Side JWKS Verification (`services/auth_service.py`)
+
+The MCP/Spin backend verifies incoming JWTs using one of two modes controlled by `MECRIS_MODE`.
+
+### Environment Variables
+
+| Variable | Default | Description |
+|---|---|---|
+| `MECRIS_MODE` | `standalone` | `standalone` = relaxed (expiry only); `cloud` = full RSA verification |
+| `POCKET_ID_AUTH_ENDPOINT` | `https://metnoom.urmanac.com` | Pocket-ID base URL |
+| `OIDC_JWKS_URI` | `{POCKET_ID_AUTH_ENDPOINT}/.well-known/jwks.json` | Override JWKS endpoint |
+| `OIDC_ISSUER` | same as `POCKET_ID_AUTH_ENDPOINT` | Expected `iss` claim in tokens |
+
+### Standalone Mode (`MECRIS_MODE=standalone`)
+
+Decodes the JWT without signature verification. Only checks token expiry (`exp` claim). Use for local development where the Pocket-ID server is not accessible.
+
+### Cloud Mode (`MECRIS_MODE=cloud`)
+
+Full RSA signature verification via the JWKS endpoint:
+1. `PyJWKClient` fetches the JWKS from `OIDC_JWKS_URI` and caches signing keys for **300 seconds** (`lifespan=300`). Keys rotate automatically every ~5 minutes.
+2. Verifies the token signature against the matching key (by `kid`).
+3. Validates algorithm `RS256`.
+4. Checks the `iss` claim matches `OIDC_ISSUER` — mismatches return HTTP 401.
+
+**Note**: `verify_aud=False` is intentional — Pocket-ID does not populate the `aud` claim in its JWTs.
