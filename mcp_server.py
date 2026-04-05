@@ -74,17 +74,117 @@ app = FastAPI(title="Mecris API")
 
 async def get_authorized_user(user_id: Optional[str] = Depends(get_current_user)):
     """FastAPI Dependency: Only enforces token if not in standalone mode."""
-    if is_standalone_mode():
+    mode = os.getenv("MECRIS_MODE", "standalone")
+    print(f"STRICT AUTH DEBUG: mode={mode} user_id={user_id}", file=sys.stderr)
+    
+    if mode == "standalone":
         # In standalone mode, we fallback to the local default user if no token is provided
         return user_id or credentials_manager.resolve_user_id()
     
     if not user_id:
+        print("STRICT AUTH DEBUG: REJECTING 401", file=sys.stderr)
         raise HTTPException(status_code=401, detail="Authentication Required")
     return user_id
 
 @app.get("/health")
 async def health_check():
-    return {"status": "ok", "timestamp": datetime.now().isoformat()}
+    # Check Neon connectivity
+    neon_active = False
+    try:
+        import psycopg2
+        conn = psycopg2.connect(os.getenv("NEON_DB_URL"))
+        conn.close()
+        neon_active = True
+    except: pass
+    
+    return {
+        "status": "healthy",
+        "home_server_active": True,
+        "neon_connected": neon_active,
+        "leader_pid": scheduler.process_id if scheduler else "unknown",
+        "last_seen": datetime.now(timezone.utc).isoformat()
+    }
+
+@app.post("/walks")
+async def upload_walk(walk_data: Dict[str, Any], user_id: str = Depends(get_authorized_user)):
+    try:
+        import psycopg2
+        neon_url = os.getenv("NEON_DB_URL")
+        with psycopg2.connect(neon_url) as conn:
+            with conn.cursor() as cur:
+                # Mirror Rust logic: Insert as 'logging' status
+                cur.execute("""
+                    INSERT INTO walk_inferences 
+                    (user_id, start_time, end_time, step_count, distance_meters, distance_source, confidence_score, gps_route_points, status)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'logging')
+                    ON CONFLICT (user_id, start_time) DO UPDATE SET 
+                        end_time = EXCLUDED.end_time, 
+                        step_count = EXCLUDED.step_count,
+                        distance_meters = EXCLUDED.distance_meters,
+                        status = 'logging'
+                """, (
+                    user_id,
+                    walk_data.get("start_time"),
+                    walk_data.get("end_time"),
+                    walk_data.get("step_count"),
+                    walk_data.get("distance_meters"),
+                    walk_data.get("distance_source"),
+                    walk_data.get("confidence_score", 0.9),
+                    walk_data.get("gps_route_points", 0)
+                ))
+        
+        # Trigger immediate sync for this user
+        asyncio.create_task(scheduler._global_walk_sync_job(user_id))
+        
+        return {"status": "success", "message": "Walk ingested and sync triggered"}
+    except Exception as e:
+        logger.error(f"Failed to ingest walk: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/languages")
+async def get_languages(user_id: str = Depends(get_authorized_user)):
+    stats = await asyncio.to_thread(neon_checker.get_language_stats, user_id)
+    # Convert to format Android app expects
+    lang_list = []
+    for name, data in stats.items():
+        lang_list.append({
+            "name": name,
+            "current": data.get("current", 0),
+            "tomorrow": data.get("tomorrow", 0),
+            "next_7_days": data.get("next_7_days", 0),
+            "daily_rate": data.get("daily_rate", 0.0),
+            "safebuf": data.get("safebuf", 0),
+            "derail_risk": data.get("derail_risk", "UNKNOWN"),
+            "pump_multiplier": data.get("pump_multiplier", 1.0),
+            "has_goal": data.get("has_goal", True)
+        })
+    
+    return {"languages": lang_list}
+
+@app.post("/languages/multiplier")
+async def update_multiplier(request: Dict[str, Any], user_id: str = Depends(get_authorized_user)):
+    name = request.get("name")
+    multiplier = request.get("multiplier")
+    
+    if not name or multiplier is None:
+        raise HTTPException(status_code=400, detail="Missing name or multiplier")
+        
+    await set_review_pump_lever(name, multiplier, user_id)
+    return {"status": "success"}
+
+@app.get("/aggregate-status")
+async def get_aggregate_status_endpoint(user_id: str = Depends(get_authorized_user)):
+    status = await get_daily_aggregate_status(user_id)
+    return status
+
+@app.post("/heartbeat")
+async def post_heartbeat(data: Dict[str, Any], user_id: str = Depends(get_authorized_user)):
+    role = data.get("role", "android_client")
+    process_id = data.get("process_id", "unknown")
+    
+    # scheduler manages the election table
+    await asyncio.to_thread(scheduler._update_heartbeat, role, process_id, user_id)
+    return {"status": "success", "mcp_server_active": True}
 
 @app.post("/intelligent-reminder/trigger")
 async def trigger_reminder_endpoint(user_id: str = Depends(get_authorized_user)):
