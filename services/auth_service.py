@@ -87,4 +87,7 @@ async def get_current_user(credentials: Optional[HTTPAuthorizationCredentials] =
 
 def is_standalone_mode() -> bool:
     """Check if we are running in standalone/local mode where auth might be optional."""
-    return os.getenv("MECRIS_MODE", "standalone") == "standalone"
+    mode = os.getenv("MECRIS_MODE", "standalone")
+    import sys
+    print(f"DEBUG AUTH: mode={mode}", file=sys.stderr)
+    return mode == "standalone"

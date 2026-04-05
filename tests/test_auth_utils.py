@@ -18,7 +18,8 @@ def test_exchange_code_for_tokens(mock_post):
     
     with patch.dict('os.environ', {
         'POCKET_ID_CLIENT_ID': 'test_client',
-        'POCKET_ID_TOKEN_ENDPOINT': 'https://auth.example.com/token'
+        'POCKET_ID_TOKEN_ENDPOINT': 'https://auth.example.com/token',
+        'POCKET_ID_REDIRECT_URI': ''
     }):
         tokens = exchange_code_for_tokens(code, verifier, port)
         
@@ -42,7 +43,8 @@ def test_build_auth_url_contains_required_params():
     
     with patch.dict('os.environ', {
         'POCKET_ID_CLIENT_ID': 'test_client',
-        'POCKET_ID_AUTH_ENDPOINT': 'https://auth.example.com/authorize'
+        'POCKET_ID_AUTH_ENDPOINT': 'https://auth.example.com/authorize',
+        'POCKET_ID_REDIRECT_URI': ''
     }):
         url = build_auth_url(challenge, state, port)
         
