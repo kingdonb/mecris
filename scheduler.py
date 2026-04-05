@@ -54,42 +54,69 @@ async def _global_walk_sync_job(user_id: str):
     Background job that checks Neon for pending walk inferences and syncs them to Beeminder.
     """
     try:
-        from mcp_server import scheduler, beeminder_client
+        from mcp_server import scheduler, get_user_beeminder_client
         if not scheduler.is_leader:
             return
+            
+        beeminder_client = get_user_beeminder_client(user_id)
             
         neon_url = os.getenv("NEON_DB_URL")
         if not neon_url:
             return
             
         import psycopg2
-        from psycopg2.extras import RealDictCursor
         
         pending_walks = []
         with psycopg2.connect(neon_url) as conn:
-            with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                cur.execute("SELECT * FROM walk_inferences WHERE status = 'pending' AND user_id = %s", (user_id,))
-                pending_walks = cur.fetchall()
+            with conn.cursor() as cur:
+                # We target 'logging' status which is used by the Spin backend
+                cur.execute("SELECT id, start_time, step_count, distance_meters, distance_source FROM walk_inferences WHERE status = 'logging' AND user_id = %s", (user_id,))
+                rows = cur.fetchall()
+                for row in rows:
+                    pending_walks.append({
+                        'id': row[0],
+                        'start_time': row[1],
+                        'step_count': row[2],
+                        'distance_meters': row[3],
+                        'distance_source': row[4]
+                    })
         
         if not pending_walks:
             return
             
-        logger.info(f"Background job (Leader) for {user_id}: Found {len(pending_walks)} pending walks. Syncing to Beeminder...")
+        logger.info(f"Background job (Leader) for {user_id}: Found {len(pending_walks)} walks to sync. Synchronizing...")
         for walk in pending_walks:
             try:
                 # get user configuration
                 with psycopg2.connect(neon_url) as conn:
-                    with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                    with conn.cursor() as cur:
                         cur.execute("SELECT beeminder_goal FROM users WHERE pocket_id_sub = %s", (user_id,))
-                        user = cur.fetchone()
+                        row = cur.fetchone()
+                        beeminder_goal = row[0] if row else 'bike'
                 
-                goal = user.get('beeminder_goal', 'bike') if user else 'bike'
+                goal = beeminder_goal
                 
+                # Health Connect distance is the TOTAL for the day so far.
+                # We use a daystamp-based request_id so Beeminder overwrites the day's total
+                # instead of summing snapshots.
                 miles = float(walk['distance_meters']) / 1609.34
-                comment = f"Logged via Mecris MCP Sync (Steps: {walk['step_count']}, Source: {walk['distance_source']})"
-                request_id = f"{user_id}_{walk['start_time']}"
                 
-                # Push
+                # Use US/Eastern daystamp for the request_id to align with Beeminder
+                import zoneinfo
+                eastern = zoneinfo.ZoneInfo("US/Eastern")
+                if isinstance(walk['start_time'], datetime):
+                    dt = walk['start_time']
+                else:
+                    # Parse ISO string if needed
+                    from dateutil.parser import parse
+                    dt = parse(walk['start_time'])
+                
+                daystamp = dt.astimezone(eastern).strftime("%Y%m%d")
+                request_id = f"{user_id}_{daystamp}"
+                
+                comment = f"Logged via Mecris MCP Sync (Steps: {walk['step_count']}, Source: {walk['distance_source']})"
+                
+                # Push (Beeminder handles deduplication/update via requestid)
                 success = await beeminder_client.add_datapoint(goal, miles, comment=comment, requestid=request_id)
                 if success:
                     with psycopg2.connect(neon_url) as conn:
@@ -162,10 +189,12 @@ async def _global_cooperative_monitor_job(user_id: str):
     except Exception as e:
         logger.error(f"Cooperative monitor job failed for {user_id}: {e}")
 
+from services.credentials_manager import credentials_manager
+
 class MecrisScheduler:
     def __init__(self, trigger_reminder_func: Optional[Callable] = None, user_id: str = None):
         self.neon_url = os.getenv("NEON_DB_URL")
-        self.user_id = user_id or os.getenv("DEFAULT_USER_ID")
+        self.user_id = user_id or credentials_manager.resolve_user_id()
         
         # Configure jobstore
         if self.neon_url:
