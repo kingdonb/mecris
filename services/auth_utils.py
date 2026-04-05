@@ -2,11 +2,13 @@ import secrets
 import base64
 import hashlib
 import os
-from typing import Tuple
+import requests
+from typing import Tuple, Dict, Any
 from urllib.parse import urlencode
 
 # OIDC Configuration Defaults
 DEFAULT_AUTH_ENDPOINT = "https://metnoom.urmanac.com/authorize"
+DEFAULT_TOKEN_ENDPOINT = "https://metnoom.urmanac.com/token"
 DEFAULT_SCOPES = "openid profile email offline_access"
 
 def generate_code_verifier() -> str:
@@ -51,3 +53,21 @@ def build_auth_url(challenge: str, state: str, port: int) -> str:
     }
     
     return f"{base_url}?{urlencode(params)}"
+
+def exchange_code_for_tokens(code: str, verifier: str, port: int) -> Dict[str, Any]:
+    """Exchange authorization code for tokens using PKCE."""
+    token_url = os.getenv("POCKET_ID_TOKEN_ENDPOINT", DEFAULT_TOKEN_ENDPOINT)
+    client_id = os.getenv("POCKET_ID_CLIENT_ID")
+    redirect_uri = f"http://localhost:{port}"
+    
+    data = {
+        "grant_type": "authorization_code",
+        "client_id": client_id,
+        "code": code,
+        "code_verifier": verifier,
+        "redirect_uri": redirect_uri
+    }
+    
+    resp = requests.post(token_url, data=data)
+    resp.raise_for_status()
+    return resp.json()
