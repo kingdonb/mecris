@@ -595,3 +595,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: JWKS integration (real RSA signature validation) and CLI token rotation — both carry forward as the next auth hardening priorities. These are independent of the PII encryption work.
 
 **Next**: Implement JWKS integration in `services/auth_utils.py` — replace relaxed signature check with real public key fetch from `metnoom.urmanac.com/.well-known/jwks.json`. Then add refresh_token usage in `cli/main.py` so the CLI can renew sessions without re-opening the browser.
+
+## 2026-04-05 — Implement JWKS RSA signature verification for JWT auth (session 34) 🏛️
+
+**Planned**: Replace the relaxed `verify_signature: False` JWT decode in `services/auth_service.py` with real RSA public-key validation via the OIDC JWKS endpoint.
+
+**Done**: Implemented `PyJWKClient`-backed verification in cloud mode (`MECRIS_MODE=cloud`). Standalone mode retains expiry-only check. Issuer claim now enforced. Added `tests/test_auth_service.py` with 7 tests (valid token, wrong-key 401, expiry 401, issuer mismatch 401, standalone passthrough ×2, JWKS non-invocation). All 7 pass. Committed as `3e41841`.
+
+**Skipped**: Token rotation (`cli/main.py` refresh_token flow) — deferred, not in scope for this plan. CI full-venv verification — bot env lacks psycopg2/mcp.
+
+**Next**: Implement `exchange_refresh_token()` so the CLI uses `refresh_token` to silently renew the session instead of re-opening the browser on token expiry.
