@@ -615,3 +615,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: JWKS cache TTL config (low urgency, one-liner — deferred). CI full-venv verification — bot env lacks psycopg2/mcp; known limitation.
 
 **Next**: JWKS cache TTL (set `lifespan` on `PyJWKClient`), then open a PR from yebyen to kingdonb with the 4-commit auth hardening stack.
+
+## 2026-04-05 — JWKS cache TTL + Submarine Mode analysis (session 36) 🏛️
+
+**Planned**: Set `lifespan=300` on `PyJWKClient` in `services/auth_service.py`; post technical analysis on kingdonb/mecris#162 documenting how `try_token_refresh()` addresses the submarine mode failure mode (yebyen/mecris#97).
+
+**Done**: `PyJWKClient(jwks_uri, lifespan=300)` committed as `ab1f723`. `test_auth_utils.py` 6/6 pass post-change. Submarine Mode analysis comment posted on kingdonb/mecris#162 — covers root cause (no retry, not token invalidation), implementation behavior (creds preserved on failure), and proactive refresh opportunity. Auth hardening stack confirmed merged upstream via kingdonb's `7315d67`.
+
+**Skipped**: Proactive refresh threshold (`exp < now + 1800`) and `docs/AUTH_CONFIGURATION.md` update — both low urgency, carried to Pending.
+
+**Next**: CI full-venv verification of `test_auth_service.py` (7 tests); `docs/AUTH_CONFIGURATION.md` submarine mode section (draft ready in #162 comment).
