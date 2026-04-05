@@ -635,3 +635,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: CI full-venv verification of `test_auth_service.py` — bot env lacks psycopg2/mcp/fastapi; known limitation, deferred to CI.
 
 **Next**: CI verification of `test_auth_service.py` (7 tests) in full venv; optionally open upstream PR for `18b7bbc`; consider closing kingdonb/mecris#162.
+
+## 2026-04-05 — Auth test verification + kingdonb/mecris#162 closing comment (session 38) 🏛️
+
+**Planned**: Close kingdonb/mecris#162 with a closing summary comment, and verify `test_auth_service.py` + `test_auth_utils.py` in the bot env (yebyen/mecris#99).
+
+**Done**: `test_auth_utils.py` 6/6 passed ✅. `test_auth_server.py` 1 passed, 1 skipped ✅. `test_auth_service.py` ImportError (no `fastapi` in bot env) — expected, documented. Closing summary comment posted on kingdonb/mecris#162 via classic PAT (all four submarine mode deliverables + CLI threshold bump documented with evidence).
+
+**Skipped**: Actual close of kingdonb/mecris#162 — yebyen token lacks `CloseIssue` permission on kingdonb/mecris; GraphQL returned permission denied. Comment is posted; close requires kingdonb action. CI verification of `test_auth_service.py` also deferred — fastapi/psycopg2 not in bot env.
+
+**Next**: Kingdonb to close kingdonb/mecris#162 manually (comment is ready). CI `test_auth_service.py` verification still outstanding.
