@@ -26,11 +26,44 @@ def resolve_user_id(args):
     return user_id
 
 async def run_login(args):
-    """Initiate the OIDC login flow."""
+    """Initiate the OIDC login flow via PKCE and loopback server."""
+    from services.auth_utils import generate_pkce_pair, generate_state, build_auth_url
+    from services.auth_server import start_loopback_server, wait_for_code
+    import webbrowser
+
     print("Initiating login flow via Pocket ID...")
-    print("Implementation of browser-based PKCE flow pending.")
-    # In the future, this will start a local server and open a browser.
-    # For now, it's a stub.
+    
+    verifier, challenge = generate_pkce_pair()
+    state = generate_state()
+    
+    # 1. Start loopback server
+    try:
+        server_info = start_loopback_server(port=0)
+        port = server_info["port"]
+        server = server_info["server"]
+    except Exception as e:
+        print(f"❌ Failed to start local loopback server: {e}")
+        return
+
+    # 2. Build Auth URL
+    auth_url = build_auth_url(challenge, state, port)
+    
+    print(f"\nOpening your browser to authenticate...")
+    print(f"URL: {auth_url}")
+    print("\nWaiting for redirect from Pocket ID...")
+    
+    # 3. Open Browser
+    webbrowser.open(auth_url)
+    
+    # 4. Wait for code
+    code = await asyncio.to_thread(wait_for_code, server, state, timeout=300)
+    
+    if not code:
+        print("❌ Login failed: Timed out or invalid state received.")
+        return
+
+    print(f"✅ Authorization code received: {code[:10]}...")
+    print("Token exchange implementation pending.")
 
 async def run_nag_eval(args):
     """Evaluate the reminder heuristics without triggering a send."""
@@ -107,6 +140,24 @@ def run_presence(args):
         print(f"✅ Stale presence lock found ({int(status.age_seconds)}s old). Assuming human is gone.")
         return 0
 
+async def run_internal_presence(args):
+    """Report presence status to Neon."""
+    from ghost.presence import get_neon_store, StatusType
+    user_id = resolve_user_id(args)
+    store = get_neon_store()
+    if not store:
+        print("❌ Neon DB not available. Cannot report presence.")
+        sys.exit(1)
+    
+    status = StatusType.ACTIVE_GHOST if args.ghost else StatusType.ACTIVE_HUMAN
+    try:
+        record = store.upsert(user_id, status, source="cli")
+        print(f"✅ Presence reported as {status.value} for user {user_id}.")
+        print(f"   Last Active: {record.last_active}")
+    except Exception as e:
+        print(f"❌ Failed to report presence: {e}")
+        sys.exit(1)
+
 def main():
     parser = argparse.ArgumentParser(description="Mecris CLI - The Ground Truth")
     parser.add_argument("-v", "--verbose", action="store_true", help="Enable debug logging")
@@ -121,6 +172,13 @@ def main():
     presence_parser = subparsers.add_parser("presence", help="Manage human presence lock for ghost sessions")
     presence_parser.add_argument("action", choices=["check", "take", "release"], default="check", nargs="?", help="Action to perform")
     
+    # --- Internal Subcommands ---
+    internal_parser = subparsers.add_parser("internal", help="Internal system maintenance handles")
+    internal_subparsers = internal_parser.add_subparsers(dest="internal_command")
+    
+    int_presence_parser = internal_subparsers.add_parser("presence", help="Report presence to the global store")
+    int_presence_parser.add_argument("--ghost", action="store_true", help="Report as ghost presence instead of human")
+
     # --- Nag Subcommands ---
     nag_parser = subparsers.add_parser("nag", help="Autonomous Nagging System controls")
     nag_subparsers = nag_parser.add_subparsers(dest="nag_command")
@@ -138,6 +196,11 @@ def main():
         asyncio.run(run_login(args))
     elif args.command == "presence":
         sys.exit(run_presence(args))
+    elif args.command == "internal":
+        if args.internal_command == "presence":
+            asyncio.run(run_internal_presence(args))
+        else:
+            internal_parser.print_help()
     elif args.command == "nag":
         if args.nag_command == "eval":
             asyncio.run(run_nag_eval(args))
