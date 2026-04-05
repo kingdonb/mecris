@@ -186,6 +186,16 @@ async def post_heartbeat(data: Dict[str, Any], user_id: str = Depends(get_author
     await asyncio.to_thread(scheduler._update_heartbeat, role, process_id, user_id)
     return {"status": "success", "mcp_server_active": True}
 
+@app.post("/internal/cloud-sync")
+async def trigger_cloud_sync_endpoint(user_id: str = Depends(get_authorized_user)):
+    logger.info(f"Android app triggered cloud sync for {user_id}")
+    try:
+        summary = await language_sync_service.sync_all(user_id=user_id)
+        return {"status": "success", "message": "Cloud sync complete", "summary": summary}
+    except Exception as e:
+        logger.error(f"Failed to run cloud sync: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.post("/intelligent-reminder/trigger")
 async def trigger_reminder_endpoint(user_id: str = Depends(get_authorized_user)):
     return await trigger_reminder_check(user_id)
