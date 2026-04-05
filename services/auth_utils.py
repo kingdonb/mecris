@@ -8,7 +8,7 @@ from urllib.parse import urlencode
 
 # OIDC Configuration Defaults
 DEFAULT_AUTH_ENDPOINT = "https://metnoom.urmanac.com/authorize"
-DEFAULT_TOKEN_ENDPOINT = "https://metnoom.urmanac.com/token"
+DEFAULT_TOKEN_ENDPOINT = "https://metnoom.urmanac.com/api/oidc/token"
 DEFAULT_SCOPES = "openid profile email offline_access"
 
 def generate_code_verifier() -> str:
@@ -39,7 +39,7 @@ def generate_pkce_pair() -> Tuple[str, str]:
 def build_auth_url(challenge: str, state: str, port: int) -> str:
     """Build the authorization URL for PKCE flow."""
     base_url = os.getenv("POCKET_ID_AUTH_ENDPOINT", DEFAULT_AUTH_ENDPOINT)
-    client_id = os.getenv("POCKET_ID_CLIENT_ID")
+    client_id = os.getenv("POCKET_ID_CLIENT_ID", "21f65a91-c4df-468d-a256-3b66a54c6d5f")
     redirect_uri = f"http://localhost:{port}"
     
     params = {
@@ -57,7 +57,7 @@ def build_auth_url(challenge: str, state: str, port: int) -> str:
 def exchange_code_for_tokens(code: str, verifier: str, port: int) -> Dict[str, Any]:
     """Exchange authorization code for tokens using PKCE."""
     token_url = os.getenv("POCKET_ID_TOKEN_ENDPOINT", DEFAULT_TOKEN_ENDPOINT)
-    client_id = os.getenv("POCKET_ID_CLIENT_ID")
+    client_id = os.getenv("POCKET_ID_CLIENT_ID", "21f65a91-c4df-468d-a256-3b66a54c6d5f")
     redirect_uri = f"http://localhost:{port}"
     
     data = {
