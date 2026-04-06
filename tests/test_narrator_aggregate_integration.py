@@ -79,23 +79,24 @@ async def _run_narrator_context_with_aggregate(aggregate_result):
     with patch.dict("os.environ", _base_env()):
         with patch("psycopg2.connect"):
             with patch("mcp_server.usage_tracker", mocks["mock_tracker"]):
-                with patch("mcp_server._record_presence", AsyncMock()):
-                    with patch("mcp_server.obsidian_client") as mock_obsidian:
-                        mock_obsidian.get_todos = AsyncMock(return_value=[])
-                        with patch("mcp_server.get_cached_beeminder_goals", AsyncMock(return_value=[])):
-                            with patch("mcp_server.get_user_beeminder_client", return_value=mocks["mock_beeminder_client"]):
-                                with patch("mcp_server.get_cached_daily_activity", AsyncMock(return_value={"status": "done", "has_activity_today": True})):
-                                    with patch("mcp_server.get_groq_context_for_narrator", return_value={}):
-                                        with patch("mcp_server.neon_checker", mocks["mock_neon"]):
-                                            with patch("mcp_server.language_sync_service", mocks["mock_lang_sync"]):
-                                                with patch("mcp_server.weather_service", mocks["mock_weather"]):
-                                                    with patch("mcp_server.scheduler", mocks["mock_scheduler"]):
-                                                        with patch("mcp_server._budget_governor", mocks["mock_governor"]):
-                                                            with patch("mcp_server._get_presence_status", AsyncMock(return_value={})):
-                                                                with patch("mcp_server.anthropic_cost_tracker", None):
-                                                                    with patch("mcp_server.get_daily_aggregate_status", AsyncMock(return_value=aggregate_result)):
-                                                                        from mcp_server import get_narrator_context
-                                                                        return await get_narrator_context()
+                with patch("mcp_server.resolve_target_user", return_value="test-user"):
+                    with patch("mcp_server._record_presence", AsyncMock()):
+                        with patch("mcp_server.obsidian_client") as mock_obsidian:
+                            mock_obsidian.get_todos = AsyncMock(return_value=[])
+                            with patch("mcp_server.get_cached_beeminder_goals", AsyncMock(return_value=[])):
+                                with patch("mcp_server.get_user_beeminder_client", return_value=mocks["mock_beeminder_client"]):
+                                    with patch("mcp_server.get_cached_daily_activity", AsyncMock(return_value={"status": "done", "has_activity_today": True})):
+                                        with patch("mcp_server.get_groq_context_for_narrator", return_value={}):
+                                            with patch("mcp_server.neon_checker", mocks["mock_neon"]):
+                                                with patch("mcp_server.language_sync_service", mocks["mock_lang_sync"]):
+                                                    with patch("mcp_server.weather_service", mocks["mock_weather"]):
+                                                        with patch("mcp_server.scheduler", mocks["mock_scheduler"]):
+                                                            with patch("mcp_server._budget_governor", mocks["mock_governor"]):
+                                                                with patch("mcp_server._get_presence_status", AsyncMock(return_value={})):
+                                                                    with patch("mcp_server.anthropic_cost_tracker", None):
+                                                                        with patch("mcp_server.get_daily_aggregate_status", AsyncMock(return_value=aggregate_result)):
+                                                                            from mcp_server import get_narrator_context
+                                                                            return await get_narrator_context()
 
 
 @pytest.mark.asyncio

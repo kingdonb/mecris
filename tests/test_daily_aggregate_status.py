@@ -40,7 +40,8 @@ async def test_all_goals_satisfied_returns_all_clear():
 
     env_patch, db_patch = _base_patches()
     with env_patch, db_patch:
-        with patch("mcp_server.usage_tracker") as mock_tracker:
+        with patch("mcp_server.usage_tracker") as mock_tracker, \
+             patch("mcp_server.resolve_target_user", return_value="test-user"):
             mock_tracker.resolve_user_id.return_value = "test-user"
             with patch("mcp_server.get_cached_daily_activity", AsyncMock(return_value=walk_result)):
                 with patch("mcp_server.get_language_velocity_stats", AsyncMock(return_value=lang_result)):
@@ -62,7 +63,8 @@ async def test_no_walk_returns_partial():
 
     env_patch, db_patch = _base_patches()
     with env_patch, db_patch:
-        with patch("mcp_server.usage_tracker") as mock_tracker:
+        with patch("mcp_server.usage_tracker") as mock_tracker, \
+             patch("mcp_server.resolve_target_user", return_value="test-user"):
             mock_tracker.resolve_user_id.return_value = "test-user"
             with patch("mcp_server.get_cached_daily_activity", AsyncMock(return_value=walk_result)):
                 with patch("mcp_server.get_language_velocity_stats", AsyncMock(return_value=lang_result)):
@@ -85,7 +87,8 @@ async def test_arabic_not_done_returns_partial():
 
     env_patch, db_patch = _base_patches()
     with env_patch, db_patch:
-        with patch("mcp_server.usage_tracker") as mock_tracker:
+        with patch("mcp_server.usage_tracker") as mock_tracker, \
+             patch("mcp_server.resolve_target_user", return_value="test-user"):
             mock_tracker.resolve_user_id.return_value = "test-user"
             with patch("mcp_server.get_cached_daily_activity", AsyncMock(return_value=walk_result)):
                 with patch("mcp_server.get_language_velocity_stats", AsyncMock(return_value=lang_result)):
@@ -107,7 +110,8 @@ async def test_nothing_done_returns_zero():
 
     env_patch, db_patch = _base_patches()
     with env_patch, db_patch:
-        with patch("mcp_server.usage_tracker") as mock_tracker:
+        with patch("mcp_server.usage_tracker") as mock_tracker, \
+             patch("mcp_server.resolve_target_user", return_value="test-user"):
             mock_tracker.resolve_user_id.return_value = "test-user"
             with patch("mcp_server.get_cached_daily_activity", AsyncMock(return_value=walk_result)):
                 with patch("mcp_server.get_language_velocity_stats", AsyncMock(return_value=lang_result)):
@@ -131,7 +135,8 @@ async def test_missing_language_data_marks_unsatisfied():
 
     env_patch, db_patch = _base_patches()
     with env_patch, db_patch:
-        with patch("mcp_server.usage_tracker") as mock_tracker:
+        with patch("mcp_server.usage_tracker") as mock_tracker, \
+             patch("mcp_server.resolve_target_user", return_value="test-user"):
             mock_tracker.resolve_user_id.return_value = "test-user"
             with patch("mcp_server.get_cached_daily_activity", AsyncMock(return_value=walk_result)):
                 with patch("mcp_server.get_language_velocity_stats", AsyncMock(return_value=lang_result)):
@@ -152,7 +157,8 @@ async def test_walk_exception_marks_unsatisfied():
 
     env_patch, db_patch = _base_patches()
     with env_patch, db_patch:
-        with patch("mcp_server.usage_tracker") as mock_tracker:
+        with patch("mcp_server.usage_tracker") as mock_tracker, \
+             patch("mcp_server.resolve_target_user", return_value="test-user"):
             mock_tracker.resolve_user_id.return_value = "test-user"
             with patch("mcp_server.get_cached_daily_activity", AsyncMock(side_effect=RuntimeError("DB down"))):
                 with patch("mcp_server.get_language_velocity_stats", AsyncMock(return_value=lang_result)):
@@ -176,7 +182,8 @@ async def test_result_contains_required_keys():
 
     env_patch, db_patch = _base_patches()
     with env_patch, db_patch:
-        with patch("mcp_server.usage_tracker") as mock_tracker:
+        with patch("mcp_server.usage_tracker") as mock_tracker, \
+             patch("mcp_server.resolve_target_user", return_value="test-user"):
             mock_tracker.resolve_user_id.return_value = "test-user"
             with patch("mcp_server.get_cached_daily_activity", AsyncMock(return_value=walk_result)):
                 with patch("mcp_server.get_language_velocity_stats", AsyncMock(return_value=lang_result)):

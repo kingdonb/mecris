@@ -26,7 +26,8 @@ async def test_get_coaching_insight_high_momentum_critical():
     env_patch, db_patch = _make_mcp_importable()
     with env_patch, db_patch:
         with patch("mcp_server.get_narrator_context", return_value=mock_context), \
-             patch("mcp_server.get_cached_beeminder_goals", return_value=mock_goals):
+             patch("mcp_server.get_cached_beeminder_goals", return_value=mock_goals), \
+             patch("mcp_server.resolve_target_user", return_value="test-user"):
             from mcp_server import get_coaching_insight
 
             insight = await get_coaching_insight()
@@ -53,7 +54,8 @@ async def test_get_coaching_insight_no_walk_critical():
     env_patch, db_patch = _make_mcp_importable()
     with env_patch, db_patch:
         with patch("mcp_server.get_narrator_context", return_value=mock_context), \
-             patch("mcp_server.get_cached_beeminder_goals", return_value=mock_goals):
+             patch("mcp_server.get_cached_beeminder_goals", return_value=mock_goals), \
+             patch("mcp_server.resolve_target_user", return_value="test-user"):
             from mcp_server import get_coaching_insight
 
             insight = await get_coaching_insight()
@@ -79,7 +81,8 @@ async def test_get_coaching_insight_neutral():
     env_patch, db_patch = _make_mcp_importable()
     with env_patch, db_patch:
         with patch("mcp_server.get_narrator_context", return_value=mock_context), \
-             patch("mcp_server.get_cached_beeminder_goals", return_value=mock_goals):
+             patch("mcp_server.get_cached_beeminder_goals", return_value=mock_goals), \
+             patch("mcp_server.resolve_target_user", return_value="test-user"):
             from mcp_server import get_coaching_insight
 
             insight = await get_coaching_insight()
@@ -104,6 +107,7 @@ async def test_get_coaching_insight_obsidian_context():
     with env_patch, db_patch:
         with patch("mcp_server.get_narrator_context", return_value=mock_context), \
              patch("mcp_server.get_cached_beeminder_goals", return_value=mock_goals), \
+             patch("mcp_server.resolve_target_user", return_value="test-user"), \
              patch("mcp_server.obsidian_client.get_daily_note", return_value=mock_obsidian_activity):
             from mcp_server import get_coaching_insight
 
