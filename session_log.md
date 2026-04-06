@@ -665,3 +665,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: `/mecris-pr-test 101` — correctly skipped. Unresolved conflict markers make compilation impossible; running tests would be waste of turns.
 
 **Next**: Check if Gemini has resolved the 3 blockers on yebyen/mecris#101 (conflicts, Cron, NEXT_SESSION.md). If fixed, re-review and run pr-test. Also: CI verification of `test_auth_service.py` (7 tests) and kingdonb/mecris#162 manual close still outstanding.
+
+## 2026-04-06 — Review kingdonb/mecris#173 — CHANGES_REQUESTED for same 3 DMZ blockers 🏛️
+
+**Planned**: Review kingdonb/mecris#173 (upstream Jet-Propelled DMZ PR, no reviews yet, same head SHA as yebyen#101) and post CHANGES_REQUESTED citing the same 3 blockers (yebyen/mecris#103).
+
+**Done**: Confirmed kingdonb/mecris#173 is same branch (`gemini-flash-rust-brain`, head `4d16c9a`) as yebyen#101. Noted Gemini's progress comment about UniFFI `mecris-core` next steps — promising direction, but not yet committed. Posted CHANGES_REQUESTED review (ID 4061831284) on kingdonb/mecris#173 via `GITHUB_CLASSIC_PAT` citing all 3 blockers with cross-reference to yebyen#101. Both upstream and fork PRs now have CHANGES_REQUESTED.
+
+**Skipped**: Nothing — full plan executed.
+
+**Next**: Check if Gemini resolves the 3 blockers on `gemini-flash-rust-brain` (merge conflicts in sync-service/src/lib.rs, Spin Cron disabled, NEXT_SESSION.md pending items restored). Once fixed, re-review both PRs and run `/mecris-pr-test 101`.
