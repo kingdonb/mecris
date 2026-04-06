@@ -27,6 +27,22 @@ route = "/internal/arabic-skip-count"
 component = "arabic-skip-counter"
 
 [[trigger.http]]
+route = "/internal/budget-status"
+component = "budget-governor"
+
+[[trigger.http]]
+route = "/internal/budget-gate"
+component = "budget-governor"
+
+[[trigger.http]]
+route = "/internal/budget-record"
+component = "budget-governor"
+
+[[trigger.http]]
+route = "/internal/nag-check"
+component = "nag-engine"
+
+[[trigger.http]]
 route = "/..."
 component = "sync-service"
 
@@ -50,6 +66,29 @@ clozemaster_password = "{{ clozemaster_password }}"
 master_encryption_key = "{{ master_encryption_key }}"
 [component.sync-service.build]
 command = "cargo build --target wasm32-wasip1 --release"
+watch = ["src/**/*.rs", "Cargo.toml"]
+
+[component.budget-governor]
+source = "../budget-governor-rs/target/wasm32-wasip1/release/budget_governor_rs.wasm"
+key_value_stores = ["default"]
+[component.budget-governor.variables]
+HELIX_CREDIT_LIMIT = "{{ HELIX_CREDIT_LIMIT }}"
+GEMINI_FREE_LIMIT = "{{ GEMINI_FREE_LIMIT }}"
+ANTHROPIC_BUDGET_LIMIT = "{{ ANTHROPIC_BUDGET_LIMIT }}"
+GROQ_BUDGET_LIMIT = "{{ GROQ_BUDGET_LIMIT }}"
+[component.budget-governor.build]
+command = "cargo build --target wasm32-wasip1 --release"
+workdir = "../budget-governor-rs"
+watch = ["src/**/*.rs", "Cargo.toml"]
+
+[component.nag-engine]
+source = "../nag-engine-rs/target/wasm32-wasip1/release/nag_engine_rs.wasm"
+allowed_outbound_hosts = ["postgres://*:*"]
+[component.nag-engine.variables]
+db_url = "{{ db_url }}"
+[component.nag-engine.build]
+command = "cargo build --target wasm32-wasip1 --release"
+workdir = "../nag-engine-rs"
 watch = ["src/**/*.rs", "Cargo.toml"]
 
 [component.review-pump]
