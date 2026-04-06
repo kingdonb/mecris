@@ -695,3 +695,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: Did not re-review kingdonb/mecris#173 with a new approval — the fixes are on the same branch but the upstream PR review state still shows CHANGES_REQUESTED. Deferred to next session.
 
 **Next**: Merge yebyen/mecris#101 (needs kingdonb approval) and follow up on kingdonb/mecris#173 with a review update noting blockers resolved.
+
+## 2026-04-06 — Status comment on kingdonb/mecris#173: forks diverged, fixes in yebyen only
+
+**Planned**: Post follow-up review on kingdonb/mecris#173 confirming all 3 CHANGES_REQUESTED blockers resolved. (Plan: yebyen/mecris#106)
+
+**Done**: Investigated and found that kingdonb/mecris#173 head is still `4d16c9a9` — the 3 blockers are present in kingdonb's branch. Fixes were applied only to yebyen:gemini-flash-rust-brain (head `7501805`). Posted an accurate status comment on kingdonb/mecris#173 (#issuecomment-4194069091) explaining the fork divergence and the path to resolution: kingdonb needs to pull yebyen's fixes into kingdonb:gemini-flash-rust-brain before the CHANGES_REQUESTED can be lifted.
+
+**Skipped**: Did not post an "approval" review — that would have been inaccurate. The CHANGES_REQUESTED review against `4d16c9a9` is still correct.
+
+**Next**: Wait for kingdonb to integrate yebyen/mecris#101 fixes into kingdonb:gemini-flash-rust-brain, then re-review #173 or confirm merge of #101.
