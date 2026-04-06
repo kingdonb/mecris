@@ -235,37 +235,16 @@ async fn handle_aggregate_status_get(req: Request) -> anyhow::Result<Response> {
         let name = match &row[0] { DbValue::Str(s) => s.to_uppercase(), _ => "".to_string() };
         let current = match &row[1] { DbValue::Int32(i) => *i, _ => 0 };
         let tomorrow = match &row[2] { DbValue::Int32(i) => *i, _ => 0 };
-        let multiplier = match &row[3] { DbValue::Floating64(f) => *f, _ => 1.0 };
+        let multiplier_f64 = match &row[3] { DbValue::Floating64(f) => *f, _ => 1.0 };
+        let multiplier_x10 = (multiplier_f64 * 10.0) as u32;
         let daily_done = match &row[4] { DbValue::Int32(i) => *i, _ => 0 };
 
         if name == "ARABIC" || name == "GREEK" {
             total_goals += 1;
             
-            // Ported ReviewPump target logic
-            let clearance_days = match multiplier as i32 {
-                2 => Some(14.0),
-                3 => Some(10.0),
-                4 => Some(7.0),
-                5 => Some(5.0),
-                6 => Some(3.0),
-                7 => Some(2.0),
-                10 => Some(1.0),
-                _ => None,
-            };
-
-            let target = match clearance_days {
-                None => tomorrow,
-                Some(days) => {
-                    let backlog_portion = current as f64 / days;
-                    (tomorrow as f64 + backlog_portion) as i32
-                }
-            };
-
-            let is_met = if target > 0 || (current > 0 && multiplier > 1.0) {
-                daily_done >= target
-            } else {
-                current == 0
-            };
+            // USE THE SHARED RUST LOGIC (The Diamond Core)
+            let status = review_pump::get_status(current, tomorrow, daily_done, multiplier_x10, "points");
+            let is_met = status.goal_met;
 
             if is_met { goals_met += 1; }
             if name == "ARABIC" { arabic_met = is_met; }
