@@ -65,6 +65,7 @@ class UsageTracker:
 
     def _init_neon(self):
         """Initialize Neon PostgreSQL database."""
+        import psycopg2
         with psycopg2.connect(self.neon_url) as conn:
             with conn.cursor() as cur:
                 cur.execute("""
