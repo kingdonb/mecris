@@ -70,6 +70,11 @@ component = "arabic-skip-counter"
 route = "/..."
 component = "sync-service"
 
+[[trigger.cron]]
+component = "sync-service"
+cron_expression = "0 0 */2 * * *"
+# Cron enabled to support Autonomous Failover (Issue #100)
+
 # ---------------------------------------------------------------------------
 # Component Definitions
 # ---------------------------------------------------------------------------
