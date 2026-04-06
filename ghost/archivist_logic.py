@@ -8,13 +8,17 @@ logger = logging.getLogger("mecris.ghost")
 
 # Configuration for Ghost Archivist
 GHOST_COOLDOWN_SECONDS = 12 * 3600     # 12 hours
+HUMAN_SILENCE_THRESHOLD_SECONDS = 3600  # 1 hour
+ARCHIVIST_HOUR_START = 2               # 2 AM UTC
+ARCHIVIST_HOUR_END = 5                 # 5 AM UTC
 
 def should_ghost_wake_up(record: PresenceRecord, current_time: datetime) -> bool:
     """
     Returns True if the ghost should perform an archival sync.
     Heuristic:
     1. Idempotency: Must be at least 12 hours since last ghost activity.
-    2. Quiet Window: Only wake up between 2 AM and 5 AM UTC (The Archivist's Hour).
+    2. Quiet Window: Do not wake up if a human was active in the last hour.
+    3. The Archivist's Hour: Only wake up between 2 AM and 5 AM UTC.
     """
     # 1. Ghost Activity De-duplication (Idempotency)
     if record.last_ghost_activity:
@@ -23,16 +27,15 @@ def should_ghost_wake_up(record: PresenceRecord, current_time: datetime) -> bool
             return False
             
     # 2. Human Presence Cooperative Silence
-    # Do not wake up if a human was active recently (1 hour buffer)
     if record.last_human_activity:
         human_silence = (current_time - record.last_human_activity).total_seconds()
-        if human_silence < 3600:
+        if human_silence < HUMAN_SILENCE_THRESHOLD_SECONDS:
             return False
 
-    # 3. The Archivist's Hour (2 AM - 5 AM UTC)
+    # 3. The Archivist's Hour (UTC)
     # TODO: Respect user.timezone from Neon for better local-time targeting.
     hour = current_time.hour
-    if not (2 <= hour < 5):
+    if not (ARCHIVIST_HOUR_START <= hour < ARCHIVIST_HOUR_END):
         return False
 
     return True
