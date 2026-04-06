@@ -172,6 +172,14 @@ async fn handle_sync_service(req: Request) -> anyhow::Result<impl IntoResponse> 
         return handle_languages_get(req).await;
     } else if path == "/languages/multiplier" {
         if req.method() != &spin_sdk::http::Method::Post {
+<<<<<<< HEAD
+=======
+            return Ok(Response::builder().status(405).body("Method Not Allowed").build());
+        }
+        return handle_multiplier_post(req).await;
+    } else if path == "/health" {
+        if req.method() != &spin_sdk::http::Method::Get {
+>>>>>>> origin/fix/android-ui-crash-and-polish
             return Ok(Response::builder().status(405).body("Method Not Allowed").build());
         }
         return handle_multiplier_post(req).await;
@@ -848,11 +856,62 @@ async fn handle_multiplier_post(req: Request) -> anyhow::Result<Response> {
     }
 }
 
+<<<<<<< HEAD
 async fn handle_languages_get(req: Request) -> anyhow::Result<Response> {
     let auth_header = req.header("authorization");
     let user_id = match extract_user_id(auth_header).await {
         Some(id) => id,
         None => return Ok(Response::builder().status(401).body("Unauthorized").build()),
+=======
+#[derive(Deserialize)]
+struct MultiplierRequest {
+    name: String,
+    multiplier: f64,
+}
+
+async fn handle_multiplier_post(req: Request) -> anyhow::Result<Response> {
+    let body_bytes = req.into_body();
+    let body_str = match std::str::from_utf8(&body_bytes) {
+        Ok(s) => s,
+        Err(_) => return Ok(Response::builder().status(400).body("Invalid UTF-8 body").build())
+    };
+
+    let req_data: MultiplierRequest = match serde_json::from_str(body_str) {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("JSON parse error: {}", e);
+            return Ok(Response::builder().status(400).body("Invalid JSON payload").build())
+        }
+    };
+
+    let db_url = match variables::get("db_url") {
+        Ok(url) if !url.is_empty() => url,
+        _ => return Ok(Response::builder().status(500).body("Missing db_url").build())
+    };
+
+    let connection = match Connection::open(&db_url) {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("DB Connection failed: {:?}", e);
+            return Ok(Response::builder().status(500).body("Internal DB Error").build())
+        }
+    };
+
+    let query = "UPDATE language_stats SET pump_multiplier = $1 WHERE language_name = $2";
+    match connection.execute(query, &[ParameterValue::Floating64(req_data.multiplier), ParameterValue::Str(req_data.name.to_uppercase())]) {
+        Ok(_) => Ok(Response::builder().status(200).body("Multiplier updated").build()),
+        Err(e) => {
+            eprintln!("Update failed: {:?}", e);
+            Ok(Response::builder().status(500).body("Database update failed").build())
+        }
+    }
+}
+
+async fn handle_languages_get(_req: Request) -> anyhow::Result<Response> {
+    let db_url = match variables::get("db_url") {
+        Ok(url) if !url.is_empty() => url,
+        _ => return Ok(Response::builder().status(500).body("Missing db_url").build())
+>>>>>>> origin/fix/android-ui-crash-and-polish
     };
 
     let db_url = variables::get("db_url")?;

@@ -582,12 +582,15 @@ fun MecrisDashboard(
                                         walkData = walkData,
                                         budgetAmount = budgetAmount,
                                         languageStats = languageStats,
+                                        aggregateStatus = aggregateStatus,
                                         homeServerActive = homeServerActive,
                                         lastSyncTime = lastSyncTime
                                     ))
                                     
                                     // Give the backend a moment to settle
                                     kotlinx.coroutines.delay(2000)
+                                    // Trigger refresh
+                                    onRefreshRequested()
                                 } else {
                                     Toast.makeText(context, "Authentication required", Toast.LENGTH_SHORT).show()
                                     languageStats = oldStats
@@ -854,9 +857,14 @@ fun ReviewPumpWidget(
     surgicalUpdateInProgress: Boolean,
     onMultiplierChange: (String, Double) -> Unit
 ) {
-    val currentMultiplier = stat.pump_multiplier ?: 1.0
-    val leverName = com.mecris.go.sync.ReviewPumpCalculator.getLeverName(currentMultiplier)
-    val targetFlowRate = com.mecris.go.sync.ReviewPumpCalculator.calculateTargetFlowRate(currentMultiplier, stat.current, stat.tomorrow)
+    // 1. OPTIMISTIC STATE: We keep a local copy of the multiplier so the UI reacts instantly
+    var localMultiplier by remember(stat.name, stat.pump_multiplier) { 
+        mutableStateOf(stat.pump_multiplier ?: 1.0) 
+    }
+    
+    val currentDisplayMultiplier = if (surgicalUpdateInProgress) localMultiplier else (stat.pump_multiplier ?: 1.0)
+    val leverName = com.mecris.go.sync.ReviewPumpCalculator.getLeverName(currentDisplayMultiplier)
+    val targetFlowRate = com.mecris.go.sync.ReviewPumpCalculator.calculateTargetFlowRate(currentDisplayMultiplier, stat.current, stat.tomorrow)
     
     val accentColor = if (stat.name.equals("ARABIC", ignoreCase = true)) Color(0xFFFFD600) 
                       else if (stat.name.equals("GREEK", ignoreCase = true)) Color(0xFF00E5FF) 
@@ -1008,16 +1016,18 @@ fun ReviewPumpWidget(
                 Text("SHIFT LEVER", style = MaterialTheme.typography.labelSmall, color = Color.Gray)
                 Row {
                     listOf(1, 2, 3, 4, 5, 6, 7, 10).forEach { i ->
-                        val isSelected = currentMultiplier.toInt() == i
+                        val isSelected = currentDisplayMultiplier.toInt() == i
                         Box(
                             modifier = Modifier
                                 .padding(horizontal = 4.dp)
-                                .size(30.dp) // Adjusted slightly to fit 8 buttons
+                                .size(32.dp) // Larger tap target
                                 .background(
                                     if (isSelected) accentColor else Color(0xFF333333),
                                     RoundedCornerShape(6.dp)
                                 )
                                 .clickable(enabled = !surgicalUpdateInProgress) { 
+                                    // 2. IMMEDIATE FEEDBACK: Update local state before network call
+                                    localMultiplier = i.toDouble()
                                     onMultiplierChange(stat.name, i.toDouble()) 
                                 },
                             contentAlignment = Alignment.Center
