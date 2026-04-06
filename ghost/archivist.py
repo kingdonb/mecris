@@ -27,7 +27,7 @@ import asyncio
 from typing import Optional
 
 from ghost.presence import check_presence, get_neon_store
-from ghost.archivist_logic import perform_archival_sync, should_ghost_wake_up
+from ghost.archivist_logic import perform_archival_sync, should_ghost_wake_up, archivists_round_robin
 
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -103,6 +103,10 @@ async def run(
                 print(f"[ghost.archivist] Sleep heuristic active for user={user_id}")
         else:
             print(f"[ghost.archivist] Neon store unavailable for user={user_id}")
+    else:
+        # No specific user provided — iterate all users (Round Robin)
+        print("[ghost.archivist] Starting round-robin sync for all users")
+        await archivists_round_robin()
 
     return 0
 
