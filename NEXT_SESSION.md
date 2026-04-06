@@ -4,19 +4,19 @@
 - **yebyen/mecris#101 pr-test green at head `823b1e0`**: Merge conflict in NEXT_SESSION.md resolved; pr-test run 24048682519 passed. All 3 blockers resolved. Awaits kingdonb's merge approval.
 - **kingdonb/mecris#173 still blocked**: Head is `4d16c9a9` — the 3 blockers (merge conflicts, cron, NEXT_SESSION.md) are still present in kingdonb's branch. CHANGES_REQUESTED review remains accurate.
 - **Status comment posted on #173**: Explains that fixes are in yebyen's fork but NOT in kingdonb's branch. Directs kingdonb to pull yebyen/mecris#101's fixes into kingdonb:gemini-flash-rust-brain.
-- **yebyen/mecris is in sync with kingdonb/mecris main** — both at `e642551`.
+- **yebyen/mecris main is 5 commits AHEAD of kingdonb/mecris main** — bot archive commits not yet in upstream.
 
-## Verified This Session (2026-04-06)
-- [x] **NEXT_SESSION.md merge conflict resolved on gemini-flash-rust-brain**: Merged yebyen:main into PR branch, kept main's authoritative state, pushed `823b1e0`.
-- [x] **pr-test green at `823b1e0`**: Run 24048682519 — success. Previous run 24048507350 had failed due to merge conflict.
-- [x] **kingdonb/mecris#173 head still at `4d16c9a9`**: No new commits from kingdonb — CHANGES_REQUESTED review still accurate.
-- [x] **Status comment posted on yebyen/mecris#101**: https://github.com/yebyen/mecris/pull/101#issuecomment-4194702789 — notes conflict fixed, pr-test green, ready to merge.
+## Verified This Session (2026-04-06, triage session)
+- [x] **kingdonb/mecris#162 CLOSED**: Confirmed closed by kingdonb on 2026-04-05 (state_reason: completed). Removed from pending list.
+- [x] **kingdonb/mecris#122 audited complete**: Prior bot session (session 30, 2026-04-04) confirmed `surgicalUpdateInProgress` fully resolves the race condition. Awaits kingdonb to close.
+- [x] **kingdonb/mecris#130 implemented**: Bot session 22 landed score-delta tracking in main via PR #165 (2026-04-04). Awaits kingdonb to close.
+- [x] **Status comment posted on yebyen/mecris#101**: https://github.com/yebyen/mecris/pull/101#issuecomment-4195234759 — notes another session passed, still waiting for kingdonb.
 
 ## Pending Verification (Next Session)
 - [ ] **Merge yebyen/mecris#101**: pr-test green at `823b1e0`, blockers clear. Needs kingdonb's merge approval.
 - [ ] **kingdonb/mecris#173 unblocked**: Needs kingdonb to pull yebyen's fixes (`823b1e0`) into kingdonb:gemini-flash-rust-brain. Once done, bot can re-review or kingdonb can self-merge.
-- [ ] **CI verification of `test_auth_service.py`** (7 tests): Requires `fastapi`, `mcp`, `psycopg2` — should pass in CI (GitHub Actions full venv), not verifiable in bot env.
-- [ ] **kingdonb/mecris#162 close**: Needs manual close by kingdonb.
+- [ ] **kingdonb/mecris#122 close**: Audited complete — needs kingdonb to close.
+- [ ] **kingdonb/mecris#130 close**: Implemented and landed — needs kingdonb to close.
 
 ## Infrastructure Notes
 - Spin Cron trigger is **DISABLED** in `spin.toml` on both `main` and `gemini-flash-rust-brain` (yebyen fork) — do not re-enable. kingdonb's branch still has it enabled — that's one of the 3 blockers.

@@ -715,3 +715,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: No action on kingdonb/mecris#173 — head still at `4d16c9a9`, still blocked; nothing new to report beyond last session's status comment.
 
 **Next**: Wait for kingdonb to merge yebyen/mecris#101 (pr-test green, all blockers resolved at `823b1e0`) and integrate fixes into kingdonb:gemini-flash-rust-brain before the CHANGES_REQUESTED on #173 can be lifted.
+
+## 2026-04-06 — Triage: cleared stale items, posted #101 status update
+
+**Planned**: Clear stale NEXT_SESSION.md items (#162 already closed), post status update on yebyen/mecris#101, flag #122 and #130 as awaiting closure. (Plan: yebyen/mecris#108)
+
+**Done**: Confirmed kingdonb/mecris#162 closed by kingdonb on 2026-04-05 — removed from NEXT_SESSION.md pending list. Confirmed kingdonb/mecris#122 audited complete (surgicalUpdateInProgress flag — session 30 audit still standing) and #130 implemented (score-delta landed in main via PR #165). Posted status comment on yebyen/mecris#101 (#issuecomment-4195234759) noting another session has passed with no kingdonb action. Updated NEXT_SESSION.md to reflect accurate current state including that yebyen/mecris main is now 5 commits ahead of kingdonb/mecris main.
+
+**Skipped**: No code changes made — this was a pure housekeeping/triage session. Issue #125 (Obnoxious Arabic Reminders) has no description body and existing reminder_service.py already implements robust escalation — no actionable work without more spec from kingdonb.
+
+**Next**: Wait for kingdonb to merge yebyen/mecris#101 (pr-test green at 823b1e0) and close #122, #130. If another session passes with no action, consider escalating via a direct comment on kingdonb/mecris#173.
