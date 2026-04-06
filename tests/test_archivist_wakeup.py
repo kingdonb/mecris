@@ -5,8 +5,10 @@ from ghost.archivist_logic import should_ghost_wake_up
 
 def test_ghost_wakes_up_regardless_of_human_activity():
     # Human was active 1 minute ago
-    current_time = datetime(2026, 4, 4, 12, 0, 0, tzinfo=timezone.utc)
-    last_human = current_time - timedelta(minutes=1)
+    # Mock time to be inside the Archivist's Hour (2 AM - 5 AM UTC)
+    current_time = datetime(2026, 4, 4, 3, 0, 0, tzinfo=timezone.utc)
+    # Satisfy human silence heuristic (at least 1 hour)
+    last_human = current_time - timedelta(minutes=70)
     
     record = PresenceRecord(
         user_id="user1",
@@ -37,7 +39,7 @@ def test_ghost_stays_asleep_if_recently_synced():
     assert should_ghost_wake_up(record, current_time) is False
 
 def test_ghost_wakes_up_after_cooldown():
-    current_time = datetime(2026, 4, 4, 12, 0, 0, tzinfo=timezone.utc)
+    current_time = datetime(2026, 4, 4, 3, 0, 0, tzinfo=timezone.utc)
     last_ghost = current_time - timedelta(hours=13) # Synced 13 hours ago
     
     record = PresenceRecord(

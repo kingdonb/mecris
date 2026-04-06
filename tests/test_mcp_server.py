@@ -91,7 +91,8 @@ async def test_get_narrator_context_includes_presence_status():
     env_patch, db_patch = _make_mcp_importable()
     with env_patch, db_patch:
         with patch("mcp_server.get_neon_store", return_value=mock_store):
-            with patch("mcp_server.usage_tracker") as mock_tracker:
+            with patch("mcp_server.usage_tracker") as mock_tracker, \
+                 patch("mcp_server.resolve_target_user", return_value="test-user"):
                 mock_tracker.resolve_user_id.return_value = "test-user"
                 mock_tracker.get_goals.return_value = []
                 mock_tracker.get_budget_status.return_value = {"days_remaining": 10}

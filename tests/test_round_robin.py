@@ -8,13 +8,16 @@ from ghost.archivist_logic import archivists_round_robin
 async def test_round_robin_triggers_sync_for_unsynced_user():
     # Setup mocks
     mock_store = MagicMock()
-    current_time = datetime(2026, 4, 4, 22, 30, 0, tzinfo=timezone.utc)
+    # Mock time to be inside the Archivist's Hour (2 AM - 5 AM UTC)
+    current_time = datetime(2026, 4, 4, 3, 0, 0, tzinfo=timezone.utc)
+    # Satisfy human silence heuristic (at least 1 hour)
+    last_human = current_time - timedelta(minutes=70)
     
     # User 1: Never synced by ghost
     record = PresenceRecord(
         user_id="user1",
-        last_active=current_time,
-        last_human_activity=current_time,
+        last_active=last_human,
+        last_human_activity=last_human,
         last_ghost_activity=None,
         source="cli",
         status_type=StatusType.ACTIVE_HUMAN
@@ -41,7 +44,8 @@ async def test_round_robin_triggers_sync_for_unsynced_user():
 async def test_round_robin_skips_recently_synced_user():
     # Setup mocks
     mock_store = MagicMock()
-    current_time = datetime(2026, 4, 4, 22, 30, 0, tzinfo=timezone.utc)
+    # Mock time to be inside the Archivist's Hour (2 AM - 5 AM UTC)
+    current_time = datetime(2026, 4, 4, 3, 0, 0, tzinfo=timezone.utc)
     
     # User 1: Synced 1 hour ago
     last_ghost = current_time - timedelta(hours=1)
