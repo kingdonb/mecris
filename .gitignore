@@ -88,3 +88,4 @@ tools/talktype/talktype_whisper_server.pid
 # Large Models
 .models/
 *.wasm
+mecris-core/target
