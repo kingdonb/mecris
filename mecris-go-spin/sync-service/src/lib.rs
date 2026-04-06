@@ -206,6 +206,7 @@ async fn handle_aggregate_status_get(req: Request) -> anyhow::Result<Response> {
     let db_url = variables::get("db_url")?;
     let connection = Connection::open(&db_url)?;
 
+    // --- JET EXECUTION (Rust) ---
     // 1. Check Walk Status (>= 2000 steps today US/Eastern)
     let walk_query = r#"
         SELECT COUNT(*) FROM walk_inferences 
@@ -241,49 +242,53 @@ async fn handle_aggregate_status_get(req: Request) -> anyhow::Result<Response> {
 
         if name == "ARABIC" || name == "GREEK" {
             total_goals += 1;
-            
-            // USE THE SHARED RUST LOGIC (The Diamond Core)
             let status = review_pump::get_status(current, tomorrow, daily_done, multiplier_x10, "points");
             let is_met = status.goal_met;
-
             if is_met { goals_met += 1; }
             if name == "ARABIC" { arabic_met = is_met; }
             if name == "GREEK" { greek_met = is_met; }
         }
     }
 
-    #[derive(Serialize)]
-    struct AggregateComponents {
-        walk: bool,
-        arabic: bool,
-        greek: bool,
-    }
+    #[derive(Serialize, Deserialize, PartialEq, Debug)]
+    struct AggregateComponents { walk: bool, arabic: bool, greek: bool }
+    #[derive(Serialize, Deserialize, PartialEq, Debug)]
+    struct AggregateResponse { score: String, goals_met: i32, total_goals: i32, all_clear: bool, components: AggregateComponents }
 
-    #[derive(Serialize)]
-    struct AggregateResponse {
-        score: String,
-        goals_met: i32,
-        total_goals: i32,
-        all_clear: bool,
-        components: AggregateComponents,
-    }
-
-    let resp = AggregateResponse {
+    let jet_resp = AggregateResponse {
         score: format!("{}/{}", goals_met, total_goals),
-        goals_met,
-        total_goals,
+        goals_met, total_goals,
         all_clear: goals_met == total_goals,
-        components: AggregateComponents {
-            walk: has_walked,
-            arabic: arabic_met,
-            greek: greek_met,
-        },
+        components: AggregateComponents { walk: has_walked, arabic: arabic_met, greek: greek_met },
     };
+
+    // --- SHADOW EXECUTION (Python "Source") ---
+    // We run this asynchronously to not block the primary response, but Spin doesn't 
+    // have true 'background' tasks in HTTP handlers, so we do it sequentially but 
+    // carefully catch all errors.
+    let py_url = format!("http://localhost:3000/internal/majesty-cake-status-py?user_id={}", user_id);
+    let py_req = Request::get(py_url).build();
+    if let Ok(res) = spin_sdk::http::send::<Request, Response>(py_req).await {
+        if let Ok(py_data) = serde_json::from_slice::<AggregateResponse>(res.body()) {
+            if py_data != jet_resp {
+                // JET DIVERGENCE DETECTED
+                println!("CRITICAL: Jet Divergence in Majesty Cake for user {}", user_id);
+                let div_query = "INSERT INTO jet_divergence (component_name, user_id, source_result, jet_result, input_params) VALUES ($1, $2, $3, $4, $5)";
+                let _ = connection.execute(div_query, &[
+                    ParameterValue::Str("majesty-cake".to_string()),
+                    ParameterValue::Str(user_id),
+                    ParameterValue::Str(serde_json::to_string(&py_data).unwrap_or_default()),
+                    ParameterValue::Str(serde_json::to_string(&jet_resp).unwrap_or_default()),
+                    ParameterValue::Str(format!("{{\"user_id\":\"{}\"}}", user_id))
+                ]);
+            }
+        }
+    }
 
     Ok(Response::builder()
         .status(200)
         .header("content-type", "application/json")
-        .body(serde_json::to_string(&resp).unwrap())
+        .body(serde_json::to_string(&jet_resp).unwrap())
         .build())
 }
 
