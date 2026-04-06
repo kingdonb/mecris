@@ -12,14 +12,29 @@ GHOST_COOLDOWN_SECONDS = 12 * 3600     # 12 hours
 def should_ghost_wake_up(record: PresenceRecord, current_time: datetime) -> bool:
     """
     Returns True if the ghost should perform an archival sync.
-    Operates continuously based on idempotency (cooldown), regardless of human presence.
+    Heuristic:
+    1. Idempotency: Must be at least 12 hours since last ghost activity.
+    2. Quiet Window: Only wake up between 2 AM and 5 AM UTC (The Archivist's Hour).
     """
-    # Ghost Activity De-duplication (Idempotency): Did we already do this recently?
+    # 1. Ghost Activity De-duplication (Idempotency)
     if record.last_ghost_activity:
         ghost_silence = (current_time - record.last_ghost_activity).total_seconds()
         if ghost_silence < GHOST_COOLDOWN_SECONDS:
             return False
             
+    # 2. Human Presence Cooperative Silence
+    # Do not wake up if a human was active recently (1 hour buffer)
+    if record.last_human_activity:
+        human_silence = (current_time - record.last_human_activity).total_seconds()
+        if human_silence < 3600:
+            return False
+
+    # 3. The Archivist's Hour (2 AM - 5 AM UTC)
+    # TODO: Respect user.timezone from Neon for better local-time targeting.
+    hour = current_time.hour
+    if not (2 <= hour < 5):
+        return False
+
     return True
 
 async def perform_archival_sync(user_id: str):
