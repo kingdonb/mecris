@@ -45,7 +45,8 @@ def test_loopback_server_validates_state():
     captured_wrapper = []
     
     def run_wait():
-        code = wait_for_code(server, expected_state=state, timeout=5)
+        # Short timeout for failure case
+        code = wait_for_code(server, expected_state=state, timeout=0.5)
         captured_wrapper.append(code)
         
     wait_thread = threading.Thread(target=run_wait)
@@ -58,5 +59,5 @@ def test_loopback_server_validates_state():
     except:
         pass
         
-    wait_thread.join(timeout=5)
+    wait_thread.join(timeout=1.0)
     assert captured_wrapper == [None]
