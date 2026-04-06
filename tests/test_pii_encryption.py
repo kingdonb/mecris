@@ -95,11 +95,9 @@ def test_message_log_error_msg_encryption_implemented_in_mcp_server():
     with open(mcp_server_path) as f:
         source = f.read()
 
-    assert "encryption.encrypt(error_val)" in source, (
-        "mcp_server.py must encrypt error_val using usage_tracker.encryption.encrypt() "
-        "before inserting into message_log. "
-        "Add: if error_val and usage_tracker.encryption.aesgcm: "
-        "error_val = usage_tracker.encryption.encrypt(error_val)"
+    # Updated to support try_encrypt() refactor
+    assert "encryption.try_encrypt(error_val)" in source or "encryption.encrypt(error_val)" in source, (
+        "mcp_server.py must encrypt error_val using usage_tracker.encryption before inserting into message_log."
     )
 
 
