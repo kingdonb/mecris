@@ -5,8 +5,8 @@ spin_manifest_version = 2
 [application]
 name = "mecris-sync-v2"
 version = "0.1.0"
-authors = ["Kingdon B <kingdon@urmanac.com>"]
-description = ""
+authors = ["Kingdon B <kingdon@urmanac.com>", "Gemini Flash (Peacekeeper)"]
+description = "Harmonious Discord: Python Vanguard and Rust Iron Core co-existing."
 
 [variables]
 db_url = { required = false, default = "" }
@@ -17,40 +17,62 @@ clozemaster_email = { required = false, default = "" }
 clozemaster_password = { required = false, default = "" }
 master_encryption_key = { required = false, default = "" }
 neon_db_url = { required = false, default = "" }
+HELIX_CREDIT_LIMIT = { required = false, default = "100.00" }
+GEMINI_FREE_LIMIT = { required = false, default = "50.00" }
+ANTHROPIC_BUDGET_LIMIT = { required = false, default = "20.89" }
+GROQ_BUDGET_LIMIT = { required = false, default = "10.00" }
+
+# ---------------------------------------------------------------------------
+# Python Vanguard Triggers
+# ---------------------------------------------------------------------------
 
 [[trigger.http]]
-route = "/internal/review-pump-status"
-component = "review-pump"
+route = "/internal/review-pump-status-py"
+component = "review-pump-py"
+
+[[trigger.http]]
+route = "/internal/nag-check-py"
+component = "nag-engine-py"
+
+[[trigger.http]]
+route = "/internal/budget-status-py"
+component = "budget-governor-py"
+
+[[trigger.http]]
+route = "/internal/majesty-cake-status-py"
+component = "majesty-cake-py"
+
+# ---------------------------------------------------------------------------
+# Rust Iron Core Triggers
+# ---------------------------------------------------------------------------
+
+[[trigger.http]]
+route = "/internal/review-pump-status-rs"
+component = "review-pump-rs"
+
+[[trigger.http]]
+route = "/internal/nag-check-rs"
+component = "nag-engine-rs"
+
+[[trigger.http]]
+route = "/internal/budget-status-rs"
+component = "budget-governor-rs"
+
+# ---------------------------------------------------------------------------
+# Legacy & Shared Triggers
+# ---------------------------------------------------------------------------
 
 [[trigger.http]]
 route = "/internal/arabic-skip-count"
 component = "arabic-skip-counter"
 
 [[trigger.http]]
-route = "/internal/budget-status"
-component = "budget-governor"
-
-[[trigger.http]]
-route = "/internal/budget-gate"
-component = "budget-governor"
-
-[[trigger.http]]
-route = "/internal/budget-record"
-component = "budget-governor"
-
-[[trigger.http]]
-route = "/internal/nag-check"
-component = "nag-engine"
-
-[[trigger.http]]
 route = "/..."
 component = "sync-service"
 
-# [[trigger.cron]]
-# component = "sync-service"
-# cron_expression = "0 0 */2 * * *"
-# NOTE: Cron is temporarily disabled to avoid masking issues in the main framework.
-# Fermyon Cloud does not currently support cron triggers natively. Use GitHub Actions.
+# ---------------------------------------------------------------------------
+# Component Definitions
+# ---------------------------------------------------------------------------
 
 [component.sync-service]
 source = "target/wasm32-wasip1/release/sync_service.wasm"
@@ -68,40 +90,81 @@ master_encryption_key = "{{ master_encryption_key }}"
 command = "cargo build --target wasm32-wasip1 --release"
 watch = ["src/**/*.rs", "Cargo.toml"]
 
-[component.budget-governor]
-source = "../budget-governor-rs/target/wasm32-wasip1/release/budget_governor_rs.wasm"
-key_value_stores = ["default"]
-[component.budget-governor.variables]
-HELIX_CREDIT_LIMIT = "{{ HELIX_CREDIT_LIMIT }}"
-GEMINI_FREE_LIMIT = "{{ GEMINI_FREE_LIMIT }}"
-ANTHROPIC_BUDGET_LIMIT = "{{ ANTHROPIC_BUDGET_LIMIT }}"
-GROQ_BUDGET_LIMIT = "{{ GROQ_BUDGET_LIMIT }}"
-[component.budget-governor.build]
-command = "cargo build --target wasm32-wasip1 --release"
-workdir = "../budget-governor-rs"
-watch = ["src/**/*.rs", "Cargo.toml"]
+# --- RUST COMPONENTS ---
 
-[component.nag-engine]
-source = "../nag-engine-rs/target/wasm32-wasip1/release/nag_engine_rs.wasm"
-allowed_outbound_hosts = ["postgres://*:*"]
-[component.nag-engine.variables]
-db_url = "{{ db_url }}"
-[component.nag-engine.build]
-command = "cargo build --target wasm32-wasip1 --release"
-workdir = "../nag-engine-rs"
-watch = ["src/**/*.rs", "Cargo.toml"]
-
-[component.review-pump]
+[component.review-pump-rs]
 source = "../review-pump/target/wasm32-wasip1/release/review_pump.wasm"
-[component.review-pump.build]
+[component.review-pump-rs.build]
 command = "cargo build --target wasm32-wasip1 --release --features spin"
 workdir = "../review-pump"
 watch = ["src/**/*.rs", "Cargo.toml"]
 
-# arabic-skip-counter: Python WASM component (componentize-py + spin_sdk, Phase 1.6).
-# HTTP trigger: GET /internal/arabic-skip-count?user_id=<id>&hours=<n>
-# Returns JSON: {"skip_count": <u32>}
-# Reads neon_db_url from Spin variables.
+[component.budget-governor-rs]
+source = "../budget-governor-rs/target/wasm32-wasip1/release/budget_governor_rs.wasm"
+key_value_stores = ["default"]
+[component.budget-governor-rs.variables]
+HELIX_CREDIT_LIMIT = "{{ HELIX_CREDIT_LIMIT }}"
+GEMINI_FREE_LIMIT = "{{ GEMINI_FREE_LIMIT }}"
+ANTHROPIC_BUDGET_LIMIT = "{{ ANTHROPIC_BUDGET_LIMIT }}"
+GROQ_BUDGET_LIMIT = "{{ GROQ_BUDGET_LIMIT }}"
+[component.budget-governor-rs.build]
+command = "cargo build --target wasm32-wasip1 --release"
+workdir = "../budget-governor-rs"
+watch = ["src/**/*.rs", "Cargo.toml"]
+
+[component.nag-engine-rs]
+source = "../nag-engine-rs/target/wasm32-wasip1/release/nag_engine_rs.wasm"
+allowed_outbound_hosts = ["postgres://*:*"]
+[component.nag-engine-rs.variables]
+db_url = "{{ db_url }}"
+[component.nag-engine-rs.build]
+command = "cargo build --target wasm32-wasip1 --release"
+workdir = "../nag-engine-rs"
+watch = ["src/**/*.rs", "Cargo.toml"]
+
+# --- PYTHON COMPONENTS ---
+
+[component.review-pump-py]
+source = "../review-pump-py/review-pump-py.wasm"
+[component.review-pump-py.build]
+command = "python3 -m pip install --user --break-system-packages -r requirements.txt && spin py2wasm app -o review-pump-py.wasm"
+workdir = "../review-pump-py"
+watch = ["app.py"]
+
+[component.nag-engine-py]
+source = "../nag-engine/nag-engine.wasm"
+allowed_outbound_hosts = ["https://*.neon.tech"]
+[component.nag-engine-py.variables]
+neon_db_url = "{{ neon_db_url }}"
+[component.nag-engine-py.build]
+command = "python3 -m pip install --user --break-system-packages -r requirements.txt && spin py2wasm app -o nag-engine.wasm"
+workdir = "../nag-engine"
+watch = ["app.py"]
+
+[component.budget-governor-py]
+source = "../budget-governor/budget-governor.wasm"
+key_value_stores = ["default"]
+[component.budget-governor-py.variables]
+HELIX_CREDIT_LIMIT = "{{ HELIX_CREDIT_LIMIT }}"
+GEMINI_FREE_LIMIT = "{{ GEMINI_FREE_LIMIT }}"
+ANTHROPIC_BUDGET_LIMIT = "{{ ANTHROPIC_BUDGET_LIMIT }}"
+GROQ_BUDGET_LIMIT = "{{ GROQ_BUDGET_LIMIT }}"
+[component.budget-governor-py.build]
+command = "python3 -m pip install --user --break-system-packages -r requirements.txt && spin py2wasm app -o budget-governor.wasm"
+workdir = "../budget-governor"
+watch = ["app.py"]
+
+[component.majesty-cake-py]
+source = "../majesty-cake/majesty-cake.wasm"
+allowed_outbound_hosts = ["https://*.neon.tech"]
+[component.majesty-cake-py.variables]
+neon_db_url = "{{ neon_db_url }}"
+[component.majesty-cake-py.build]
+command = "python3 -m pip install --user --break-system-packages -r requirements.txt && spin py2wasm app -o majesty-cake.wasm"
+workdir = "../majesty-cake"
+watch = ["app.py"]
+
+# Shared/Misc
 [component.arabic-skip-counter]
 source = "../arabic-skip-counter/arabic-skip-counter.wasm"
 allowed_outbound_hosts = ["https://*.neon.tech"]
