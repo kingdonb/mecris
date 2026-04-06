@@ -18,7 +18,6 @@ def should_ghost_wake_up(record: PresenceRecord, current_time: datetime) -> bool
     Heuristic:
     1. Idempotency: Must be at least 12 hours since last ghost activity.
     2. Quiet Window: Do not wake up if a human was active in the last hour.
-    3. The Archivist's Hour: Only wake up between 2 AM and 5 AM UTC.
     """
     # 1. Ghost Activity De-duplication (Idempotency)
     if record.last_ghost_activity:
@@ -31,12 +30,6 @@ def should_ghost_wake_up(record: PresenceRecord, current_time: datetime) -> bool
         human_silence = (current_time - record.last_human_activity).total_seconds()
         if human_silence < HUMAN_SILENCE_THRESHOLD_SECONDS:
             return False
-
-    # 3. The Archivist's Hour (UTC)
-    # TODO: Respect user.timezone from Neon for better local-time targeting.
-    hour = current_time.hour
-    if not (ARCHIVIST_HOUR_START <= hour < ARCHIVIST_HOUR_END):
-        return False
 
     return True
 
