@@ -162,7 +162,21 @@ class TestRun:
 
         log_content = open(log_file).read()
         # ISO 8601 UTC timestamp should be present (ends with +00:00)
-        assert "+00:00" in log_content or "Z" in log_content or "2026" in log_content
+        assert "+00:00" in log_content
+
+    @pytest.mark.asyncio
+    async def test_calls_round_robin_when_no_user_id(self, lock_file, log_file):
+        status = _make_status(human_present=False, lock_exists=False, age=0)
+        offline_result = {"status": "offline", "error": "x"}
+
+        with patch("ghost.archivist.check_presence", return_value=status), \
+             patch("ghost.archivist.pulse", return_value=offline_result), \
+             patch("ghost.archivist.archivists_round_robin", AsyncMock()) as mock_round_robin:
+
+            rc = await run(user_id=None, lock_path=lock_file, log_path=log_file)
+
+            assert rc == 0
+            mock_round_robin.assert_called_once()
 
 
 # ---------------------------------------------------------------------------
