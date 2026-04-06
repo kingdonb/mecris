@@ -145,7 +145,7 @@ async def upload_walk(walk_data: Dict[str, Any], user_id: str = Depends(get_auth
                 ))
         
         # Trigger immediate sync for this user
-        asyncio.create_task(scheduler._global_walk_sync_job(user_id))
+        asyncio.create_task(_global_walk_sync_job(user_id))
         
         return {"status": "success", "message": "Walk ingested and sync triggered"}
     except Exception as e:
@@ -228,7 +228,7 @@ async def budget_status_endpoint(user_id: str = Depends(get_authorized_user)):
 # and custom HTTP endpoints.
 app.mount("/mcp", mcp.sse_app())
 
-from scheduler import MecrisScheduler
+from scheduler import MecrisScheduler, _global_walk_sync_job
 
 # Initialize clients
 obsidian_client = ObsidianMCPClient()
