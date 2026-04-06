@@ -1,20 +1,20 @@
 # Next Session: Await Gemini's blocker fixes on yebyen/mecris#101 + kingdonb/mecris#173
 
 ## Current Status (2026-04-06)
-- **Both DMZ PRs under CHANGES_REQUESTED**: yebyen/mecris#101 (reviewed 2026-04-06 session 1) and kingdonb/mecris#173 (reviewed 2026-04-06 session 2) both have CHANGES_REQUESTED posted. Same head commit (`4d16c9a`), same 3 blockers.
-- **No new Gemini commits since review**: Branch `gemini-flash-rust-brain` head is still `4d16c9a`. Gemini's progress comment on kingdonb#173 outlines next steps (UniFFI bindings, Python/Kotlin wrappers) but those commits have not been pushed.
-- **yebyen/mecris is in sync with kingdonb/mecris main** — `ae8e1ba` on both.
-- `CONTRIBUTING.md` (replacing constitution) and `mecris-core/` UniFFI scaffolding from the Gemini PR are noted as sound foundations — value is there, just blocked on 3 fixable issues.
+- **Both DMZ PRs still under CHANGES_REQUESTED**: yebyen/mecris#101 and kingdonb/mecris#173 — both at head `4d16c9a9`, same 3 blockers. No new commits from Gemini since session 1 review (verified across sessions 2 and 3).
+- **Stall status comments posted**: Session 3 confirmed stall and posted status updates on both PRs noting the unchanged SHA and outstanding blockers.
+- **yebyen/mecris is in sync with kingdonb/mecris main** — both at `ae8e1ba`.
+- **Independent work blocked**: Twilio epics (#166-#169) and other open epics require DMZ merge first; no unlabeled independent work was actionable.
 
 ## Verified This Session (2026-04-06)
-- [x] **kingdonb/mecris#173 reviewed**: CHANGES_REQUESTED posted (review ID 4061831284) via classic PAT as yebyen. Identical 3 blockers to yebyen#101 documented with cross-reference.
-- [x] **Upstream sync verified**: yebyen/mecris main is at same SHA as kingdonb/mecris main — no drift.
-- [x] **No Gemini fixes pushed**: Confirmed yebyen#101 head still `4d16c9a` — blocker resolution has not started.
+- [x] **Gemini stall confirmed (session 3)**: `gemini-flash-rust-brain` head still `4d16c9a9` — 3 blockers unresolved
+- [x] **Stall comments posted**: yebyen/mecris#101 (comment #4192723975) and kingdonb/mecris#173 (comment #4192724840)
+- [x] **Upstream sync verified**: yebyen/mecris main and kingdonb/mecris main both at `ae8e1ba` — no drift
 
 ## Pending Verification (Next Session)
 - [ ] **Both PR blockers resolved?** Check if Gemini pushed new commits to `gemini-flash-rust-brain` resolving: (1) merge conflict markers in `mecris-go-spin/sync-service/src/lib.rs`, (2) Spin Cron disabled in `spin.toml`, (3) NEXT_SESSION.md pending items preserved. Once resolved, re-review and run `/mecris-pr-test 101`.
 - [ ] **CI verification of `test_auth_service.py`** (7 tests): Requires `fastapi`, `mcp`, `psycopg2` — bot env lacks these. Should pass in CI (GitHub Actions full venv).
-- [ ] **kingdonb/mecris#162 close**: Closing comment is posted. Kingdonb needs to close it manually.
+- [ ] **kingdonb/mecris#162 close**: Needs manual close by kingdonb.
 
 ## Infrastructure Notes
 - Spin Cron trigger is **DISABLED** in `spin.toml` on `main` — do not re-enable. Gemini's PR tried to re-enable it; that was flagged as a blocker on BOTH PRs.
