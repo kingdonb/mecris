@@ -203,108 +203,21 @@ async fn handle_aggregate_status_get(req: Request) -> anyhow::Result<Response> {
         None => return Ok(Response::builder().status(401).body("Unauthorized").build()),
     };
 
-    let db_url = variables::get("db_url")?;
-    let connection = Connection::open(&db_url)?;
-
-    // 1. Check Walk Status (>= 2000 steps today US/Eastern)
-    let walk_query = r#"
-        SELECT COUNT(*) FROM walk_inferences 
-        WHERE (start_time::TIMESTAMPTZ AT TIME ZONE 'US/Eastern')::DATE = (CURRENT_TIMESTAMP AT TIME ZONE 'US/Eastern')::DATE
-        AND CAST(step_count AS INTEGER) >= 2000
-        AND user_id = $1
-    "#;
-    let walk_rs = connection.query(walk_query, &[ParameterValue::Str(user_id.clone())])?;
-    let has_walked = if !walk_rs.rows.is_empty() {
-        match &walk_rs.rows[0][0] { DbValue::Int64(i) => *i > 0, _ => false }
-    } else {
-        false
-    };
-
-    // 2. Check Language Stats
-    let lang_query = "SELECT language_name, current_reviews, tomorrow_reviews, pump_multiplier::FLOAT8, daily_completions FROM language_stats WHERE user_id = $1";
-    let lang_rs = connection.query(lang_query, &[ParameterValue::Str(user_id.clone())])?;
-
-    let mut goals_met = 0;
-    let mut total_goals = 1; // Base goal: Walk
-    if has_walked { goals_met += 1; }
-
-    let mut arabic_met = false;
-    let mut greek_met = false;
-
-    for row in lang_rs.rows {
-        let name = match &row[0] { DbValue::Str(s) => s.to_uppercase(), _ => "".to_string() };
-        let current = match &row[1] { DbValue::Int32(i) => *i, _ => 0 };
-        let tomorrow = match &row[2] { DbValue::Int32(i) => *i, _ => 0 };
-        let multiplier = match &row[3] { DbValue::Floating64(f) => *f, _ => 1.0 };
-        let daily_done = match &row[4] { DbValue::Int32(i) => *i, _ => 0 };
-
-        if name == "ARABIC" || name == "GREEK" {
-            total_goals += 1;
-            
-            // Ported ReviewPump target logic
-            let clearance_days = match multiplier as i32 {
-                2 => Some(14.0),
-                3 => Some(10.0),
-                4 => Some(7.0),
-                5 => Some(5.0),
-                6 => Some(3.0),
-                7 => Some(2.0),
-                10 => Some(1.0),
-                _ => None,
-            };
-
-            let target = match clearance_days {
-                None => tomorrow,
-                Some(days) => {
-                    let backlog_portion = current as f64 / days;
-                    (tomorrow as f64 + backlog_portion) as i32
-                }
-            };
-
-            let is_met = if target > 0 || (current > 0 && multiplier > 1.0) {
-                daily_done >= target
-            } else {
-                current == 0
-            };
-
-            if is_met { goals_met += 1; }
-            if name == "ARABIC" { arabic_met = is_met; }
-            if name == "GREEK" { greek_met = is_met; }
-        }
+    // Call the internal majesty-cake-status component
+    // This unifies logic across Python MCP and Spin Cloud (kingdonb/mecris#157)
+    let url = format!("http://localhost:3000/internal/majesty-cake-status?user_id={}", user_id);
+    let internal_req = Request::get(url).build();
+    let res: Response = spin_sdk::http::send(internal_req).await?;
+    
+    let status = *res.status();
+    if !(200..300).contains(&status) {
+        return Ok(Response::builder().status(status).body("Internal error from majesty-cake component").build());
     }
-
-    #[derive(Serialize)]
-    struct AggregateComponents {
-        walk: bool,
-        arabic: bool,
-        greek: bool,
-    }
-
-    #[derive(Serialize)]
-    struct AggregateResponse {
-        score: String,
-        goals_met: i32,
-        total_goals: i32,
-        all_clear: bool,
-        components: AggregateComponents,
-    }
-
-    let resp = AggregateResponse {
-        score: format!("{}/{}", goals_met, total_goals),
-        goals_met,
-        total_goals,
-        all_clear: goals_met == total_goals,
-        components: AggregateComponents {
-            walk: has_walked,
-            arabic: arabic_met,
-            greek: greek_met,
-        },
-    };
 
     Ok(Response::builder()
         .status(200)
         .header("content-type", "application/json")
-        .body(serde_json::to_string(&resp).unwrap())
+        .body(res.body().clone())
         .build())
 }
 
