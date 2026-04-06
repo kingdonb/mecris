@@ -114,22 +114,36 @@ jobs:
           echo "exit_code=$?" >> $GITHUB_OUTPUT
           set -e
 
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Run Rust tests
+        id: rust_tests
+        run: |
+          set +e
+          cargo test --workspace 2>&1 | tee /tmp/cargo-test-output.txt
+          echo "exit_code=$?" >> $GITHUB_OUTPUT
+          set -e
+
       - name: Post review comment on upstream PR
         env:
           UPSTREAM: ${{ github.event.inputs.upstream_repo || 'kingdonb/mecris' }}
           PR: ${{ github.event.inputs.pr_number }}
           PY_EXIT: ${{ steps.python_tests.outputs.exit_code }}
           AND_EXIT: ${{ steps.android_tests.outputs.exit_code }}
+          RS_EXIT: ${{ steps.rust_tests.outputs.exit_code }}
           CLASSIC_PAT: ${{ secrets.MECRIS_BOT_CLASSIC_PAT }}
         run: |
           PY_ICON=$( [ "$PY_EXIT"  = "0" ] && echo "✅" || echo "❌" )
           AND_ICON=$( [ "$AND_EXIT" = "0" ] && echo "✅" || echo "❌" )
+          RS_ICON=$( [ "$RS_EXIT" = "0" ] && echo "✅" || echo "❌" )
 
           PY_OUT=$(tail -30 /tmp/pytest-output.txt 2>/dev/null | sed 's/`/'"'"'/g')
           AND_OUT=$(tail -20 /tmp/gradle-output.txt 2>/dev/null | sed 's/`/'"'"'/g')
+          RS_OUT=$(tail -30 /tmp/cargo-test-output.txt 2>/dev/null | sed 's/`/'"'"'/g')
 
-          BODY=$(printf '## 🤖 mecris-bot PR test report\n\n%s **Python tests** (local postgres, no Neon credentials needed)\n```\n%s\n```\n\n%s **Android unit tests** (JDK 17, no emulator)\n```\n%s\n```\n\n_Tested by merging `%s#%s` into `yebyen/mecris:main`_' \
-            "$PY_ICON" "$PY_OUT" "$AND_ICON" "$AND_OUT" "$UPSTREAM" "$PR")
+          BODY=$(printf '## 🤖 mecris-bot PR test report\n\n%s **Python tests** (local postgres, no Neon credentials needed)\n```\n%s\n```\n\n%s **Android unit tests** (JDK 17, no emulator)\n```\n%s\n```\n\n%s **Rust unit tests**\n```\n%s\n```\n\n_Tested by merging `%s#%s` into `yebyen/mecris:main`_' \
+            "$PY_ICON" "$PY_OUT" "$AND_ICON" "$AND_OUT" "$RS_ICON" "$RS_OUT" "$UPSTREAM" "$PR")
 
           BODY_JSON=$(python3 -c "import json,sys; print(json.dumps({'body': sys.argv[1]}))" "$BODY")
           COMMENT_URL=$(curl -sf \
