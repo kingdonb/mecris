@@ -27,6 +27,14 @@ route = "/internal/arabic-skip-count"
 component = "arabic-skip-counter"
 
 [[trigger.http]]
+route = "/internal/majesty-cake-status"
+component = "majesty-cake"
+
+[[trigger.http]]
+route = "/internal/nag-check"
+component = "nag-engine"
+
+[[trigger.http]]
 route = "/..."
 component = "sync-service"
 
@@ -53,11 +61,11 @@ command = "cargo build --target wasm32-wasip1 --release"
 watch = ["src/**/*.rs", "Cargo.toml"]
 
 [component.review-pump]
-source = "../review-pump/target/wasm32-wasip1/release/review_pump.wasm"
+source = "../review-pump-py/review-pump-py.wasm"
 [component.review-pump.build]
-command = "cargo build --target wasm32-wasip1 --release --features spin"
-workdir = "../review-pump"
-watch = ["src/**/*.rs", "Cargo.toml"]
+command = "python3 -m pip install --user --break-system-packages -r requirements.txt && spin py2wasm app -o review-pump-py.wasm"
+workdir = "../review-pump-py"
+watch = ["app.py"]
 
 # arabic-skip-counter: Python WASM component (componentize-py + spin_sdk, Phase 1.6).
 # HTTP trigger: GET /internal/arabic-skip-count?user_id=<id>&hours=<n>
@@ -72,3 +80,31 @@ neon_db_url = "{{ neon_db_url }}"
 command = "python3 -m pip install --user --break-system-packages -r requirements.txt && spin py2wasm app -o arabic-skip-counter.wasm"
 workdir = "../arabic-skip-counter"
 watch = ["app.py", "wit/*.wit"]
+
+[component.majesty-cake]
+source = "../majesty-cake/majesty-cake.wasm"
+allowed_outbound_hosts = ["https://*.neon.tech"]
+[component.majesty-cake.variables]
+neon_db_url = "{{ neon_db_url }}"
+[component.majesty-cake.build]
+command = "python3 -m pip install --user --break-system-packages -r requirements.txt && spin py2wasm app -o majesty-cake.wasm"
+workdir = "../majesty-cake"
+watch = ["app.py"]
+ = "{{ neon_db_url }}"
+[component.nag-engine.build]
+command = "python3 -m pip install --user --break-system-packages -r requirements.txt && spin py2wasm app -o nag-engine.wasm"
+workdir = "../nag-engine"
+watch = ["app.py"]
+
+[component.budget-governor]
+source = "../budget-governor/budget-governor.wasm"
+key_value_stores = ["default"]
+[component.budget-governor.variables]
+HELIX_CREDIT_LIMIT = "{{ HELIX_CREDIT_LIMIT }}"
+GEMINI_FREE_LIMIT = "{{ GEMINI_FREE_LIMIT }}"
+ANTHROPIC_BUDGET_LIMIT = "{{ ANTHROPIC_BUDGET_LIMIT }}"
+GROQ_BUDGET_LIMIT = "{{ GROQ_BUDGET_LIMIT }}"
+[component.budget-governor.build]
+command = "python3 -m pip install --user --break-system-packages -r requirements.txt && spin py2wasm app -o budget-governor.wasm"
+workdir = "../budget-governor"
+watch = ["app.py"]
