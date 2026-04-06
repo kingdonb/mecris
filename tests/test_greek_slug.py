@@ -32,10 +32,14 @@ def test_no_active_python_code_uses_reviewstack_greek():
     python_files = root.glob("**/*.py")
 
     violations = []
+    # Project-level directories to skip for speed and accuracy
+    SKIP_DIRS = {".venv", ".git", "__pycache__", "node_modules", "attic", ".claude", ".gemini", ".mcp"}
+    
     for f in python_files:
-        # Skip attic/ — legacy/archived scripts are exempt
-        if "attic" in f.parts:
+        # Check if any part of the path is in our skip list
+        if any(part in SKIP_DIRS for part in f.parts):
             continue
+            
         # Skip self — this file contains the banned string in docstrings/comments
         if f.name == "test_greek_slug.py":
             continue
