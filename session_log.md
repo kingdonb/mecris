@@ -655,3 +655,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: Encryption audit (requires live Neon DB), `test_auth_service.py` CI run (requires full venv with fastapi/mcp/psycopg2), kingdonb/mecris#162 close (blocked on kingdonb permissions).
 
 **Next**: CI verification of `test_auth_service.py` (7 tests) in GitHub Actions full venv — this is the last remaining pending item from the auth hardening stack.
+
+## 2026-04-06 — PR review: yebyen/mecris#101 (Gemini DMZ architecture) 🏛️
+
+**Planned**: Review yebyen/mecris#101 (tagged pr-review), run pr-test, post architectural assessment (yebyen/mecris#102).
+
+**Done**: Reviewed all 30 files changed in the PR. Identified 3 blocking issues: (1) unresolved merge conflict markers in `sync-service/src/lib.rs` (from `origin/fix/android-ui-crash-and-polish` — code cannot compile), (2) Spin Cron re-enabled in `spin.toml` in violation of CLAUDE.md constraint, (3) NEXT_SESSION.md destructively overwritten (two active pending items lost). Posted CHANGES_REQUESTED review on yebyen/mecris#101 with full findings. Correctly skipped pr-test — compile would fail with conflict markers.
+
+**Skipped**: `/mecris-pr-test 101` — correctly skipped. Unresolved conflict markers make compilation impossible; running tests would be waste of turns.
+
+**Next**: Check if Gemini has resolved the 3 blockers on yebyen/mecris#101 (conflicts, Cron, NEXT_SESSION.md). If fixed, re-review and run pr-test. Also: CI verification of `test_auth_service.py` (7 tests) and kingdonb/mecris#162 manual close still outstanding.
