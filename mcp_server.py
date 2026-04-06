@@ -113,11 +113,8 @@ async def upload_walk(walk_data: Dict[str, Any], user_id: str = Depends(get_auth
         
         # Encrypt gps_route_points if present and encryption is active
         gps_points = str(walk_data.get("gps_route_points", "0"))
-        if gps_points != "0" and usage_tracker.encryption.aesgcm:
-            try:
-                gps_points = usage_tracker.encryption.encrypt(gps_points)
-            except Exception as e:
-                logger.warning(f"Failed to encrypt gps_route_points: {e}")
+        if gps_points != "0":
+            gps_points = usage_tracker.encryption.try_encrypt(gps_points)
 
         with psycopg2.connect(neon_url) as conn:
             with conn.cursor() as cur:
@@ -996,18 +993,8 @@ async def send_reminder_message(message_data: Dict[str, Any], user_id: str = Non
     error_val = None if delivery_result.get("sent") else "Failed to send (check twilio_sender logs)"
     
     # Encrypt PII fields (error_msg, content) before storing
-    encrypted_content = None
-    if message and usage_tracker.encryption.aesgcm:
-        try:
-            encrypted_content = usage_tracker.encryption.encrypt(message)
-        except Exception as e:
-            logger.warning(f"Failed to encrypt message content: {e}")
-
-    if error_val and usage_tracker.encryption.aesgcm:
-        try:
-            error_val = usage_tracker.encryption.encrypt(error_val)
-        except Exception as e:
-            logger.warning(f"Failed to encrypt error_msg: {e}")
+    encrypted_content = usage_tracker.encryption.try_encrypt(message)
+    error_val = usage_tracker.encryption.try_encrypt(error_val)
     
     def _write_log():
         import psycopg2

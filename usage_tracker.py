@@ -523,14 +523,8 @@ class UsageTracker:
         now = datetime.now()
         
         # Encrypt PII fields (summary, outcome) before storing
-        stored_summary = summary
-        stored_outcome = outcome
-        if self.encryption.aesgcm:
-            try:
-                if summary: stored_summary = self.encryption.encrypt(summary)
-                if outcome: stored_outcome = self.encryption.encrypt(outcome)
-            except Exception as e:
-                logger.error(f"UsageTracker: Failed to encrypt autonomous turn data: {e}")
+        stored_summary = self.encryption.try_encrypt(summary)
+        stored_outcome = self.encryption.try_encrypt(outcome)
 
         if self.use_neon:
             try:

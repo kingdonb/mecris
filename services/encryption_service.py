@@ -1,6 +1,7 @@
 import os
 import binascii
 import logging
+from typing import Optional
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 logger = logging.getLogger("mecris.encryption")
@@ -53,3 +54,14 @@ class EncryptionService:
         except Exception as e:
             logger.error(f"Decryption failed: {e}")
             raise
+
+    def try_encrypt(self, plaintext: Optional[str]) -> Optional[str]:
+        """Try to encrypt plaintext. If it fails or is unavailable, return original value."""
+        if not plaintext or not self.aesgcm:
+            return plaintext
+            
+        try:
+            return self.encrypt(plaintext)
+        except Exception as e:
+            logger.warning(f"Encryption failed (non-fatal, returning plaintext): {e}")
+            return plaintext
