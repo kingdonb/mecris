@@ -1,5 +1,5 @@
 import pytest
-from datetime import datetime, time, timezone
+from datetime import datetime, timezone
 from ghost.archivist_logic import should_ghost_wake_up
 
 class MockRecord:
@@ -7,40 +7,38 @@ class MockRecord:
         self.last_ghost_activity = last_ghost_activity
         self.last_human_activity = last_human_activity
 
-def test_ghost_wakes_up_during_night_window_if_cooldown_passed():
-    """Ghost should wake up between 2 AM and 5 AM local time if cooldown passed."""
-    # 3 AM in some timezone
-    current_time = datetime(2026, 4, 5, 3, 0, 0, tzinfo=timezone.utc)
-    
-    # Cooldown passed (last activity 24h ago)
-    last_activity = datetime(2026, 4, 4, 3, 0, 0, tzinfo=timezone.utc)
+def test_ghost_wakes_up_when_cooldown_passed():
+    """Ghost wakes at any time of day once cooldown (12 hours) has elapsed."""
+    # 2 PM — previously blocked by night-window restriction; now allowed.
+    current_time = datetime(2026, 4, 5, 14, 0, 0, tzinfo=timezone.utc)
+    last_activity = datetime(2026, 4, 4, 14, 0, 0, tzinfo=timezone.utc)  # 24h ago
     record = MockRecord(last_ghost_activity=last_activity)
-    
-    # This should return True once we implement the window logic
+
     assert should_ghost_wake_up(record, current_time) is True
 
-def test_ghost_stays_asleep_outside_night_window():
-    """Ghost should not wake up at 2 PM even if cooldown passed."""
-    # 2 PM
+def test_ghost_stays_asleep_if_cooldown_not_passed():
+    """Ghost stays asleep if fewer than 12 hours have elapsed since last sync."""
     current_time = datetime(2026, 4, 5, 14, 0, 0, tzinfo=timezone.utc)
-    
-    last_activity = datetime(2026, 4, 4, 14, 0, 0, tzinfo=timezone.utc)
+    last_activity = datetime(2026, 4, 5, 6, 0, 0, tzinfo=timezone.utc)  # 8h ago
     record = MockRecord(last_ghost_activity=last_activity)
-    
-    # This should fail (returns True currently because only cooldown is checked)
+
     assert should_ghost_wake_up(record, current_time) is False
 
-def test_ghost_stays_asleep_if_human_was_recent():
-    """Ghost should not wake up if human was active in last 1 hour."""
-    # 3 AM (inside window)
+def test_ghost_wakes_up_even_if_human_was_recently_active():
+    """Ghost ignores human presence — continuous reconciliation is human-agnostic."""
+    # 3 AM, human was active 30 minutes ago.
     current_time = datetime(2026, 4, 5, 3, 0, 0, tzinfo=timezone.utc)
-    
-    # Human was active 30 mins ago
     last_human = datetime(2026, 4, 5, 2, 30, 0, tzinfo=timezone.utc)
-    last_ghost = datetime(2026, 4, 4, 3, 0, 0, tzinfo=timezone.utc)
-    
-    record = MockRecord(last_ghost_activity=last_ghost)
-    record.last_human_activity = last_human
-    
-    # This should fail (returns True currently because human activity isn't checked)
-    assert should_ghost_wake_up(record, current_time) is False
+    last_ghost = datetime(2026, 4, 4, 3, 0, 0, tzinfo=timezone.utc)  # 24h ago
+
+    record = MockRecord(last_ghost_activity=last_ghost, last_human_activity=last_human)
+
+    # Human activity should not prevent the ghost from running.
+    assert should_ghost_wake_up(record, current_time) is True
+
+def test_ghost_wakes_up_with_no_prior_activity():
+    """Ghost wakes immediately if it has never run before."""
+    current_time = datetime(2026, 4, 5, 8, 0, 0, tzinfo=timezone.utc)
+    record = MockRecord(last_ghost_activity=None)
+
+    assert should_ghost_wake_up(record, current_time) is True
