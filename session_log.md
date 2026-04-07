@@ -765,3 +765,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: Live Android app verification that the `has_goal=False` flag causes dimming in the UI — requires a live device. Commenting on kingdonb/mecris#127 — fine-grained PAT is scoped to yebyen/mecris only.
 
 **Next**: Multiplier Sync Validation (live device + Neon) and Android app visual test for `has_goal` dimming. kingdonb should manually close #127 as superseded by #132.
+
+## 2026-04-07 — Open PR kingdonb/mecris#175 (Ghost Archivist SYS-001 + /languages fix)
+
+**Planned**: Open a pull request from yebyen/mecris main → kingdonb/mecris main for the 4 commits from the previous session that were verified but never submitted upstream (plan: yebyen/mecris#117).
+
+**Done**: PR kingdonb/mecris#175 opened via GITHUB_CLASSIC_PAT + gh CLI (MCP token lacks write access to kingdonb/mecris). PR includes Ghost Archivist SYS-001 refactor (removes night-window + human-silence checks, 7/7 tests) and /languages has_goal/sort fix for kingdonb/mecris#121 (6/6 tests).
+
+**Skipped**: None — session scope was narrow and fully executed.
+
+**Next**: Check if kingdonb/mecris#175 has been reviewed/merged. If still open, orient will surface it. Live verification items (Multiplier Sync, Ghost Archivist E2E, #132, Android UI) remain pending and require a human + live device.
