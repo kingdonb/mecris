@@ -62,7 +62,18 @@ jobs:
             | python3 -c "import sys,json; print(json.load(sys.stdin)['head']['ref'])")
           echo "PR branch: $PR_BRANCH"
           git checkout -b pr-test-${PR}
-          git merge upstream/${PR_BRANCH} --no-edit
+          git merge upstream/${PR_BRANCH} --no-edit || {
+            CONFLICTS=$(git diff --name-only --diff-filter=U)
+            if [ "$CONFLICTS" = "NEXT_SESSION.md" ]; then
+              echo "Auto-resolving NEXT_SESSION.md conflict (taking upstream version)"
+              git checkout upstream/${PR_BRANCH} -- NEXT_SESSION.md
+              git add NEXT_SESSION.md
+              GIT_EDITOR=true git merge --continue
+            else
+              echo "Unresolvable merge conflicts: $CONFLICTS"
+              exit 1
+            fi
+          }
 
       - name: Set up Python with uv
         run: |
