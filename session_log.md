@@ -735,3 +735,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: No action on kingdonb/mecris#173 — head still at `4d16c9a9`, stalled. kingdonb/mecris#122 and #130 still need kingdonb to close.
 
 **Next**: Wait for kingdonb to merge yebyen/mecris#101 (pr-test green at `351293c`). Note: NEXT_SESSION.md drift is a recurring pattern — consider `.gitattributes` merge strategy or pr-test workflow auto-resolution to prevent this from becoming a per-session tax.
+
+## 2026-04-07 — pr-test for kingdonb/mecris#174; fixed NEXT_SESSION.md conflict permanently
+
+**Planned**: Run pr-test for kingdonb/mecris#174 (new `gemini-pros-atomic-commits` PR replacing closed #173). (Plan: yebyen/mecris#113)
+
+**Done**: Discovered both old PRs (#101, #173 on gemini-flash-rust-brain) were closed by kingdonb without merging. New PR kingdonb/mecris#174 / yebyen/mecris#111 exists on `gemini-pros-atomic-commits`. Dispatched pr-test — first two runs failed with NEXT_SESSION.md merge conflict (merge=ours in .gitattributes didn't work — not a built-in driver). Fixed by using `merge=union` (IS built-in). Third run (24080705977) completed successfully: Android ✅ PASSING, Python ⚠️ (exit code bug masks real failures — `mcp` and `cryptography` missing from requirements.txt). Posted results comment + follow-up clarification on kingdonb/mecris#174.
+
+**Skipped**: Cannot fix pr-test.yml exit code pipe bug — workflow file changes require `workflow` scope which available tokens lack (GITHUB_CLASSIC_PAT has `repo` scope only).
+
+**Next**: kingdonb must add `mcp` and `cryptography` to `requirements.txt` and fix the `tee` pipe exit code bug in pr-test.yml before Python tests can accurately report pass/fail.
