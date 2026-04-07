@@ -1,4 +1,4 @@
 # NEXT_SESSION.md is rewritten every archive session.
 # Using merge=ours prevents recurring conflicts when pr-test
 # merges upstream PR branches into yebyen/mecris:main.
-NEXT_SESSION.md merge=ours
+NEXT_SESSION.md merge=union
