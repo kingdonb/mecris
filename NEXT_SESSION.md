@@ -1,38 +1,33 @@
-# Next Session: CI verification of test_auth_service.py (needs full venv)
+# Next Session: kingdonb/mecris#174 needs Python deps fixed (mcp, cryptography) before merge
 
-## Current Status (2026-04-05)
-- Auth hardening stack fully merged upstream — kingdonb merged via `7315d67`.
-- `PyJWKClient` has `lifespan=300` (commit `ab1f723`) — JWKS cache TTL bounded to 5 minutes.
-- `try_token_refresh()` threshold raised from 60s → 1800s (commit `18b7bbc`) — CLI now triggers proactive refresh before the last 30 min of access token life.
-- `docs/AUTH_CONFIGURATION.md` updated (commit `18b7bbc`) — §5 CLI token refresh behavior, §6 server-side JWKS verification, env var table, standalone vs cloud mode.
-- **Ghost archivist `TestRun` tests fixed** (commit `9221937`) — 7 tests were calling `async run()` without `await`; all 39 bot-compatible tests now pass.
+## Current Status (2026-04-07)
+- **yebyen/mecris#101 CLOSED** (not merged): kingdonb closed both old DMZ PRs (#101 and #173) without merging. The `gemini-flash-rust-brain` branch is superseded.
+- **kingdonb/mecris#174 OPEN**: New PR "feat: centralized Review Pump logic and atomic commits" on `gemini-pros-atomic-commits`. pr-test run 24080705977 completed — Android ✅, Python ⚠️ (icon shows ✅ but output has 11 collection errors: `mcp` and `cryptography` not in requirements.txt).
+- **yebyen/mecris#111 OPEN**: Bot-tracking PR for the same `gemini-pros-atomic-commits` branch.
+- **NEXT_SESSION.md conflict FIXED**: `.gitattributes` with `merge=union` deployed to main at `76f2e89`. Prevents the recurring pr-test merge conflict blocker permanently.
+- **yebyen/mecris main is 11+ commits AHEAD of kingdonb/mecris main** — bot archive commits not yet in upstream.
 
-## Verified This Session (2026-04-05)
-- [x] **Archivist Ghost Session**: Implemented `ghost/archivist_logic.py` and `ghost/archivist.py` with autonomous wake-up heuristic (silence + UTC night window) and archival sync (Clozemaster).
-- [x] **Reality Enforcement (DEFECT-003)**: Removed the "savior" 0.0 ghost heartbeat logic from `perform_archival_sync`. The system now correctly allows derailment if no actual activity is found.
-- [x] **Database PII Encryption**: Audited and implemented encryption for high-risk fields: `message_log.content`, `walk_inferences.gps_route_points`, and `autonomous_turns` (summary/outcome).
-- [x] **Infrastructure Portability**: Fixed `.mcp.json` to use relative paths and `uv` from system PATH.
-- [x] **Import Resilience**: Refactored `usage_tracker.py` to use lazy imports for `psycopg2`, allowing the MCP server to initialize in environments (like GitHub Actions runners) without Postgres system headers.
-- [x] **Schema Alignment**: Harmonized Neon database schema between `UsageTracker.py`, `mcp_server.py`, and `schema.sql`.
-- [x] **`try_token_refresh()` threshold bump**: `exp < now + 1800` committed as `18b7bbc`.
-- [x] **`test_auth_utils.py`**: 6/6 passed in bot env (Python 3.12, no venv) ✅
-- [x] **`test_auth_server.py`**: 1 passed, 1 skipped (network-bound test expected) ✅
-- [x] **`test_archivist.py`**: 14/14 passed after fixing async/await mismatch and adding round-robin test ✅
-- [x] **Closing comment posted on kingdonb/mecris#162**: all deliverables documented, test results recorded.
-- [x] **Upstream PR for `18b7bbc` is moot**: already merged into kingdonb/mecris main via `1ffb4a2`.
-- [x] **Encryption Audit**: Verified that `message_log.content` is actually being stored as ciphertext in Neon (session 34).
-- [x] **Schema Migration**: Migrated `message_log` table in Neon to add missing `id`, `content`, and `channel` columns (session 34).
-- [x] **Archivist Heuristics**: Implemented night window (2 AM - 5 AM UTC) and human silence (1 hour) heuristics in `ghost/archivist_logic.py` (session 34).
-- [x] **Round-Robin Sync**: Enabled `ghost/archivist.py` to iterate all users when no specific `MECRIS_USER_ID` is provided (session 34).
+## Verified This Session (2026-04-07)
+- [x] **Both old PRs superseded**: kingdonb/mecris#173 and yebyen/mecris#101 closed (not merged) at ~2026-04-07T02:56Z
+- [x] **New PR exists**: kingdonb/mecris#174 + yebyen/mecris#111 on `gemini-pros-atomic-commits`
+- [x] **pr-test run 24080705977 GREEN (workflow level)**: All steps succeeded, comment posted at https://github.com/kingdonb/mecris/pull/174#issuecomment-4198872455
+- [x] **Android tests PASS**: BUILD SUCCESSFUL, 24 tasks
+- [x] **Python import errors confirmed**: `mcp` and `cryptography` missing from `requirements.txt` — exit code bug in pr-test masks this as ✅ when real status is ❌
+- [x] **NEXT_SESSION.md fix deployed**: `.gitattributes merge=union` at commit `76f2e89` — no more per-session merge conflict resolution needed
+- [x] **Plan yebyen/mecris#113 closed**: Complete — validation criteria met
 
 ## Pending Verification (Next Session)
-- [ ] **CI verification of `test_auth_service.py`** (7 tests): Requires `fastapi`, `mcp`, `psycopg2` — bot env lacks these. Should pass in CI (GitHub Actions full venv).
-- [ ] **kingdonb/mecris#162 close**: Closing comment is posted. Kingdonb needs to close it manually.
+- [ ] **kingdonb/mecris#174 needs Python deps**: `mcp` and `cryptography` must be added to `requirements.txt` before Python tests can pass. Bot posted clarification comment at https://github.com/kingdonb/mecris/pull/174#issuecomment-4198882038
+- [ ] **pr-test exit code bug**: The `tee` pipe masks pytest's real exit code (line 97-99 of pr-test.yml). Python failures appear as ✅. This needs `pipefail` or `PIPESTATUS` fix — but workflow file changes require `workflow` scope which bot tokens lack. Must be fixed by kingdonb.
+- [ ] **Rust tests not yet run**: pr-test.yml on yebyen/main doesn't include Rust tests. The PR adds them, but they'll only run after the PR is merged and the workflow is updated.
+- [ ] **kingdonb/mecris#122 close**: Audited complete — still needs kingdonb to close.
+- [ ] **kingdonb/mecris#130 close**: Implemented and landed — still needs kingdonb to close.
+- [ ] **yebyen/mecris#111**: Review/close once kingdonb/mecris#174 is handled.
 
 ## Infrastructure Notes
 - Spin Cron trigger is **DISABLED** in `spin.toml` — do not re-enable.
 - `MECRIS_MODE=standalone` bypasses JWKS for local dev; `MECRIS_MODE=cloud` enforces RSA verification + issuer check.
-- `MASTER_ENCRYPTION_KEY` must be a 64-char hex string (32-byte AES-256 key) — if unset, encryption silently skips and logs a warning.
-- JWKS URI defaults to `{POCKET_ID_URL}/.well-known/jwks.json`; override via `OIDC_JWKS_URI` env var.
-- `PyJWKClient` `lifespan=300` bounds in-process JWKS cache TTL — keys refresh from OIDC endpoint every ~5 min.
-- `ghost.archivist.run` is `async def` — always `await` it in tests; use `asyncio.run()` in sync entry points.
+- `MASTER_ENCRYPTION_KEY` must be a 64-char hex string (32-byte AES-256 key).
+- **Classic PAT scope**: `GITHUB_CLASSIC_PAT` has `repo` scope ONLY — no `workflow` scope. Cannot push changes to `.github/workflows/**`. Workflow file fixes must be committed by kingdonb or a token with `workflow` scope.
+- **NEXT_SESSION.md merge conflict is permanently fixed**: `.gitattributes merge=union` on yebyen/mecris:main resolves this automatically in all future pr-test runs.
+- **pr-test pipe exit code bug**: Line 97: `.venv/bin/pytest ... | tee ... && echo "exit_code=$?"` — `$?` captures `tee`'s exit code (0), not pytest's. Needs `set -o pipefail` or `PIPESTATUS[0]` fix.

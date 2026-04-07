@@ -655,3 +655,93 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: Encryption audit (requires live Neon DB), `test_auth_service.py` CI run (requires full venv with fastapi/mcp/psycopg2), kingdonb/mecris#162 close (blocked on kingdonb permissions).
 
 **Next**: CI verification of `test_auth_service.py` (7 tests) in GitHub Actions full venv — this is the last remaining pending item from the auth hardening stack.
+
+## 2026-04-06 — PR review: yebyen/mecris#101 (Gemini DMZ architecture) 🏛️
+
+**Planned**: Review yebyen/mecris#101 (tagged pr-review), run pr-test, post architectural assessment (yebyen/mecris#102).
+
+**Done**: Reviewed all 30 files changed in the PR. Identified 3 blocking issues: (1) unresolved merge conflict markers in `sync-service/src/lib.rs` (from `origin/fix/android-ui-crash-and-polish` — code cannot compile), (2) Spin Cron re-enabled in `spin.toml` in violation of CLAUDE.md constraint, (3) NEXT_SESSION.md destructively overwritten (two active pending items lost). Posted CHANGES_REQUESTED review on yebyen/mecris#101 with full findings. Correctly skipped pr-test — compile would fail with conflict markers.
+
+**Skipped**: `/mecris-pr-test 101` — correctly skipped. Unresolved conflict markers make compilation impossible; running tests would be waste of turns.
+
+**Next**: Check if Gemini has resolved the 3 blockers on yebyen/mecris#101 (conflicts, Cron, NEXT_SESSION.md). If fixed, re-review and run pr-test. Also: CI verification of `test_auth_service.py` (7 tests) and kingdonb/mecris#162 manual close still outstanding.
+
+## 2026-04-06 — Review kingdonb/mecris#173 — CHANGES_REQUESTED for same 3 DMZ blockers 🏛️
+
+**Planned**: Review kingdonb/mecris#173 (upstream Jet-Propelled DMZ PR, no reviews yet, same head SHA as yebyen#101) and post CHANGES_REQUESTED citing the same 3 blockers (yebyen/mecris#103).
+
+**Done**: Confirmed kingdonb/mecris#173 is same branch (`gemini-flash-rust-brain`, head `4d16c9a`) as yebyen#101. Noted Gemini's progress comment about UniFFI `mecris-core` next steps — promising direction, but not yet committed. Posted CHANGES_REQUESTED review (ID 4061831284) on kingdonb/mecris#173 via `GITHUB_CLASSIC_PAT` citing all 3 blockers with cross-reference to yebyen#101. Both upstream and fork PRs now have CHANGES_REQUESTED.
+
+**Skipped**: Nothing — full plan executed.
+
+**Next**: Check if Gemini resolves the 3 blockers on `gemini-flash-rust-brain` (merge conflicts in sync-service/src/lib.rs, Spin Cron disabled, NEXT_SESSION.md pending items restored). Once fixed, re-review both PRs and run `/mecris-pr-test 101`.
+
+## 2026-04-06 — Stall confirmation: Gemini DMZ still blocked, status comments posted on both PRs 🏛️
+
+**Planned**: Orient, check if Gemini pushed DMZ fixes, post status update.
+
+**Done**: Confirmed `gemini-flash-rust-brain` head still `4d16c9a9` — no new commits from Gemini across 3 bot sessions. Posted stall status comments on yebyen/mecris#101 (comment #4192723975) and kingdonb/mecris#173 (comment #4192724840) noting all 3 blockers remain unresolved. Confirmed upstream sync (yebyen/mecris main == kingdonb/mecris main == `ae8e1ba`). Assessed independent work options — Twilio epics (#166-#169) require DMZ merge first; no independent actionable work found.
+
+**Skipped**: No coding work — session was status-check-only. No plan issue created (no new development work to plan).
+
+**Next**: Check if Gemini has resolved the 3 DMZ blockers (merge conflicts in `sync-service/src/lib.rs`, Spin Cron still disabled in `spin.toml`, NEXT_SESSION.md pending items preserved). Once fixed, re-review and run `/mecris-pr-test 101`.
+
+## 2026-04-06 — Resolved 3 DMZ PR blockers; pr-test green on gemini-flash-rust-brain
+
+**Planned**: Fix 3 CHANGES_REQUESTED blockers on `gemini-flash-rust-brain` after 4-session Gemini stall: merge conflicts in `src/lib.rs`, cron re-enabled in `spin.toml`, NEXT_SESSION.md not preserving pending items. Then run pr-test on yebyen/mecris#101. (Plan: yebyen/mecris#105)
+
+**Done**: All 3 blockers resolved by mecris-bot directly on the branch. (1) Both merge conflict regions in `mecris-go-spin/sync-service/src/lib.rs` resolved by taking HEAD versions — removes 59 lines of conflict markers and android-fix duplicate definitions. (2) `[[trigger.cron]]` block removed from `mecris-go-spin/sync-service/spin.toml`. (3) NEXT_SESSION.md on the branch aligned with main's content to allow clean git merge in pr-test. pr-test dispatched and passed (run 24039612500, head `7501805`). PR comment posted on yebyen/mecris#101 noting blockers cleared and pr-test green.
+
+**Skipped**: Did not re-review kingdonb/mecris#173 with a new approval — the fixes are on the same branch but the upstream PR review state still shows CHANGES_REQUESTED. Deferred to next session.
+
+**Next**: Merge yebyen/mecris#101 (needs kingdonb approval) and follow up on kingdonb/mecris#173 with a review update noting blockers resolved.
+
+## 2026-04-06 — Status comment on kingdonb/mecris#173: forks diverged, fixes in yebyen only
+
+**Planned**: Post follow-up review on kingdonb/mecris#173 confirming all 3 CHANGES_REQUESTED blockers resolved. (Plan: yebyen/mecris#106)
+
+**Done**: Investigated and found that kingdonb/mecris#173 head is still `4d16c9a9` — the 3 blockers are present in kingdonb's branch. Fixes were applied only to yebyen:gemini-flash-rust-brain (head `7501805`). Posted an accurate status comment on kingdonb/mecris#173 (#issuecomment-4194069091) explaining the fork divergence and the path to resolution: kingdonb needs to pull yebyen's fixes into kingdonb:gemini-flash-rust-brain before the CHANGES_REQUESTED can be lifted.
+
+**Skipped**: Did not post an "approval" review — that would have been inaccurate. The CHANGES_REQUESTED review against `4d16c9a9` is still correct.
+
+**Next**: Wait for kingdonb to integrate yebyen/mecris#101 fixes into kingdonb:gemini-flash-rust-brain, then re-review #173 or confirm merge of #101.
+
+## 2026-04-06 — Resolved NEXT_SESSION.md merge conflict; pr-test green at 823b1e0
+
+**Planned**: Resolve NEXT_SESSION.md conflict on gemini-flash-rust-brain introduced by 5 archive commits on main, re-run pr-test to unblock yebyen/mecris#101. (Plan: yebyen/mecris#107)
+
+**Done**: Detected pr-test failure (run 24048507350) with `CONFLICT (content): Merge conflict in NEXT_SESSION.md`. Fetched gemini-flash-rust-brain locally, merged yebyen:main into it, resolved conflict by keeping main's authoritative session state, pushed `823b1e0` to origin. Re-dispatched pr-test (run 24048682519) — conclusion: success. Posted confirmation comment on yebyen/mecris#101 noting conflict fixed and pr-test green.
+
+**Skipped**: No action on kingdonb/mecris#173 — head still at `4d16c9a9`, still blocked; nothing new to report beyond last session's status comment.
+
+**Next**: Wait for kingdonb to merge yebyen/mecris#101 (pr-test green, all blockers resolved at `823b1e0`) and integrate fixes into kingdonb:gemini-flash-rust-brain before the CHANGES_REQUESTED on #173 can be lifted.
+
+## 2026-04-06 — Triage: cleared stale items, posted #101 status update
+
+**Planned**: Clear stale NEXT_SESSION.md items (#162 already closed), post status update on yebyen/mecris#101, flag #122 and #130 as awaiting closure. (Plan: yebyen/mecris#108)
+
+**Done**: Confirmed kingdonb/mecris#162 closed by kingdonb on 2026-04-05 — removed from NEXT_SESSION.md pending list. Confirmed kingdonb/mecris#122 audited complete (surgicalUpdateInProgress flag — session 30 audit still standing) and #130 implemented (score-delta landed in main via PR #165). Posted status comment on yebyen/mecris#101 (#issuecomment-4195234759) noting another session has passed with no kingdonb action. Updated NEXT_SESSION.md to reflect accurate current state including that yebyen/mecris main is now 5 commits ahead of kingdonb/mecris main.
+
+**Skipped**: No code changes made — this was a pure housekeeping/triage session. Issue #125 (Obnoxious Arabic Reminders) has no description body and existing reminder_service.py already implements robust escalation — no actionable work without more spec from kingdonb.
+
+**Next**: Wait for kingdonb to merge yebyen/mecris#101 (pr-test green at 823b1e0) and close #122, #130. If another session passes with no action, consider escalating via a direct comment on kingdonb/mecris#173.
+
+## 2026-04-07 — Re-verified pr-test for yebyen/mecris#101; resolved recurring NEXT_SESSION.md drift
+
+**Planned**: Re-run pr-test for yebyen/mecris#101 and post status update (Plan: yebyen/mecris#110).
+
+**Done**: Dispatched pr-test — initial run 24057062243 failed with merge conflict in NEXT_SESSION.md (same structural issue: 2 archive commits on main since last resolve). Fixed by updating NEXT_SESSION.md in gemini-flash-rust-brain branch via GitHub API commit `351293c677b3947bb3f333fb62eeb8b9d71f9503`. Re-dispatched pr-test (run 24057135798) — conclusion: success. Posted status comment on yebyen/mecris#101 confirming green at `351293c`. Plan issue #110 closed.
+
+**Skipped**: No action on kingdonb/mecris#173 — head still at `4d16c9a9`, stalled. kingdonb/mecris#122 and #130 still need kingdonb to close.
+
+**Next**: Wait for kingdonb to merge yebyen/mecris#101 (pr-test green at `351293c`). Note: NEXT_SESSION.md drift is a recurring pattern — consider `.gitattributes` merge strategy or pr-test workflow auto-resolution to prevent this from becoming a per-session tax.
+
+## 2026-04-07 — pr-test for kingdonb/mecris#174; fixed NEXT_SESSION.md conflict permanently
+
+**Planned**: Run pr-test for kingdonb/mecris#174 (new `gemini-pros-atomic-commits` PR replacing closed #173). (Plan: yebyen/mecris#113)
+
+**Done**: Discovered both old PRs (#101, #173 on gemini-flash-rust-brain) were closed by kingdonb without merging. New PR kingdonb/mecris#174 / yebyen/mecris#111 exists on `gemini-pros-atomic-commits`. Dispatched pr-test — first two runs failed with NEXT_SESSION.md merge conflict (merge=ours in .gitattributes didn't work — not a built-in driver). Fixed by using `merge=union` (IS built-in). Third run (24080705977) completed successfully: Android ✅ PASSING, Python ⚠️ (exit code bug masks real failures — `mcp` and `cryptography` missing from requirements.txt). Posted results comment + follow-up clarification on kingdonb/mecris#174.
+
+**Skipped**: Cannot fix pr-test.yml exit code pipe bug — workflow file changes require `workflow` scope which available tokens lack (GITHUB_CLASSIC_PAT has `repo` scope only).
+
+**Next**: kingdonb must add `mcp` and `cryptography` to `requirements.txt` and fix the `tee` pipe exit code bug in pr-test.yml before Python tests can accurately report pass/fail.
