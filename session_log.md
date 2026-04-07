@@ -745,3 +745,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: Cannot fix pr-test.yml exit code pipe bug — workflow file changes require `workflow` scope which available tokens lack (GITHUB_CLASSIC_PAT has `repo` scope only).
 
 **Next**: kingdonb must add `mcp` and `cryptography` to `requirements.txt` and fix the `tee` pipe exit code bug in pr-test.yml before Python tests can accurately report pass/fail.
+
+## 2026-04-07 🏛️ — Implement Ghost Archivist continuous reconciliation (SYS-001)
+
+**Planned**: Remove the odometer forgery (0.0 bike push) from `perform_archival_sync` (DEFECT-003) and refactor `should_ghost_wake_up` to use idempotency-based continuous reconciliation instead of silence/time-of-day checks. (yebyen/mecris#115)
+
+**Done**: Discovered DEFECT-003 was already resolved in the code — no 0.0 push to `bike`. Implemented Phase 2 of the Ghost Archivist plan: removed `HUMAN_SILENCE_THRESHOLD_SECONDS`, `ARCHIVIST_HOUR_START/END` constants and their enforcement blocks from `should_ghost_wake_up`. The function now only checks idempotency (12h cooldown). Updated `test_archivist_logic.py` to test the new spec-compliant behavior: ghost fires at any time of day, ignores human presence. All 7 archivist tests pass.
+
+**Skipped**: Live end-to-end verification (Ghost waking, Beeminder sync, Multiplier Sync via Android) — requires live device + Neon DB access, not possible in bot session.
+
+**Next**: Multiplier Sync Validation — verify that the Review Pump lever in the Android app correctly writes `pump_multiplier` to Neon (`SELECT pump_multiplier FROM language_stats`). Also review disposition of kingdonb/mecris#127 (empty body, possibly superseded by #132).
