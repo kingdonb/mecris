@@ -755,3 +755,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: Live end-to-end verification (Ghost waking, Beeminder sync, Multiplier Sync via Android) — requires live device + Neon DB access, not possible in bot session.
 
 **Next**: Multiplier Sync Validation — verify that the Review Pump lever in the Android app correctly writes `pump_multiplier` to Neon (`SELECT pump_multiplier FROM language_stats`). Also review disposition of kingdonb/mecris#127 (empty body, possibly superseded by #132).
+
+## 2026-04-07 — Fix /languages endpoint: sort Beeminder-tracked languages first, derive has_goal from beeminder_slug
+
+**Planned**: Update `mcp_server.py:get_languages` to set `has_goal` from `beeminder_slug` (True when non-null/non-empty, False otherwise) and sort tracked languages before untracked ones. (yebyen/mecris#116, implements kingdonb/mecris#121)
+
+**Done**: Changed line 167 of `mcp_server.py` from `"has_goal": data.get("has_goal", True)` (always True) to `has_goal = bool(data.get("beeminder_slug"))`. Added `lang_list.sort(key=lambda x: (not x["has_goal"], x["name"]))` to sort Beeminder-tracked languages to the top. Added 2 async unit tests in `tests/test_mcp_server.py` verifying the fix. All 6 tests in test_mcp_server.py pass. Commit `85201a6`.
+
+**Skipped**: Live Android app verification that the `has_goal=False` flag causes dimming in the UI — requires a live device. Commenting on kingdonb/mecris#127 — fine-grained PAT is scoped to yebyen/mecris only.
+
+**Next**: Multiplier Sync Validation (live device + Neon) and Android app visual test for `has_goal` dimming. kingdonb should manually close #127 as superseded by #132.
