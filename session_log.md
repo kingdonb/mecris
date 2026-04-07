@@ -775,3 +775,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: None — session scope was narrow and fully executed.
 
 **Next**: Check if kingdonb/mecris#175 has been reviewed/merged. If still open, orient will surface it. Live verification items (Multiplier Sync, Ghost Archivist E2E, #132, Android UI) remain pending and require a human + live device.
+
+## 2026-04-07 — Fix encryption regression tests (NEON_DB_URL patch missing)
+
+**Planned**: Add `NEON_DB_URL` to `patch.dict` env in `test_encryption_regression_message_log_content` so `send_reminder_message` does not exit early. (yebyen/mecris#118)
+
+**Done**: Root cause was two-fold: (1) `from mcp_server import ...` outside the env patch context caused `UsageTracker()` → `EnvironmentError` when running the test file alone; (2) `send_reminder_message` guards on `NEON_DB_URL` before the INSERT, so `log_call` was always None in the full suite too. Fixed both `test_encryption_regression_message_log_content` and `test_encryption_regression_walk_gps_points` using the `_make_mcp_importable()` pattern already present in `test_mcp_server.py` / `test_coaching.py`. Added `sys.modules.pop("mcp_server", None)` + moved imports inside the env patch context. 270 pass, 0 fail. Commit `dd659ef`.
+
+**Skipped**: Nothing — session scope was narrow and fully executed.
+
+**Next**: kingdonb/mecris#175 review status. All live-verification tasks (Multiplier Sync, Ghost Archivist E2E, #132, Android UI) remain pending and require human + live device.

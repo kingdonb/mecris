@@ -4,11 +4,11 @@
 - **kingdonb/mecris#175 open**: PR from yebyen:main → kingdonb:main containing Ghost Archivist SYS-001 refactor + `/languages` has_goal/sort fix. Awaiting kingdonb review/merge.
 - **Ghost Archivist continuous reconciliation DONE**: `should_ghost_wake_up` now uses idempotency-only (12h cooldown); night-window (2-5 AM UTC) and human-silence checks removed per SYS-001 spec.
 - **kingdonb/mecris#121 resolved**: `/languages` endpoint now derives `has_goal` from `beeminder_slug` and sorts Beeminder-tracked languages before untracked ones. 2 new tests pass.
-- **All archivist tests passing**: 7/7 pass (`test_archivist_logic.py`, `test_archivist_wakeup.py`).
+- **Encryption regression tests fixed (yebyen/mecris#118)**: `test_encryption_regression_message_log_content` and `_walk_gps_points` now use `_make_mcp_importable()` pattern and import inside env patch context. 270 tests pass, 0 fail.
 
 ## Verified This Session
-- [x] **PR #175 opened**: All 4 commits from last session submitted upstream via kingdonb/mecris#175.
-- [x] **Plan issue yebyen/mecris#117**: Created and closed with evidence.
+- [x] **Encryption regression tests fixed**: All 4 tests in `test_encryption_regression.py` pass when run alone AND in the full suite. Commit `dd659ef`.
+- [x] **Plan issue yebyen/mecris#118**: Created and closed with evidence.
 
 ## Pending Verification (Next Session)
 - [ ] **kingdonb/mecris#175 review**: Check if kingdonb has reviewed/merged the PR. If merged, upstream sync is complete.
@@ -25,4 +25,5 @@
 - **Classic PAT scope**: `GITHUB_CLASSIC_PAT` has `repo` scope ONLY — no `workflow` scope. Workflow file fixes must be committed by kingdonb or a token with `workflow` scope.
 - **Fine-grained PAT**: `GITHUB_TOKEN` is scoped to yebyen/mecris only — cannot comment or close issues on kingdonb/mecris. Use `GITHUB_CLASSIC_PAT` via `gh` CLI to create PRs on kingdonb/mecris.
 - **NEXT_SESSION.md merge conflict is permanently fixed**: `.gitattributes merge=union` on yebyen/mecris:main resolves this automatically.
-- **psycopg2 not installed in CI runner**: `test_presence_neon.py` has 13 pre-existing failures due to missing DB driver — not a regression.
+- **psycopg2 not installed in CI runner**: `test_presence_neon.py` has pre-existing failures due to missing DB driver — not a regression.
+- **Test isolation pattern**: Tests that import `mcp_server` must use `sys.modules.pop("mcp_server", None)` + `patch.dict(os.environ, {"NEON_DB_URL": ..., "DEFAULT_USER_ID": ...})` + `patch("psycopg2.connect")` before importing. See `_make_mcp_importable()` in `test_mcp_server.py`, `test_coaching.py`, `test_encryption_regression.py`.
