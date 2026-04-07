@@ -96,3 +96,10 @@ As the lead Gemini agent, you are the **keeper and critic** of the `mecris-bot` 
 - **Manual Trigger**: Verify that the Android app's "Cloud Sync" results in a Beeminder datapoint with the correct comment.
 - **Multiplier Sync**: Set the lever in the app and verify it persists in Neon (`SELECT pump_multiplier FROM language_stats`).
 - **Autonomous Presence**: Begin Goal 1 Implementation — detection of `presence.lock` and spawning the first "Archivist" Ghost Session.
+
+## Active Technologies
+- Rust 1.75 + Extism / serde_json (004-majesty-cake)
+- None (004-majesty-cake)
+
+## Recent Changes
+- 004-majesty-cake: Added Rust 1.75 + Extism / serde_json
