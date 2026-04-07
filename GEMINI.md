@@ -100,8 +100,10 @@ As the lead Gemini agent, you are the **keeper and critic** of the `mecris-bot` 
 ## Active Technologies
 - Rust 1.75 + Extism / serde_json (001-review-pump-core)
 - Rust 1.75 + Extism / serde_json (002-nag-ladder)
-- None (001-review-pump-core, 002-nag-ladder)
+- Rust 1.75 + Extism / serde_json (004-majesty-cake)
+- None (001-review-pump-core, 002-nag-ladder, 004-majesty-cake)
 
 ## Recent Changes
 - 001-review-pump-core: Added Rust 1.75 + Extism / serde_json
 - 002-nag-ladder: Added Rust 1.75 + Extism / serde_json
+- 004-majesty-cake: Added Rust 1.75 + Extism / serde_json
