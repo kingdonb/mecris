@@ -8,14 +8,15 @@ Mecris is not a savior; it is a witness. If the human fails, the system must rec
 ### II. Physical Supremacy
 The highest priority of the system is the user's physical well-being. Every interaction and autonomous session must prioritize physical activity (e.g., dog walks) before technical or secondary goals.
 
-### III. Zero-Split-Brain (The WASM Axiom)
-Core business logic (The "Brain") MUST be encapsulated in a WebAssembly (WASM) component using the Component Model (WIT) or Extism. This logic runs identically across every part of the stack—Kubernetes Operators, the Spin API, the MCP Server, the CLI, and the Android Client.
+### III. Zero-Split-Brain (The WASM Axiom) & The Host Boundary
+Core calculation and pure business logic (The "Brain") MUST be encapsulated in a WebAssembly (WASM) component using the Component Model (WIT) or Extism. This logic runs identically across every part of the stack.
 *   **Host Ignorance:** The WASM Brain must have no knowledge of its host. It consumes structured data and produces structured data. All I/O (Network, API, Time) is handled exclusively by the host environment.
-*   **Logic Vacuuming:** Business logic may be rapidly prototyped in Python (The Vanguard) but must be "vacuumed" into the WASM Brain to ensure a single, highly performant source of truth.
+*   **The Host Boundary:** The hosts (Rust, Golang, Python, Kotlin) are *not* just scaffolding. Frameworks like the Kubernetes Controller Runtime and its Condition Status pattern are core architectural features. We must utilize them natively in the host language (e.g., Go for the Operator). Re-implementing a Kubernetes reconciliation loop inside a WASM component is strictly prohibited; doing so means we have lost the plot.
 
-### IV. Continuous Operation (The Operator & CLI)
+### IV. Continuous Operation (The Operator & Condition Status)
 Mecris must operate continuously and independently of external "second systems" (like an autonomous LLM loop).
-*   **The Operator:** A Kubernetes controller (reconciler) loads the WASM Brain to constantly monitor and reconcile the state of the system (CRDs) in the background.
+*   **The Operator:** A Kubernetes controller leverages the Go kubebuilder pattern to load the WASM Brain, reconcile the state of the system (CRDs), and manage the complex network trust models (like K8s CA certs) that WASM cannot natively handle.
+*   **Condition Status Pattern:** We adopt the Kubernetes Condition Status pattern to represent the health and state of the system across all modalities.
 *   **The CLI:** A robust terminal interface provides power-user access and administrative control using the exact same shared logic.
 
 ### V. Cohesion over Divergence
