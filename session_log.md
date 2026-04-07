@@ -725,3 +725,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: No code changes made — this was a pure housekeeping/triage session. Issue #125 (Obnoxious Arabic Reminders) has no description body and existing reminder_service.py already implements robust escalation — no actionable work without more spec from kingdonb.
 
 **Next**: Wait for kingdonb to merge yebyen/mecris#101 (pr-test green at 823b1e0) and close #122, #130. If another session passes with no action, consider escalating via a direct comment on kingdonb/mecris#173.
+
+## 2026-04-07 — Re-verified pr-test for yebyen/mecris#101; resolved recurring NEXT_SESSION.md drift
+
+**Planned**: Re-run pr-test for yebyen/mecris#101 and post status update (Plan: yebyen/mecris#110).
+
+**Done**: Dispatched pr-test — initial run 24057062243 failed with merge conflict in NEXT_SESSION.md (same structural issue: 2 archive commits on main since last resolve). Fixed by updating NEXT_SESSION.md in gemini-flash-rust-brain branch via GitHub API commit `351293c677b3947bb3f333fb62eeb8b9d71f9503`. Re-dispatched pr-test (run 24057135798) — conclusion: success. Posted status comment on yebyen/mecris#101 confirming green at `351293c`. Plan issue #110 closed.
+
+**Skipped**: No action on kingdonb/mecris#173 — head still at `4d16c9a9`, stalled. kingdonb/mecris#122 and #130 still need kingdonb to close.
+
+**Next**: Wait for kingdonb to merge yebyen/mecris#101 (pr-test green at `351293c`). Note: NEXT_SESSION.md drift is a recurring pattern — consider `.gitattributes` merge strategy or pr-test workflow auto-resolution to prevent this from becoming a per-session tax.
