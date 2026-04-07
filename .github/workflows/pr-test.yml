@@ -94,8 +94,10 @@ jobs:
           PYTHONPATH: .
         run: |
           set +e
+          set -o pipefail
           .venv/bin/pytest tests/ -v --tb=short 2>&1 | tee /tmp/pytest-output.txt
           echo "exit_code=$?" >> $GITHUB_OUTPUT
+          set +o pipefail
           set -e
 
       - name: Set up JDK for Android
@@ -109,9 +111,11 @@ jobs:
         working-directory: mecris-go-project
         run: |
           set +e
+          set -o pipefail
           chmod +x gradlew
           ./gradlew testDebugUnitTest 2>&1 | tee /tmp/gradle-output.txt
           echo "exit_code=$?" >> $GITHUB_OUTPUT
+          set +o pipefail
           set -e
 
       - name: Set up Rust
@@ -121,8 +125,10 @@ jobs:
         id: rust_tests
         run: |
           set +e
+          set -o pipefail
           cargo test --workspace 2>&1 | tee /tmp/cargo-test-output.txt
           echo "exit_code=$?" >> $GITHUB_OUTPUT
+          set +o pipefail
           set -e
 
       - name: Post review comment on upstream PR

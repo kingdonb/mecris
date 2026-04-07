@@ -10,3 +10,5 @@ requests>=2.32.4
 playwright>=1.55.0
 flask>=3.0.3
 beautifulsoup4>=4.12.3
+mcp
+cryptography
