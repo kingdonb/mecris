@@ -1,7 +1,16 @@
+import sys
 import pytest
 from unittest.mock import patch, MagicMock
 from services.encryption_service import EncryptionService
 import os
+
+
+def _make_mcp_importable():
+    """Patch env + psycopg2 so mcp_server can be imported without a real DB."""
+    return [
+        patch.dict("os.environ", {"NEON_DB_URL": "postgres://fake", "DEFAULT_USER_ID": "test-user"}),
+        patch("psycopg2.connect"),
+    ]
 
 @pytest.fixture
 def encryption_service():
@@ -23,21 +32,19 @@ def test_encryption_service_roundtrip(encryption_service):
 @pytest.mark.asyncio
 async def test_encryption_regression_message_log_content():
     """Verify message_log.content encryption in mcp_server logic."""
-    from mcp_server import send_reminder_message
-    from datetime import datetime
-    
     test_msg = "Ultra secret PII content"
     message_data = {"message": test_msg, "to_number": "+1234567890"}
-    
+
+    sys.modules.pop("mcp_server", None)
     # We mock psycopg2 to inspect the SQL executed
-    with patch("psycopg2.connect") as mock_connect, \
+    with patch.dict(os.environ, {"NEON_DB_URL": "postgres://fake", "MASTER_ENCRYPTION_KEY": "0" * 64, "DEFAULT_USER_ID": "test-user"}), \
+         patch("psycopg2.connect") as mock_connect, \
          patch("mcp_server.usage_tracker") as mock_tracker, \
          patch("mcp_server.smart_send_message", return_value={"sent": True}):
-        
+
+        from mcp_server import send_reminder_message
         # Setup mock tracker with encryption active
-        enc = EncryptionService()
-        with patch.dict(os.environ, {"MASTER_ENCRYPTION_KEY": "0" * 64}):
-             mock_tracker.encryption = EncryptionService()
+        mock_tracker.encryption = EncryptionService()
         
         mock_conn = mock_connect.return_value.__enter__.return_value
         mock_cur = mock_conn.cursor.return_value.__enter__.return_value
@@ -70,8 +77,6 @@ async def test_encryption_regression_message_log_content():
 @pytest.mark.asyncio
 async def test_encryption_regression_walk_gps_points():
     """Verify walk_inferences.gps_route_points encryption in mcp_server logic."""
-    from mcp_server import upload_walk
-    
     test_points = "[{'lat': 1.23, 'lon': 4.56}]"
     walk_data = {
         "start_time": "2026-04-05T12:00:00",
@@ -81,13 +86,15 @@ async def test_encryption_regression_walk_gps_points():
         "distance_source": "gps",
         "gps_route_points": test_points
     }
-    
-    with patch("psycopg2.connect") as mock_connect, \
+
+    sys.modules.pop("mcp_server", None)
+    with patch.dict(os.environ, {"NEON_DB_URL": "postgres://fake", "MASTER_ENCRYPTION_KEY": "0" * 64, "DEFAULT_USER_ID": "test-user"}), \
+         patch("psycopg2.connect") as mock_connect, \
          patch("mcp_server.usage_tracker") as mock_tracker:
-        
+
+        from mcp_server import upload_walk
         # Setup mock tracker with encryption active
-        with patch.dict(os.environ, {"MASTER_ENCRYPTION_KEY": "0" * 64}):
-             mock_tracker.encryption = EncryptionService()
+        mock_tracker.encryption = EncryptionService()
         
         mock_conn = mock_connect.return_value.__enter__.return_value
         mock_cur = mock_conn.cursor.return_value.__enter__.return_value
