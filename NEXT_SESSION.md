@@ -1,22 +1,19 @@
-# Next Session: kingdonb/mecris#175 Review + Live Verification Backlog
+# Next Session: kingdonb/mecris#176 Review + Live Verification Backlog
 
 ## Current Status (2026-04-08)
-- **kingdonb/mecris#175 open**: PR from yebyen:main → kingdonb:main containing Ghost Archivist SYS-001 refactor + `/languages` has_goal/sort fix + Arabic reminders + aggregate-status tests. Awaiting kingdonb review/merge.
-- **vacation_mode tests added (yebyen/mecris#121 DONE)**: 3 new tests in `tests/test_coaching_service.py` covering `vacation_mode=True` branches in `_handle_low_momentum` (walk prompt omits dogs, urgency alert uses "personal activity" language) and `_handle_high_momentum` (momentum pivot uses "staying active"). All 9 tests pass. Commit `c04c9fe`.
-- **Arabic reminders enhanced (yebyen/mecris#119 DONE)**: All `_handle_arabic_pressure` message variants include Arabic-script phrases; Tier 2 escalation fallback also contains Arabic. 51 total tests pass. Commit `76522a4`.
-- **Encryption regression tests fixed (yebyen/mecris#118 DONE)**: 270 tests pass, 0 fail. Commit `dd659ef`.
-- **Ghost Archivist continuous reconciliation DONE**: `should_ghost_wake_up` uses idempotency-only (12h cooldown) per SYS-001.
-- **`/languages` endpoint fixed**: `has_goal` derived from `beeminder_slug`, Beeminder-tracked languages sorted first.
-- **`/aggregate-status` tests added (yebyen/mecris#120 DONE)**: 3 new tests for `get_daily_aggregate_status` schema, `all_clear=True`, and `all_clear=False`. 275 total tests pass. Commit `b0db38c`.
+- **kingdonb/mecris#176 open**: PR from yebyen:main → kingdonb:main containing 13 commits of test improvements (encryption regression, Arabic-script coverage, aggregate-status tests, vacation_mode branch coverage). Awaiting kingdonb review/merge.
+- **Histories diverged by 1 commit**: kingdonb:main has `0e178dc` (fix sync-service: remove unused JwtClaims struct in Rust) that yebyen:main does not. No Python conflict expected — divergent file is `mecris-go-spin/sync-service/src/lib.rs`.
+- **kingdonb/mecris#175 was closed without merging** (head=base=`0e178dc` at close time, not via GitHub merge). All test commits from this week are now in #176 instead.
+- **275+ Python tests pass** on yebyen:main (verified across all PRs #118–#121).
 
 ## Verified This Session
-- [x] **vacation_mode=True walk prompt**: Says "movement"/"activity", no "Boris and Fiona". WALK_PROMPT type confirmed.
-- [x] **vacation_mode=True urgency alert**: Says "A quick personal activity", not "A quick walk". URGENCY_ALERT type confirmed.
-- [x] **vacation_mode=True momentum pivot**: Says "Nice work staying active!", not "Great job on the walk!". MOMENTUM_PIVOT type confirmed.
-- [x] **Plan issue yebyen/mecris#121**: Created and closed with evidence.
+- [x] **kingdonb/mecris#175 status**: Confirmed closed NOT merged. Commits not in kingdonb:main.
+- [x] **kingdonb/mecris#176 opened**: PR created with head `530e834` (yebyen:main), base `0e178dc` (kingdonb:main). 13 commits ahead, 1 behind. No Python conflicts.
+- [x] **Divergent commit identified**: `0e178dc` only touches `mecris-go-spin/sync-service/src/lib.rs` (Rust) — safe to merge via PR.
 
 ## Pending Verification (Next Session)
-- [ ] **kingdonb/mecris#175 review**: Check if kingdonb has reviewed/merged the PR. If merged, upstream sync is complete.
+- [ ] **kingdonb/mecris#176 review**: Check if kingdonb has reviewed/merged the PR. If merged, upstream sync is complete.
+- [ ] **yebyen:main sync from upstream**: After #176 is merged, yebyen:main needs to pull the Rust fix (`0e178dc`) from kingdonb to stay in sync. Until then, yebyen:main is 1 commit behind kingdonb:main.
 - [ ] **Multiplier Sync Validation**: Verify that setting the Review Pump lever in the Android app correctly updates the multiplier in Neon (`SELECT pump_multiplier FROM language_stats`). Requires live device + Neon access.
 - [ ] **Ghost Archivist End-to-End**: Run the scheduler locally, let the archivist job fire, and confirm via logs that it correctly reconciles state without pushing fake data to Beeminder. The code is correct; the live verification is still needed.
 - [ ] **kingdonb/mecris#132 verification**: The failover sync Rust implementation needs live verification — trigger `/internal/failover-sync` and confirm `daily_completions` is non-zero in Neon if reviews were done.

@@ -815,3 +815,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: Nothing — plan was narrow and executed fully. kingdonb/mecris#175 still awaiting review; all live-verification tasks unchanged.
 
 **Next**: Check kingdonb/mecris#175 merge status. All live-verification tasks (Multiplier Sync, Ghost Archivist E2E, #132, Android UI, Majesty Cake Android) remain pending and require human + live device.
+
+## 🏛️ 2026-04-08 — Open PR kingdonb/mecris#176 with accumulated test improvements
+
+**Planned**: Open a new PR from yebyen:main → kingdonb:main to upstream ~13 commits of test improvements (encryption regression, Arabic-script, aggregate-status, vacation_mode) accumulated after #175 was closed without merging. (yebyen/mecris#122)
+
+**Done**: Confirmed kingdonb/mecris#175 was closed NOT merged (head=base=`0e178dc` at close time). Identified divergence: yebyen:main 13 ahead, 1 behind kingdonb:main; the 1 behind commit is Rust-only (`mecris-go-spin/sync-service/src/lib.rs`), no Python conflicts. Opened kingdonb/mecris#176 with head `530e834` covering all 13 commits.
+
+**Skipped**: Nothing — plan executed fully. Mergeability pending kingdonb review; no conflict expected.
+
+**Next**: Check kingdonb/mecris#176 merge status. If merged, pull `0e178dc` from kingdonb to sync yebyen:main. Live-verification tasks (Multiplier Sync, Ghost Archivist E2E, #132, Android UI, Majesty Cake Android) require human + live device.
