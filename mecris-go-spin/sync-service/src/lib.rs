@@ -36,10 +36,6 @@ struct JwKey {
     e: String,
 }
 
-#[derive(Deserialize, Debug, Serialize)]
-struct JwtClaims {
-}
-
 async fn get_jwks() -> anyhow::Result<Jwks> {
     let manual_json = variables::get("oidc_jwks_json")?;
     if manual_json.is_empty() {
