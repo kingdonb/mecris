@@ -865,3 +865,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: Nothing — plan completed in full (with corrected diagnosis).
 
 **Next**: Live-verification tasks (Multiplier Sync, Ghost Archivist E2E, #132, Android UI, Majesty Cake Android) require human + live device. No bot-actionable code work remains in the immediate backlog.
+
+## 2026-04-08 🏛️ — Add SQL migration 003 for multi-tenancy user_id scoping
+
+**Planned**: Write SQL migration adding `user_id` columns to `language_stats` and `budget_tracking`, update MCP queries to scope by `user_id`, add unit tests. (yebyen/mecris#125, relates to kingdonb/mecris#120)
+
+**Done**: Discovered that code-level multi-tenancy was already fully implemented — all queries in `neon_sync_checker.py`, `usage_tracker.py`, `language_sync_service.py`, and `mcp_server.py` already scope by `user_id`. `schema.sql` already uses composite PK `(user_id, language_name)`. `tests/test_multi_tenancy.py` tests already pass (8/8). The one real gap was the absence of a numbered SQL migration file following the `001_`/`002_` convention. Created and committed `scripts/migrations/003_multi_tenancy.sql` — idempotent `ALTER TABLE IF NOT EXISTS` migration with backfill and PK migration guards. Full suite: 282 passed, 5 skipped.
+
+**Skipped**: No code changes to mcp_server.py or services were needed — they were already correct. Live Neon run of the DDL migration is pending human execution.
+
+**Next**: Run `psql $NEON_DB_URL -f scripts/migrations/003_multi_tenancy.sql` against live Neon to formalize schema. Then tackle Android integration for Majesty Cake (kingdonb/mecris#170) or kingdonb/mecris#126 (Greek Beeminder goal).
