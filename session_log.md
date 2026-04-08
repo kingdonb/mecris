@@ -875,3 +875,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: No code changes to mcp_server.py or services were needed — they were already correct. Live Neon run of the DDL migration is pending human execution.
 
 **Next**: Run `psql $NEON_DB_URL -f scripts/migrations/003_multi_tenancy.sql` against live Neon to formalize schema. Then tackle Android integration for Majesty Cake (kingdonb/mecris#170) or kingdonb/mecris#126 (Greek Beeminder goal).
+
+## 2026-04-08 🏛️ — Open PR from yebyen:main → kingdonb:main (6 commits)
+
+**Planned**: Open a pull request from yebyen/mecris:main to kingdonb/mecris:main containing the 6 commits accumulated since the last merge. (yebyen/mecris#126)
+
+**Done**: PR opened at https://github.com/kingdonb/mecris/pull/177 — contains CI collection fixes (9991f70), encrypted credential tests (5b91d56), stale mock fix, SQL migration 003 (5f5141f), and archive commits. PR state: open, head `a2b9003`, base `01a6cdc`. Awaiting kingdonb review + CI green.
+
+**Skipped**: Nothing — orient → plan → PR in a single clean pass.
+
+**Next**: Check kingdonb/mecris#177 CI status next session. If green, kingdonb merges and repos re-sync. Live verification tasks (Multiplier Sync, Ghost Archivist, #132, Android UI, Majesty Cake) still pending human + live device.

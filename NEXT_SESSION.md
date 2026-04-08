@@ -1,21 +1,19 @@
-# Next Session: Live Verification Backlog + Android Integration
+# Next Session: Review kingdonb/mecris#177 + Live Verification Backlog
 
 ## Current Status (2026-04-08)
-- **kingdonb/mecris#176 merged**: All test improvements from yebyen:main are now in kingdonb:main. Both repos at `9991f70`.
-- **Repos in sync**: yebyen:main == kingdonb:main (no divergence).
-- **CI collection errors fixed** (9991f70): `test_standalone_access.py` and `test_unauthorized_access.py` now skip at collection time when `NEON_DB_URL` is absent. No more `OSError` collection failures.
-- **Full test suite clean**: 282 passed, 5 skipped, 0 errors — no collection failures.
-- **Stale mock fixed** (9991f70): `test_beeminder_client_loads_encrypted_creds` mock updated to return 3-column tuple matching post-d1d32b5 schema (`beeminder_user_encrypted, beeminder_token_encrypted, beeminder_user`).
+- **kingdonb/mecris#177 open**: PR from yebyen:main → kingdonb:main with 6 commits — CI fixes, encrypted credential tests, SQL migration 003. Awaiting kingdonb review + CI.
+- **Repos diverged (yebyen ahead by 6)**: Once #177 merges, repos will re-sync. No action needed until then.
+- **Full test suite clean**: 282 passed, 5 skipped, 0 errors — confirmed this session.
 - **PII encryption live** (d1d32b5): beeminder_user_encrypted column active in Neon; BeeminderClient decrypts at runtime.
 - **Async sync live** (66396ee): Spin returns 202 Accepted; scraper parallelized.
-- **Multi-tenancy SQL migration** (5f5141f): `scripts/migrations/003_multi_tenancy.sql` committed — idempotent `ALTER TABLE IF NOT EXISTS` migration for `language_stats` and `budget_tracking` `user_id` columns. All code-level queries already user-scoped.
+- **Multi-tenancy SQL migration** (5f5141f): `scripts/migrations/003_multi_tenancy.sql` committed — idempotent migration for `language_stats` and `budget_tracking` `user_id` columns.
 
 ## Verified This Session
-- [x] **scripts/migrations/003_multi_tenancy.sql**: Created and committed. Follows numbered convention (001, 002, 003). Idempotent guards prevent double-migration.
-- [x] **Multi-tenancy test coverage**: `pytest tests/ -k "multi_tenant or user_id or user_scoped"` → 6 passed. `mcp_server.py` direct SQL queries all include `user_id` scoping.
-- [x] **Full suite**: 282 passed, 5 skipped, 0 errors — confirmed clean.
+- [x] **kingdonb/mecris#177 opened**: PR exists, head SHA `a2b9003`, base SHA `01a6cdc`, state open.
+- [x] **yebyen/mecris#126 closed**: Plan issue closed with completion comment.
 
 ## Pending Verification (Next Session)
+- [ ] **kingdonb/mecris#177 CI**: Confirm CI passes on the upstream PR. If it fails, diagnose and fix in yebyen:main then force-push... actually: fix in a new commit and update the PR.
 - [ ] **Multiplier Sync Validation**: Verify that setting the Review Pump lever in the Android app correctly updates the multiplier in Neon (`SELECT pump_multiplier FROM language_stats`). Requires live device + Neon access.
 - [ ] **Ghost Archivist End-to-End**: Run the scheduler locally, let the archivist job fire, and confirm via logs that it correctly reconciles state without pushing fake data to Beeminder. The code is correct; the live verification is still needed.
 - [ ] **kingdonb/mecris#132 verification**: The failover sync Rust implementation needs live verification — trigger `/internal/failover-sync` and confirm `daily_completions` is non-zero in Neon if reviews were done.
