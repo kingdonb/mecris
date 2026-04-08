@@ -785,3 +785,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: Nothing — session scope was narrow and fully executed.
 
 **Next**: kingdonb/mecris#175 review status. All live-verification tasks (Multiplier Sync, Ghost Archivist E2E, #132, Android UI) remain pending and require human + live device.
+
+## 2026-04-08 — Add Arabic-script phrases to obnoxious reminder messages (kingdonb/mecris#125)
+
+**Planned**: Enhance `coaching_service._handle_arabic_pressure` and `reminder_service._build_tier2_message("arabic_review_reminder")` with actual Arabic-script phrases; add 2 tests asserting U+0600-U+06FF characters appear. (yebyen/mecris#119)
+
+**Done**: Added Arabic-script phrases (يلا، افتح كلوزماستر الآن / لا عذر / اعمل المراجعات / استيقظ / هيا) to all 4 `_handle_arabic_pressure` message variants in `coaching_service.py` and to the Tier 2 `_build_tier2_message("arabic_review_reminder")` fallback in `reminder_service.py`. Added a fourth message variant for variety. Two new tests: `test_arabic_pressure_message_contains_arabic_script` (runs generate_insight 20× to cover all variants) and `test_arabic_tier2_escalation_message_contains_arabic_script` (calls _build_tier2_message directly). 6/6 coaching tests pass, 45/45 reminder tests pass. Commit `76522a4`.
+
+**Skipped**: kingdonb/mecris#125 is on the upstream repo — bot cannot close it directly (fine-grained PAT scoped to yebyen/mecris only). kingdonb should close #125 once PR #175 is merged and this feature lands upstream.
+
+**Next**: Check if kingdonb/mecris#175 has been reviewed/merged. All live-verification tasks (Multiplier Sync, Ghost Archivist E2E, #132, Android UI) remain pending and require human + live device.

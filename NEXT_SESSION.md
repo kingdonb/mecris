@@ -1,14 +1,15 @@
-# Next Session: Multiplier Sync Validation (Review Pump lever → Neon DB)
+# Next Session: kingdonb/mecris#175 Review + Live Verification Backlog
 
-## Current Status (2026-04-07)
+## Current Status (2026-04-08)
 - **kingdonb/mecris#175 open**: PR from yebyen:main → kingdonb:main containing Ghost Archivist SYS-001 refactor + `/languages` has_goal/sort fix. Awaiting kingdonb review/merge.
-- **Ghost Archivist continuous reconciliation DONE**: `should_ghost_wake_up` now uses idempotency-only (12h cooldown); night-window (2-5 AM UTC) and human-silence checks removed per SYS-001 spec.
-- **kingdonb/mecris#121 resolved**: `/languages` endpoint now derives `has_goal` from `beeminder_slug` and sorts Beeminder-tracked languages before untracked ones. 2 new tests pass.
-- **Encryption regression tests fixed (yebyen/mecris#118)**: `test_encryption_regression_message_log_content` and `_walk_gps_points` now use `_make_mcp_importable()` pattern and import inside env patch context. 270 tests pass, 0 fail.
+- **Arabic reminders enhanced (yebyen/mecris#119 DONE)**: All `_handle_arabic_pressure` message variants now include Arabic-script phrases; Tier 2 escalation fallback also contains Arabic. 51 total tests pass (6 coaching, 45 reminder). Commit `76522a4`.
+- **Encryption regression tests fixed (yebyen/mecris#118 DONE)**: 270 tests pass, 0 fail. Commit `dd659ef`.
+- **Ghost Archivist continuous reconciliation DONE**: `should_ghost_wake_up` uses idempotency-only (12h cooldown) per SYS-001.
+- **`/languages` endpoint fixed**: `has_goal` derived from `beeminder_slug`, Beeminder-tracked languages sorted first.
 
 ## Verified This Session
-- [x] **Encryption regression tests fixed**: All 4 tests in `test_encryption_regression.py` pass when run alone AND in the full suite. Commit `dd659ef`.
-- [x] **Plan issue yebyen/mecris#118**: Created and closed with evidence.
+- [x] **Arabic-script phrases in reminder messages**: All 4 `_handle_arabic_pressure` variants contain Arabic (U+0600-U+06FF); Tier 2 escalation also verified. 2 new tests assert this property. Commit `76522a4`.
+- [x] **Plan issue yebyen/mecris#119**: Created and closed with evidence.
 
 ## Pending Verification (Next Session)
 - [ ] **kingdonb/mecris#175 review**: Check if kingdonb has reviewed/merged the PR. If merged, upstream sync is complete.
