@@ -825,3 +825,23 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: Nothing — plan executed fully. Mergeability pending kingdonb review; no conflict expected.
 
 **Next**: Check kingdonb/mecris#176 merge status. If merged, pull `0e178dc` from kingdonb to sync yebyen:main. Live-verification tasks (Multiplier Sync, Ghost Archivist E2E, #132, Android UI, Majesty Cake Android) require human + live device.
+
+## 2026-04-08 (Session 005) - PII Encryption & Async Sync Stabilization
+
+### Goals
+- Resolve Beeminder push errors in Spin cloud (missing beeminder_user_encrypted).
+- Optimize cloud sync to prevent Android app "Handler Timeouts".
+- Secure PII data across all database instances.
+
+### Completed
+- **PII Encryption**: Added beeminder_user_encrypted column to Neon DB.
+- **Migration**: Created scripts/migrate_pii_encryption.py and scripts/migrations/002_pii_encryption.sql.
+- **Async Sync**: Updated mcp_server.py to return 202 Accepted and perform sync in a background task.
+- **Parallelized Scraper**: Refactored Rust sync-service to process languages in parallel, drastically reducing sync time.
+- **Intelligent Delegation**: Spin cloud now skips delegation if Home URL is local, ensuring reliable autonomous fallback.
+- **Release**: Tagged and pushed **0.0.1-alpha.3** (PII Fix) and **0.0.1-alpha.4** (Performance Optimization).
+
+### Next Steps
+- Verify Android app stability with 0.0.1-alpha.4 and 202 Accepted responses.
+- Investigate userfaultfd warnings in Android logs (non-fatal but noisy).
+- Begin Goal 1 Implementation (presence.lock detection for Ghost Archivist).
