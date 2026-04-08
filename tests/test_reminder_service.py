@@ -1141,3 +1141,16 @@ async def test_beeminder_emergency_suppressed_at_3am_by_emergency_sleep():
         result = await rs.check_reminder_needed()
         assert result["should_send"] is False
         assert "Sleep window active" in result.get("reason", "")
+
+
+def test_arabic_tier2_escalation_message_contains_arabic_script():
+    """Issue #125: Tier 2 Arabic escalation fallback message must include Arabic-script characters."""
+    rs = ReminderService(
+        make_async_mock({}),
+        make_async_mock({}),
+    )
+    _ARABIC_RANGE = range(0x0600, 0x0700)
+    msg = rs._build_tier2_message("arabic_review_reminder", 7.5, {})
+    assert any(ord(ch) in _ARABIC_RANGE for ch in msg), (
+        f"Arabic Tier 2 escalation message lacks Arabic script: {msg!r}"
+    )

@@ -155,6 +155,7 @@ async def get_languages(user_id: str = Depends(get_authorized_user)):
     # Convert to format Android app expects
     lang_list = []
     for name, data in stats.items():
+        has_goal = bool(data.get("beeminder_slug"))
         lang_list.append({
             "name": name,
             "current": data.get("current", 0),
@@ -164,9 +165,12 @@ async def get_languages(user_id: str = Depends(get_authorized_user)):
             "safebuf": data.get("safebuf", 0),
             "derail_risk": data.get("derail_risk", "UNKNOWN"),
             "pump_multiplier": data.get("pump_multiplier", 1.0),
-            "has_goal": data.get("has_goal", True)
+            "has_goal": has_goal
         })
-    
+
+    # Sort: Beeminder-tracked languages first, then untracked (closes kingdonb/mecris#121)
+    lang_list.sort(key=lambda x: (not x["has_goal"], x["name"]))
+
     return {"languages": lang_list}
 
 @app.post("/languages/multiplier")

@@ -75,7 +75,7 @@ class ReminderService:
         if msg_type == "arabic_review_reminder":
             return (
                 f"🚨 Arabic reviews still overdue after {hours_str}. "
-                f"reviewstack won't fix itself — open Clozemaster NOW. 📚"
+                f"هيا، reviewstack won't fix itself — افتح كلوزماستر الآن! 📚"
             )
         return (
             f"⚠️ Escalated reminder after {hours_str} idle: this situation hasn't resolved itself. "

@@ -108,11 +108,12 @@ class CoachingService:
     def _handle_arabic_pressure(self, arabic: Dict, target: int) -> CoachingInsight:
         multiplier = arabic.get("multiplier", 1.0)
         done = arabic.get("daily_completions", 0)
-        
+
         messages = [
-            f"📈 Arabic Pace: {done}/{target}. You've got the lever at {multiplier}x. Time to close the gap. 😤",
-            f"💀 Arabic: {done}/{target} reviews done. You set the pressure to {multiplier}x yourself. Don't make me remind you again. 🔪",
-            f"⚖️ Arabic Progress: {done}/{target}. Lever: {multiplier}x. The math doesn't add up until you do the work. Move it! 🏃‍♂️"
+            f"📈 Arabic Pace: {done}/{target}. You've got the lever at {multiplier}x. Time to close the gap. يلا، افتح كلوزماستر الآن! 😤",
+            f"💀 Arabic: {done}/{target} reviews done. You set the pressure to {multiplier}x yourself. لا عذر — open Clozemaster NOW. 🔪",
+            f"⚖️ Arabic Progress: {done}/{target}. Lever: {multiplier}x. اعمل المراجعات! The math doesn't add up until you do the work. 🏃‍♂️",
+            f"🚨 {done}/{target} Arabic reviews. استيقظ! You're running {multiplier}x pressure and coasting. افتح كلوزماستر. 😤",
         ]
         
         return CoachingInsight(

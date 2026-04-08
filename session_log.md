@@ -745,3 +745,83 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: Cannot fix pr-test.yml exit code pipe bug — workflow file changes require `workflow` scope which available tokens lack (GITHUB_CLASSIC_PAT has `repo` scope only).
 
 **Next**: kingdonb must add `mcp` and `cryptography` to `requirements.txt` and fix the `tee` pipe exit code bug in pr-test.yml before Python tests can accurately report pass/fail.
+
+## 2026-04-07 🏛️ — Implement Ghost Archivist continuous reconciliation (SYS-001)
+
+**Planned**: Remove the odometer forgery (0.0 bike push) from `perform_archival_sync` (DEFECT-003) and refactor `should_ghost_wake_up` to use idempotency-based continuous reconciliation instead of silence/time-of-day checks. (yebyen/mecris#115)
+
+**Done**: Discovered DEFECT-003 was already resolved in the code — no 0.0 push to `bike`. Implemented Phase 2 of the Ghost Archivist plan: removed `HUMAN_SILENCE_THRESHOLD_SECONDS`, `ARCHIVIST_HOUR_START/END` constants and their enforcement blocks from `should_ghost_wake_up`. The function now only checks idempotency (12h cooldown). Updated `test_archivist_logic.py` to test the new spec-compliant behavior: ghost fires at any time of day, ignores human presence. All 7 archivist tests pass.
+
+**Skipped**: Live end-to-end verification (Ghost waking, Beeminder sync, Multiplier Sync via Android) — requires live device + Neon DB access, not possible in bot session.
+
+**Next**: Multiplier Sync Validation — verify that the Review Pump lever in the Android app correctly writes `pump_multiplier` to Neon (`SELECT pump_multiplier FROM language_stats`). Also review disposition of kingdonb/mecris#127 (empty body, possibly superseded by #132).
+
+## 2026-04-07 — Fix /languages endpoint: sort Beeminder-tracked languages first, derive has_goal from beeminder_slug
+
+**Planned**: Update `mcp_server.py:get_languages` to set `has_goal` from `beeminder_slug` (True when non-null/non-empty, False otherwise) and sort tracked languages before untracked ones. (yebyen/mecris#116, implements kingdonb/mecris#121)
+
+**Done**: Changed line 167 of `mcp_server.py` from `"has_goal": data.get("has_goal", True)` (always True) to `has_goal = bool(data.get("beeminder_slug"))`. Added `lang_list.sort(key=lambda x: (not x["has_goal"], x["name"]))` to sort Beeminder-tracked languages to the top. Added 2 async unit tests in `tests/test_mcp_server.py` verifying the fix. All 6 tests in test_mcp_server.py pass. Commit `85201a6`.
+
+**Skipped**: Live Android app verification that the `has_goal=False` flag causes dimming in the UI — requires a live device. Commenting on kingdonb/mecris#127 — fine-grained PAT is scoped to yebyen/mecris only.
+
+**Next**: Multiplier Sync Validation (live device + Neon) and Android app visual test for `has_goal` dimming. kingdonb should manually close #127 as superseded by #132.
+
+## 2026-04-07 — Open PR kingdonb/mecris#175 (Ghost Archivist SYS-001 + /languages fix)
+
+**Planned**: Open a pull request from yebyen/mecris main → kingdonb/mecris main for the 4 commits from the previous session that were verified but never submitted upstream (plan: yebyen/mecris#117).
+
+**Done**: PR kingdonb/mecris#175 opened via GITHUB_CLASSIC_PAT + gh CLI (MCP token lacks write access to kingdonb/mecris). PR includes Ghost Archivist SYS-001 refactor (removes night-window + human-silence checks, 7/7 tests) and /languages has_goal/sort fix for kingdonb/mecris#121 (6/6 tests).
+
+**Skipped**: None — session scope was narrow and fully executed.
+
+**Next**: Check if kingdonb/mecris#175 has been reviewed/merged. If still open, orient will surface it. Live verification items (Multiplier Sync, Ghost Archivist E2E, #132, Android UI) remain pending and require a human + live device.
+
+## 2026-04-07 — Fix encryption regression tests (NEON_DB_URL patch missing)
+
+**Planned**: Add `NEON_DB_URL` to `patch.dict` env in `test_encryption_regression_message_log_content` so `send_reminder_message` does not exit early. (yebyen/mecris#118)
+
+**Done**: Root cause was two-fold: (1) `from mcp_server import ...` outside the env patch context caused `UsageTracker()` → `EnvironmentError` when running the test file alone; (2) `send_reminder_message` guards on `NEON_DB_URL` before the INSERT, so `log_call` was always None in the full suite too. Fixed both `test_encryption_regression_message_log_content` and `test_encryption_regression_walk_gps_points` using the `_make_mcp_importable()` pattern already present in `test_mcp_server.py` / `test_coaching.py`. Added `sys.modules.pop("mcp_server", None)` + moved imports inside the env patch context. 270 pass, 0 fail. Commit `dd659ef`.
+
+**Skipped**: Nothing — session scope was narrow and fully executed.
+
+**Next**: kingdonb/mecris#175 review status. All live-verification tasks (Multiplier Sync, Ghost Archivist E2E, #132, Android UI) remain pending and require human + live device.
+
+## 2026-04-08 — Add Arabic-script phrases to obnoxious reminder messages (kingdonb/mecris#125)
+
+**Planned**: Enhance `coaching_service._handle_arabic_pressure` and `reminder_service._build_tier2_message("arabic_review_reminder")` with actual Arabic-script phrases; add 2 tests asserting U+0600-U+06FF characters appear. (yebyen/mecris#119)
+
+**Done**: Added Arabic-script phrases (يلا، افتح كلوزماستر الآن / لا عذر / اعمل المراجعات / استيقظ / هيا) to all 4 `_handle_arabic_pressure` message variants in `coaching_service.py` and to the Tier 2 `_build_tier2_message("arabic_review_reminder")` fallback in `reminder_service.py`. Added a fourth message variant for variety. Two new tests: `test_arabic_pressure_message_contains_arabic_script` (runs generate_insight 20× to cover all variants) and `test_arabic_tier2_escalation_message_contains_arabic_script` (calls _build_tier2_message directly). 6/6 coaching tests pass, 45/45 reminder tests pass. Commit `76522a4`.
+
+**Skipped**: kingdonb/mecris#125 is on the upstream repo — bot cannot close it directly (fine-grained PAT scoped to yebyen/mecris only). kingdonb should close #125 once PR #175 is merged and this feature lands upstream.
+
+**Next**: Check if kingdonb/mecris#175 has been reviewed/merged. All live-verification tasks (Multiplier Sync, Ghost Archivist E2E, #132, Android UI) remain pending and require human + live device.
+
+## 2026-04-08 — Add test coverage for get_daily_aggregate_status (Majesty Cake backend)
+
+**Planned**: Implement `/daily-aggregate-status` endpoint for kingdonb/mecris#170 (Majesty Cake Epic). (yebyen/mecris#120)
+
+**Done**: Discovered `get_daily_aggregate_status` was already fully implemented at `mcp_server.py:1058` and exposed as `GET /aggregate-status`. The gap was zero test coverage. Added 3 tests to `tests/test_mcp_server.py`: schema assertion (all 6 response keys present), `all_clear=True` when walk + arabic + greek all satisfied, `all_clear=False` when walk missing. All 9 `test_mcp_server.py` tests pass; full suite 275 pass, 5 skipped. Commit `b0db38c`. kingdonb/mecris#175 still open (no upstream activity this session).
+
+**Skipped**: Nothing within scope was skipped. The Majesty Cake Android integration (consuming `/aggregate-status` in the app) is out of scope for this bot — requires Android dev work.
+
+**Next**: Check kingdonb/mecris#175 merge status. All live-verification tasks (Multiplier Sync, Ghost Archivist E2E, #132, Android UI, Majesty Cake Android) remain pending and require human + live device.
+
+## 2026-04-08 — Add vacation_mode branch coverage to CoachingService
+
+**Planned**: Add 3 pytest tests to `tests/test_coaching_service.py` covering `vacation_mode=True` paths in `CoachingService._handle_low_momentum` and `_handle_high_momentum`. (yebyen/mecris#121)
+
+**Done**: Added 3 tests: `test_vacation_mode_walk_prompt_omits_dogs` (WALK_PROMPT type, no "Boris"/"Fiona", has "movement"/"activity"), `test_vacation_mode_urgency_alert_uses_activity_language` (URGENCY_ALERT type, "A quick personal activity" present, "A quick walk" absent), `test_vacation_mode_high_momentum_pivot_uses_staying_active` (MOMENTUM_PIVOT type, "Nice work staying active!" present, "Great job on the walk!" absent). All 9 tests in `test_coaching_service.py` pass. Commit `c04c9fe`.
+
+**Skipped**: Nothing — plan was narrow and executed fully. kingdonb/mecris#175 still awaiting review; all live-verification tasks unchanged.
+
+**Next**: Check kingdonb/mecris#175 merge status. All live-verification tasks (Multiplier Sync, Ghost Archivist E2E, #132, Android UI, Majesty Cake Android) remain pending and require human + live device.
+
+## 🏛️ 2026-04-08 — Open PR kingdonb/mecris#176 with accumulated test improvements
+
+**Planned**: Open a new PR from yebyen:main → kingdonb:main to upstream ~13 commits of test improvements (encryption regression, Arabic-script, aggregate-status, vacation_mode) accumulated after #175 was closed without merging. (yebyen/mecris#122)
+
+**Done**: Confirmed kingdonb/mecris#175 was closed NOT merged (head=base=`0e178dc` at close time). Identified divergence: yebyen:main 13 ahead, 1 behind kingdonb:main; the 1 behind commit is Rust-only (`mecris-go-spin/sync-service/src/lib.rs`), no Python conflicts. Opened kingdonb/mecris#176 with head `530e834` covering all 13 commits.
+
+**Skipped**: Nothing — plan executed fully. Mergeability pending kingdonb review; no conflict expected.
+
+**Next**: Check kingdonb/mecris#176 merge status. If merged, pull `0e178dc` from kingdonb to sync yebyen:main. Live-verification tasks (Multiplier Sync, Ghost Archivist E2E, #132, Android UI, Majesty Cake Android) require human + live device.
