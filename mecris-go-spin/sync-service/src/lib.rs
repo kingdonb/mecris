@@ -305,21 +305,57 @@ async fn handle_aggregate_status_get(req: Request) -> anyhow::Result<Response> {
 }
 
 async fn handle_cloud_sync(req: Request) -> anyhow::Result<Response> {
-    let auth_header = req.header("authorization");
-    let user_id = match extract_user_id(auth_header).await {
+    let auth_header = req.header("authorization").cloned();
+    let user_id = match extract_user_id(auth_header.as_ref()).await {
         Some(id) => id,
         None => return Ok(Response::builder().status(401).body("Unauthorized").build()),
     };
 
     let db_url = variables::get("db_url").map_err(|e| anyhow::anyhow!("db_url fetch failed: {:?}", e))?;
+    let connection = Connection::open(&db_url)?;
 
+    // Check if delegation is enabled via Spin variable (default: false)
+    let delegation_enabled = variables::get("delegation_enabled").unwrap_or_else(|_| "false".to_string()) == "true";
+
+    if delegation_enabled {
+        // Check if Home Server (Python MCP) is active
+        let mcp_active_query = "SELECT mcp_server_url FROM users WHERE pocket_id_sub = $1";
+        let mcp_rows = connection.query(mcp_active_query, &[ParameterValue::Str(user_id.clone())])?;
+        let mcp_server_url = match mcp_rows.rows.first() {
+            Some(row) => match &row[0] { DbValue::Str(s) => s.clone(), _ => String::new() },
+            None => String::new(),
+        };
+
+        if !mcp_server_url.is_empty() && !mcp_server_url.contains("localhost") && !mcp_server_url.contains("127.0.0.1") {
+            // Home server URL is likely public/reachable — attempt delegation
+            let sync_trigger_url = format!("{}/internal/cloud-sync", mcp_server_url.trim_end_matches('/'));
+            
+            let resp = StatusResponse { 
+                status: "accepted".to_string(), 
+                message: "Home Server is online. Delegating cloud sync to Home.".to_string() 
+            };
+            
+            let trigger_req = Request::post(sync_trigger_url, "")
+                .header("Authorization", auth_header.unwrap().as_str().unwrap())
+                .build();
+            let _ = spin_sdk::http::send::<Request, Response>(trigger_req).await;
+
+            return Ok(Response::builder()
+                .status(202)
+                .header("content-type", "application/json")
+                .body(serde_json::to_string(&resp).unwrap())
+                .build());
+        }
+    }
+
+    // Fallback: Spin does the heavy lifting (Parallelized scrapper)
     match run_clozemaster_scraper(&db_url, &user_id).await {
         Ok(_) => {
-            let resp = StatusResponse { status: "success".to_string(), message: "Cloud sync complete".to_string() };
+            let resp = StatusResponse { status: "success".to_string(), message: "Cloud sync complete (Autonomous)".to_string() };
             Ok(Response::builder().status(200).header("content-type", "application/json").body(serde_json::to_string(&resp).unwrap()).build())
         }
         Err(e) => {
-            let error_msg = format!("Cloud sync failed: {}", e);
+            let error_msg = format!("Autonomous sync failed: {}", e);
             eprintln!("{}", error_msg);
             let resp = StatusResponse { status: "error".to_string(), message: error_msg };
             Ok(Response::builder().status(500).header("content-type", "application/json").body(serde_json::to_string(&resp).unwrap()).build())
@@ -392,9 +428,8 @@ async fn run_clozemaster_scraper(db_url: &str, user_id: &str) -> anyhow::Result<
         .build();
     let res: Response = spin_sdk::http::send(req).await?;
     
-    let status = *res.status();
-    if !(200..400).contains(&status) {
-        return Err(anyhow::anyhow!("Clozemaster login failed with status {}", status));
+    if !(200..400).contains(res.status()) {
+        return Err(anyhow::anyhow!("Clozemaster login failed with status {}", res.status()));
     }
 
     // Use cookie from login response if provided, otherwise keep old one
@@ -409,16 +444,15 @@ async fn run_clozemaster_scraper(db_url: &str, user_id: &str) -> anyhow::Result<
         .build();
     let res: Response = spin_sdk::http::send(req).await?;
     
-    let status = *res.status();
     // Allow 302 if it's redirecting to the dashboard itself
-    if !(200..300).contains(&status) && status != 302 {
-        return Err(anyhow::anyhow!("Clozemaster dashboard fetch failed with status {}", status));
+    if !(200..300).contains(res.status()) && *res.status() != 302 {
+        return Err(anyhow::anyhow!("Clozemaster dashboard fetch failed with status {}", res.status()));
     }
 
     let mut body_str = std::str::from_utf8(res.body()).unwrap_or("").to_string();
 
     // If it's a redirect, we might need to follow it once to get the final page
-    if status == 302 {
+    if *res.status() == 302 {
         if let Some(location) = res.header("location").and_then(|v| v.as_str()) {
             let final_url = if location.starts_with('/') { format!("https://www.clozemaster.com{}", location) } else { location.to_string() };
             let req = Request::get(final_url)
@@ -448,157 +482,145 @@ async fn run_clozemaster_scraper(db_url: &str, user_id: &str) -> anyhow::Result<
     let props: serde_json::Value = serde_json::from_str(&props_json)?;
     
     if let Some(pairings) = props.get("languagePairings").and_then(|l| l.as_array()) {
+        let mut futures = Vec::new();
+
         for pair in pairings {
             let lp_id = pair.get("id").and_then(|id| id.as_i64()).unwrap_or(0);
-            let name = pair.get("slug").and_then(|n| n.as_str()).unwrap_or("UNKNOWN");
+            let name = pair.get("slug").and_then(|n| n.as_str()).unwrap_or("UNKNOWN").to_string();
             let current = pair.get("numReadyForReview").and_then(|c| c.as_i64()).unwrap_or(0) as i32;
             let points_total = pair.get("score").and_then(|c| c.as_i64()).unwrap_or(0) as i32;
             let points_today = pair.get("numPointsToday").and_then(|c| c.as_i64()).unwrap_or(0) as i32;
             
-            // Map slugs to standard names and Beeminder goals
-            let (lang_name, beeminder_slug) = match name {
-                "ara-eng" => ("ARABIC", "reviewstack"),
-                "ell-eng" => ("GREEK", ""), // Greek is odometer; no automated snapshot pushes.
-                _ => (name, ""),
-            };
+            let user_id = user_id.to_string();
+            let db_url = db_url.to_string();
+            let session_cookie = session_cookie.to_string();
+            let fresh_csrf = fresh_csrf.to_string();
 
-            // 1. Fetch Tomorrow/7-day forecast from private API
-            let mut tomorrow = 0;
-            let mut next_7 = 0;
-            if lp_id > 0 {
-                let api_url = format!("https://www.clozemaster.com/api/v1/lp/{}/more-stats", lp_id);
-                let api_req = Request::get(api_url)
-                    .header("User-Agent", user_agent)
-                    .header("Cookie", session_cookie)
-                    .header("X-CSRF-Token", fresh_csrf)
-                    .header("Referer", &format!("https://www.clozemaster.com/l/{}", name))
-                    .header("X-Requested-With", "XMLHttpRequest")
-                    .header("Time-Zone-Offset-Hours", "-4")
-                    .header("sec-ch-ua-platform", "\"macOS\"")
-                    .header("sec-ch-ua", "\"Chromium\";v=\"146\", \"Not-A.Brand\";v=\"24\", \"Google Chrome\";v=\"146\"")
-                    .header("sec-ch-ua-mobile", "?0")
-                    .build();
-                if let Ok(api_res) = spin_sdk::http::send::<Request, Response>(api_req).await {
-                    let status = *api_res.status();
-                    if (200..300).contains(&status) {
-                        if let Ok(api_json) = serde_json::from_slice::<serde_json::Value>(api_res.body()) {
-                            if let Some(forecast) = api_json.get("reviewForecast").and_then(|f| f.as_array()) {
-                                if !forecast.is_empty() {
-                                    // Handle both { "count": N } and raw N
-                                    let get_count = |v: &serde_json::Value| -> i32 {
-                                        if let Some(c) = v.get("count").and_then(|c| c.as_i64()) {
-                                            c as i32
-                                        } else {
-                                            v.as_i64().unwrap_or(0) as i32
-                                        }
-                                    };
+            // We use a small internal async block/function to process each language
+            futures.push(async move {
+                let (lang_name, beeminder_slug) = match name.as_str() {
+                    "ara-eng" => ("ARABIC", "reviewstack"),
+                    "ell-eng" => ("GREEK", ""),
+                    _ => (name.as_str(), ""),
+                };
 
-                                    tomorrow = get_count(&forecast[0]);
-                                    next_7 = forecast.iter().take(7).map(|d| get_count(d)).sum();
+                let mut tomorrow = 0;
+                let mut next_7 = 0;
+                
+                // 1. Fetch Tomorrow/7-day forecast from private API
+                if lp_id > 0 {
+                    let api_url = format!("https://www.clozemaster.com/api/v1/lp/{}/more-stats", lp_id);
+                    let api_req = Request::get(api_url)
+                        .header("User-Agent", user_agent)
+                        .header("Cookie", &session_cookie)
+                        .header("X-CSRF-Token", &fresh_csrf)
+                        .header("Referer", &format!("https://www.clozemaster.com/l/{}", name))
+                        .header("X-Requested-With", "XMLHttpRequest")
+                        .header("Time-Zone-Offset-Hours", "-4")
+                        .build();
+                    
+                    if let Ok(api_res) = spin_sdk::http::send::<Request, Response>(api_req).await {
+                        if (200..300).contains(api_res.status()) {
+                            if let Ok(api_json) = serde_json::from_slice::<serde_json::Value>(api_res.body()) {
+                                if let Some(forecast) = api_json.get("reviewForecast").and_then(|f| f.as_array()) {
+                                    if !forecast.is_empty() {
+                                        let get_count = |v: &serde_json::Value| -> i32 {
+                                            v.get("count").and_then(|c| c.as_i64()).unwrap_or_else(|| v.as_i64().unwrap_or(0)) as i32
+                                        };
+                                        tomorrow = get_count(&forecast[0]);
+                                        next_7 = forecast.iter().take(7).map(|d| get_count(d)).sum();
+                                    }
                                 }
                             }
                         }
-                    } else {
-                        eprintln!("Scraper: API call for {} (LP {}) failed with status {}", name, lp_id, status);
                     }
                 }
-            }
 
-            println!("DEBUG Scraper: slug={}, current={}, tomorrow={}, next_7={}, total={}, today={}", 
-                     name, current, tomorrow, next_7, points_total, points_today);
+                // 2. Database Update & Beeminder Sync
+                if let Ok(connection) = Connection::open(&db_url) {
+                    let select_query = "SELECT current_reviews, beeminder_last_sync::TEXT FROM language_stats WHERE user_id = $1 AND language_name = $2";
+                    let row_set = connection.query(select_query, &[
+                        ParameterValue::Str(user_id.clone()),
+                        ParameterValue::Str(lang_name.to_uppercase())
+                    ]).ok();
 
-            // 2. Fetch existing stats to detect changes for Beeminder sync
-            let select_query = "SELECT current_reviews, beeminder_last_sync::TEXT FROM language_stats WHERE user_id = $1 AND language_name = $2";
-            let row_set = connection.query(select_query, &[
-                ParameterValue::Str(user_id.to_string()),
-                ParameterValue::Str(lang_name.to_uppercase())
-            ])?;
+                    let mut prev_reviews = -1;
+                    let mut beeminder_last_sync_str = String::new();
 
-            let mut prev_reviews = -1;
-            let mut beeminder_last_sync_str = String::new();
+                    if let Some(rs) = row_set {
+                        if !rs.rows.is_empty() {
+                            prev_reviews = match &rs.rows[0][0] { DbValue::Int32(i) => *i, _ => -1 };
+                            beeminder_last_sync_str = match &rs.rows[0][1] { DbValue::Str(s) => s.clone(), _ => String::new() };
+                        }
+                    }
 
-            if !row_set.rows.is_empty() {
-                prev_reviews = match &row_set.rows[0][0] { DbValue::Int32(i) => *i, _ => -1 };
-                beeminder_last_sync_str = match &row_set.rows[0][1] { DbValue::Str(s) => s.clone(), _ => String::new() };
-            }
-
-            // 3. completions from points_today
-            let mut completions = points_today;
-            if lang_name == "ARABIC" {
-                // Heuristic: 1 card is approximately 12 points.
-                // This normalizes points into an estimated card count to match current_reviews (debt).
-                completions = (points_today as f64 / 12.0) as i32;
-            }
-            
-            // 4. Update Neon DB
-            let query = "INSERT INTO language_stats (user_id, language_name, current_reviews, tomorrow_reviews, next_7_days_reviews, beeminder_slug, daily_completions, last_points, total_points, last_updated) 
-                         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, CURRENT_TIMESTAMP) 
-                         ON CONFLICT (user_id, language_name) DO UPDATE SET 
-                         current_reviews = EXCLUDED.current_reviews, 
-                         tomorrow_reviews = EXCLUDED.tomorrow_reviews,
-                         next_7_days_reviews = EXCLUDED.next_7_days_reviews,
-                         beeminder_slug = EXCLUDED.beeminder_slug,
-                         daily_completions = EXCLUDED.daily_completions,
-                         last_points = EXCLUDED.last_points,
-                         total_points = EXCLUDED.total_points,
-                         last_updated = CURRENT_TIMESTAMP";
-            let _ = connection.execute(query, &[
-                ParameterValue::Str(user_id.to_string()),
-                ParameterValue::Str(lang_name.to_uppercase()), 
-                ParameterValue::Int32(current),
-                ParameterValue::Int32(tomorrow),
-                ParameterValue::Int32(next_7),
-                ParameterValue::Str(beeminder_slug.to_string()),
-                ParameterValue::Int32(completions),
-                ParameterValue::Int32(points_total),
-                ParameterValue::Int32(points_total)
-            ]);
-
-            // 5. Beeminder Sync
-            if !beeminder_slug.is_empty() {
-                // a) Push data if needed
-                let today_ny = chrono::Utc::now().with_timezone(&chrono_tz::America::New_York).format("%Y-%m-%d").to_string();
-                let is_new_day = !beeminder_last_sync_str.contains(&today_ny);
-                
-                let force_push = current != prev_reviews || is_new_day;
-                if force_push {
-                    let now = chrono::Local::now().format("%Y-%m-%d %H:%M").to_string();
-                    let mut comment = format!("Auto-synced from Clozemaster (Cloud) at {}", now);
-                    if tomorrow > 0 { comment += &format!(" | Tomorrow: {}", tomorrow); }
-                    if next_7 > 0 { comment += &format!(" | 7-day: {}", next_7); }
+                    let mut completions = points_today;
+                    if lang_name == "ARABIC" {
+                        completions = (points_today as f64 / 12.0) as i32;
+                    }
                     
-                    match push_to_beeminder(user_id, beeminder_slug, current as f64, &comment, &connection).await {
-                        Ok(_) => {
+                    let query = "INSERT INTO language_stats (user_id, language_name, current_reviews, tomorrow_reviews, next_7_days_reviews, beeminder_slug, daily_completions, last_points, total_points, last_updated) 
+                                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, CURRENT_TIMESTAMP) 
+                                 ON CONFLICT (user_id, language_name) DO UPDATE SET 
+                                 current_reviews = EXCLUDED.current_reviews, 
+                                 tomorrow_reviews = EXCLUDED.tomorrow_reviews,
+                                 next_7_days_reviews = EXCLUDED.next_7_days_reviews,
+                                 beeminder_slug = EXCLUDED.beeminder_slug,
+                                 daily_completions = EXCLUDED.daily_completions,
+                                 last_points = EXCLUDED.last_points,
+                                 total_points = EXCLUDED.total_points,
+                                 last_updated = CURRENT_TIMESTAMP";
+                    let _ = connection.execute(query, &[
+                        ParameterValue::Str(user_id.clone()),
+                        ParameterValue::Str(lang_name.to_uppercase()), 
+                        ParameterValue::Int32(current),
+                        ParameterValue::Int32(tomorrow),
+                        ParameterValue::Int32(next_7),
+                        ParameterValue::Str(beeminder_slug.to_string()),
+                        ParameterValue::Int32(completions),
+                        ParameterValue::Int32(points_total),
+                        ParameterValue::Int32(points_total)
+                    ]);
+
+                    if !beeminder_slug.is_empty() {
+                        let today_ny = chrono::Utc::now().with_timezone(&chrono_tz::America::New_York).format("%Y-%m-%d").to_string();
+                        let is_new_day = !beeminder_last_sync_str.contains(&today_ny);
+                        
+                        if current != prev_reviews || is_new_day {
+                            let now = chrono::Local::now().format("%Y-%m-%d %H:%M").to_string();
+                            let mut comment = format!("Auto-synced from Clozemaster (Cloud) at {}", now);
+                            if tomorrow > 0 { comment += &format!(" | Tomorrow: {}", tomorrow); }
+                            if next_7 > 0 { comment += &format!(" | 7-day: {}", next_7); }
+                            
+                            if let Ok(_) = push_to_beeminder(&user_id, beeminder_slug, current as f64, &comment, &connection).await {
+                                let _ = connection.execute(
+                                    "UPDATE language_stats SET beeminder_last_sync = CURRENT_TIMESTAMP WHERE user_id = $1 AND language_name = $2",
+                                    &[ParameterValue::Str(user_id.clone()), ParameterValue::Str(lang_name.to_uppercase())]
+                                );
+                            }
+                        }
+
+                        if let Ok((mut safebuf, mut risk, rate)) = fetch_from_beeminder(&user_id, beeminder_slug, &connection).await {
+                            if current == 0 && tomorrow == 0 && next_7 == 0 {
+                                safebuf = 999;
+                                risk = "SAFE".to_string();
+                            }
                             let _ = connection.execute(
-                                "UPDATE language_stats SET beeminder_last_sync = CURRENT_TIMESTAMP WHERE user_id = $1 AND language_name = $2",
-                                &[ParameterValue::Str(user_id.to_string()), ParameterValue::Str(lang_name.to_uppercase())]
+                                "UPDATE language_stats SET safebuf = $1, derail_risk = $2, daily_rate = $3::FLOAT8::NUMERIC WHERE user_id = $4 AND language_name = $5",
+                                &[
+                                    ParameterValue::Int32(safebuf),
+                                    ParameterValue::Str(risk),
+                                    ParameterValue::Floating64(rate),
+                                    ParameterValue::Str(user_id.clone()),
+                                    ParameterValue::Str(lang_name.to_uppercase())
+                                ]
                             );
-                        },
-                        Err(e) => eprintln!("Beeminder push error: {}", e)
+                        }
                     }
                 }
-
-                // b) Fetch fresh status (safebuf, derail_risk, rate) from Beeminder
-                if let Ok((mut safebuf, mut risk, rate)) = fetch_from_beeminder(user_id, beeminder_slug, &connection).await {
-                    // Override for 0 debt: If absolutely nothing is due in 7 days, it's SAFE with 999 runway
-                    if current == 0 && tomorrow == 0 && next_7 == 0 {
-                        safebuf = 999;
-                        risk = "SAFE".to_string();
-                    }
-
-                    let _ = connection.execute(
-                        "UPDATE language_stats SET safebuf = $1, derail_risk = $2, daily_rate = $3::FLOAT8::NUMERIC WHERE user_id = $4 AND language_name = $5",
-                        &[
-                            ParameterValue::Int32(safebuf),
-                            ParameterValue::Str(risk),
-                            ParameterValue::Floating64(rate),
-                            ParameterValue::Str(user_id.to_string()),
-                            ParameterValue::Str(lang_name.to_uppercase())
-                        ]
-                    );
-                }
-            }
+            });
         }
+        futures::future::join_all(futures).await;
     }
     Ok(())
 }
@@ -632,9 +654,8 @@ async fn fetch_from_beeminder(user_id: &str, slug: &str, connection: &Connection
     let req = Request::get(url).build();
     let res: Response = spin_sdk::http::send(req).await?;
     
-    let status = *res.status();
-    if !(200..300).contains(&status) {
-        return Err(anyhow::anyhow!("Beeminder fetch failed: {}", status));
+    if !(200..300).contains(res.status()) {
+        return Err(anyhow::anyhow!("Beeminder fetch failed: {}", res.status()));
     }
 
     let body_bytes = res.body();
@@ -692,9 +713,8 @@ async fn push_to_beeminder(user_id: &str, slug: &str, value: f64, comment: &str,
         .build();
     
     let res: Response = spin_sdk::http::send(req).await?;
-    let status = *res.status();
-    if !(200..300).contains(&status) {
-        let error_msg = format!("Beeminder push failed for {}: {} - Value: {}", slug, status, value);
+    if !(200..300).contains(res.status()) {
+        let error_msg = format!("Beeminder push failed for {}: {} - Value: {}", slug, res.status(), value);
         eprintln!("{}", error_msg);
         return Err(anyhow::anyhow!(error_msg));
     }

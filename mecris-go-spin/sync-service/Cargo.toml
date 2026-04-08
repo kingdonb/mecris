@@ -28,5 +28,6 @@ getrandom = "0.2.12"
 spin-sdk = "5.2.0"
 spin-cron-sdk = { git = "https://github.com/fermyon/spin-trigger-cron" }
 urlencoding = "2.1.3"
+futures = "0.3.32"
 
 [workspace]
