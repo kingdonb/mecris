@@ -94,15 +94,26 @@ class BeeminderClient:
             with psycopg2.connect(neon_url) as conn:
                 with conn.cursor() as cur:
                     cur.execute(
-                        "SELECT beeminder_user, beeminder_token_encrypted FROM users WHERE pocket_id_sub = %s",
+                        "SELECT beeminder_user_encrypted, beeminder_token_encrypted, beeminder_user FROM users WHERE pocket_id_sub = %s",
                         (target_user_id,)
                     )
                     row = cur.fetchone()
-                    if row and row[0] and row[1]:
-                        self.username = row[0]
-                        self.auth_token = self.encryption.decrypt(row[1])
-                        logger.info(f"Loaded encrypted Beeminder credentials for user {target_user_id}")
-                    else:
+                    if row:
+                        enc_user, enc_token, plain_user = row
+                        if enc_user:
+                            self.username = self.encryption.decrypt(enc_user)
+                            logger.info(f"Loaded encrypted Beeminder username for user {target_user_id}")
+                        elif plain_user:
+                            self.username = plain_user
+                            logger.warning(f"Using plaintext Beeminder username fallback for user {target_user_id}")
+                        
+                        if enc_token:
+                            self.auth_token = self.encryption.decrypt(enc_token)
+                            logger.info(f"Loaded encrypted Beeminder token for user {target_user_id}")
+                        
+                        if self.username and self.auth_token:
+                            return
+                        
                         # Final fallback to env
                         self.username = os.getenv("BEEMINDER_USERNAME")
                         self.auth_token = os.getenv("BEEMINDER_AUTH_TOKEN")
@@ -345,6 +356,8 @@ class BeeminderClient:
                 goal = self._parse_goal(goal_data)
                 structured_goals.append(goal.to_dict())
             except Exception as e:
+                import traceback
+                traceback.print_exc()
                 logger.error(f"Failed to parse goal {goal_data.get('slug', 'unknown')}: {e}")
                 continue
         
