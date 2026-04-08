@@ -855,3 +855,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: Full suite run not feasible in this CI environment (playwright missing, no .venv). Verified target tests + related encryption/coaching tests pass (15/15).
 
 **Next**: Live-verification tasks (Multiplier Sync, Ghost Archivist E2E, #132, Android UI, Majesty Cake Android) require human + live device. Playwright CI gap is a new finding worth addressing.
+
+## 2026-04-08 🏛️ — Fix CI collection errors (NEON_DB_URL skip hook + stale mock)
+
+**Planned**: Find playwright-dependent tests and add importorskip markers to fix CI collection errors. (yebyen/mecris#124)
+
+**Done**: Discovered playwright is already installed from requirements.txt — the actual CI gap was `test_standalone_access.py` and `test_unauthorized_access.py` failing at collection time due to bare `from mcp_server import app` without `NEON_DB_URL` set. Added `pytest_ignore_collect` hook to `tests/conftest.py` to skip these files when `NEON_DB_URL` is absent. Also fixed pre-existing `test_beeminder_client_loads_encrypted_creds`: mock returned 2 values but code (post d1d32b5) expects 3 columns — updated mock to `(enc_user, enc_token, None)`. Full suite: 299 passed, 5 skipped, 0 errors.
+
+**Skipped**: Nothing — plan completed in full (with corrected diagnosis).
+
+**Next**: Live-verification tasks (Multiplier Sync, Ghost Archivist E2E, #132, Android UI, Majesty Cake Android) require human + live device. No bot-actionable code work remains in the immediate backlog.
