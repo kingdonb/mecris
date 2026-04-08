@@ -1,16 +1,19 @@
 # Next Session: kingdonb/mecris#175 Review + Live Verification Backlog
 
 ## Current Status (2026-04-08)
-- **kingdonb/mecris#175 open**: PR from yebyen:main → kingdonb:main containing Ghost Archivist SYS-001 refactor + `/languages` has_goal/sort fix. Awaiting kingdonb review/merge.
-- **Arabic reminders enhanced (yebyen/mecris#119 DONE)**: All `_handle_arabic_pressure` message variants now include Arabic-script phrases; Tier 2 escalation fallback also contains Arabic. 51 total tests pass (6 coaching, 45 reminder). Commit `76522a4`.
+- **kingdonb/mecris#175 open**: PR from yebyen:main → kingdonb:main containing Ghost Archivist SYS-001 refactor + `/languages` has_goal/sort fix + Arabic reminders + aggregate-status tests. Awaiting kingdonb review/merge.
+- **vacation_mode tests added (yebyen/mecris#121 DONE)**: 3 new tests in `tests/test_coaching_service.py` covering `vacation_mode=True` branches in `_handle_low_momentum` (walk prompt omits dogs, urgency alert uses "personal activity" language) and `_handle_high_momentum` (momentum pivot uses "staying active"). All 9 tests pass. Commit `c04c9fe`.
+- **Arabic reminders enhanced (yebyen/mecris#119 DONE)**: All `_handle_arabic_pressure` message variants include Arabic-script phrases; Tier 2 escalation fallback also contains Arabic. 51 total tests pass. Commit `76522a4`.
 - **Encryption regression tests fixed (yebyen/mecris#118 DONE)**: 270 tests pass, 0 fail. Commit `dd659ef`.
 - **Ghost Archivist continuous reconciliation DONE**: `should_ghost_wake_up` uses idempotency-only (12h cooldown) per SYS-001.
 - **`/languages` endpoint fixed**: `has_goal` derived from `beeminder_slug`, Beeminder-tracked languages sorted first.
 - **`/aggregate-status` tests added (yebyen/mecris#120 DONE)**: 3 new tests for `get_daily_aggregate_status` schema, `all_clear=True`, and `all_clear=False`. 275 total tests pass. Commit `b0db38c`.
 
 ## Verified This Session
-- [x] **`get_daily_aggregate_status` test coverage**: 3 tests assert schema keys (`goals`, `satisfied_count`, `total_count`, `all_clear`, `score`, `components`), `all_clear=True` when all goals satisfied, `all_clear=False` when walk missing. All pass. Commit `b0db38c`.
-- [x] **Plan issue yebyen/mecris#120**: Created and closed with evidence.
+- [x] **vacation_mode=True walk prompt**: Says "movement"/"activity", no "Boris and Fiona". WALK_PROMPT type confirmed.
+- [x] **vacation_mode=True urgency alert**: Says "A quick personal activity", not "A quick walk". URGENCY_ALERT type confirmed.
+- [x] **vacation_mode=True momentum pivot**: Says "Nice work staying active!", not "Great job on the walk!". MOMENTUM_PIVOT type confirmed.
+- [x] **Plan issue yebyen/mecris#121**: Created and closed with evidence.
 
 ## Pending Verification (Next Session)
 - [ ] **kingdonb/mecris#175 review**: Check if kingdonb has reviewed/merged the PR. If merged, upstream sync is complete.

@@ -805,3 +805,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: Nothing within scope was skipped. The Majesty Cake Android integration (consuming `/aggregate-status` in the app) is out of scope for this bot — requires Android dev work.
 
 **Next**: Check kingdonb/mecris#175 merge status. All live-verification tasks (Multiplier Sync, Ghost Archivist E2E, #132, Android UI, Majesty Cake Android) remain pending and require human + live device.
+
+## 2026-04-08 — Add vacation_mode branch coverage to CoachingService
+
+**Planned**: Add 3 pytest tests to `tests/test_coaching_service.py` covering `vacation_mode=True` paths in `CoachingService._handle_low_momentum` and `_handle_high_momentum`. (yebyen/mecris#121)
+
+**Done**: Added 3 tests: `test_vacation_mode_walk_prompt_omits_dogs` (WALK_PROMPT type, no "Boris"/"Fiona", has "movement"/"activity"), `test_vacation_mode_urgency_alert_uses_activity_language` (URGENCY_ALERT type, "A quick personal activity" present, "A quick walk" absent), `test_vacation_mode_high_momentum_pivot_uses_staying_active` (MOMENTUM_PIVOT type, "Nice work staying active!" present, "Great job on the walk!" absent). All 9 tests in `test_coaching_service.py` pass. Commit `c04c9fe`.
+
+**Skipped**: Nothing — plan was narrow and executed fully. kingdonb/mecris#175 still awaiting review; all live-verification tasks unchanged.
+
+**Next**: Check kingdonb/mecris#175 merge status. All live-verification tasks (Multiplier Sync, Ghost Archivist E2E, #132, Android UI, Majesty Cake Android) remain pending and require human + live device.
