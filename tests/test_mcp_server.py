@@ -193,3 +193,79 @@ async def test_languages_sorted_beeminder_tracked_first():
         if not flag:
             seen_false = True
         assert not (seen_false and flag), f"has_goal=True appeared after has_goal=False in: {names}"
+
+
+# ---------------------------------------------------------------------------
+# get_daily_aggregate_status — Majesty Cake backend (kingdonb/mecris#170)
+# ---------------------------------------------------------------------------
+
+_FAKE_LANG_STATS_ALL_MET = {
+    "arabic": {"goal_met": True, "status": "on_track", "beeminder_slug": "reviewstack"},
+    "greek": {"goal_met": True, "status": "on_track", "beeminder_slug": "ellinika"},
+}
+
+_FAKE_LANG_STATS_ARABIC_UNMET = {
+    "arabic": {"goal_met": False, "status": "derailing", "beeminder_slug": "reviewstack"},
+    "greek": {"goal_met": True, "status": "on_track", "beeminder_slug": "ellinika"},
+}
+
+
+@pytest.mark.asyncio
+async def test_daily_aggregate_status_schema():
+    """get_daily_aggregate_status returns the expected response schema."""
+    sys.modules.pop("mcp_server", None)
+
+    env_patch, db_patch = _make_mcp_importable()
+    with env_patch, db_patch:
+        with patch("mcp_server.resolve_target_user", return_value="test-user"):
+            with patch("mcp_server.get_cached_daily_activity", AsyncMock(return_value={"has_activity_today": True})):
+                with patch("mcp_server.get_language_velocity_stats", AsyncMock(return_value=_FAKE_LANG_STATS_ALL_MET)):
+                    from mcp_server import get_daily_aggregate_status
+                    result = await get_daily_aggregate_status()
+
+    assert "goals" in result
+    assert "satisfied_count" in result
+    assert "total_count" in result
+    assert "all_clear" in result
+    assert "score" in result
+    assert "components" in result
+    assert isinstance(result["goals"], list)
+    assert isinstance(result["all_clear"], bool)
+
+
+@pytest.mark.asyncio
+async def test_daily_aggregate_status_all_clear_when_all_goals_met():
+    """all_clear=True and satisfied_count==total_count when walk + all languages are satisfied."""
+    sys.modules.pop("mcp_server", None)
+
+    env_patch, db_patch = _make_mcp_importable()
+    with env_patch, db_patch:
+        with patch("mcp_server.resolve_target_user", return_value="test-user"):
+            with patch("mcp_server.get_cached_daily_activity", AsyncMock(return_value={"has_activity_today": True})):
+                with patch("mcp_server.get_language_velocity_stats", AsyncMock(return_value=_FAKE_LANG_STATS_ALL_MET)):
+                    from mcp_server import get_daily_aggregate_status
+                    result = await get_daily_aggregate_status()
+
+    assert result["all_clear"] is True
+    assert result["satisfied_count"] == result["total_count"]
+    assert result["components"]["walk"] is True
+    assert result["components"]["arabic"] is True
+    assert result["components"]["greek"] is True
+
+
+@pytest.mark.asyncio
+async def test_daily_aggregate_status_not_all_clear_when_walk_missing():
+    """all_clear=False when walk is not satisfied, even if language goals are met."""
+    sys.modules.pop("mcp_server", None)
+
+    env_patch, db_patch = _make_mcp_importable()
+    with env_patch, db_patch:
+        with patch("mcp_server.resolve_target_user", return_value="test-user"):
+            with patch("mcp_server.get_cached_daily_activity", AsyncMock(return_value={"has_activity_today": False})):
+                with patch("mcp_server.get_language_velocity_stats", AsyncMock(return_value=_FAKE_LANG_STATS_ALL_MET)):
+                    from mcp_server import get_daily_aggregate_status
+                    result = await get_daily_aggregate_status()
+
+    assert result["all_clear"] is False
+    assert result["satisfied_count"] < result["total_count"]
+    assert result["components"]["walk"] is False
