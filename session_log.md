@@ -795,3 +795,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: kingdonb/mecris#125 is on the upstream repo — bot cannot close it directly (fine-grained PAT scoped to yebyen/mecris only). kingdonb should close #125 once PR #175 is merged and this feature lands upstream.
 
 **Next**: Check if kingdonb/mecris#175 has been reviewed/merged. All live-verification tasks (Multiplier Sync, Ghost Archivist E2E, #132, Android UI) remain pending and require human + live device.
+
+## 2026-04-08 — Add test coverage for get_daily_aggregate_status (Majesty Cake backend)
+
+**Planned**: Implement `/daily-aggregate-status` endpoint for kingdonb/mecris#170 (Majesty Cake Epic). (yebyen/mecris#120)
+
+**Done**: Discovered `get_daily_aggregate_status` was already fully implemented at `mcp_server.py:1058` and exposed as `GET /aggregate-status`. The gap was zero test coverage. Added 3 tests to `tests/test_mcp_server.py`: schema assertion (all 6 response keys present), `all_clear=True` when walk + arabic + greek all satisfied, `all_clear=False` when walk missing. All 9 `test_mcp_server.py` tests pass; full suite 275 pass, 5 skipped. Commit `b0db38c`. kingdonb/mecris#175 still open (no upstream activity this session).
+
+**Skipped**: Nothing within scope was skipped. The Majesty Cake Android integration (consuming `/aggregate-status` in the app) is out of scope for this bot — requires Android dev work.
+
+**Next**: Check kingdonb/mecris#175 merge status. All live-verification tasks (Multiplier Sync, Ghost Archivist E2E, #132, Android UI, Majesty Cake Android) remain pending and require human + live device.
