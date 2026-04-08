@@ -26,15 +26,16 @@ def test_encryption_service_roundtrip():
 async def test_beeminder_client_loads_encrypted_creds(mock_connect):
     key = "0" * 64
     svc = EncryptionService(key_hex=key)
+    enc_user = svc.encrypt("testuser")
     enc_token = svc.encrypt("secret-token")
-    
+
     mock_conn = MagicMock()
     mock_cur = MagicMock()
     mock_connect.return_value.__enter__.return_value = mock_conn
     mock_conn.cursor.return_value.__enter__.return_value = mock_cur
-    
-    # Return (username, encrypted_token)
-    mock_cur.fetchone.return_value = ("testuser", enc_token)
+
+    # Return (beeminder_user_encrypted, beeminder_token_encrypted, beeminder_user)
+    mock_cur.fetchone.return_value = (enc_user, enc_token, None)
     
     with patch.dict(os.environ, {"MASTER_ENCRYPTION_KEY": key, "NEON_DB_URL": "postgres://fake"}):
         client = BeeminderClient(user_id="user-123")

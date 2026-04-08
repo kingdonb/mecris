@@ -1,3 +1,4 @@
+import os
 import pytest
 import types
 import requests
@@ -53,3 +54,12 @@ def mock_requests(monkeypatch):
 
     monkeypatch.setattr(requests, "post", mock_post)
     monkeypatch.setattr(requests, "get", mock_get)
+
+
+_NEON_REQUIRED = {"test_standalone_access.py", "test_unauthorized_access.py"}
+
+
+def pytest_ignore_collect(collection_path, config):
+    """Skip test files that require a live NEON_DB_URL when the env var is absent."""
+    if not os.environ.get("NEON_DB_URL") and collection_path.name in _NEON_REQUIRED:
+        return True
