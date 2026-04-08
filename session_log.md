@@ -845,3 +845,13 @@ This document summarizes the collaborative debugging session to establish a func
 - Verify Android app stability with 0.0.1-alpha.4 and 202 Accepted responses.
 - Investigate userfaultfd warnings in Android logs (non-fatal but noisy).
 - Begin Goal 1 Implementation (presence.lock detection for Ghost Archivist).
+
+## 2026-04-08 🏛️ — Test BeeminderClient._load_credentials() encrypted path and fallback chains
+
+**Planned**: Write 4 unit tests for `BeeminderClient._load_credentials()` covering encrypted path, plaintext fallback, env-var fallback, and no-NEON_DB_URL path. (yebyen/mecris#123)
+
+**Done**: Created `tests/test_beeminder_credentials.py` with 4 passing pytest tests. Discovered that the no-NEON_DB_URL path requires mocking UsageTracker because `UsageTracker.__init__` itself requires `NEON_DB_URL` (constraint documented in test comment). All 4 tests pass. Committed at `5b91d56`.
+
+**Skipped**: Full suite run not feasible in this CI environment (playwright missing, no .venv). Verified target tests + related encryption/coaching tests pass (15/15).
+
+**Next**: Live-verification tasks (Multiplier Sync, Ghost Archivist E2E, #132, Android UI, Majesty Cake Android) require human + live device. Playwright CI gap is a new finding worth addressing.
