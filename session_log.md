@@ -939,3 +939,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Done**: Wrote `tests/test_cloud_sync.py` with exactly 3 tests — all passing. Full suite: 315 passed, 5 skipped, 0 errors. Committed as 26735a1. Plan issue #133 created, commented with results, and closed.
 **Skipped**: Rust lib.rs changes from 66396ee (parallelized scraper, Spin delegation skip logic) — those are Rust unit test territory and were not reviewed for gaps this session. Carried forward.
 **Next**: Explore Rust-side changes from 66396ee for test gaps, OR look for new bot-actionable work from kingdonb's next async feature commits.
+
+## 2026-04-09 🏛️ — Add 14 Rust unit tests for delegation skip logic from 66396ee
+
+**Planned**: Extract delegation skip predicate and scraper helper logic into pure functions; add `#[cfg(test)]` unit tests covering all key branches; confirm `cargo test` passes.
+
+**Done**: Extracted `should_delegate`, `parse_forecast_count`, and `arabic_completions` from `handle_cloud_sync` / `run_clozemaster_scraper`. Added 14 unit tests covering: delegation disabled, empty URL, localhost, 127.0.0.1, public URL; forecast count in object vs raw integer form, null/missing; arabic heuristic zero/one-card/truncation/large. All 14 pass via `cargo test` in `mecris-go-spin/sync-service/`. Confirmed Spin SDK does NOT block native test compilation for `cdylib` crates.
+
+**Skipped**: Nothing. Scope matched the plan exactly.
+
+**Next**: No new bot-actionable test gaps identified. Remaining pending items require live environment (Neon, Android device) or workflow PAT scope. Next session should orient and check for upstream changes or new issues.

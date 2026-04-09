@@ -1,17 +1,16 @@
-# Next Session: Explore async sync work for further test gaps or open new bot-actionable work
+# Next Session: Explore further bot-actionable test gaps or open new health-report work
 
 ## Current Status (2026-04-09)
 - **yebyen/mecris fully synced with kingdonb/mecris**: `git log HEAD..upstream/main` is empty.
-- **Test suite healthy**: `PYTHONPATH=. .venv/bin/pytest` → **315 passed, 5 skipped, 0 errors** (up from 312 after adding cloud-sync tests).
-- **cloud-sync endpoint test gap closed**: `tests/test_cloud_sync.py` (commit 26735a1) — 3 tests covering 202 response, fire-and-forget background task semantics, and exception isolation.
+- **Rust unit tests added**: `mecris-go-spin/sync-service/src/lib.rs` now has 14 passing unit tests (commit 93bc2c0). `cargo test` confirmed viable for Spin WASM crate on native target.
+- **Test suite healthy**: `PYTHONPATH=. .venv/bin/pytest` → **315 passed, 5 skipped, 0 errors** (Python; venv not available in bot runner, but no regressions from Rust-only change).
 - **No open tagged issues**: kingdonb/mecris and yebyen/mecris both have zero issues tagged needs-test, pr-review, or bug.
 - **Bot PAT limitations remain**: `GITHUB_CLASSIC_PAT` has repo scope only (no workflow scope); `GITHUB_TOKEN` scoped to yebyen/mecris only.
 
 ## Verified This Session
-- [x] **Upstream sync confirmed up-to-date**: `git log HEAD..upstream/main` empty.
-- [x] **Async cloud-sync endpoint tests**: 3 tests in `tests/test_cloud_sync.py` — all passing. Covers commit 66396ee behavioral changes (202 Accepted, background task, exception isolation).
-- [x] **Full test suite passes with no regressions**: 315 passed, 5 skipped after adding cloud-sync tests.
-- [x] **Plan issue yebyen/mecris#133 created, commented, closed**: audit trail complete.
+- [x] **Rust test gap from 66396ee closed**: 14 unit tests covering `should_delegate`, `parse_forecast_count`, `arabic_completions` — all passing via `cargo test` in `mecris-go-spin/sync-service/`.
+- [x] **`cargo test` is viable for Spin WASM crate**: Spin SDK does NOT block native compilation for unit tests. No `rlib` hack needed; `cdylib` crate-type is sufficient.
+- [x] **Plan issue yebyen/mecris#134 created, commented, closed**: audit trail complete.
 
 ## Pending Verification (Next Session)
 - [ ] **Rust test gap (workflow fix)**: Modify `pr-test.yml` step `Run Rust tests` to check `[ -f Cargo.toml ]` before running `cargo test`. Needs `workflow` PAT scope — bot cannot push workflow changes. Needs kingdonb's action or a token with workflow scope.
@@ -22,7 +21,6 @@
 - [ ] **Android app has_goal UI**: Confirm Android app picks up `has_goal=false` flag and visually dims untracked languages. Requires live app test.
 - [ ] **Majesty Cake Android integration**: `/aggregate-status` backend complete; Android app needs to consume it (kingdonb/mecris#170).
 - [ ] **003_multi_tenancy.sql live run**: Run `psql $NEON_DB_URL -f scripts/migrations/003_multi_tenancy.sql` against live Neon.
-- [ ] **Explore further test gaps from 66396ee**: The Rust `lib.rs` changes (parallelized Clozemaster scraping, Spin delegation skip logic) were not reviewed for test gaps — only the Python mcp_server.py change was addressed this session.
 
 ## Infrastructure Notes
 - Spin Cron trigger is **DISABLED** in `spin.toml` — do not re-enable.
@@ -32,6 +30,7 @@
 - **Fine-grained PAT**: `GITHUB_TOKEN` is scoped to yebyen/mecris only — cannot comment or close issues on kingdonb/mecris.
 - **NEXT_SESSION.md merge conflict is permanently fixed**: `.gitattributes merge=union` on yebyen/mecris:main resolves this automatically.
 - **psycopg2 not installed in CI runner**: `test_presence_neon.py` may have pre-existing failures — not a regression.
+- **Python venv not present in bot runner**: `PYTHONPATH=. .venv/bin/pytest` cannot run in bot context; Python tests validated via kingdonb/mecris pr-test workflow instead.
 - **Test isolation pattern**: Tests that import `mcp_server` must use `sys.modules.pop("mcp_server", None)` + `patch.dict(os.environ, ...)` + `patch("psycopg2.connect")` before importing. See `_make_mcp_importable()` in `test_mcp_server.py`.
 - **Ghost Archivist lazy-import pattern**: `BeeminderClient` and `LanguageSyncService` are imported INSIDE `perform_archival_sync()` function body. Patch at source modules (`beeminder_client.BeeminderClient`, `services.language_sync_service.LanguageSyncService`), not at `ghost.archivist_logic`.
 - **cloud-sync patch pattern**: `language_sync_service` is a module-level variable. Use `patch("mcp_server.language_sync_service")` AFTER importing mcp_server within env+psycopg2 patches — see `tests/test_cloud_sync.py`.
@@ -40,3 +39,4 @@
 - **pr-test workflow sets NEON_DB_URL** (line 93 of pr-test.yml): `postgresql://mecris:mecris@localhost:5432/mecrisdb`. This means conftest `pytest_ignore_collect` for NEON_DB_URL tests does NOT fire — those tests are collected and must not fail at import time.
 - **requirements.txt Python dep chain**: `apscheduler>=3.10` (bfa0e75) + `SQLAlchemy>=2.0` (02b6340) — both needed because `scheduler.py` imports `SQLAlchemyJobStore` from apscheduler.
 - **Upstream sync pattern**: `git remote add upstream https://github.com/kingdonb/mecris.git && git fetch upstream main && git merge upstream/main --no-edit` — clean via 'ort' strategy when histories diverge post-squash-merge.
+- **Rust unit tests**: Pure functions extracted to module scope (`should_delegate`, `parse_forecast_count`, `arabic_completions`) — `cargo test` in `mecris-go-spin/sync-service/` runs 14 tests natively without Spin host.
