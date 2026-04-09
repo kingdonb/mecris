@@ -949,3 +949,10 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: Nothing. Scope matched the plan exactly.
 
 **Next**: No new bot-actionable test gaps identified. Remaining pending items require live environment (Neon, Android device) or workflow PAT scope. Next session should orient and check for upstream changes or new issues.
+
+## 2026-04-09 🏛️ — Open PR kingdonb/mecris#178 with Rust + cloud-sync test additions
+
+**Planned**: Open a pull request from yebyen:main to kingdonb:main containing the 14 Rust unit tests and 3 cloud-sync endpoint tests added in the previous session (yebyen/mecris#135).
+**Done**: PR kingdonb/mecris#178 opened successfully — 4 commits from yebyen:main (26735a1–24a7a4c), no merge conflicts. Plan issue yebyen/mecris#135 created, commented with PR link, and closed.
+**Skipped**: None — the single bot-actionable task was completed in full. All remaining pending items (live environment verifications, workflow PAT fix, Android UI, Neon migration) still require human or kingdonb action.
+**Next**: Check if PR #178 has been merged or has review feedback. If merged, sync yebyen/mecris from upstream. If no new tagged issues, look for new test gaps or orient for the next actionable feature.

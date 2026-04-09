@@ -1,18 +1,16 @@
-# Next Session: Explore further bot-actionable test gaps or open new health-report work
+# Next Session: Monitor PR kingdonb/mecris#178 for merge or review feedback
 
 ## Current Status (2026-04-09)
-- **yebyen/mecris fully synced with kingdonb/mecris**: `git log HEAD..upstream/main` is empty.
-- **Rust unit tests added**: `mecris-go-spin/sync-service/src/lib.rs` now has 14 passing unit tests (commit 93bc2c0). `cargo test` confirmed viable for Spin WASM crate on native target.
-- **Test suite healthy**: `PYTHONPATH=. .venv/bin/pytest` → **315 passed, 5 skipped, 0 errors** (Python; venv not available in bot runner, but no regressions from Rust-only change).
+- **PR open upstream**: kingdonb/mecris#178 from yebyen:main — contains 14 Rust unit tests + 3 cloud-sync Python tests. Awaiting kingdonb review/merge.
+- **yebyen/mecris 4 commits ahead of kingdonb/mecris**: All 4 commits are included in PR #178. No additional local work pending.
 - **No open tagged issues**: kingdonb/mecris and yebyen/mecris both have zero issues tagged needs-test, pr-review, or bug.
 - **Bot PAT limitations remain**: `GITHUB_CLASSIC_PAT` has repo scope only (no workflow scope); `GITHUB_TOKEN` scoped to yebyen/mecris only.
 
 ## Verified This Session
-- [x] **Rust test gap from 66396ee closed**: 14 unit tests covering `should_delegate`, `parse_forecast_count`, `arabic_completions` — all passing via `cargo test` in `mecris-go-spin/sync-service/`.
-- [x] **`cargo test` is viable for Spin WASM crate**: Spin SDK does NOT block native compilation for unit tests. No `rlib` hack needed; `cdylib` crate-type is sufficient.
-- [x] **Plan issue yebyen/mecris#134 created, commented, closed**: audit trail complete.
+- [x] **PR kingdonb/mecris#178 opened**: 4 commits (26735a1–24a7a4c) from yebyen:main included — no merge conflicts. Plan issue yebyen/mecris#135 created, commented, and closed.
 
 ## Pending Verification (Next Session)
+- [ ] **PR kingdonb/mecris#178 merged**: Check if kingdonb has reviewed and merged; if review feedback exists, act on it.
 - [ ] **Rust test gap (workflow fix)**: Modify `pr-test.yml` step `Run Rust tests` to check `[ -f Cargo.toml ]` before running `cargo test`. Needs `workflow` PAT scope — bot cannot push workflow changes. Needs kingdonb's action or a token with workflow scope.
 - [ ] **Multiplier Sync Validation**: Verify setting the Review Pump lever in Android updates multiplier in Neon (`SELECT pump_multiplier FROM language_stats`). Requires live device + Neon access.
 - [ ] **Ghost Archivist End-to-End**: Run scheduler locally, let archivist job fire, confirm logs show correct reconciliation without pushing fake data to Beeminder. (Unit tests complete; E2E still needs live environment.)
