@@ -304,6 +304,30 @@ async fn handle_aggregate_status_get(req: Request) -> anyhow::Result<Response> {
         .build())
 }
 
+/// Returns true when the sync request should be forwarded to the user's Home Server
+/// rather than handled locally by Spin. Delegation is skipped for local/loopback URLs
+/// to prevent infinite loops when the bot is running on localhost.
+fn should_delegate(delegation_enabled: bool, mcp_server_url: &str) -> bool {
+    delegation_enabled
+        && !mcp_server_url.is_empty()
+        && !mcp_server_url.contains("localhost")
+        && !mcp_server_url.contains("127.0.0.1")
+}
+
+/// Extract a review count from a Clozemaster forecast entry.
+/// Entries may be `{ "count": N }` objects or raw integers, depending on API version.
+fn parse_forecast_count(v: &serde_json::Value) -> i32 {
+    v.get("count")
+        .and_then(|c| c.as_i64())
+        .unwrap_or_else(|| v.as_i64().unwrap_or(0)) as i32
+}
+
+/// Convert raw Clozemaster points into an estimated card count for ARABIC.
+/// Heuristic: 1 card ≈ 12 points (derived empirically from scoring data).
+fn arabic_completions(points_today: i32) -> i32 {
+    (points_today as f64 / 12.0) as i32
+}
+
 async fn handle_cloud_sync(req: Request) -> anyhow::Result<Response> {
     let auth_header = req.header("authorization").cloned();
     let user_id = match extract_user_id(auth_header.as_ref()).await {
@@ -326,7 +350,7 @@ async fn handle_cloud_sync(req: Request) -> anyhow::Result<Response> {
             None => String::new(),
         };
 
-        if !mcp_server_url.is_empty() && !mcp_server_url.contains("localhost") && !mcp_server_url.contains("127.0.0.1") {
+        if should_delegate(delegation_enabled, &mcp_server_url) {
             // Home server URL is likely public/reachable — attempt delegation
             let sync_trigger_url = format!("{}/internal/cloud-sync", mcp_server_url.trim_end_matches('/'));
             
@@ -524,11 +548,8 @@ async fn run_clozemaster_scraper(db_url: &str, user_id: &str) -> anyhow::Result<
                             if let Ok(api_json) = serde_json::from_slice::<serde_json::Value>(api_res.body()) {
                                 if let Some(forecast) = api_json.get("reviewForecast").and_then(|f| f.as_array()) {
                                     if !forecast.is_empty() {
-                                        let get_count = |v: &serde_json::Value| -> i32 {
-                                            v.get("count").and_then(|c| c.as_i64()).unwrap_or_else(|| v.as_i64().unwrap_or(0)) as i32
-                                        };
-                                        tomorrow = get_count(&forecast[0]);
-                                        next_7 = forecast.iter().take(7).map(|d| get_count(d)).sum();
+                                                        tomorrow = parse_forecast_count(&forecast[0]);
+                                        next_7 = forecast.iter().take(7).map(parse_forecast_count).sum();
                                     }
                                 }
                             }
@@ -556,7 +577,7 @@ async fn run_clozemaster_scraper(db_url: &str, user_id: &str) -> anyhow::Result<
 
                     let mut completions = points_today;
                     if lang_name == "ARABIC" {
-                        completions = (points_today as f64 / 12.0) as i32;
+                        completions = arabic_completions(points_today);
                     }
                     
                     let query = "INSERT INTO language_stats (user_id, language_name, current_reviews, tomorrow_reviews, next_7_days_reviews, beeminder_slug, daily_completions, last_points, total_points, last_updated) 
@@ -1033,4 +1054,92 @@ async fn handle_walks_post(req: Request) -> anyhow::Result<Response> {
 
     let resp = StatusResponse { status: "success".to_string(), message: "Walk ingested".to_string() };
     Ok(Response::builder().status(201).header("content-type", "application/json").body(serde_json::to_string(&resp).unwrap()).build())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // --- should_delegate ---
+
+    #[test]
+    fn test_should_delegate_disabled_always_false() {
+        assert!(!should_delegate(false, "https://home.example.com"));
+    }
+
+    #[test]
+    fn test_should_delegate_empty_url() {
+        assert!(!should_delegate(true, ""));
+    }
+
+    #[test]
+    fn test_should_delegate_localhost_url() {
+        assert!(!should_delegate(true, "http://localhost:8080"));
+    }
+
+    #[test]
+    fn test_should_delegate_loopback_url() {
+        assert!(!should_delegate(true, "http://127.0.0.1:8080"));
+    }
+
+    #[test]
+    fn test_should_delegate_public_url() {
+        assert!(should_delegate(true, "https://mecris.example.com"));
+    }
+
+    #[test]
+    fn test_should_delegate_trailing_slash_public_url() {
+        assert!(should_delegate(true, "https://home.example.com/"));
+    }
+
+    // --- parse_forecast_count ---
+
+    #[test]
+    fn test_parse_forecast_count_object_form() {
+        let v = serde_json::json!({ "count": 42 });
+        assert_eq!(parse_forecast_count(&v), 42);
+    }
+
+    #[test]
+    fn test_parse_forecast_count_raw_integer() {
+        let v = serde_json::json!(17);
+        assert_eq!(parse_forecast_count(&v), 17);
+    }
+
+    #[test]
+    fn test_parse_forecast_count_missing_falls_back_to_zero() {
+        let v = serde_json::json!({});
+        assert_eq!(parse_forecast_count(&v), 0);
+    }
+
+    #[test]
+    fn test_parse_forecast_count_null_falls_back_to_zero() {
+        let v = serde_json::json!(null);
+        assert_eq!(parse_forecast_count(&v), 0);
+    }
+
+    // --- arabic_completions ---
+
+    #[test]
+    fn test_arabic_completions_zero() {
+        assert_eq!(arabic_completions(0), 0);
+    }
+
+    #[test]
+    fn test_arabic_completions_one_card() {
+        // 12 points → 1 card
+        assert_eq!(arabic_completions(12), 1);
+    }
+
+    #[test]
+    fn test_arabic_completions_partial_card_truncates() {
+        // 11 points → 0 cards (truncated, not rounded)
+        assert_eq!(arabic_completions(11), 0);
+    }
+
+    #[test]
+    fn test_arabic_completions_large_session() {
+        // 120 points → 10 cards
+        assert_eq!(arabic_completions(120), 10);
+    }
 }
