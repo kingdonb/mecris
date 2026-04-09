@@ -902,3 +902,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: pr-test re-run with SQLAlchemy fix — must wait for post-session push. Rust test workflow fix (needs `workflow` PAT scope, bot blocked).
 
 **Next**: After session push, trigger `/mecris-pr-test 177` to confirm Python ✅ with SQLAlchemy fix live. Then flag kingdonb/mecris#177 ready for review.
+
+## 2026-04-09 🏛️ — Confirm pr-test 177 CI-green with SQLAlchemy fix
+
+**Planned**: Trigger pr-test for kingdonb/mecris#177, confirm Python tests pass with SQLAlchemy fix now live on GitHub. (retro — no plan issue)
+
+**Done**: Dispatched pr-test (run 24197271311); concluded `success`. Python tests ✅ (SQLAlchemy + apscheduler fix chain confirmed). Android tests ✅. kingdonb/mecris#177 is now fully CI-green and ready for review/merge.
+
+**Skipped**: Nothing — single-task session, completed in full.
+
+**Next**: kingdonb needs to review and merge kingdonb/mecris#177. Bot cannot merge upstream PRs. Rust workflow test gap (needs `workflow` PAT) remains acknowledged but non-blocking.
