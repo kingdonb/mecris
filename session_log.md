@@ -912,3 +912,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: Nothing — single-task session, completed in full.
 
 **Next**: kingdonb needs to review and merge kingdonb/mecris#177. Bot cannot merge upstream PRs. Rust workflow test gap (needs `workflow` PAT) remains acknowledged but non-blocking.
+
+## 2026-04-09 🏛️ — Add unit tests for Ghost Archivist perform_archival_sync and archivists_round_robin
+
+**Planned**: Write `tests/test_ghost_archivist.py` — unit tests for `perform_archival_sync` and `archivists_round_robin`, the two functions in `ghost/archivist_logic.py` with zero coverage. (yebyen/mecris#131)
+
+**Done**: 13 new tests written and passing: `perform_archival_sync` (7 tests — language sync, Reality Enforcement no-push, presence upsert, all exception paths); `archivists_round_robin` (6 tests — store unavailable, get_all_users failure, wakeup/skip logic, per-user exception isolation). Key discovery: both `BeeminderClient` and `LanguageSyncService` are lazy-imported inside the function body, so patches must target source modules not `ghost.archivist_logic`. Full suite: 295 passed, 5 skipped, 0 errors. pr-test run 24202342245 confirmed success.
+
+**Skipped**: E2E scheduler test (requires live Neon + scheduler running locally) — unit tests are the appropriate coverage for this session. Ghost Archivist E2E carried forward to Pending.
+
+**Next**: kingdonb needs to review and merge kingdonb/mecris#177 (now includes the new archivist tests). Bot cannot merge upstream PRs.
