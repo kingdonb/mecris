@@ -13,3 +13,4 @@ beautifulsoup4>=4.12.3
 mcp
 cryptography
 apscheduler>=3.10
+SQLAlchemy>=2.0
