@@ -86,7 +86,7 @@ class TestPerformArchivalSync:
 
     @pytest.mark.asyncio
     async def test_no_activity_today_does_not_push_datapoint(self):
-        """Reality Enforcement: no activity → no safety datapoint is pushed."""
+        """Reality Enforcement: no activity → allows natural derailment without pushing data."""
         mock_beeminder = AsyncMock()
         mock_beeminder.get_daily_activity_status = AsyncMock(return_value={"has_activity_today": False})
         mock_beeminder.add_datapoint = AsyncMock()

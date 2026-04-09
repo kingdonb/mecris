@@ -14,7 +14,7 @@ The Ghost Archivist does NOT poll constantly. It uses the `scheduler_election` t
 2. **Presence Check**: It checks the `presence` table for the target `user_id`.
 3. **Ghost Activation**: If `presence_status == 'silent'` (no human activity for > 12 hours) AND it is currently between 10:00 PM and 11:59 PM Eastern:
    - The Ghost spawns a "Self-Sync" session.
-   - It calls `trigger_language_sync` and `upload_walk` (with 0 steps if no fresh data) to ensure Beeminder is satisfied.
+   - It calls `trigger_language_sync` to ensure Beeminder accurately reflects the growing Clozemaster review backlog (as cards age). This explicitly makes the user *less safe* from derailment, keeping the pressure on when they are inactive. It does *not* push 0.0 walk data (Beeminder naturally derails inactive walk goals).
    - It records a log entry: `[GHOST] Archivist performed automated end-of-day sync for user X.`
 
 ## 3. Implementation Plan

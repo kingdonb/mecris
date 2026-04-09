@@ -29,8 +29,8 @@ def should_ghost_wake_up(record: PresenceRecord, current_time: datetime) -> bool
 async def perform_archival_sync(user_id: str):
     """
     Performs archival sync actions:
-    1. Language sync (Clozemaster -> Beeminder).
-    2. Physical activity sync (Push 0.0 if no activity to prevent derailment).
+    1. Language sync (Clozemaster -> Beeminder). Extrapolates growing backlog if inactive.
+    2. Physical activity sync (Log only, Reality Enforcement applies).
     3. Update presence status in Neon.
     """
     from services.language_sync_service import LanguageSyncService
@@ -51,12 +51,12 @@ async def perform_archival_sync(user_id: str):
         logger.error(f"Archivist: Language sync failed for {user_id}: {e}")
 
     # 2. Physical Activity Sync (The "Ghost Heartbeat")
-    # We no longer push 0.0 to odometer goals (like 'bike') to prevent derailment.
+    # We never push 0.0 to odometer goals (like 'bike').
     # Reality Enforcement: If the user didn't walk, they derail.
     try:
         activity_status = await beeminder_client.get_daily_activity_status("bike")
         if not activity_status.get("has_activity_today"):
-            logger.info(f"Archivist: No activity today for 'bike' for {user_id}. Reality Enforcement: No safety datapoint pushed.")
+            logger.info(f"Archivist: No activity today for 'bike' for {user_id}. Reality Enforcement: User will derail via natural Beeminder extrapolation.")
         else:
             logger.info(f"Archivist: Activity already detected for 'bike' goal for {user_id}.")
     except Exception as e:
