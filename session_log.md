@@ -892,3 +892,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Done**: Dispatched pr-test twice; diagnosed Python test failure (`apscheduler` not in requirements.txt — CI sets `NEON_DB_URL` so conftest skip doesn't fire, import chain fails). Diagnosed Rust test failure (no root `Cargo.toml` — workflow PAT issue, blocked). Fixed `requirements.txt` by adding `apscheduler>=3.10` in commit `bfa0e75`. Android tests confirmed ✅ in both runs. Fix committed but not yet pushed to GitHub (push happens post-session).
 **Skipped**: Rust workflow fix (needs `workflow` PAT scope — bot cannot push workflow file changes). Live verifications (Multiplier Sync, Ghost Archivist, failover-sync) — require live device/Neon.
 **Next**: After session push, trigger `/mecris-pr-test 177` to confirm Python ✅ with apscheduler fix live. Then flag PR ready for kingdonb review.
+
+## 2026-04-09 🏛️ — Add SQLAlchemy to requirements.txt; re-run pr-test for #177
+
+**Planned**: Trigger pr-test for kingdonb/mecris#177, confirm Python tests pass with apscheduler fix live. (yebyen/mecris#129)
+
+**Done**: Triggered pr-test (run 24189231163); Python tests still failing — apscheduler now installed but `apscheduler.jobstores.sqlalchemy` requires `SQLAlchemy` which was missing from `requirements.txt`. Diagnosed full error from PR comment. Added `SQLAlchemy>=2.0` to `requirements.txt` in commit `02b6340`. Android tests ✅ confirmed. Cannot re-trigger pr-test this session because fix is not yet pushed to GitHub (push happens post-session).
+
+**Skipped**: pr-test re-run with SQLAlchemy fix — must wait for post-session push. Rust test workflow fix (needs `workflow` PAT scope, bot blocked).
+
+**Next**: After session push, trigger `/mecris-pr-test 177` to confirm Python ✅ with SQLAlchemy fix live. Then flag kingdonb/mecris#177 ready for review.
