@@ -1,38 +1,19 @@
-# Next Session: kingdonb/mecris#177 is CI-green — awaiting kingdonb review and merge
+# Next Session: Explore async sync work for further test gaps or open new bot-actionable work
 
 ## Current Status (2026-04-09)
-- **kingdonb/mecris#177 CI-GREEN**: pr-test run 24202342245 concluded `success`. Python tests ✅, Android tests ✅. PR is ready for kingdonb's review and merge.
-- **Ghost Archivist test coverage added**: `tests/test_ghost_archivist.py` (237631d) — 13 new tests covering `perform_archival_sync` and `archivists_round_robin`. Full suite now 295 passed, 5 skipped, 0 errors.
-- **Rust test gap (known/acknowledged)**: `cargo test --workspace` at repo root fails — no root `Cargo.toml`. Workflow file fix needs `workflow` PAT scope — bot cannot push workflow file changes. Not blocking the PR merge.
-- **yebyen/mecris is ahead of kingdonb/mecris**: After merge, repos re-sync and accumulated commits land in upstream main.
-
-## Verified This Session
-- [x] **Ghost Archivist unit tests**: 13 tests in `tests/test_ghost_archivist.py` — all passing locally and in CI (pr-test run 24202342245).
-- [x] **perform_archival_sync** fully covered: language sync happy/failure paths, Reality Enforcement (no datapoint push on no-activity), presence upsert to ACTIVE_GHOST, all exception paths isolated.
-- [x] **archivists_round_robin** fully covered: store unavailable, get_all_users failure, wakeup/skip logic, per-user exception isolation.
-- [x] **pr-test 177 still passes**: Run 24202342245 — conclusion `success`. New tests included, no regressions.
-
-## Pending Verification (Next Session)
-- [ ] **kingdonb/mecris#177 merge**: kingdonb needs to review and merge. Bot cannot merge upstream PRs.
-- [ ] **Rust test gap (workflow fix)**: Modify `pr-test.yml` step `Run Rust tests` to check `[ -f Cargo.toml ]` before running `cargo test`. Needs `workflow` PAT scope — bot cannot push workflow changes. Needs kingdonb's action or a token with workflow scope.
-- [ ] **Multiplier Sync Validation**: Verify setting the Review Pump lever in Android updates multiplier in Neon (`SELECT pump_multiplier FROM language_stats`). Requires live device + Neon access.
-- [ ] **Ghost Archivist End-to-End**: Run scheduler locally, let archivist job fire, confirm logs show correct reconciliation without pushing fake data to Beeminder. (Unit tests now complete; E2E still needs live environment.)
-# Next Session: Identify new bot-actionable work from kingdonb's async sync feature
-
-## Current Status (2026-04-09)
-- **yebyen/mecris is synced with kingdonb/mecris**: Merge commit `5503f07` brings in `fa5e601` (PR #177 squash merge). `git log HEAD..upstream/main` is empty.
-- **kingdonb merged PR #177** (2026-04-09T17:22:11Z): 13 commits squashed — CI fixes, encrypted credential tests, Ghost Archivist unit tests, SQL migration 003.
-- **Test suite healthy**: `PYTHONPATH=. .venv/bin/pytest` → **312 passed, 5 skipped, 0 errors** (up from 295 — kingdonb's additional tests now included after sync).
-- **kingdonb's async background sync landed**: `66396ee` ("feat(sync): implement async background sync and parallelized scraper") is now in our ancestry. Review it next session to see if it exposes new test gaps or bot-actionable work.
+- **yebyen/mecris fully synced with kingdonb/mecris**: `git log HEAD..upstream/main` is empty.
+- **Test suite healthy**: `PYTHONPATH=. .venv/bin/pytest` → **315 passed, 5 skipped, 0 errors** (up from 312 after adding cloud-sync tests).
+- **cloud-sync endpoint test gap closed**: `tests/test_cloud_sync.py` (commit 26735a1) — 3 tests covering 202 response, fire-and-forget background task semantics, and exception isolation.
 - **No open tagged issues**: kingdonb/mecris and yebyen/mecris both have zero issues tagged needs-test, pr-review, or bug.
+- **Bot PAT limitations remain**: `GITHUB_CLASSIC_PAT` has repo scope only (no workflow scope); `GITHUB_TOKEN` scoped to yebyen/mecris only.
 
 ## Verified This Session
-- [x] **kingdonb/mecris#177 merged**: Confirmed closed at 17:22:11Z on 2026-04-09 (squash merge, 1 merge commit).
-- [x] **Upstream sync complete**: `git merge upstream/main` (merge commit `5503f07`) — clean via 'ort' strategy, no conflicts.
-- [x] **Full test suite still passes**: 312 passed, 5 skipped, 0 errors — no regressions from sync.
+- [x] **Upstream sync confirmed up-to-date**: `git log HEAD..upstream/main` empty.
+- [x] **Async cloud-sync endpoint tests**: 3 tests in `tests/test_cloud_sync.py` — all passing. Covers commit 66396ee behavioral changes (202 Accepted, background task, exception isolation).
+- [x] **Full test suite passes with no regressions**: 315 passed, 5 skipped after adding cloud-sync tests.
+- [x] **Plan issue yebyen/mecris#133 created, commented, closed**: audit trail complete.
 
 ## Pending Verification (Next Session)
-- [ ] **Explore kingdonb's async sync work**: Read `66396ee` ("feat(sync): implement async background sync and parallelized scraper") — understand what changed in Spin delegation and Home Server background tasks. Check if there are new test gaps or CI concerns from the Rust code.
 - [ ] **Rust test gap (workflow fix)**: Modify `pr-test.yml` step `Run Rust tests` to check `[ -f Cargo.toml ]` before running `cargo test`. Needs `workflow` PAT scope — bot cannot push workflow changes. Needs kingdonb's action or a token with workflow scope.
 - [ ] **Multiplier Sync Validation**: Verify setting the Review Pump lever in Android updates multiplier in Neon (`SELECT pump_multiplier FROM language_stats`). Requires live device + Neon access.
 - [ ] **Ghost Archivist End-to-End**: Run scheduler locally, let archivist job fire, confirm logs show correct reconciliation without pushing fake data to Beeminder. (Unit tests complete; E2E still needs live environment.)
@@ -41,6 +22,7 @@
 - [ ] **Android app has_goal UI**: Confirm Android app picks up `has_goal=false` flag and visually dims untracked languages. Requires live app test.
 - [ ] **Majesty Cake Android integration**: `/aggregate-status` backend complete; Android app needs to consume it (kingdonb/mecris#170).
 - [ ] **003_multi_tenancy.sql live run**: Run `psql $NEON_DB_URL -f scripts/migrations/003_multi_tenancy.sql` against live Neon.
+- [ ] **Explore further test gaps from 66396ee**: The Rust `lib.rs` changes (parallelized Clozemaster scraping, Spin delegation skip logic) were not reviewed for test gaps — only the Python mcp_server.py change was addressed this session.
 
 ## Infrastructure Notes
 - Spin Cron trigger is **DISABLED** in `spin.toml` — do not re-enable.
@@ -52,6 +34,7 @@
 - **psycopg2 not installed in CI runner**: `test_presence_neon.py` may have pre-existing failures — not a regression.
 - **Test isolation pattern**: Tests that import `mcp_server` must use `sys.modules.pop("mcp_server", None)` + `patch.dict(os.environ, ...)` + `patch("psycopg2.connect")` before importing. See `_make_mcp_importable()` in `test_mcp_server.py`.
 - **Ghost Archivist lazy-import pattern**: `BeeminderClient` and `LanguageSyncService` are imported INSIDE `perform_archival_sync()` function body. Patch at source modules (`beeminder_client.BeeminderClient`, `services.language_sync_service.LanguageSyncService`), not at `ghost.archivist_logic`.
+- **cloud-sync patch pattern**: `language_sync_service` is a module-level variable. Use `patch("mcp_server.language_sync_service")` AFTER importing mcp_server within env+psycopg2 patches — see `tests/test_cloud_sync.py`.
 - **BeeminderClient note**: `UsageTracker.__init__` requires `NEON_DB_URL` even in the no-DB fallback path — mock UsageTracker when testing the env-var-only path.
 - **Multi-tenancy schema**: `language_stats` PK is `(user_id, language_name)`; `budget_tracking` has `user_id UNIQUE`. All queries scope by user_id. SQL migration 003 formalizes this for live Neon.
 - **pr-test workflow sets NEON_DB_URL** (line 93 of pr-test.yml): `postgresql://mecris:mecris@localhost:5432/mecrisdb`. This means conftest `pytest_ignore_collect` for NEON_DB_URL tests does NOT fire — those tests are collected and must not fail at import time.

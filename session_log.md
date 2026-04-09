@@ -932,3 +932,10 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: None — sync was the only bot-actionable task. All remaining pending items (live device tests, Rust workflow fix, Android UI verification) require human or kingdonb action.
 
 **Next**: Review kingdonb's async background sync (`66396ee`) for new test gaps or CI concerns. Open a plan issue if bot-actionable work is found.
+
+## 2026-04-09 🏛️ — Add tests for async /internal/cloud-sync endpoint (202 Accepted)
+
+**Planned**: Add ≥3 unit tests covering 202 status, fire-and-forget semantics, and exception isolation for the async cloud-sync endpoint changed in commit 66396ee (yebyen/mecris#133).
+**Done**: Wrote `tests/test_cloud_sync.py` with exactly 3 tests — all passing. Full suite: 315 passed, 5 skipped, 0 errors. Committed as 26735a1. Plan issue #133 created, commented with results, and closed.
+**Skipped**: Rust lib.rs changes from 66396ee (parallelized scraper, Spin delegation skip logic) — those are Rust unit test territory and were not reviewed for gaps this session. Carried forward.
+**Next**: Explore Rust-side changes from 66396ee for test gaps, OR look for new bot-actionable work from kingdonb's next async feature commits.
