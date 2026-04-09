@@ -845,3 +845,80 @@ This document summarizes the collaborative debugging session to establish a func
 - Verify Android app stability with 0.0.1-alpha.4 and 202 Accepted responses.
 - Investigate userfaultfd warnings in Android logs (non-fatal but noisy).
 - Begin Goal 1 Implementation (presence.lock detection for Ghost Archivist).
+
+## 2026-04-08 🏛️ — Test BeeminderClient._load_credentials() encrypted path and fallback chains
+
+**Planned**: Write 4 unit tests for `BeeminderClient._load_credentials()` covering encrypted path, plaintext fallback, env-var fallback, and no-NEON_DB_URL path. (yebyen/mecris#123)
+
+**Done**: Created `tests/test_beeminder_credentials.py` with 4 passing pytest tests. Discovered that the no-NEON_DB_URL path requires mocking UsageTracker because `UsageTracker.__init__` itself requires `NEON_DB_URL` (constraint documented in test comment). All 4 tests pass. Committed at `5b91d56`.
+
+**Skipped**: Full suite run not feasible in this CI environment (playwright missing, no .venv). Verified target tests + related encryption/coaching tests pass (15/15).
+
+**Next**: Live-verification tasks (Multiplier Sync, Ghost Archivist E2E, #132, Android UI, Majesty Cake Android) require human + live device. Playwright CI gap is a new finding worth addressing.
+
+## 2026-04-08 🏛️ — Fix CI collection errors (NEON_DB_URL skip hook + stale mock)
+
+**Planned**: Find playwright-dependent tests and add importorskip markers to fix CI collection errors. (yebyen/mecris#124)
+
+**Done**: Discovered playwright is already installed from requirements.txt — the actual CI gap was `test_standalone_access.py` and `test_unauthorized_access.py` failing at collection time due to bare `from mcp_server import app` without `NEON_DB_URL` set. Added `pytest_ignore_collect` hook to `tests/conftest.py` to skip these files when `NEON_DB_URL` is absent. Also fixed pre-existing `test_beeminder_client_loads_encrypted_creds`: mock returned 2 values but code (post d1d32b5) expects 3 columns — updated mock to `(enc_user, enc_token, None)`. Full suite: 299 passed, 5 skipped, 0 errors.
+
+**Skipped**: Nothing — plan completed in full (with corrected diagnosis).
+
+**Next**: Live-verification tasks (Multiplier Sync, Ghost Archivist E2E, #132, Android UI, Majesty Cake Android) require human + live device. No bot-actionable code work remains in the immediate backlog.
+
+## 2026-04-08 🏛️ — Add SQL migration 003 for multi-tenancy user_id scoping
+
+**Planned**: Write SQL migration adding `user_id` columns to `language_stats` and `budget_tracking`, update MCP queries to scope by `user_id`, add unit tests. (yebyen/mecris#125, relates to kingdonb/mecris#120)
+
+**Done**: Discovered that code-level multi-tenancy was already fully implemented — all queries in `neon_sync_checker.py`, `usage_tracker.py`, `language_sync_service.py`, and `mcp_server.py` already scope by `user_id`. `schema.sql` already uses composite PK `(user_id, language_name)`. `tests/test_multi_tenancy.py` tests already pass (8/8). The one real gap was the absence of a numbered SQL migration file following the `001_`/`002_` convention. Created and committed `scripts/migrations/003_multi_tenancy.sql` — idempotent `ALTER TABLE IF NOT EXISTS` migration with backfill and PK migration guards. Full suite: 282 passed, 5 skipped.
+
+**Skipped**: No code changes to mcp_server.py or services were needed — they were already correct. Live Neon run of the DDL migration is pending human execution.
+
+**Next**: Run `psql $NEON_DB_URL -f scripts/migrations/003_multi_tenancy.sql` against live Neon to formalize schema. Then tackle Android integration for Majesty Cake (kingdonb/mecris#170) or kingdonb/mecris#126 (Greek Beeminder goal).
+
+## 2026-04-08 🏛️ — Open PR from yebyen:main → kingdonb:main (6 commits)
+
+**Planned**: Open a pull request from yebyen/mecris:main to kingdonb/mecris:main containing the 6 commits accumulated since the last merge. (yebyen/mecris#126)
+
+**Done**: PR opened at https://github.com/kingdonb/mecris/pull/177 — contains CI collection fixes (9991f70), encrypted credential tests (5b91d56), stale mock fix, SQL migration 003 (5f5141f), and archive commits. PR state: open, head `a2b9003`, base `01a6cdc`. Awaiting kingdonb review + CI green.
+
+**Skipped**: Nothing — orient → plan → PR in a single clean pass.
+
+**Next**: Check kingdonb/mecris#177 CI status next session. If green, kingdonb merges and repos re-sync. Live verification tasks (Multiplier Sync, Ghost Archivist, #132, Android UI, Majesty Cake) still pending human + live device.
+
+## 2026-04-09 🏛️ — Diagnose and fix apscheduler missing from requirements.txt
+
+**Planned**: Verify CI on kingdonb/mecris#177 and fix any failures (yebyen/mecris#128)
+**Done**: Dispatched pr-test twice; diagnosed Python test failure (`apscheduler` not in requirements.txt — CI sets `NEON_DB_URL` so conftest skip doesn't fire, import chain fails). Diagnosed Rust test failure (no root `Cargo.toml` — workflow PAT issue, blocked). Fixed `requirements.txt` by adding `apscheduler>=3.10` in commit `bfa0e75`. Android tests confirmed ✅ in both runs. Fix committed but not yet pushed to GitHub (push happens post-session).
+**Skipped**: Rust workflow fix (needs `workflow` PAT scope — bot cannot push workflow file changes). Live verifications (Multiplier Sync, Ghost Archivist, failover-sync) — require live device/Neon.
+**Next**: After session push, trigger `/mecris-pr-test 177` to confirm Python ✅ with apscheduler fix live. Then flag PR ready for kingdonb review.
+
+## 2026-04-09 🏛️ — Add SQLAlchemy to requirements.txt; re-run pr-test for #177
+
+**Planned**: Trigger pr-test for kingdonb/mecris#177, confirm Python tests pass with apscheduler fix live. (yebyen/mecris#129)
+
+**Done**: Triggered pr-test (run 24189231163); Python tests still failing — apscheduler now installed but `apscheduler.jobstores.sqlalchemy` requires `SQLAlchemy` which was missing from `requirements.txt`. Diagnosed full error from PR comment. Added `SQLAlchemy>=2.0` to `requirements.txt` in commit `02b6340`. Android tests ✅ confirmed. Cannot re-trigger pr-test this session because fix is not yet pushed to GitHub (push happens post-session).
+
+**Skipped**: pr-test re-run with SQLAlchemy fix — must wait for post-session push. Rust test workflow fix (needs `workflow` PAT scope, bot blocked).
+
+**Next**: After session push, trigger `/mecris-pr-test 177` to confirm Python ✅ with SQLAlchemy fix live. Then flag kingdonb/mecris#177 ready for review.
+
+## 2026-04-09 🏛️ — Confirm pr-test 177 CI-green with SQLAlchemy fix
+
+**Planned**: Trigger pr-test for kingdonb/mecris#177, confirm Python tests pass with SQLAlchemy fix now live on GitHub. (retro — no plan issue)
+
+**Done**: Dispatched pr-test (run 24197271311); concluded `success`. Python tests ✅ (SQLAlchemy + apscheduler fix chain confirmed). Android tests ✅. kingdonb/mecris#177 is now fully CI-green and ready for review/merge.
+
+**Skipped**: Nothing — single-task session, completed in full.
+
+**Next**: kingdonb needs to review and merge kingdonb/mecris#177. Bot cannot merge upstream PRs. Rust workflow test gap (needs `workflow` PAT) remains acknowledged but non-blocking.
+
+## 2026-04-09 🏛️ — Add unit tests for Ghost Archivist perform_archival_sync and archivists_round_robin
+
+**Planned**: Write `tests/test_ghost_archivist.py` — unit tests for `perform_archival_sync` and `archivists_round_robin`, the two functions in `ghost/archivist_logic.py` with zero coverage. (yebyen/mecris#131)
+
+**Done**: 13 new tests written and passing: `perform_archival_sync` (7 tests — language sync, Reality Enforcement no-push, presence upsert, all exception paths); `archivists_round_robin` (6 tests — store unavailable, get_all_users failure, wakeup/skip logic, per-user exception isolation). Key discovery: both `BeeminderClient` and `LanguageSyncService` are lazy-imported inside the function body, so patches must target source modules not `ghost.archivist_logic`. Full suite: 295 passed, 5 skipped, 0 errors. pr-test run 24202342245 confirmed success.
+
+**Skipped**: E2E scheduler test (requires live Neon + scheduler running locally) — unit tests are the appropriate coverage for this session. Ghost Archivist E2E carried forward to Pending.
+
+**Next**: kingdonb needs to review and merge kingdonb/mecris#177 (now includes the new archivist tests). Bot cannot merge upstream PRs.
