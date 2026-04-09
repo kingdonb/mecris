@@ -885,3 +885,10 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: Nothing — orient → plan → PR in a single clean pass.
 
 **Next**: Check kingdonb/mecris#177 CI status next session. If green, kingdonb merges and repos re-sync. Live verification tasks (Multiplier Sync, Ghost Archivist, #132, Android UI, Majesty Cake) still pending human + live device.
+
+## 2026-04-09 🏛️ — Diagnose and fix apscheduler missing from requirements.txt
+
+**Planned**: Verify CI on kingdonb/mecris#177 and fix any failures (yebyen/mecris#128)
+**Done**: Dispatched pr-test twice; diagnosed Python test failure (`apscheduler` not in requirements.txt — CI sets `NEON_DB_URL` so conftest skip doesn't fire, import chain fails). Diagnosed Rust test failure (no root `Cargo.toml` — workflow PAT issue, blocked). Fixed `requirements.txt` by adding `apscheduler>=3.10` in commit `bfa0e75`. Android tests confirmed ✅ in both runs. Fix committed but not yet pushed to GitHub (push happens post-session).
+**Skipped**: Rust workflow fix (needs `workflow` PAT scope — bot cannot push workflow file changes). Live verifications (Multiplier Sync, Ghost Archivist, failover-sync) — require live device/Neon.
+**Next**: After session push, trigger `/mecris-pr-test 177` to confirm Python ✅ with apscheduler fix live. Then flag PR ready for kingdonb review.
