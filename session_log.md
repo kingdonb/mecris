@@ -922,3 +922,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: E2E scheduler test (requires live Neon + scheduler running locally) — unit tests are the appropriate coverage for this session. Ghost Archivist E2E carried forward to Pending.
 
 **Next**: kingdonb needs to review and merge kingdonb/mecris#177 (now includes the new archivist tests). Bot cannot merge upstream PRs.
+
+## 2026-04-09 🏛️ — Sync yebyen/mecris from kingdonb/mecris after PR #177 merge
+
+**Planned**: Fetch kingdonb/mecris main and merge into yebyen/mecris — pull in `fa5e601` (squash merge of PR #177) and kingdonb's async background sync work (`66396ee`). (yebyen/mecris#132)
+
+**Done**: `git remote add upstream && git fetch upstream main && git merge upstream/main --no-edit` — clean merge via 'ort' strategy, merge commit `5503f07`. `git log HEAD..upstream/main` returns empty (fully synced). Full test suite: **312 passed, 5 skipped, 0 errors** (up from 295 — kingdonb's additional tests included after sync).
+
+**Skipped**: None — sync was the only bot-actionable task. All remaining pending items (live device tests, Rust workflow fix, Android UI verification) require human or kingdonb action.
+
+**Next**: Review kingdonb's async background sync (`66396ee`) for new test gaps or CI concerns. Open a plan issue if bot-actionable work is found.
