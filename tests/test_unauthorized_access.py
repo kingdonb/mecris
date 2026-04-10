@@ -1,16 +1,34 @@
 import pytest
-from fastapi.testclient import TestClient
-from mcp_server import app
+import sys
 import os
 from unittest.mock import patch
 
-# Verify that the FastAPI endpoints in mcp_server.py require authentication
-# when NOT in standalone mode.
+
+def _make_mcp_importable(mode="cloud"):
+    """Patch env + psycopg2 so mcp_server can be imported without a real DB."""
+    return [
+        patch.dict("os.environ", {
+            "NEON_DB_URL": "postgres://fake",
+            "DEFAULT_USER_ID": "",
+            "MECRIS_MODE": mode,
+        }),
+        patch("psycopg2.connect"),
+    ]
+
 
 @pytest.fixture
 def client():
-    with patch.dict(os.environ, {"MECRIS_MODE": "cloud", "DEFAULT_USER_ID": ""}):
-        return TestClient(app)
+    sys.modules.pop("mcp_server", None)
+    env_patch, db_patch = _make_mcp_importable("cloud")
+    with env_patch, db_patch:
+        from mcp_server import app
+        from fastapi.testclient import TestClient
+        yield TestClient(app)
+    sys.modules.pop("mcp_server", None)
+
+
+# Verify that the FastAPI endpoints in mcp_server.py require authentication
+# when NOT in standalone mode.
 
 def test_narrator_context_no_auth(client):
     """Verify that /narrator/context REJECTS requests without authentication."""
