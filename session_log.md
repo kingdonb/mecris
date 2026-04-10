@@ -980,3 +980,10 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: Verifying the fix — pr-test dispatched in-session tests GitHub's HEAD (e020d8a), not local commits. Cannot close plan issue #138 until next session confirms green run.
 
 **Next**: After push of `c88d368`, run `/mecris-pr-test 178` — expect all Python tests to pass. Then close yebyen/mecris#138 and request kingdonb to review PR #178.
+
+## 2026-04-10 🏛️ — Verify pr-test #178 is fully green after c88d368 push
+
+**Planned**: Dispatch pr-test for kingdonb/mecris#178 and confirm all 3 previously-failing tests now pass (yebyen/mecris#139).
+**Done**: Dispatched pr-test (run 24252329711). Result: 321 passed, 4 skipped, 0 failures — all 3 previously-failing tests now pass (`test_autonomous_tables_exist`, `test_global_walk_sync_job_success`, `test_global_walk_sync_job_skips_when_not_leader`). Closed yebyen/mecris#138 (carried-over plan issue from prior session). Comment posted on kingdonb/mecris#178 with full results.
+**Skipped**: None — validation criterion fully met.
+**Next**: kingdonb to review and merge kingdonb/mecris#178. Rust test gap in pr-test.yml still needs workflow PAT (kingdonb action required).

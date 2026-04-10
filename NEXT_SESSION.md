@@ -1,24 +1,24 @@
-# Next Session: Re-run pr-test #178 after push of c88d368 (walk_sync isolation + token_bank schema)
+# Next Session: kingdonb review and merge of kingdonb/mecris#178 (Python CI green)
 
 ## Current Status (2026-04-10)
-- **PR open upstream**: kingdonb/mecris#178 from yebyen:main — 14 Rust unit tests + 3 cloud-sync Python tests + schema fix + test isolation fixes. Not yet merged.
-- **Two fixes committed locally as `c88d368`** (not yet on GitHub — push happens when this bot workflow ends):
-  1. `tests/test_walk_sync.py`: applied `_make_mcp_importable()` pattern — FK violation at runtime was caused by `patch("mcp_server.scheduler", ...)` triggering mcp_server import before psycopg2 was mocked.
-  2. `mecris-go-spin/schema.sql`: added `CREATE TABLE IF NOT EXISTS token_bank (...)` — table was only created by `usage_tracker.py:_init_neon()` dynamically; `test_autonomous_tables_exist` checks for it in CI via `initialize_neon.py`.
-- **Last verified pr-test run**: 318 passed, 4 skipped, 3 failed (test_walk_sync x2 + test_autonomous_tables_exist), Android ✅, Rust ❌ (known).
-- **yebyen/mecris commits ahead of kingdonb/mecris**: All in PR #178.
+- **PR open upstream**: kingdonb/mecris#178 from yebyen:main — 14 Rust unit tests + 3 cloud-sync Python tests + schema fixes + test isolation fixes. Not yet merged.
+- **Python CI fully green**: pr-test run 24252329711 — 321 passed, 4 skipped, 0 failures. Up from 318 passed / 3 failed.
+- **Android CI green**: unchanged from prior sessions.
+- **Rust CI still failing**: Known; `pr-test.yml` runs `cargo test` in wrong directory. Needs `workflow` PAT scope to fix — bot cannot push workflow file changes.
+- **yebyen/mecris ahead of kingdonb/mecris**: All divergence is in PR #178.
 
 ## Verified This Session
-- [x] **Collection errors gone**: Previous 4-run streak of `ForeignKeyViolation at collection` is resolved. Run 24247632948 collected all tests (318 passed, 4 skipped, only 3 runtime failures).
-- [x] **Root cause of 3 runtime failures identified and fixed** (locally, commit `c88d368`):
-  - `test_walk_sync.py::test_global_walk_sync_job_success` and `test_global_walk_sync_job_skips_when_not_leader` — FK at runtime from mcp_server import triggered by `patch("mcp_server.scheduler", ...)`.
-  - `test_usage_tracker.py::test_autonomous_tables_exist` — `token_bank` missing from `mecris-go-spin/schema.sql`.
+- [x] **pr-test #178 Python tests fully green**: run 24252329711 — 321 passed, 4 skipped, 0 failures.
+  - `test_autonomous_tables_exist` ✅ (token_bank now in schema.sql)
+  - `test_global_walk_sync_job_success` ✅ (mcp_server import isolation)
+  - `test_global_walk_sync_job_skips_when_not_leader` ✅ (mcp_server import isolation)
+- [x] **yebyen/mecris#138 closed**: plan issue from previous session, closed after CI confirmed green.
+- [x] **No upstream sync needed**: `b31cfa9` (kingdonb docs fix) is already in yebyen/mecris history.
 
 ## Pending Verification (Next Session)
-- [ ] **Re-run pr-test #178 after push of `c88d368`**: After this session ends and push lands on GitHub, dispatch pr-test again. Expected: 3 runtime failures → 0. Watch for any new failures.
-- [ ] **PR kingdonb/mecris#178 merged**: Still open; needs green Python test run to motivate review.
+- [ ] **PR kingdonb/mecris#178 merged**: Python + Android are green. Rust is a known pre-existing gap (wrong Cargo.toml path in workflow). Needs kingdonb review and merge.
 - [ ] **Rust test gap (workflow fix)**: Modify `pr-test.yml` step `Run Rust tests` to use `working-directory: mecris-go-spin/sync-service`. Needs `workflow` PAT scope — bot cannot push workflow changes. Needs kingdonb's action.
-- [ ] **test_narrator_context_standalone may fail at runtime**: The standalone test expects `/narrator/context` to return 200 with psycopg2 mocked. Endpoint may call external services (Beeminder, etc.) — check pr-test output carefully for runtime failures after full green run.
+- [ ] **test_narrator_context_standalone may fail at runtime**: The standalone test expects `/narrator/context` to return 200 with psycopg2 mocked. Monitor for runtime failures in future pr-test runs.
 - [ ] **Multiplier Sync Validation**: Verify setting the Review Pump lever in Android updates multiplier in Neon (`SELECT pump_multiplier FROM language_stats`). Requires live device + Neon access.
 - [ ] **Ghost Archivist End-to-End**: Run scheduler locally, let archivist job fire, confirm logs show correct reconciliation without pushing fake data to Beeminder. (Unit tests complete; E2E still needs live environment.)
 - [ ] **kingdonb/mecris#132 verification**: Trigger `/internal/failover-sync` and confirm `daily_completions` is non-zero in Neon if reviews were done.
@@ -26,7 +26,6 @@
 - [ ] **Android app has_goal UI**: Confirm Android app picks up `has_goal=false` flag and visually dims untracked languages. Requires live app test.
 - [ ] **Majesty Cake Android integration**: `/aggregate-status` backend complete; Android app needs to consume it (kingdonb/mecris#170).
 - [ ] **003_multi_tenancy.sql live run**: Run `psql $NEON_DB_URL -f scripts/migrations/003_multi_tenancy.sql` against live Neon.
-- [ ] **Plan issue yebyen/mecris#138**: Left open — close it after verifying pr-test is green in next session.
 
 ## Infrastructure Notes
 - Spin Cron trigger is **DISABLED** in `spin.toml` — do not re-enable.
