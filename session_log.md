@@ -956,3 +956,10 @@ This document summarizes the collaborative debugging session to establish a func
 **Done**: PR kingdonb/mecris#178 opened successfully — 4 commits from yebyen:main (26735a1–24a7a4c), no merge conflicts. Plan issue yebyen/mecris#135 created, commented with PR link, and closed.
 **Skipped**: None — the single bot-actionable task was completed in full. All remaining pending items (live environment verifications, workflow PAT fix, Android UI, Neon migration) still require human or kingdonb action.
 **Next**: Check if PR #178 has been merged or has review feedback. If merged, sync yebyen/mecris from upstream. If no new tagged issues, look for new test gaps or orient for the next actionable feature.
+
+## 2026-04-10 🏛️ — Diagnose and fix schema.sql budget_tracking column mismatch blocking pr-test #178
+
+**Planned**: Run pr-test for kingdonb/mecris#178 and confirm 14 Rust + 3 cloud-sync tests pass (yebyen/mecris#136).
+**Done**: Dispatched pr-test twice. First run revealed: ✅ Android, ❌ Python (schema bug), ❌ Rust (known Cargo.toml path). Root cause: `initialize_neon.py` runs `mecris-go-spin/schema.sql` first in CI, creating `budget_tracking` with `period_start`/`period_end` columns; `usage_tracker.py` then hits a no-op `CREATE TABLE IF NOT EXISTS` and fails when trying to INSERT into `budget_period_start`. Fix committed as `8597dbe` — aligns `schema.sql` column names/types with `usage_tracker.py`. Second pr-test run still failed (fix not yet pushed to GitHub remote). Plan issue documented with root cause and fix commit.
+**Skipped**: Rust test gap fix (needs workflow PAT scope, out of bot authority). Confirming Python tests pass after schema fix (requires push to take effect, deferred to next session).
+**Next**: After session push lands, re-run `/mecris-pr-test 178` — Python tests should now pass. Rust test still needs kingdonb or workflow-scoped PAT to fix `pr-test.yml`.
