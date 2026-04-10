@@ -111,7 +111,15 @@ CREATE TABLE IF NOT EXISTS autonomous_turns (
     container_id VARCHAR(100) DEFAULT 'local'
 );
 
--- 8. Budget Tracking
+-- 8. Token Bank
+CREATE TABLE IF NOT EXISTS token_bank (
+    user_id TEXT PRIMARY KEY REFERENCES users(pocket_id_sub),
+    available_tokens BIGINT NOT NULL DEFAULT 0,
+    monthly_limit BIGINT NOT NULL DEFAULT 1000000,
+    last_refill TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- 9. Budget Tracking
 CREATE TABLE IF NOT EXISTS budget_tracking (
     id SERIAL PRIMARY KEY,
     user_id VARCHAR(255) UNIQUE REFERENCES users(pocket_id_sub) ON DELETE CASCADE,
