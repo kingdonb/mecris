@@ -1,24 +1,22 @@
-# Next Session: kingdonb review and merge of kingdonb/mecris#178 (Python CI green)
+# Next Session: kingdonb review and merge of kingdonb/mecris#178 + apply Rust workflow fix from #142
 
 ## Current Status (2026-04-10)
 - **PR open upstream**: kingdonb/mecris#178 from yebyen:main — 14 Rust unit tests + 3 cloud-sync Python tests + schema fixes + test isolation fixes. Not yet merged.
-- **Python CI fully green**: pr-test run 24252329711 — 321 passed, 4 skipped, 0 failures. Up from 318 passed / 3 failed.
+- **Python CI fully green**: pr-test run 24252329711 — 321 passed, 4 skipped, 0 failures.
 - **Android CI green**: unchanged from prior sessions.
-- **Rust CI still failing**: Known; `pr-test.yml` runs `cargo test` in wrong directory. Needs `workflow` PAT scope to fix — bot cannot push workflow file changes.
+- **Rust CI still failing**: Known; `pr-test.yml` runs `cargo test` in wrong directory. Exact fix documented in yebyen/mecris#142. Needs `workflow` PAT scope to apply — bot cannot push workflow file changes.
 - **yebyen/mecris ahead of kingdonb/mecris**: All divergence is in PR #178.
 
 ## Verified This Session
-- [x] **pr-test #178 Python tests fully green**: run 24252329711 — 321 passed, 4 skipped, 0 failures.
-  - `test_autonomous_tables_exist` ✅ (token_bank now in schema.sql)
-  - `test_global_walk_sync_job_success` ✅ (mcp_server import isolation)
-  - `test_global_walk_sync_job_skips_when_not_leader` ✅ (mcp_server import isolation)
-- [x] **yebyen/mecris#138 closed**: plan issue from previous session, closed after CI confirmed green.
-- [x] **No upstream sync needed**: `b31cfa9` (kingdonb docs fix) is already in yebyen/mecris history.
-- [x] **test_narrator_context_standalone is SAFE**: Audited `mcp_server.py:46-54` (`_record_presence` has its own try/except, cannot throw) and `mcp_server.py:367-490` (outer try/except catches all service failures, returns dict — still HTTP 200). Test will pass reliably. Verified in yebyen/mecris#140.
+- [x] **pr-test #178 Python tests fully green**: run 24252329711 — 321 passed, 4 skipped, 0 failures. (Verified prior session; still holds.)
+- [x] **test_narrator_context_standalone is SAFE**: Audited and confirmed in yebyen/mecris#140. (Verified prior session.)
+- [x] **Rust workflow fix documented**: yebyen/mecris#142 created with exact `working-directory: mecris-go-spin/sync-service` diff. Verified `Cargo.toml` exists at that path.
+- [x] **No upstream sync needed**: yebyen is AHEAD of kingdonb. kingdonb's latest is `ab7fef7` (merge commit, 2026-04-09).
 
 ## Pending Verification (Next Session)
-- [ ] **PR kingdonb/mecris#178 merged**: Python + Android are green. Rust is a known pre-existing gap (wrong Cargo.toml path in workflow). Needs kingdonb review and merge.
-- [ ] **Rust test gap (workflow fix)**: Modify `pr-test.yml` step `Run Rust tests` to use `working-directory: mecris-go-spin/sync-service`. Needs `workflow` PAT scope — bot cannot push workflow changes. Needs kingdonb's action.
+- [ ] **PR kingdonb/mecris#178 merged**: Python + Android are green. Rust is a known pre-existing gap with documented fix in yebyen/mecris#142. Needs kingdonb review and merge.
+- [ ] **Rust test gap (workflow fix)**: Apply fix from yebyen/mecris#142: add `working-directory: mecris-go-spin/sync-service` to `Run Rust tests` step in `.github/workflows/pr-test.yml`. Needs `workflow` PAT scope or kingdonb direct action.
+- [ ] **After PR #178 merge: sync yebyen from upstream**: `git fetch upstream && git merge upstream/main --no-edit`. Then verify yebyen is up to date.
 - [ ] **Multiplier Sync Validation**: Verify setting the Review Pump lever in Android updates multiplier in Neon (`SELECT pump_multiplier FROM language_stats`). Requires live device + Neon access.
 - [ ] **Ghost Archivist End-to-End**: Run scheduler locally, let archivist job fire, confirm logs show correct reconciliation without pushing fake data to Beeminder. (Unit tests complete; E2E still needs live environment.)
 - [ ] **kingdonb/mecris#132 verification**: Trigger `/internal/failover-sync` and confirm `daily_completions` is non-zero in Neon if reviews were done.
@@ -48,4 +46,5 @@
 - **requirements.txt Python dep chain**: `apscheduler>=3.10` + `SQLAlchemy>=2.0` — both needed because `scheduler.py` imports `SQLAlchemyJobStore` from apscheduler.
 - **Upstream sync pattern**: `git remote add upstream https://github.com/kingdonb/mecris.git && git fetch upstream main && git merge upstream/main --no-edit`.
 - **Rust unit tests**: Pure functions extracted to module scope (`should_delegate`, `parse_forecast_count`, `arabic_completions`) — `cargo test` in `mecris-go-spin/sync-service/` runs 14 tests natively without Spin host.
+- **Rust workflow fix**: Add `working-directory: mecris-go-spin/sync-service` to `Run Rust tests` step in pr-test.yml. Exact diff in yebyen/mecris#142. Cannot push (no workflow PAT).
 - **pr-test.yml push constraint**: Bot dispatches pr-test but local commits are not on GitHub until bot workflow ends. Do NOT dispatch pr-test expecting to see local commits — always dispatch AFTER the push (i.e., in the NEXT session after commits land).

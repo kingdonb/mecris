@@ -994,3 +994,10 @@ This document summarizes the collaborative debugging session to establish a func
 **Done**: Audited `mcp_server.py` — confirmed `_record_presence` (lines 46-54) is fully guarded (returns None if no store, wraps upsert in try/except), and the main handler body (lines 367-490) has an outer try/except that catches all service failures and returns a dict (HTTP 200). Test will pass reliably. Findings posted to yebyen/mecris#140. NEXT_SESSION.md updated to mark item verified. No code changes needed.
 **Skipped**: All other pending items require live environment (device, Neon, live scheduler) or kingdonb action (PR #178 review, workflow PAT). Not actionable in bot context.
 **Next**: kingdonb to review and merge kingdonb/mecris#178. Rust test gap in pr-test.yml still needs workflow PAT (kingdonb action required).
+
+## 2026-04-10 — Session health report + document Rust workflow fix (yebyen/mecris#142)
+
+**Planned**: Produce health report documenting current repo state; create actionable issue for Rust workflow fix in pr-test.yml (yebyen/mecris#141).
+**Done**: Confirmed no labeled bot work exists. PR kingdonb/mecris#178 CI-green, awaiting human merge. Created yebyen/mecris#142 with exact `working-directory: mecris-go-spin/sync-service` diff for pr-test.yml Rust test step — verified `Cargo.toml` exists at that path. Issue is self-contained for kingdonb to apply with workflow PAT scope.
+**Skipped**: No code changes — all pending items require live environment, live devices, or workflow PAT scope. No pr-test dispatch (PR #178 already confirmed green; no new commits to validate).
+**Next**: kingdonb to review and merge kingdonb/mecris#178; kingdonb to apply Rust workflow fix from yebyen/mecris#142. After merge, next bot session should sync yebyen from upstream.
