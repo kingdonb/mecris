@@ -2,13 +2,14 @@
 
 ## Current Status (2026-04-10)
 - **PR open upstream**: kingdonb/mecris#178 from yebyen:main — 14 Rust unit tests + 3 cloud-sync Python tests + schema fixes + test isolation fixes. Not yet merged.
-- **Python CI fully green**: pr-test run 24252329711 — 321 passed, 4 skipped, 0 failures.
+- **Python CI fully green**: pr-test run 24269477437 — 321 passed, 4 skipped, 0 failures. Confirmed green again this session (matches prior run 24252329711).
 - **Android CI green**: unchanged from prior sessions.
 - **Rust CI still failing**: Known; `pr-test.yml` runs `cargo test` in wrong directory. Exact fix documented in yebyen/mecris#142. Needs `workflow` PAT scope to apply — bot cannot push workflow file changes.
 - **yebyen/mecris ahead of kingdonb/mecris**: All divergence is in PR #178.
 - **All 6 Rust crates pass locally**: 47 total tests across mecris-go-spin/ — all green after `53b4fd7` fix.
 
 ## Verified This Session
+- [x] **pr-test #178 still green (re-confirmed)**: run 24269477437 — 321 passed, 4 skipped, 0 failures. Python ✅ Android ✅. (2026-04-10)
 - [x] **pr-test #178 Python tests fully green**: run 24252329711 — 321 passed, 4 skipped, 0 failures. (Verified prior session; still holds.)
 - [x] **test_narrator_context_standalone is SAFE**: Audited and confirmed in yebyen/mecris#140. (Verified prior session.)
 - [x] **Rust workflow fix documented**: yebyen/mecris#142 created with exact `working-directory: mecris-go-spin/sync-service` diff. Verified `Cargo.toml` exists at that path.
@@ -17,7 +18,7 @@
 - [x] **review-pump test bug fixed**: `flow_state_turbulent_when_at_or_above_target` had wrong assertion `target_flow_rate == 60`; corrected to `0`. Commit `53b4fd7`. Closes yebyen/mecris#143.
 
 ## Pending Verification (Next Session)
-- [ ] **PR kingdonb/mecris#178 merged**: Python + Android are green. Rust is a known pre-existing gap with documented fix in yebyen/mecris#142. Needs kingdonb review and merge.
+- [ ] **PR kingdonb/mecris#178 merged**: Python + Android are green (re-confirmed 2026-04-10 run 24269477437). Rust is a known pre-existing gap with documented fix in yebyen/mecris#142. Needs kingdonb review and merge.
 - [ ] **Rust test gap (workflow fix)**: Apply fix from yebyen/mecris#142: add `working-directory: mecris-go-spin/sync-service` to `Run Rust tests` step in `.github/workflows/pr-test.yml`. Needs `workflow` PAT scope or kingdonb direct action.
 - [ ] **After PR #178 merge: sync yebyen from upstream**: `git fetch upstream && git merge upstream/main --no-edit`. Then verify yebyen is up to date.
 - [ ] **Multiplier Sync Validation**: Verify setting the Review Pump lever in Android updates multiplier in Neon (`SELECT pump_multiplier FROM language_stats`). Requires live device + Neon access.

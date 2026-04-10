@@ -1011,3 +1011,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: Upstream sync (yebyen is ahead of kingdonb, PR #178 still awaiting merge). Workflow file fix (#142) still blocked on `workflow` PAT scope.
 
 **Next**: Wait for kingdonb to merge kingdonb/mecris#178. Once merged, sync yebyen from upstream and verify all pending NEXT_SESSION.md items.
+
+## 2026-04-10 — Re-run pr-test #178; confirm green before kingdonb merge
+
+**Planned**: Dispatch pr-test for kingdonb/mecris#178, confirm Python + Android still green, archive session state (yebyen/mecris#144).
+
+**Done**: Ran pr-test run 24269477437 — 321 passed, 4 skipped, 0 failures. Python ✅ Android ✅. Matches prior run 24252329711 exactly. Green status posted as comment on kingdonb/mecris#178. No code changes needed this session — all prior work holds.
+
+**Skipped**: No code work. All remaining pending items require human action: kingdonb merge of PR #178, workflow PAT for Rust CI fix, live Neon/device tests.
+
+**Next**: Wait for kingdonb to merge kingdonb/mecris#178. Once merged, sync yebyen from upstream and verify pending NEXT_SESSION.md items.
