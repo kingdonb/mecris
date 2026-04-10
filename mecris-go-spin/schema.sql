@@ -114,11 +114,11 @@ CREATE TABLE IF NOT EXISTS autonomous_turns (
 -- 8. Budget Tracking
 CREATE TABLE IF NOT EXISTS budget_tracking (
     id SERIAL PRIMARY KEY,
-    user_id VARCHAR(255) REFERENCES users(pocket_id_sub) ON DELETE CASCADE,
-    period_start DATE DEFAULT CURRENT_DATE,
-    period_end DATE,
-    total_budget NUMERIC(10, 2),
-    remaining_budget NUMERIC(10, 2),
+    user_id VARCHAR(255) UNIQUE REFERENCES users(pocket_id_sub) ON DELETE CASCADE,
+    total_budget DOUBLE PRECISION NOT NULL DEFAULT 0,
+    remaining_budget DOUBLE PRECISION NOT NULL DEFAULT 0,
+    budget_period_start TEXT NOT NULL DEFAULT '2025-08-06',
+    budget_period_end TEXT NOT NULL DEFAULT '2025-09-30',
     last_updated TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
