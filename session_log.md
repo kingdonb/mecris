@@ -1001,3 +1001,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Done**: Confirmed no labeled bot work exists. PR kingdonb/mecris#178 CI-green, awaiting human merge. Created yebyen/mecris#142 with exact `working-directory: mecris-go-spin/sync-service` diff for pr-test.yml Rust test step — verified `Cargo.toml` exists at that path. Issue is self-contained for kingdonb to apply with workflow PAT scope.
 **Skipped**: No code changes — all pending items require live environment, live devices, or workflow PAT scope. No pr-test dispatch (PR #178 already confirmed green; no new commits to validate).
 **Next**: kingdonb to review and merge kingdonb/mecris#178; kingdonb to apply Rust workflow fix from yebyen/mecris#142. After merge, next bot session should sync yebyen from upstream.
+
+## 2026-04-10 — Fix failing Rust test in review-pump + audit all 6 Rust crates
+
+**Planned**: Fix the wrong `target_flow_rate` assertion in `mecris-go-spin/review-pump/src/lib.rs` (yebyen/mecris#143). The field means remaining work = `(target - daily_completions).max(0)`, so when at target it's 0, not 60.
+
+**Done**: Fixed assertion on line 255. `cargo test` in `review-pump/` now 17/17 passed. Ran `cargo test` across all 6 Rust crates in `mecris-go-spin/` and confirmed 47 total tests all green. Added scope-broadening comment to yebyen/mecris#142 documenting the full 47-test picture and noting that no workspace Cargo.toml exists (each crate must be tested individually in CI). Commit: `53b4fd7`.
+
+**Skipped**: Upstream sync (yebyen is ahead of kingdonb, PR #178 still awaiting merge). Workflow file fix (#142) still blocked on `workflow` PAT scope.
+
+**Next**: Wait for kingdonb to merge kingdonb/mecris#178. Once merged, sync yebyen from upstream and verify all pending NEXT_SESSION.md items.

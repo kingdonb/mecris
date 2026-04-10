@@ -6,12 +6,15 @@
 - **Android CI green**: unchanged from prior sessions.
 - **Rust CI still failing**: Known; `pr-test.yml` runs `cargo test` in wrong directory. Exact fix documented in yebyen/mecris#142. Needs `workflow` PAT scope to apply — bot cannot push workflow file changes.
 - **yebyen/mecris ahead of kingdonb/mecris**: All divergence is in PR #178.
+- **All 6 Rust crates pass locally**: 47 total tests across mecris-go-spin/ — all green after `53b4fd7` fix.
 
 ## Verified This Session
 - [x] **pr-test #178 Python tests fully green**: run 24252329711 — 321 passed, 4 skipped, 0 failures. (Verified prior session; still holds.)
 - [x] **test_narrator_context_standalone is SAFE**: Audited and confirmed in yebyen/mecris#140. (Verified prior session.)
 - [x] **Rust workflow fix documented**: yebyen/mecris#142 created with exact `working-directory: mecris-go-spin/sync-service` diff. Verified `Cargo.toml` exists at that path.
 - [x] **No upstream sync needed**: yebyen is AHEAD of kingdonb. kingdonb's latest is `ab7fef7` (merge commit, 2026-04-09).
+- [x] **All 6 Rust crates pass natively**: sync-service (14), review-pump (17), majesty-cake-rs (4), nag-engine-rs (4), review-pump-rs (4), goal-type-rs (5) — 47 total, all green after `53b4fd7`.
+- [x] **review-pump test bug fixed**: `flow_state_turbulent_when_at_or_above_target` had wrong assertion `target_flow_rate == 60`; corrected to `0`. Commit `53b4fd7`. Closes yebyen/mecris#143.
 
 ## Pending Verification (Next Session)
 - [ ] **PR kingdonb/mecris#178 merged**: Python + Android are green. Rust is a known pre-existing gap with documented fix in yebyen/mecris#142. Needs kingdonb review and merge.
@@ -46,5 +49,7 @@
 - **requirements.txt Python dep chain**: `apscheduler>=3.10` + `SQLAlchemy>=2.0` — both needed because `scheduler.py` imports `SQLAlchemyJobStore` from apscheduler.
 - **Upstream sync pattern**: `git remote add upstream https://github.com/kingdonb/mecris.git && git fetch upstream main && git merge upstream/main --no-edit`.
 - **Rust unit tests**: Pure functions extracted to module scope (`should_delegate`, `parse_forecast_count`, `arabic_completions`) — `cargo test` in `mecris-go-spin/sync-service/` runs 14 tests natively without Spin host.
-- **Rust workflow fix**: Add `working-directory: mecris-go-spin/sync-service` to `Run Rust tests` step in pr-test.yml. Exact diff in yebyen/mecris#142. Cannot push (no workflow PAT).
+- **Rust workspace**: No workspace Cargo.toml in `mecris-go-spin/`. `sync-service` has `[workspace]` making it self-contained (can't join a parent workspace). Each crate must be tested individually. 6 crates, 47 tests total.
+- **Rust workflow fix**: Add `working-directory: mecris-go-spin/sync-service` to `Run Rust tests` step in pr-test.yml. Exact diff in yebyen/mecris#142. Cannot push (no workflow PAT). Additional crates need separate CI steps.
 - **pr-test.yml push constraint**: Bot dispatches pr-test but local commits are not on GitHub until bot workflow ends. Do NOT dispatch pr-test expecting to see local commits — always dispatch AFTER the push (i.e., in the NEXT session after commits land).
+- **target_flow_rate semantics**: This field means "remaining work to reach target" = `(target - daily_completions).max(0)`. When at or above target, value is 0. See `services/review_pump.py:67` and `mecris-go-spin/review-pump/src/lib.rs:114`.
