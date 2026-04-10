@@ -970,3 +970,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Done**: Root cause confirmed: both files imported `from mcp_server import app` at module level, triggering `UsageTracker()` init which tried to INSERT into `budget_tracking` with FK to empty `users` table. Fix committed as `0fc0bf3` — both files now use `sys.modules.pop` + `patch.dict(env)` + `patch("psycopg2.connect")` fixture pattern before importing mcp_server. Two pr-test runs dispatched (24241880849, 24242162639) — both saw old code because push hadn't happened yet.
 **Skipped**: CI verification of the fix — commit 0fc0bf3 is local; push happens when this bot workflow ends. Runtime behavior of `test_narrator_context_standalone` (standalone mode endpoint behavior with mocked DB) not yet observable.
 **Next**: After session push, run `/mecris-pr-test 178` — expect Python collection errors gone. Watch for any runtime failures in standalone access tests.
+
+## 2026-04-10 🏛️ — Identify and fix 3 remaining runtime failures blocking pr-test #178 green
+
+**Planned**: Re-run pr-test #178 after test isolation fix push; expect collection errors gone; verify Python tests pass (yebyen/mecris#138).
+
+**Done**: Ran pr-test (run 24247632948) — confirmed collection errors completely gone (318 passed, 4 skipped). Identified 3 remaining runtime failures: (1) `test_walk_sync.py` x2 — `patch("mcp_server.scheduler", ...)` triggered mcp_server import before psycopg2 was mocked; (2) `test_autonomous_tables_exist` — `token_bank` table not in `mecris-go-spin/schema.sql`. Fixed both in commit `c88d368`: added `_make_mcp_importable()` to `test_walk_sync.py`; added `CREATE TABLE IF NOT EXISTS token_bank` to schema.sql. Ran pr-test again (run 24248010663) — showed same failures because c88d368 was local-only (push hasn't happened yet). Plan issue yebyen/mecris#138 commented with root cause and next steps.
+
+**Skipped**: Verifying the fix — pr-test dispatched in-session tests GitHub's HEAD (e020d8a), not local commits. Cannot close plan issue #138 until next session confirms green run.
+
+**Next**: After push of `c88d368`, run `/mecris-pr-test 178` — expect all Python tests to pass. Then close yebyen/mecris#138 and request kingdonb to review PR #178.
