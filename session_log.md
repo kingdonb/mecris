@@ -987,3 +987,10 @@ This document summarizes the collaborative debugging session to establish a func
 **Done**: Dispatched pr-test (run 24252329711). Result: 321 passed, 4 skipped, 0 failures — all 3 previously-failing tests now pass (`test_autonomous_tables_exist`, `test_global_walk_sync_job_success`, `test_global_walk_sync_job_skips_when_not_leader`). Closed yebyen/mecris#138 (carried-over plan issue from prior session). Comment posted on kingdonb/mecris#178 with full results.
 **Skipped**: None — validation criterion fully met.
 **Next**: kingdonb to review and merge kingdonb/mecris#178. Rust test gap in pr-test.yml still needs workflow PAT (kingdonb action required).
+
+## 2026-04-10 — Audit test_narrator_context_standalone safety; verify false alarm
+
+**Planned**: Verify `test_narrator_context_standalone` runtime failure risk flagged in NEXT_SESSION.md (yebyen/mecris#140).
+**Done**: Audited `mcp_server.py` — confirmed `_record_presence` (lines 46-54) is fully guarded (returns None if no store, wraps upsert in try/except), and the main handler body (lines 367-490) has an outer try/except that catches all service failures and returns a dict (HTTP 200). Test will pass reliably. Findings posted to yebyen/mecris#140. NEXT_SESSION.md updated to mark item verified. No code changes needed.
+**Skipped**: All other pending items require live environment (device, Neon, live scheduler) or kingdonb action (PR #178 review, workflow PAT). Not actionable in bot context.
+**Next**: kingdonb to review and merge kingdonb/mecris#178. Rust test gap in pr-test.yml still needs workflow PAT (kingdonb action required).

@@ -14,11 +14,11 @@
   - `test_global_walk_sync_job_skips_when_not_leader` ✅ (mcp_server import isolation)
 - [x] **yebyen/mecris#138 closed**: plan issue from previous session, closed after CI confirmed green.
 - [x] **No upstream sync needed**: `b31cfa9` (kingdonb docs fix) is already in yebyen/mecris history.
+- [x] **test_narrator_context_standalone is SAFE**: Audited `mcp_server.py:46-54` (`_record_presence` has its own try/except, cannot throw) and `mcp_server.py:367-490` (outer try/except catches all service failures, returns dict — still HTTP 200). Test will pass reliably. Verified in yebyen/mecris#140.
 
 ## Pending Verification (Next Session)
 - [ ] **PR kingdonb/mecris#178 merged**: Python + Android are green. Rust is a known pre-existing gap (wrong Cargo.toml path in workflow). Needs kingdonb review and merge.
 - [ ] **Rust test gap (workflow fix)**: Modify `pr-test.yml` step `Run Rust tests` to use `working-directory: mecris-go-spin/sync-service`. Needs `workflow` PAT scope — bot cannot push workflow changes. Needs kingdonb's action.
-- [ ] **test_narrator_context_standalone may fail at runtime**: The standalone test expects `/narrator/context` to return 200 with psycopg2 mocked. Monitor for runtime failures in future pr-test runs.
 - [ ] **Multiplier Sync Validation**: Verify setting the Review Pump lever in Android updates multiplier in Neon (`SELECT pump_multiplier FROM language_stats`). Requires live device + Neon access.
 - [ ] **Ghost Archivist End-to-End**: Run scheduler locally, let archivist job fire, confirm logs show correct reconciliation without pushing fake data to Beeminder. (Unit tests complete; E2E still needs live environment.)
 - [ ] **kingdonb/mecris#132 verification**: Trigger `/internal/failover-sync` and confirm `daily_completions` is non-zero in Neon if reviews were done.
@@ -37,6 +37,7 @@
 - **psycopg2 not installed in CI runner**: `test_presence_neon.py` may have pre-existing failures — not a regression.
 - **Python venv not present in bot runner**: `PYTHONPATH=. .venv/bin/pytest` cannot run in bot context; Python tests validated via kingdonb/mecris pr-test workflow instead.
 - **Test isolation pattern**: Tests that import `mcp_server` must use `sys.modules.pop("mcp_server", None)` + `patch.dict(os.environ, ...)` + `patch("psycopg2.connect")` before importing. See `_make_mcp_importable()` in `test_mcp_server.py`, `test_cloud_sync.py`, `test_standalone_access.py`, `test_unauthorized_access.py`, `test_walk_sync.py`.
+- **standalone test safety**: `_record_presence` (mcp_server.py:46-54) is fully guarded — returns None if no store, wraps upsert in try/except. Main handler (mcp_server.py:367-490) has outer try/except that returns dict on failure. `/narrator/context` always returns HTTP 200 in standalone mode.
 - **Ghost Archivist lazy-import pattern**: `BeeminderClient` and `LanguageSyncService` are imported INSIDE `perform_archival_sync()` function body. Patch at source modules, not at `ghost.archivist_logic`.
 - **cloud-sync patch pattern**: `language_sync_service` is a module-level variable. Use `patch("mcp_server.language_sync_service")` AFTER importing mcp_server within env+psycopg2 patches.
 - **BeeminderClient note**: `UsageTracker.__init__` requires `NEON_DB_URL` even in the no-DB fallback path — mock UsageTracker when testing the env-var-only path.
