@@ -1071,3 +1071,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: Nothing — plan was small and completed cleanly. Upstream (kingdonb/mecris) still at `ab7fef7` (2026-04-09) — no new work to pull.
 
 **Next**: Wait for kingdonb to review and merge kingdonb/mecris#178. Once merged: sync yebyen from upstream, then assess Phase 3 Rust work (kingdonb/mecris#169) if any is bot-actionable.
+
+## 2026-04-11 (6th run) — Phase 3 reminder heuristics: pure Rust functions in sync-service
+
+**Planned**: yebyen/mecris#150 — Add `is_within_reminder_window`, `is_below_step_threshold`, `is_rate_limit_ok`, and `should_dispatch_reminder` as pure functions in `mecris-go-spin/sync-service/src/lib.rs` with ≥10 unit tests covering kingdonb/mecris#169 decision logic.
+
+**Done**: All 4 functions implemented and tested. 19 new unit tests added (7 for reminder window, 4 for step threshold, 4 for rate limiting, 4 for combined dispatch). `cargo test` in `mecris-go-spin/sync-service/` passes 41/41 (was 22). Commit `4d38b58`. Issue yebyen/mecris#150 closed. Orient also confirmed: upstream still at `ab7fef7`, PR #178 still open, no new upstream commits.
+
+**Skipped**: I/O-bound Phase 3 tasks — the multi-tenant dispatch loop (querying `walk_inferences` for step counts, applying heuristics per-user inside `handle_trigger_reminders_post`) and OpenWeather API integration require Spin HTTP calls and cannot be unit-tested. These will be wired in a future session once PR #178 is merged.
+
+**Next**: Wait for kingdonb to review and merge kingdonb/mecris#178. Once merged: sync yebyen from upstream, then wire Phase 3 I/O integration into `handle_trigger_reminders_post` (query step counts from `walk_inferences`, apply `should_dispatch_reminder` per user before dispatching SMS).
