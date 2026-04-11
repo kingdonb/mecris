@@ -1182,8 +1182,12 @@ async fn handle_trigger_reminders_post(_req: Request) -> anyhow::Result<Response
     let db_url = variables::get("db_url")?;
     let connection = Connection::open(&db_url)?;
 
-    let query = "SELECT pocket_id_sub, phone_number_encrypted FROM users WHERE phone_number_encrypted IS NOT NULL AND phone_number_encrypted != ''";
+    let query = "SELECT pocket_id_sub, phone_number_encrypted, COALESCE(timezone, 'UTC') FROM users WHERE phone_number_encrypted IS NOT NULL AND phone_number_encrypted != ''";
     let row_set = connection.query(query, &[])?;
+
+    let now_utc = chrono::Utc::now();
+    let today_utc = now_utc.format("%Y-%m-%d").to_string();
+    let now_epoch_secs = now_utc.timestamp() as u64;
 
     let mut sent = 0u32;
     let mut errors = 0u32;
@@ -1191,6 +1195,38 @@ async fn handle_trigger_reminders_post(_req: Request) -> anyhow::Result<Response
     for row in &row_set.rows {
         let user_id = match &row[0] { DbValue::Str(s) => s.clone(), _ => continue };
         let phone_enc = match &row[1] { DbValue::Str(s) if !s.is_empty() => s.clone(), _ => continue };
+        let timezone = match &row[2] { DbValue::Str(s) => s.clone(), _ => "UTC".to_string() };
+
+        // Phase 3: timezone-aware local hour
+        let local_hour = local_hour_from_timezone(&timezone, &now_utc);
+
+        // Phase 3: step count from walk_inferences for today
+        let step_strings: Vec<String> = match connection.query(
+            "SELECT step_count FROM walk_inferences WHERE user_id = $1 AND start_time >= $2",
+            &[ParameterValue::Str(user_id.clone()), ParameterValue::Str(today_utc.clone())],
+        ) {
+            Ok(rs) => rs.rows.iter()
+                .filter_map(|r| match &r[0] { DbValue::Str(s) => Some(s.clone()), _ => None })
+                .collect(),
+            Err(_) => vec![],
+        };
+        let step_count = aggregate_step_count(&step_strings);
+
+        // Phase 3: rate limit via message_log
+        let last_sent_at: Option<String> = match connection.query(
+            "SELECT sent_at::TEXT FROM message_log WHERE user_id = $1 AND type = 'walk_reminder' ORDER BY sent_at DESC LIMIT 1",
+            &[ParameterValue::Str(user_id.clone())],
+        ) {
+            Ok(rs) => rs.rows.first()
+                .and_then(|r| match &r[0] { DbValue::Str(s) if !s.is_empty() => Some(s.clone()), _ => None }),
+            Err(_) => None,
+        };
+        let minutes_since_last = minutes_since_last_reminder(last_sent_at.as_deref(), now_epoch_secs);
+
+        if !should_dispatch_reminder(local_hour, step_count, minutes_since_last) {
+            println!("Skipping reminder for user {} (hour={}, steps={}, mins_since_last={:?})", user_id, local_hour, step_count, minutes_since_last);
+            continue;
+        }
 
         match decrypt_token(&phone_enc).await {
             Ok(phone) => {
@@ -1198,6 +1234,10 @@ async fn handle_trigger_reminders_post(_req: Request) -> anyhow::Result<Response
                 match send_walk_reminder(&phone, message, &account_sid, &auth_token, &from_number).await {
                     Ok(_) => {
                         println!("Reminder sent to user {}", user_id);
+                        let _ = connection.execute(
+                            "INSERT INTO message_log (user_id, type, channel) VALUES ($1, 'walk_reminder', 'sms')",
+                            &[ParameterValue::Str(user_id.clone())],
+                        );
                         sent += 1;
                     }
                     Err(e) => {
@@ -1256,6 +1296,39 @@ fn should_dispatch_reminder(local_hour: u32, step_count: u32, minutes_since_last
     is_within_reminder_window(local_hour)
         && is_below_step_threshold(step_count, 2000)
         && is_rate_limit_ok(minutes_since_last)
+}
+
+// --- Phase 3: I/O helper pure functions ---
+
+/// Aggregates total step count from a list of `step_count` strings (from walk_inferences).
+/// Non-parseable strings are treated as zero. Returns 0 for an empty slice.
+fn aggregate_step_count(step_strings: &[String]) -> u32 {
+    step_strings.iter()
+        .filter_map(|s| s.trim().parse::<u32>().ok())
+        .sum()
+}
+
+/// Returns the local hour (0–23) for the given UTC instant in the named IANA timezone.
+/// Falls back to UTC if the name cannot be parsed by chrono-tz.
+fn local_hour_from_timezone(timezone_name: &str, now_utc: &chrono::DateTime<chrono::Utc>) -> u32 {
+    use chrono::Timelike;
+    if let Ok(tz) = timezone_name.trim().parse::<chrono_tz::Tz>() {
+        now_utc.with_timezone(&tz).hour()
+    } else {
+        now_utc.hour()
+    }
+}
+
+/// Returns the number of minutes elapsed since the last reminder was sent.
+/// `last_sent_at` is an RFC 3339 or Postgres TIMESTAMPTZ string; `now_epoch_secs` is
+/// the current time as Unix seconds. Returns `None` if no prior reminder is recorded.
+fn minutes_since_last_reminder(last_sent_at: Option<&str>, now_epoch_secs: u64) -> Option<u64> {
+    let s = last_sent_at?;
+    let dt = chrono::DateTime::parse_from_rfc3339(s)
+        .or_else(|_| chrono::DateTime::parse_from_str(s, "%Y-%m-%d %H:%M:%S%.f%z"))
+        .ok()?;
+    let sent_epoch = dt.timestamp() as u64;
+    Some(now_epoch_secs.saturating_sub(sent_epoch) / 60)
 }
 
 #[cfg(test)]
@@ -1527,5 +1600,78 @@ mod tests {
     fn test_should_dispatch_rate_limited_blocks() {
         // Too recent: suppress even with low steps in active window
         assert!(!should_dispatch_reminder(10, 500, Some(15)));
+    }
+
+    // --- aggregate_step_count ---
+
+    #[test]
+    fn test_aggregate_step_count_empty() {
+        assert_eq!(aggregate_step_count(&[]), 0);
+    }
+
+    #[test]
+    fn test_aggregate_step_count_single() {
+        assert_eq!(aggregate_step_count(&["1500".to_string()]), 1500);
+    }
+
+    #[test]
+    fn test_aggregate_step_count_multiple() {
+        assert_eq!(aggregate_step_count(&["1000".to_string(), "500".to_string(), "200".to_string()]), 1700);
+    }
+
+    #[test]
+    fn test_aggregate_step_count_skips_invalid() {
+        assert_eq!(aggregate_step_count(&["bad".to_string(), "800".to_string()]), 800);
+    }
+
+    // --- local_hour_from_timezone ---
+
+    #[test]
+    fn test_local_hour_utc_stays_same() {
+        // 2026-04-11 14:00:00 UTC → UTC hour 14
+        let dt = chrono::DateTime::parse_from_rfc3339("2026-04-11T14:00:00+00:00")
+            .unwrap()
+            .with_timezone(&chrono::Utc);
+        assert_eq!(local_hour_from_timezone("UTC", &dt), 14);
+    }
+
+    #[test]
+    fn test_local_hour_america_new_york_offset() {
+        // 2026-04-11 14:00:00 UTC → EDT = UTC-4 → local hour 10
+        let dt = chrono::DateTime::parse_from_rfc3339("2026-04-11T14:00:00+00:00")
+            .unwrap()
+            .with_timezone(&chrono::Utc);
+        assert_eq!(local_hour_from_timezone("America/New_York", &dt), 10);
+    }
+
+    #[test]
+    fn test_local_hour_unknown_timezone_falls_back_to_utc() {
+        let dt = chrono::DateTime::parse_from_rfc3339("2026-04-11T10:00:00+00:00")
+            .unwrap()
+            .with_timezone(&chrono::Utc);
+        assert_eq!(local_hour_from_timezone("Not/ATimezone", &dt), 10);
+    }
+
+    // --- minutes_since_last_reminder ---
+
+    #[test]
+    fn test_minutes_since_last_none_input() {
+        assert_eq!(minutes_since_last_reminder(None, 12345678), None);
+    }
+
+    #[test]
+    fn test_minutes_since_last_exactly_30_min() {
+        // 2026-01-01T00:00:00Z = 1767225600
+        assert_eq!(minutes_since_last_reminder(Some("2026-01-01T00:00:00+00:00"), 1767225600 + 1800), Some(30));
+    }
+
+    #[test]
+    fn test_minutes_since_last_1_hour() {
+        assert_eq!(minutes_since_last_reminder(Some("2026-01-01T00:00:00+00:00"), 1767225600 + 3600), Some(60));
+    }
+
+    #[test]
+    fn test_minutes_since_last_unparseable_returns_none() {
+        assert_eq!(minutes_since_last_reminder(Some("not-a-timestamp"), 99999), None);
     }
 }
