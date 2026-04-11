@@ -188,6 +188,11 @@ async fn handle_sync_service(req: Request) -> anyhow::Result<impl IntoResponse> 
             return Ok(Response::builder().status(405).body("Method Not Allowed").build());
         }
         return handle_aggregate_status_get(req).await;
+    } else if path == "/internal/trigger-reminders" {
+        if req.method() != &spin_sdk::http::Method::Post {
+            return Ok(Response::builder().status(405).body("Method Not Allowed").build());
+        }
+        return handle_trigger_reminders_post(req).await;
     }
 
     Ok(Response::builder().status(404).body("Not Found").build())
@@ -1056,6 +1061,40 @@ async fn handle_walks_post(req: Request) -> anyhow::Result<Response> {
     Ok(Response::builder().status(201).header("content-type", "application/json").body(serde_json::to_string(&resp).unwrap()).build())
 }
 
+// --- Twilio SMS helpers (Phase 2 of kingdonb/mecris#166/#167) ---
+
+fn build_twilio_url(account_sid: &str) -> String {
+    format!("https://api.twilio.com/2010-04-01/Accounts/{}/Messages.json", account_sid)
+}
+
+fn build_twilio_body(from: &str, to: &str, message: &str) -> String {
+    format!(
+        "From={}&To={}&Body={}",
+        urlencoding::encode(from),
+        urlencoding::encode(to),
+        urlencoding::encode(message)
+    )
+}
+
+fn encode_basic_auth(username: &str, password: &str) -> String {
+    use base64::Engine;
+    let credentials = format!("{}:{}", username, password);
+    base64::engine::general_purpose::STANDARD.encode(credentials.as_bytes())
+}
+
+async fn handle_trigger_reminders_post(_req: Request) -> anyhow::Result<Response> {
+    // Stub — full multi-tenant Twilio dispatch to be implemented in yebyen/mecris#146
+    let resp = StatusResponse {
+        status: "accepted".to_string(),
+        message: "Trigger reminders stub — see yebyen/mecris#146".to_string(),
+    };
+    Ok(Response::builder()
+        .status(202)
+        .header("content-type", "application/json")
+        .body(serde_json::to_string(&resp).unwrap())
+        .build())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1116,6 +1155,36 @@ mod tests {
     fn test_parse_forecast_count_null_falls_back_to_zero() {
         let v = serde_json::json!(null);
         assert_eq!(parse_forecast_count(&v), 0);
+    }
+
+    // --- twilio helpers ---
+
+    #[test]
+    fn test_build_twilio_url_contains_account_sid() {
+        let url = build_twilio_url("AC1234567890abcdef");
+        assert!(url.contains("AC1234567890abcdef"));
+        assert!(url.starts_with("https://api.twilio.com/"));
+    }
+
+    #[test]
+    fn test_build_twilio_body_contains_fields() {
+        let body = build_twilio_body("+15551234567", "+15559876543", "Hello!");
+        assert!(body.contains("From="));
+        assert!(body.contains("To="));
+        assert!(body.contains("Body="));
+    }
+
+    #[test]
+    fn test_encode_basic_auth_non_empty() {
+        let encoded = encode_basic_auth("user", "pass");
+        assert!(!encoded.is_empty());
+    }
+
+    #[test]
+    fn test_encode_basic_auth_known_value() {
+        // base64("user:pass") == "dXNlcjpwYXNz"
+        let encoded = encode_basic_auth("user", "pass");
+        assert_eq!(encoded, "dXNlcjpwYXNz");
     }
 
     // --- arabic_completions ---
