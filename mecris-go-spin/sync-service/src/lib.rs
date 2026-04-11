@@ -1224,6 +1224,40 @@ async fn handle_trigger_reminders_post(_req: Request) -> anyhow::Result<Response
         .build())
 }
 
+// --- Phase 3: Reminder heuristics (pure, unit-testable) ---
+
+/// Returns true if the local hour (0-23) is within the active reminder window.
+/// Active window: 8 AM (inclusive) to 8 PM (exclusive). Outside is the sleep window.
+fn is_within_reminder_window(local_hour: u32) -> bool {
+    local_hour >= 8 && local_hour < 20
+}
+
+/// Returns true if the user's step count is below the walk goal threshold.
+/// Default threshold per Phase 3 spec: 2000 steps.
+fn is_below_step_threshold(step_count: u32, threshold: u32) -> bool {
+    step_count < threshold
+}
+
+/// Returns true if rate limiting allows another reminder to be sent.
+/// Rule: no more than 2 messages per hour → minimum 30 minutes between messages.
+/// If no previous message exists (None), it is always safe to send.
+fn is_rate_limit_ok(minutes_since_last: Option<u64>) -> bool {
+    match minutes_since_last {
+        None => true,
+        Some(m) => m >= 30,
+    }
+}
+
+/// Combined heuristic: returns true only when all three conditions are satisfied.
+/// - Local hour is within the active reminder window (8 AM–8 PM)
+/// - Step count is below the 2000-step threshold
+/// - Rate limit allows sending (≥30 min since last, or no prior message)
+fn should_dispatch_reminder(local_hour: u32, step_count: u32, minutes_since_last: Option<u64>) -> bool {
+    is_within_reminder_window(local_hour)
+        && is_below_step_threshold(step_count, 2000)
+        && is_rate_limit_ok(minutes_since_last)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1371,5 +1405,127 @@ mod tests {
     fn test_arabic_completions_large_session() {
         // 120 points → 10 cards
         assert_eq!(arabic_completions(120), 10);
+    }
+
+    // --- is_within_reminder_window ---
+
+    #[test]
+    fn test_reminder_window_active_morning() {
+        // 9 AM is well within the active window
+        assert!(is_within_reminder_window(9));
+    }
+
+    #[test]
+    fn test_reminder_window_active_afternoon() {
+        // 15 (3 PM) is within the active window
+        assert!(is_within_reminder_window(15));
+    }
+
+    #[test]
+    fn test_reminder_window_active_boundary_start() {
+        // 8 AM is the inclusive start of the window
+        assert!(is_within_reminder_window(8));
+    }
+
+    #[test]
+    fn test_reminder_window_sleep_boundary_end() {
+        // 20 (8 PM) is the exclusive end — should NOT send
+        assert!(!is_within_reminder_window(20));
+    }
+
+    #[test]
+    fn test_reminder_window_sleep_midnight() {
+        // Midnight is in the sleep window
+        assert!(!is_within_reminder_window(0));
+    }
+
+    #[test]
+    fn test_reminder_window_sleep_early_morning() {
+        // 7 AM is still the sleep window
+        assert!(!is_within_reminder_window(7));
+    }
+
+    #[test]
+    fn test_reminder_window_sleep_late_night() {
+        // 23 (11 PM) is in the sleep window
+        assert!(!is_within_reminder_window(23));
+    }
+
+    // --- is_below_step_threshold ---
+
+    #[test]
+    fn test_step_threshold_below() {
+        // 1999 steps → should remind
+        assert!(is_below_step_threshold(1999, 2000));
+    }
+
+    #[test]
+    fn test_step_threshold_at_goal() {
+        // Exactly 2000 steps → goal met, do not remind
+        assert!(!is_below_step_threshold(2000, 2000));
+    }
+
+    #[test]
+    fn test_step_threshold_above_goal() {
+        // 5000 steps → well above goal, do not remind
+        assert!(!is_below_step_threshold(5000, 2000));
+    }
+
+    #[test]
+    fn test_step_threshold_zero() {
+        // 0 steps → definitely should remind
+        assert!(is_below_step_threshold(0, 2000));
+    }
+
+    // --- is_rate_limit_ok ---
+
+    #[test]
+    fn test_rate_limit_no_previous_message() {
+        // No prior message → always ok to send
+        assert!(is_rate_limit_ok(None));
+    }
+
+    #[test]
+    fn test_rate_limit_too_recent() {
+        // 29 minutes ago → too soon (minimum is 30)
+        assert!(!is_rate_limit_ok(Some(29)));
+    }
+
+    #[test]
+    fn test_rate_limit_exactly_at_boundary() {
+        // 30 minutes ago → exactly at limit, ok to send
+        assert!(is_rate_limit_ok(Some(30)));
+    }
+
+    #[test]
+    fn test_rate_limit_long_gap() {
+        // 120 minutes ago → well past limit
+        assert!(is_rate_limit_ok(Some(120)));
+    }
+
+    // --- should_dispatch_reminder ---
+
+    #[test]
+    fn test_should_dispatch_all_conditions_met() {
+        // Active hour, low steps, no prior message → dispatch
+        assert!(should_dispatch_reminder(10, 500, None));
+    }
+
+    #[test]
+    fn test_should_dispatch_wrong_hour_blocks() {
+        // Sleep window: suppress even with low steps and no prior message
+        assert!(!should_dispatch_reminder(2, 500, None));
+    }
+
+    #[test]
+    fn test_should_dispatch_goal_met_blocks() {
+        // Step goal reached: suppress even in active window
+        assert!(!should_dispatch_reminder(10, 2000, None));
+    }
+
+    #[test]
+    fn test_should_dispatch_rate_limited_blocks() {
+        // Too recent: suppress even with low steps in active window
+        assert!(!should_dispatch_reminder(10, 500, Some(15)));
     }
 }
