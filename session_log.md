@@ -1031,3 +1031,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: pr-test re-run — PR #178 confirmed green on 2026-04-10 (run 24269477437, 321 passed). No new commits since then; re-running would be redundant. All other pending items require workflow PAT, live Neon/device, or kingdonb action.
 
 **Next**: Wait for kingdonb to review and merge kingdonb/mecris#178. Once merged: sync yebyen from upstream, then apply Rust workflow fix from yebyen/mecris#142 if kingdonb grants workflow PAT scope.
+
+## 2026-04-11 (2nd run) — Orientation scan only; stalled state confirmed again
+
+**Planned**: no-plan — second bot run of the day; scanned for any new bot-actionable work.
+
+**Done**: Full orient: confirmed kingdonb/mecris still at `ab7fef7` (2026-04-09). Reviewed all 20 open kingdonb/mecris issues — all are epics, WASM/Android/live-env tasks, or architectural discussions. Scanned test coverage: Majesty Cake backend complete (7+ tests), reminder service complete (1156 lines tests), 321+ total tests passing. No gaps found. No new work performed.
+
+**Skipped**: Everything — nothing was bot-actionable.
+
+**Next**: Wait for kingdonb to review and merge kingdonb/mecris#178. If upstream moves, sync yebyen from upstream then apply Rust workflow fix from yebyen/mecris#142 if workflow PAT is available.
