@@ -1082,14 +1082,143 @@ fn encode_basic_auth(username: &str, password: &str) -> String {
     base64::engine::general_purpose::STANDARD.encode(credentials.as_bytes())
 }
 
+/// Assemble Twilio SMS request components as plain strings. Pure function — fully unit-testable.
+/// Returns `(url, form_body, authorization_header_value)`.
+fn build_sms_request_parts(
+    account_sid: &str,
+    auth_token: &str,
+    from: &str,
+    to: &str,
+    message: &str,
+) -> (String, String, String) {
+    let url = build_twilio_url(account_sid);
+    let body = build_twilio_body(from, to, message);
+    let auth = format!("Basic {}", encode_basic_auth(account_sid, auth_token));
+    (url, body, auth)
+}
+
+/// Send a single Twilio SMS. Requires Spin host for the HTTP dispatch.
+async fn send_walk_reminder(
+    phone: &str,
+    message: &str,
+    account_sid: &str,
+    auth_token: &str,
+    from_number: &str,
+) -> anyhow::Result<()> {
+    let (url, body, auth) = build_sms_request_parts(account_sid, auth_token, from_number, phone, message);
+    let req = Request::post(url, body)
+        .header("content-type", "application/x-www-form-urlencoded")
+        .header("Authorization", auth)
+        .build();
+    let res: Response = spin_sdk::http::send(req).await?;
+    if !(200..300).contains(res.status()) {
+        return Err(anyhow::anyhow!("Twilio SMS failed with status {}", res.status()));
+    }
+    Ok(())
+}
+
 async fn handle_trigger_reminders_post(_req: Request) -> anyhow::Result<Response> {
-    // Stub — full multi-tenant Twilio dispatch to be implemented in yebyen/mecris#146
+    // Phase 2 implementation — yebyen/mecris#148
+    let account_sid = match variables::get("twilio_account_sid") {
+        Ok(s) if !s.is_empty() => s,
+        _ => {
+            let resp = StatusResponse {
+                status: "error".to_string(),
+                message: "twilio_account_sid not configured".to_string(),
+            };
+            return Ok(Response::builder()
+                .status(500)
+                .header("content-type", "application/json")
+                .body(serde_json::to_string(&resp).unwrap())
+                .build());
+        }
+    };
+
+    let auth_token_enc = match variables::get("twilio_auth_token_encrypted") {
+        Ok(s) if !s.is_empty() => s,
+        _ => {
+            let resp = StatusResponse {
+                status: "error".to_string(),
+                message: "twilio_auth_token_encrypted not configured".to_string(),
+            };
+            return Ok(Response::builder()
+                .status(500)
+                .header("content-type", "application/json")
+                .body(serde_json::to_string(&resp).unwrap())
+                .build());
+        }
+    };
+
+    let from_number = match variables::get("twilio_from_number") {
+        Ok(s) if !s.is_empty() => s,
+        _ => {
+            let resp = StatusResponse {
+                status: "error".to_string(),
+                message: "twilio_from_number not configured".to_string(),
+            };
+            return Ok(Response::builder()
+                .status(500)
+                .header("content-type", "application/json")
+                .body(serde_json::to_string(&resp).unwrap())
+                .build());
+        }
+    };
+
+    let auth_token = match decrypt_token(&auth_token_enc).await {
+        Ok(t) => t,
+        Err(e) => {
+            let resp = StatusResponse {
+                status: "error".to_string(),
+                message: format!("Failed to decrypt Twilio auth token: {}", e),
+            };
+            return Ok(Response::builder()
+                .status(500)
+                .header("content-type", "application/json")
+                .body(serde_json::to_string(&resp).unwrap())
+                .build());
+        }
+    };
+
+    let db_url = variables::get("db_url")?;
+    let connection = Connection::open(&db_url)?;
+
+    let query = "SELECT pocket_id_sub, phone_number_encrypted FROM users WHERE phone_number_encrypted IS NOT NULL AND phone_number_encrypted != ''";
+    let row_set = connection.query(query, &[])?;
+
+    let mut sent = 0u32;
+    let mut errors = 0u32;
+
+    for row in &row_set.rows {
+        let user_id = match &row[0] { DbValue::Str(s) => s.clone(), _ => continue };
+        let phone_enc = match &row[1] { DbValue::Str(s) if !s.is_empty() => s.clone(), _ => continue };
+
+        match decrypt_token(&phone_enc).await {
+            Ok(phone) => {
+                let message = "Time for a walk with Boris and Fiona! 🐕 Check your daily goal.";
+                match send_walk_reminder(&phone, message, &account_sid, &auth_token, &from_number).await {
+                    Ok(_) => {
+                        println!("Reminder sent to user {}", user_id);
+                        sent += 1;
+                    }
+                    Err(e) => {
+                        eprintln!("Failed to send reminder to user {}: {}", user_id, e);
+                        errors += 1;
+                    }
+                }
+            }
+            Err(e) => {
+                eprintln!("Failed to decrypt phone for user {}: {}", user_id, e);
+                errors += 1;
+            }
+        }
+    }
+
     let resp = StatusResponse {
-        status: "accepted".to_string(),
-        message: "Trigger reminders stub — see yebyen/mecris#146".to_string(),
+        status: "ok".to_string(),
+        message: format!("Sent {} reminders, {} errors", sent, errors),
     };
     Ok(Response::builder()
-        .status(202)
+        .status(200)
         .header("content-type", "application/json")
         .body(serde_json::to_string(&resp).unwrap())
         .build())
@@ -1185,6 +1314,38 @@ mod tests {
         // base64("user:pass") == "dXNlcjpwYXNz"
         let encoded = encode_basic_auth("user", "pass");
         assert_eq!(encoded, "dXNlcjpwYXNz");
+    }
+
+    // --- build_sms_request_parts ---
+
+    #[test]
+    fn test_build_sms_request_parts_url_contains_account_sid() {
+        let (url, _, _) = build_sms_request_parts("AC1234567890abcdef", "tok", "+15550001111", "+15559876543", "Hello!");
+        assert!(url.contains("AC1234567890abcdef"), "URL should contain account SID");
+        assert!(url.starts_with("https://api.twilio.com/"), "URL should start with Twilio base");
+    }
+
+    #[test]
+    fn test_build_sms_request_parts_body_contains_fields() {
+        let (_, body, _) = build_sms_request_parts("ACtest", "tok", "+15550001111", "+15559876543", "Go walk!");
+        assert!(body.contains("From="), "body should have From field");
+        assert!(body.contains("To="), "body should have To field");
+        assert!(body.contains("Body="), "body should have Body field");
+    }
+
+    #[test]
+    fn test_build_sms_request_parts_auth_is_basic() {
+        let (_, _, auth) = build_sms_request_parts("ACtest", "mysecret", "+1", "+2", "msg");
+        assert!(auth.starts_with("Basic "), "Authorization header should start with 'Basic '");
+        assert!(auth.len() > 6, "Authorization header should be non-trivial");
+    }
+
+    #[test]
+    fn test_build_sms_request_parts_auth_encodes_sid_and_token() {
+        // Basic base64("ACsid:ACtoken") should be consistent with encode_basic_auth
+        let (_, _, auth) = build_sms_request_parts("ACsid", "ACtoken", "+1", "+2", "msg");
+        let expected = format!("Basic {}", encode_basic_auth("ACsid", "ACtoken"));
+        assert_eq!(auth, expected);
     }
 
     // --- arabic_completions ---
