@@ -1061,3 +1061,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: Integration test — `spin_sdk::http::send` requires live Spin host; the actual Twilio dispatch can only be verified in a deployed environment. Twilio Spin variables (`twilio_account_sid`, `twilio_auth_token_encrypted`, `twilio_from_number`) not yet configured in `spin.toml` — must be set by kingdonb in live deployment.
 
 **Next**: Wait for kingdonb to review and merge kingdonb/mecris#178. Once merged: sync yebyen from upstream, re-run cargo test to confirm all 55 tests still green across 6 crates, then work toward Twilio integration test in live Spin environment.
+
+## 2026-04-11 (5th run) — Re-run pr-test #178 to verify Twilio Phase 2 commits green
+
+**Planned**: yebyen/mecris#149 — Re-run pr-test for kingdonb/mecris#178 to confirm Twilio Phase 2 commits (`3a6d5f3`, `5ba5b96`) don't regress Python or Android CI.
+
+**Done**: Dispatched pr-test workflow (run 24288151090). Completed in ~2.5 min. Result: 321 passed, 4 skipped, 0 failures Python ✅; Android ✅. Latest PR head SHA `8479bc7` is confirmed clean. Posted result comment on PR #178. Issue yebyen/mecris#149 closed.
+
+**Skipped**: Nothing — plan was small and completed cleanly. Upstream (kingdonb/mecris) still at `ab7fef7` (2026-04-09) — no new work to pull.
+
+**Next**: Wait for kingdonb to review and merge kingdonb/mecris#178. Once merged: sync yebyen from upstream, then assess Phase 3 Rust work (kingdonb/mecris#169) if any is bot-actionable.

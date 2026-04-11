@@ -1,8 +1,8 @@
-# Next Session: kingdonb review and merge of kingdonb/mecris#178 + Twilio integration test
+# Next Session: kingdonb review and merge of kingdonb/mecris#178
 
 ## Current Status (2026-04-11)
-- **PR open upstream**: kingdonb/mecris#178 from yebyen:main — 14 Rust unit tests + 3 cloud-sync Python tests + schema fixes + test isolation fixes. Not yet merged.
-- **Python CI fully green**: pr-test run 24269477437 — 321 passed, 4 skipped, 0 failures. Confirmed green again this session (matches prior run 24252329711).
+- **PR open upstream**: kingdonb/mecris#178 from yebyen:main — 14 Rust unit tests + 3 cloud-sync Python tests + schema fixes + test isolation fixes + Twilio Phase 2 (send_walk_reminder, 22 Rust tests). Not yet merged.
+- **Python CI fully green**: pr-test run 24288151090 — 321 passed, 4 skipped, 0 failures. Confirmed green with Twilio Phase 2 commits included (`3a6d5f3`, `5ba5b96`).
 - **Android CI green**: unchanged from prior sessions.
 - **Rust CI still failing**: Known; `pr-test.yml` runs `cargo test` in wrong directory. Exact fix documented in yebyen/mecris#142. Needs `workflow` PAT scope to apply — bot cannot push workflow file changes.
 - **yebyen/mecris ahead of kingdonb/mecris**: All divergence is in PR #178 + `3a6d5f3` (Twilio helpers) + `5ba5b96` (send_walk_reminder).
@@ -10,12 +10,12 @@
 - **Twilio Phase 2 complete (unit-testable layer)**: `send_walk_reminder`, `build_sms_request_parts`, and fully wired `handle_trigger_reminders_post` added in `5ba5b96`. Integration test requires live Spin env.
 
 ## Verified This Session
+- [x] **pr-test #178 re-confirmed green with Twilio Phase 2 commits (2026-04-11)**: run 24288151090 — 321 passed, 4 skipped, 0 failures. Python ✅ Android ✅. PR head SHA `8479bc7` includes `3a6d5f3` + `5ba5b96`. Closes yebyen/mecris#149.
 - [x] **send_walk_reminder implemented (2026-04-11)**: Pure function `build_sms_request_parts` + async `send_walk_reminder` + full `handle_trigger_reminders_post` handler. 4 new tests, 22 total. Commit `5ba5b96`. Closes yebyen/mecris#148.
 - [x] **Twilio SMS helpers ported to sync-service (2026-04-11)**: 3 pure functions + route stub + 4 new tests. `cargo test` passes 18 tests. Commit `3a6d5f3`. Closes yebyen/mecris#146.
-- [x] **All open kingdonb/mecris issues scanned (2026-04-11, 2nd run)**: Full issue list reviewed — 20 open issues, all are epics/arch discussions/Android/WASM/live-env tasks. No new bot-actionable backend Python work found. Majesty Cake backend complete, reminder service complete (1156 lines of tests), test suite at 321+ passing. Nothing new to implement.
+- [x] **All open kingdonb/mecris issues scanned (2026-04-11, 2nd run)**: Full issue list reviewed — 30 open issues, all are epics/arch discussions/Android/WASM/live-env tasks. No new bot-actionable backend Python work found. Majesty Cake backend complete, reminder service complete (1156 lines of tests), test suite at 321+ passing. Nothing new to implement.
 - [x] **PR #178 still open, upstream still stalled (2026-04-11)**: Orient confirmed kingdonb/mecris upstream has not moved since `ab7fef7` (2026-04-09). No new commits, no new issues. PR #178 still awaiting review. No new bot-actionable work.
-- [x] **pr-test #178 still green (re-confirmed)**: run 24269477437 — 321 passed, 4 skipped, 0 failures. Python ✅ Android ✅. (2026-04-10)
-- [x] **pr-test #178 Python tests fully green**: run 24252329711 — 321 passed, 4 skipped, 0 failures. (Verified prior session; still holds.)
+- [x] **pr-test #178 still green (re-confirmed 2026-04-11)**: run 24269477437 — 321 passed, 4 skipped, 0 failures. Python ✅ Android ✅. (2026-04-10)
 - [x] **test_narrator_context_standalone is SAFE**: Audited and confirmed in yebyen/mecris#140. (Verified prior session.)
 - [x] **Rust workflow fix documented**: yebyen/mecris#142 created with exact `working-directory: mecris-go-spin/sync-service` diff. Verified `Cargo.toml` exists at that path.
 - [x] **No upstream sync needed**: yebyen is AHEAD of kingdonb. kingdonb's latest is `ab7fef7` (merge commit, 2026-04-09).
@@ -23,7 +23,7 @@
 - [x] **review-pump test bug fixed**: `flow_state_turbulent_when_at_or_above_target` had wrong assertion `target_flow_rate == 60`; corrected to `0`. Commit `53b4fd7`. Closes yebyen/mecris#143.
 
 ## Pending Verification (Next Session)
-- [ ] **PR kingdonb/mecris#178 merged**: Python + Android are green (re-confirmed 2026-04-10 run 24269477437). Rust is a known pre-existing gap with documented fix in yebyen/mecris#142. Needs kingdonb review and merge.
+- [ ] **PR kingdonb/mecris#178 merged**: Python + Android are green (re-confirmed 2026-04-11 run 24288151090). Rust is a known pre-existing gap with documented fix in yebyen/mecris#142. Needs kingdonb review and merge.
 - [ ] **Rust test gap (workflow fix)**: Apply fix from yebyen/mecris#142: add `working-directory: mecris-go-spin/sync-service` to `Run Rust tests` step in `.github/workflows/pr-test.yml`. Needs `workflow` PAT scope or kingdonb direct action.
 - [ ] **After PR #178 merge: sync yebyen from upstream**: `git fetch upstream && git merge upstream/main --no-edit`. Then verify yebyen is up to date.
 - [ ] **send_walk_reminder integration test**: The HTTP dispatch (`spin_sdk::http::send`) in `send_walk_reminder` cannot be unit-tested without Spin host. Verify by deploying to Spin Cloud and triggering `POST /internal/trigger-reminders` with a configured `twilio_account_sid`, `twilio_auth_token_encrypted`, `twilio_from_number` in `spin.toml` variables.
