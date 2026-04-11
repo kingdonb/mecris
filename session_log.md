@@ -1041,3 +1041,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: Everything — nothing was bot-actionable.
 
 **Next**: Wait for kingdonb to review and merge kingdonb/mecris#178. If upstream moves, sync yebyen from upstream then apply Rust workflow fix from yebyen/mecris#142 if workflow PAT is available.
+
+## 2026-04-11 (3rd run) — Port Twilio SMS helpers to sync-service; advance kingdonb/mecris#166 Phase 2
+
+**Planned**: yebyen/mecris#146 — Port `build_twilio_url`, `build_twilio_body`, `encode_basic_auth` from `boris-fiona-walker/src/sms.rs` into `sync-service/src/lib.rs` + add `POST /internal/trigger-reminders` stub + 4 unit tests.
+
+**Done**: All 4 plan items complete. Commit `3a6d5f3`. `cargo test` passes 18/18 (14 existing + 4 new Twilio helper tests). Route stub returns 202 Accepted with TODO message. Pure functions are module-scope and unit-testable without Spin host. Advances kingdonb/mecris#166 Phase 2 (#167). Issue yebyen/mecris#146 closed.
+
+**Skipped**: Actual HTTP dispatch (`spin_sdk::http::send`) — not unit-testable; needs Spin integration environment. Deferred to next session or live test.
+
+**Next**: kingdonb merge of PR #178 remains the primary blocker. If unmerged, next bot session could continue Twilio Phase 2 by wiring `send_walk_reminder` using existing `decrypt_token` — but this requires Spin live env to verify.
