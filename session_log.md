@@ -1051,3 +1051,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: Actual HTTP dispatch (`spin_sdk::http::send`) — not unit-testable; needs Spin integration environment. Deferred to next session or live test.
 
 **Next**: kingdonb merge of PR #178 remains the primary blocker. If unmerged, next bot session could continue Twilio Phase 2 by wiring `send_walk_reminder` using existing `decrypt_token` — but this requires Spin live env to verify.
+
+## 2026-04-11 (4th run) 🏛️ — Twilio Phase 2: implement send_walk_reminder + wire trigger-reminders handler
+
+**Planned**: yebyen/mecris#148 — Implement `send_walk_reminder(phone, message, ...)` in `mecris-go-spin/sync-service/src/lib.rs` using existing helpers + `spin_sdk::http::send`, wire into `/internal/trigger-reminders` handler, add ≥4 unit tests for pure-function layer. Target: ≥20 tests passing.
+
+**Done**: All plan items complete. Added `build_sms_request_parts()` pure function (returns url, body, auth_header as strings — fully unit-testable), `send_walk_reminder()` async fn (dispatches via `spin_sdk::http::send`), and replaced the stub `handle_trigger_reminders_post` with a real multi-tenant implementation that reads Twilio credentials from Spin variables, fetches all users with `phone_number_encrypted` set, decrypts each phone number, and dispatches SMS with graceful error reporting. 4 new unit tests for `build_sms_request_parts`. `cargo test` passes 22/22. Commit `5ba5b96`. Issue yebyen/mecris#148 closed.
+
+**Skipped**: Integration test — `spin_sdk::http::send` requires live Spin host; the actual Twilio dispatch can only be verified in a deployed environment. Twilio Spin variables (`twilio_account_sid`, `twilio_auth_token_encrypted`, `twilio_from_number`) not yet configured in `spin.toml` — must be set by kingdonb in live deployment.
+
+**Next**: Wait for kingdonb to review and merge kingdonb/mecris#178. Once merged: sync yebyen from upstream, re-run cargo test to confirm all 55 tests still green across 6 crates, then work toward Twilio integration test in live Spin environment.
