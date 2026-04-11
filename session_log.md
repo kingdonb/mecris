@@ -1091,3 +1091,10 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: OpenWeather API integration (not specified in plan; would require new Spin variable). Live-env validation (requires Spin Cloud deployment with Twilio variables configured).
 
 **Next**: Wait for kingdonb to review and merge kingdonb/mecris#178. Once merged: sync yebyen from upstream. The entire reminder pipeline (Phase 1 schema + Phase 2 Twilio + Phase 3 heuristics + Phase 3 I/O dispatch) is now complete in Rust — live deployment is the only remaining gate.
+
+## 2026-04-11 (8th run) — Phase 3 OpenWeather heuristic: weather gate in reminder dispatch loop
+
+**Planned**: Add `is_weather_ok_for_walk(weather_main: &str) -> bool` pure function + wire optional OpenWeather API check into `handle_trigger_reminders_post` (yebyen/mecris#152).
+**Done**: Implemented `is_weather_ok_for_walk` (Clear/Clouds → true; Rain/Drizzle/Thunderstorm/Snow/Atmosphere/unknown → false), `OpenWeatherResponse`/`OpenWeatherCondition` deserialisation structs, `fetch_weather_main(lat, lon, api_key)` async Spin HTTP call, and wired the optional weather gate into the dispatch loop (reads `openweather_api_key`, `openweather_lat`, `openweather_lon` Spin vars; graceful no-op if absent). 8 new unit tests; `cargo test`: 60 passed (was 52). Commit `55a4e00`. Closes yebyen/mecris#152.
+**Skipped**: Live integration test (requires real OpenWeather API key in Spin vars + deployed instance). spin.toml `allowed_outbound_hosts` update (needs kingdonb action).
+**Next**: Await kingdonb review and merge of kingdonb/mecris#178. Then sync yebyen from upstream and configure OpenWeather + Twilio Spin vars in live environment.
