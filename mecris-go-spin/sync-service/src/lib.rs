@@ -1189,6 +1189,40 @@ async fn handle_trigger_reminders_post(_req: Request) -> anyhow::Result<Response
     let today_utc = now_utc.format("%Y-%m-%d").to_string();
     let now_epoch_secs = now_utc.timestamp() as u64;
 
+    // Phase 3: Optional OpenWeather check — suppress all reminders if weather is bad.
+    // Requires openweather_api_key, openweather_lat, openweather_lon Spin variables.
+    // If any variable is absent or the API call fails, skip the check (graceful degradation).
+    if let (Ok(api_key), Ok(lat_str), Ok(lon_str)) = (
+        variables::get("openweather_api_key"),
+        variables::get("openweather_lat"),
+        variables::get("openweather_lon"),
+    ) {
+        if !api_key.is_empty() {
+            if let (Ok(lat), Ok(lon)) = (lat_str.parse::<f64>(), lon_str.parse::<f64>()) {
+                match fetch_weather_main(lat, lon, &api_key).await {
+                    Ok(weather_main) => {
+                        if !is_weather_ok_for_walk(&weather_main) {
+                            println!("Weather unsuitable for walk ({}), skipping all reminders", weather_main);
+                            let resp = StatusResponse {
+                                status: "ok".to_string(),
+                                message: format!("Skipped reminders — weather: {}", weather_main),
+                            };
+                            return Ok(Response::builder()
+                                .status(200)
+                                .header("content-type", "application/json")
+                                .body(serde_json::to_string(&resp).unwrap())
+                                .build());
+                        }
+                        println!("Weather ok for walk ({}), proceeding with reminders", weather_main);
+                    }
+                    Err(e) => {
+                        eprintln!("OpenWeather API call failed ({}), proceeding without weather check", e);
+                    }
+                }
+            }
+        }
+    }
+
     let mut sent = 0u32;
     let mut errors = 0u32;
 
@@ -1265,6 +1299,47 @@ async fn handle_trigger_reminders_post(_req: Request) -> anyhow::Result<Response
 }
 
 // --- Phase 3: Reminder heuristics (pure, unit-testable) ---
+
+/// OpenWeather Current Weather API response shape (only the fields we need).
+#[derive(Deserialize, Debug)]
+struct OpenWeatherResponse {
+    weather: Vec<OpenWeatherCondition>,
+}
+
+#[derive(Deserialize, Debug)]
+struct OpenWeatherCondition {
+    main: String,
+}
+
+/// Returns true if the OpenWeather "main" condition category is suitable for an outdoor walk.
+/// Conditions marked good: "Clear", "Clouds".
+/// All others (Rain, Drizzle, Thunderstorm, Snow, Atmosphere, etc.) return false.
+/// Unknown / empty strings default to false (conservative).
+fn is_weather_ok_for_walk(weather_main: &str) -> bool {
+    matches!(weather_main.trim(), "Clear" | "Clouds")
+}
+
+/// Calls the OpenWeather Current Weather API and returns the "main" weather condition string
+/// (e.g., "Clear", "Clouds", "Rain"). Requires Spin outbound HTTP permission.
+/// Caller must have added `https://api.openweathermap.org` to the `[component.trigger-reminders]`
+/// `allowed_outbound_hosts` list in spin.toml.
+async fn fetch_weather_main(lat: f64, lon: f64, api_key: &str) -> anyhow::Result<String> {
+    let url = format!(
+        "https://api.openweathermap.org/data/2.5/weather?lat={}&lon={}&appid={}&units=metric",
+        lat, lon, api_key
+    );
+    let req = Request::get(url).build();
+    let resp: Response = spin_sdk::http::send(req).await?;
+    let body = resp.body();
+    let parsed: OpenWeatherResponse = serde_json::from_slice(body)
+        .map_err(|e| anyhow::anyhow!("Failed to parse OpenWeather response: {}", e))?;
+    parsed
+        .weather
+        .into_iter()
+        .next()
+        .map(|c| c.main)
+        .ok_or_else(|| anyhow::anyhow!("OpenWeather response had empty weather array"))
+}
 
 /// Returns true if the local hour (0-23) is within the active reminder window.
 /// Active window: 8 AM (inclusive) to 8 PM (exclusive). Outside is the sleep window.
@@ -1600,6 +1675,51 @@ mod tests {
     fn test_should_dispatch_rate_limited_blocks() {
         // Too recent: suppress even with low steps in active window
         assert!(!should_dispatch_reminder(10, 500, Some(15)));
+    }
+
+    // --- is_weather_ok_for_walk ---
+
+    #[test]
+    fn test_weather_ok_clear() {
+        assert!(is_weather_ok_for_walk("Clear"));
+    }
+
+    #[test]
+    fn test_weather_ok_clouds() {
+        assert!(is_weather_ok_for_walk("Clouds"));
+    }
+
+    #[test]
+    fn test_weather_bad_rain() {
+        assert!(!is_weather_ok_for_walk("Rain"));
+    }
+
+    #[test]
+    fn test_weather_bad_thunderstorm() {
+        assert!(!is_weather_ok_for_walk("Thunderstorm"));
+    }
+
+    #[test]
+    fn test_weather_bad_snow() {
+        assert!(!is_weather_ok_for_walk("Snow"));
+    }
+
+    #[test]
+    fn test_weather_bad_drizzle() {
+        assert!(!is_weather_ok_for_walk("Drizzle"));
+    }
+
+    #[test]
+    fn test_weather_bad_atmosphere() {
+        // "Atmosphere" covers fog, haze, mist — conservative: skip walk
+        assert!(!is_weather_ok_for_walk("Atmosphere"));
+    }
+
+    #[test]
+    fn test_weather_unknown_is_false() {
+        // Unknown / empty defaults to false (conservative)
+        assert!(!is_weather_ok_for_walk(""));
+        assert!(!is_weather_ok_for_walk("Tornado"));
     }
 
     // --- aggregate_step_count ---
