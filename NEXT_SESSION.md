@@ -1,16 +1,17 @@
 # Next Session: kingdonb review and merge of kingdonb/mecris#178
 
 ## Current Status (2026-04-11)
-- **PR open upstream**: kingdonb/mecris#178 from yebyen:main — 14 Rust unit tests + 3 cloud-sync Python tests + schema fixes + test isolation fixes + Twilio Phase 2 (send_walk_reminder, 22 Rust tests) + Phase 3 heuristics (19 more Rust tests). Not yet merged.
-- **Python CI fully green**: pr-test run 24288151090 — 321 passed, 4 skipped, 0 failures. Confirmed green with Twilio Phase 2 commits included (`3a6d5f3`, `5ba5b96`). Phase 3 heuristics (`4d38b58`) are Rust-only — no Python regression expected; pr-test re-run not strictly needed unless kingdonb requests it.
+- **PR open upstream**: kingdonb/mecris#178 from yebyen:main — full Rust service (Twilio Phase 2 + Phase 3 heuristics + Phase 3 I/O dispatch loop). Not yet merged.
+- **Python CI fully green**: pr-test run 24288151090 — 321 passed, 4 skipped, 0 failures. Confirmed green with Twilio Phase 2 commits included (`3a6d5f3`, `5ba5b96`). Phase 3 commits are Rust-only — no Python regression expected.
 - **Android CI green**: unchanged from prior sessions.
 - **Rust CI still failing**: Known; `pr-test.yml` runs `cargo test` in wrong directory. Exact fix documented in yebyen/mecris#142. Needs `workflow` PAT scope to apply — bot cannot push workflow file changes.
-- **yebyen/mecris ahead of kingdonb/mecris**: All divergence is in PR #178 + Phase 3 heuristic commit `4d38b58`.
-- **All Rust crates pass locally**: sync-service now has 41 tests (was 22). Total across 6 crates: 74 tests, all green (sync-service +19 from Phase 3).
-- **Phase 3 heuristics implemented (unit-testable layer)**: `is_within_reminder_window`, `is_below_step_threshold`, `is_rate_limit_ok`, `should_dispatch_reminder` added in `4d38b58`. Closes yebyen/mecris#150.
+- **yebyen/mecris ahead of kingdonb/mecris**: All divergence is in PR #178 + Phase 3 commits.
+- **All Rust crates pass locally**: sync-service now has 52 tests (was 41, +11 Phase 3 I/O helpers). Total across 6 crates: 86 tests, all green.
+- **Phase 3 I/O integration complete**: `handle_trigger_reminders_post` now gates every SMS send on `should_dispatch_reminder(local_hour, step_count, minutes_since_last)`. Closes yebyen/mecris#151.
 
 ## Verified This Session
-- [x] **Phase 3 heuristic pure functions implemented (2026-04-11)**: `is_within_reminder_window`, `is_below_step_threshold`, `is_rate_limit_ok`, `should_dispatch_reminder`. 19 new tests, 41 total in sync-service. Commit `4d38b58`. Closes yebyen/mecris#150.
+- [x] **Phase 3 I/O helpers implemented and wired (2026-04-11)**: `aggregate_step_count`, `local_hour_from_timezone`, `minutes_since_last_reminder` — 11 new tests. Dispatch loop queries `walk_inferences` for today's step count, `message_log` for rate limiting, and `users.timezone` for local-hour computation. Commit `59394c2`. Closes yebyen/mecris#151.
+- [x] **Phase 3 heuristic pure functions implemented (2026-04-11)**: `is_within_reminder_window`, `is_below_step_threshold`, `is_rate_limit_ok`, `should_dispatch_reminder`. 19 new tests, 41 total in sync-service at the time. Commit `4d38b58`. Closes yebyen/mecris#150.
 - [x] **pr-test #178 re-confirmed green with Twilio Phase 2 commits (2026-04-11)**: run 24288151090 — 321 passed, 4 skipped, 0 failures. Python ✅ Android ✅. PR head SHA `8479bc7` includes `3a6d5f3` + `5ba5b96`. Closes yebyen/mecris#149.
 - [x] **send_walk_reminder implemented (2026-04-11)**: Pure function `build_sms_request_parts` + async `send_walk_reminder` + full `handle_trigger_reminders_post` handler. 4 new tests, 22 total at the time. Commit `5ba5b96`. Closes yebyen/mecris#148.
 - [x] **Twilio SMS helpers ported to sync-service (2026-04-11)**: 3 pure functions + route stub + 4 new tests. `cargo test` passes 18 tests. Commit `3a6d5f3`. Closes yebyen/mecris#146.
@@ -20,16 +21,16 @@
 - [x] **test_narrator_context_standalone is SAFE**: Audited and confirmed in yebyen/mecris#140. (Verified prior session.)
 - [x] **Rust workflow fix documented**: yebyen/mecris#142 created with exact `working-directory: mecris-go-spin/sync-service` diff. Verified `Cargo.toml` exists at that path.
 - [x] **No upstream sync needed**: yebyen is AHEAD of kingdonb. kingdonb's latest is `ab7fef7` (merge commit, 2026-04-09).
-- [x] **All 6 Rust crates pass natively**: sync-service (41), review-pump (17), majesty-cake-rs (4), nag-engine-rs (4), review-pump-rs (4), goal-type-rs (5) — 75 total, all green.
+- [x] **All 6 Rust crates pass natively**: sync-service (52), review-pump (17), majesty-cake-rs (4), nag-engine-rs (4), review-pump-rs (4), goal-type-rs (5) — 86 total, all green.
 - [x] **review-pump test bug fixed**: `flow_state_turbulent_when_at_or_above_target` had wrong assertion `target_flow_rate == 60`; corrected to `0`. Commit `53b4fd7`. Closes yebyen/mecris#143.
 
 ## Pending Verification (Next Session)
 - [ ] **PR kingdonb/mecris#178 merged**: Python + Android are green (re-confirmed 2026-04-11 run 24288151090). Rust is a known pre-existing gap with documented fix in yebyen/mecris#142. Needs kingdonb review and merge.
-- [ ] **Phase 3 I/O-bound tasks (after PR #178 merges)**: Multi-tenant dispatch loop (query users table, check step count in `walk_inferences`, evaluate heuristics per-user), OpenWeather API check integration. These require Spin HTTP and live DB — pure heuristic layer is done; now need the integration wrapper in `handle_trigger_reminders_post`.
 - [ ] **Rust test gap (workflow fix)**: Apply fix from yebyen/mecris#142: add `working-directory: mecris-go-spin/sync-service` to `Run Rust tests` step in `.github/workflows/pr-test.yml`. Needs `workflow` PAT scope or kingdonb direct action.
 - [ ] **After PR #178 merge: sync yebyen from upstream**: `git fetch upstream && git merge upstream/main --no-edit`. Then verify yebyen is up to date.
 - [ ] **send_walk_reminder integration test**: The HTTP dispatch (`spin_sdk::http::send`) in `send_walk_reminder` cannot be unit-tested without Spin host. Verify by deploying to Spin Cloud and triggering `POST /internal/trigger-reminders` with a configured `twilio_account_sid`, `twilio_auth_token_encrypted`, `twilio_from_number` in `spin.toml` variables.
 - [ ] **Twilio Spin variables not yet configured**: `twilio_account_sid`, `twilio_auth_token_encrypted`, `twilio_from_number` must be added to `spin.toml` (or `.spin/config.toml`) before the reminder endpoint is functional in a live deployment. These are not in the repo — must be set by kingdonb in the live environment.
+- [ ] **OpenWeather API integration**: Phase 3 spec (kingdonb/mecris#169) mentions checking current weather before dispatching reminders. The pure dispatch loop is in place but weather check is not yet wired. Needs OpenWeather API key in Spin variables.
 - [ ] **Multiplier Sync Validation**: Verify setting the Review Pump lever in Android updates multiplier in Neon (`SELECT pump_multiplier FROM language_stats`). Requires live device + Neon access.
 - [ ] **Ghost Archivist End-to-End**: Run scheduler locally, let archivist job fire, confirm logs show correct reconciliation without pushing fake data to Beeminder. (Unit tests complete; E2E still needs live environment.)
 - [ ] **kingdonb/mecris#132 verification**: Trigger `/internal/failover-sync` and confirm `daily_completions` is non-zero in Neon if reviews were done.
@@ -58,11 +59,13 @@
 - **schema.sql token_bank**: Added in `c88d368` — `CREATE TABLE IF NOT EXISTS token_bank (user_id TEXT PRIMARY KEY REFERENCES users(pocket_id_sub), available_tokens BIGINT NOT NULL DEFAULT 0, monthly_limit BIGINT NOT NULL DEFAULT 1000000, last_refill TIMESTAMPTZ NOT NULL DEFAULT NOW())`.
 - **requirements.txt Python dep chain**: `apscheduler>=3.10` + `SQLAlchemy>=2.0` — both needed because `scheduler.py` imports `SQLAlchemyJobStore` from apscheduler.
 - **Upstream sync pattern**: `git remote add upstream https://github.com/kingdonb/mecris.git && git fetch upstream main && git merge upstream/main --no-edit`.
-- **Rust unit tests**: Pure functions extracted to module scope — `cargo test` in `mecris-go-spin/sync-service/` runs 41 tests natively without Spin host. Phase 3 heuristics in `4d38b58`: `is_within_reminder_window` (7 tests), `is_below_step_threshold` (4), `is_rate_limit_ok` (4), `should_dispatch_reminder` (4).
-- **Rust workspace**: No workspace Cargo.toml in `mecris-go-spin/`. `sync-service` has `[workspace]` making it self-contained (can't join a parent workspace). Each crate must be tested individually. 6 crates, 75 tests total.
+- **Rust unit tests**: Pure functions extracted to module scope — `cargo test` in `mecris-go-spin/sync-service/` runs 52 tests natively without Spin host. Phase 3 I/O helpers in `59394c2`: `aggregate_step_count` (4 tests), `local_hour_from_timezone` (3 tests), `minutes_since_last_reminder` (4 tests).
+- **Rust workspace**: No workspace Cargo.toml in `mecris-go-spin/`. `sync-service` has `[workspace]` making it self-contained (can't join a parent workspace). Each crate must be tested individually. 6 crates, 86 tests total.
 - **Rust workflow fix**: Add `working-directory: mecris-go-spin/sync-service` to `Run Rust tests` step in pr-test.yml. Exact diff in yebyen/mecris#142. Cannot push (no workflow PAT). Additional crates need separate CI steps.
 - **pr-test.yml push constraint**: Bot dispatches pr-test but local commits are not on GitHub until bot workflow ends. Do NOT dispatch pr-test expecting to see local commits — always dispatch AFTER the push (i.e., in the NEXT session after commits land).
 - **target_flow_rate semantics**: This field means "remaining work to reach target" = `(target - daily_completions).max(0)`. When at or above target, value is 0. See `services/review_pump.py:67` and `mecris-go-spin/review-pump/src/lib.rs:114`.
 - **Twilio helpers in sync-service**: `build_twilio_url`, `build_twilio_body`, `encode_basic_auth`, `build_sms_request_parts` are pure functions at module scope in `lib.rs`. `send_walk_reminder` is async and requires Spin host to dispatch. `handle_trigger_reminders_post` reads `twilio_account_sid`, `twilio_auth_token_encrypted`, `twilio_from_number` from Spin variables.
-- **Phase 3 heuristics in sync-service**: `is_within_reminder_window(local_hour)`, `is_below_step_threshold(step_count, threshold)`, `is_rate_limit_ok(minutes_since_last: Option<u64>)`, `should_dispatch_reminder(local_hour, step_count, minutes_since_last)` — all pure, all tested. The I/O-bound integration (querying `walk_inferences`, calling OpenWeather) remains to be wired into `handle_trigger_reminders_post`.
+- **Phase 3 dispatch loop in sync-service**: `handle_trigger_reminders_post` queries `users` for timezone, `walk_inferences` for today's step count, `message_log` for last walk_reminder, evaluates `should_dispatch_reminder(local_hour, step_count, minutes_since_last)` per user. Logs sent reminders to `message_log (type='walk_reminder', channel='sms')`.
+- **Phase 3 heuristics in sync-service**: `is_within_reminder_window(local_hour)`, `is_below_step_threshold(step_count, threshold)`, `is_rate_limit_ok(minutes_since_last: Option<u64>)`, `should_dispatch_reminder(local_hour, step_count, minutes_since_last)` — all pure, all tested. I/O integration is now complete for the reminder dispatch path.
 - **phone_number_encrypted column**: Exists in `users` table per `scripts/migrations/002_pii_encryption.sql` and `mecris-go-spin/schema.sql`. The trigger-reminders handler queries all users with this column set.
+- **message_log table**: Used for rate limiting. Query: `SELECT sent_at::TEXT FROM message_log WHERE user_id = $1 AND type = 'walk_reminder' ORDER BY sent_at DESC LIMIT 1`. Insert after send: `INSERT INTO message_log (user_id, type, channel) VALUES ($1, 'walk_reminder', 'sms')`.

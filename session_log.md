@@ -1081,3 +1081,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: I/O-bound Phase 3 tasks — the multi-tenant dispatch loop (querying `walk_inferences` for step counts, applying heuristics per-user inside `handle_trigger_reminders_post`) and OpenWeather API integration require Spin HTTP calls and cannot be unit-tested. These will be wired in a future session once PR #178 is merged.
 
 **Next**: Wait for kingdonb to review and merge kingdonb/mecris#178. Once merged: sync yebyen from upstream, then wire Phase 3 I/O integration into `handle_trigger_reminders_post` (query step counts from `walk_inferences`, apply `should_dispatch_reminder` per user before dispatching SMS).
+
+## 2026-04-11 (7th run) — Phase 3 I/O integration: wire heuristics into dispatch loop
+
+**Planned**: yebyen/mecris#151 — Extend `handle_trigger_reminders_post` to query `walk_inferences` for step count, `message_log` for rate limiting, and `users.timezone` for local-hour computation; gate each SMS send on `should_dispatch_reminder`.
+
+**Done**: Three pure helper functions added (`aggregate_step_count`, `local_hour_from_timezone`, `minutes_since_last_reminder`) with 11 new unit tests. Dispatch loop fully wired: per-user step count from `walk_inferences`, rate-limit check via `message_log`, timezone-aware local hour via chrono-tz, `should_dispatch_reminder` gate before every send, and `message_log` insert on success. `cargo test` passes 52/52 (was 41, +11). Commit `59394c2`. Issue yebyen/mecris#151 closed.
+
+**Skipped**: OpenWeather API integration (not specified in plan; would require new Spin variable). Live-env validation (requires Spin Cloud deployment with Twilio variables configured).
+
+**Next**: Wait for kingdonb to review and merge kingdonb/mecris#178. Once merged: sync yebyen from upstream. The entire reminder pipeline (Phase 1 schema + Phase 2 Twilio + Phase 3 heuristics + Phase 3 I/O dispatch) is now complete in Rust — live deployment is the only remaining gate.
