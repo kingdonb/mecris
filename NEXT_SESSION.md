@@ -1,22 +1,23 @@
-# Next Session: New PR to kingdonb/mecris for per-user OpenWeather location + open a pr-test
+# Next Session: Await kingdonb review and merge of kingdonb/mecris#179, then run live migration
 
 ## Current Status (2026-04-12)
-- **PR #178 merged**: kingdonb/mecris#178 merged on 2026-04-12. Both yebyen and kingdonb are at `ad5ed6c`. Sync complete.
-- **Per-user location implemented**: `location_lat`/`location_lon` nullable columns added to `users` table in `schema.sql` + migration `004_user_location.sql`. `resolve_lat_lon()` pure function + per-user weather check inside dispatch loop. Commit `132e89e`. Closes yebyen/mecris#156.
-- **Rust tests: 64 passing** (was 60). `cargo test` in `mecris-go-spin/sync-service/` — all 64 pass, 0 fail.
-- **No new PR to kingdonb yet**: Commit `132e89e` is only on yebyen:main. Needs a new PR to kingdonb/mecris.
-- **Rust CI still failing**: Known pre-existing gap — `pr-test.yml` runs `cargo test` from repo root (no `Cargo.toml`). Fix documented in yebyen/mecris#142. Requires `workflow` PAT scope.
+- **PR #179 open**: kingdonb/mecris#179 opened from yebyen:main — per-user OpenWeather location feature. pr-test: Python ✅ 321 passed Android ✅. Ready for review and merge by kingdonb.
+- **yebyen/mecris in sync with kingdonb/mecris**: Both at `ad5ed6c` as base; yebyen is 2 commits ahead with the feature + archive. PR #179 carries those 2 commits.
+- **64 Rust tests passing**: `cargo test` in `mecris-go-spin/sync-service/` — all 64 pass, 0 fail.
+- **Rust CI still failing in pr-test.yml**: Pre-existing `working-directory` gap. Tracked in yebyen/mecris#142. Requires `workflow` PAT scope — cannot fix from bot.
+- **Live migration not yet run**: `scripts/migrations/004_user_location.sql` not yet applied to live Neon DB. Requires kingdonb.
 
 ## Verified This Session
+- [x] **PR #179 opened (2026-04-12)**: kingdonb/mecris#179 opened from yebyen:main → kingdonb:main. Title: "feat(rust): per-user OpenWeather location from users table". Closes yebyen/mecris#156.
+- [x] **pr-test #179 green (2026-04-12)**: Run 24310522452 — Python ✅ 321 passed, 4 skipped; Android ✅. Rust CI pre-existing error (yebyen/mecris#142).
 - [x] **PR #178 MERGED (2026-04-12)**: kingdonb/mecris#178 merged by kingdonb. Both repos synced to `ad5ed6c`.
-- [x] **yebyen in sync with kingdonb**: `git log FETCH_HEAD..HEAD` = 0 commits ahead; confirmed same SHA.
-- [x] **Per-user location columns added (2026-04-12)**: `location_lat DOUBLE PRECISION` and `location_lon DOUBLE PRECISION` nullable columns in `mecris-go-spin/schema.sql` (CREATE TABLE) and `scripts/migrations/004_user_location.sql` (ALTER TABLE). Commit `132e89e`. Closes yebyen/mecris#156.
+- [x] **Per-user location columns added (2026-04-12)**: `location_lat DOUBLE PRECISION` and `location_lon DOUBLE PRECISION` nullable columns in `mecris-go-spin/schema.sql` and `scripts/migrations/004_user_location.sql`. Commit `132e89e`. Closes yebyen/mecris#156.
 - [x] **resolve_lat_lon() implemented and tested**: Pure function — prefers per-user coords, falls back to global Spin vars, returns None if no valid coords. 4 unit tests cover all branches. All 64 tests pass.
 - [x] **Dispatch loop refactored**: Weather check moved inside user loop using per-user resolved coordinates. Global Spin vars pre-fetched as fallback. Global pre-loop weather check removed.
 
 ## Pending Verification (Next Session)
-- [ ] **Open new PR to kingdonb/mecris**: Commit `132e89e` is on yebyen:main only. Open a PR from yebyen:main to kingdonb:main for the per-user location feature. Title: "feat(rust): per-user OpenWeather location from users table".
-- [ ] **Run pr-test on new PR**: After opening, dispatch `/mecris-pr-test <new PR number>` to confirm Python ✅ Android ✅ (Rust CI will still show error due to yebyen/mecris#142).
+- [ ] **kingdonb/mecris#179 review and merge**: PR is open and green. Awaiting kingdonb review and merge.
+- [ ] **Sync yebyen from upstream after #179 merges**: After merge, run `git fetch upstream main && git merge upstream/main --no-edit` to bring yebyen:main in sync with kingdonb:main.
 - [ ] **Run 004_user_location.sql against live Neon**: `psql $NEON_DB_URL -f scripts/migrations/004_user_location.sql` — adds `location_lat`, `location_lon` columns to live `users` table. Requires kingdonb.
 - [ ] **Multi-Tenancy — Android UI Gaps**: Add "log out" button for PocketID auth. Add UI for users to provide phone number, grant/revoke SMS auth, and set personal location (lat/lon) for weather heuristics. Tracked in kingdonb/mecris#168.
 - [ ] **Rust test gap (workflow fix)**: Apply fix from yebyen/mecris#142: add `working-directory: mecris-go-spin/sync-service` to `Run Rust tests` step in `.github/workflows/pr-test.yml`. Needs `workflow` PAT scope or kingdonb direct action.

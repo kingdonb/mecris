@@ -1122,3 +1122,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Done**: All planned work complete. `mecris-go-spin/schema.sql` updated with two new nullable columns. `scripts/migrations/004_user_location.sql` created with ALTER TABLE + COMMENT ON COLUMN. `mecris-go-spin/sync-service/src/lib.rs` refactored: SELECT now fetches per-user lat/lon; global Spin vars pre-fetched as fallback; global pre-loop weather gate removed; weather check moved inside user loop using `resolve_lat_lon()`; 4 new unit tests. `cargo test`: 64 passed, 0 failed (up from 60). Commit `132e89e`. Closes yebyen/mecris#156.
 **Skipped**: Opening the new PR to kingdonb/mecris (commit not yet pushed — happens via workflow). Running pr-test (will wait until next session after push lands).
 **Next**: Open PR from yebyen:main to kingdonb:main for commit `132e89e` (per-user location feature). Dispatch pr-test on the new PR.
+
+## 2026-04-12 (4th run) — Open PR #179 to kingdonb/mecris and run pr-test
+
+**Planned**: yebyen/mecris#157 — Open PR from yebyen:main to kingdonb:main for per-user OpenWeather location feature (commits `132e89e` + `606b480`), then dispatch pr-test to validate Python ✅ Android ✅.
+
+**Done**: PR opened: kingdonb/mecris#179. pr-test dispatched (run 24310522452) — Python ✅ 321 passed 4 skipped, Android ✅. Result posted as comment on kingdonb/mecris#179. Plan issue yebyen/mecris#157 closed.
+
+**Skipped**: Nothing — plan was small and fully executed.
+
+**Next**: Await kingdonb review and merge of kingdonb/mecris#179. After merge: sync yebyen from upstream. kingdonb must run `004_user_location.sql` migration against live Neon and configure Twilio + OpenWeather Spin variables in Fermyon Cloud.
