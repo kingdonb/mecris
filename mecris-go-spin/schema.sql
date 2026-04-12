@@ -10,6 +10,8 @@ CREATE TABLE IF NOT EXISTS users (
     clozemaster_email_encrypted TEXT,
     clozemaster_password_encrypted TEXT,
     phone_number_encrypted TEXT,            -- Encrypted PII for Twilio delivery
+    location_lat DOUBLE PRECISION,          -- User's latitude for per-user weather checks (nullable)
+    location_lon DOUBLE PRECISION,          -- User's longitude for per-user weather checks (nullable)
     notification_prefs JSONB DEFAULT '{}',  -- Tier settings, sleep windows, thresholds
     timezone VARCHAR(50) DEFAULT 'UTC',
     budget_limit NUMERIC(10, 2) DEFAULT 0.00,

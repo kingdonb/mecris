@@ -1187,46 +1187,20 @@ async fn handle_trigger_reminders_post(_req: Request) -> anyhow::Result<Response
     let db_url = variables::get("db_url")?;
     let connection = Connection::open(&db_url)?;
 
-    let query = "SELECT pocket_id_sub, phone_number_encrypted, COALESCE(timezone, 'UTC') FROM users WHERE phone_number_encrypted IS NOT NULL AND phone_number_encrypted != ''";
+    // Include per-user location columns; COALESCE to empty string so absent values parse as None.
+    let query = "SELECT pocket_id_sub, phone_number_encrypted, COALESCE(timezone, 'UTC'), \
+                 COALESCE(location_lat::TEXT, ''), COALESCE(location_lon::TEXT, '') \
+                 FROM users WHERE phone_number_encrypted IS NOT NULL AND phone_number_encrypted != ''";
     let row_set = connection.query(query, &[])?;
 
     let now_utc = chrono::Utc::now();
     let today_utc = now_utc.format("%Y-%m-%d").to_string();
     let now_epoch_secs = now_utc.timestamp() as u64;
 
-    // Phase 3: Optional OpenWeather check — suppress all reminders if weather is bad.
-    // Requires openweather_api_key, openweather_lat, openweather_lon Spin variables.
-    // If any variable is absent or the API call fails, skip the check (graceful degradation).
-    if let (Ok(api_key), Ok(lat_str), Ok(lon_str)) = (
-        variables::get("openweather_api_key"),
-        variables::get("openweather_lat"),
-        variables::get("openweather_lon"),
-    ) {
-        if !api_key.is_empty() {
-            if let (Ok(lat), Ok(lon)) = (lat_str.parse::<f64>(), lon_str.parse::<f64>()) {
-                match fetch_weather_main(lat, lon, &api_key).await {
-                    Ok(weather_main) => {
-                        if !is_weather_ok_for_walk(&weather_main) {
-                            println!("Weather unsuitable for walk ({}), skipping all reminders", weather_main);
-                            let resp = StatusResponse {
-                                status: "ok".to_string(),
-                                message: format!("Skipped reminders — weather: {}", weather_main),
-                            };
-                            return Ok(Response::builder()
-                                .status(200)
-                                .header("content-type", "application/json")
-                                .body(serde_json::to_string(&resp).unwrap())
-                                .build());
-                        }
-                        println!("Weather ok for walk ({}), proceeding with reminders", weather_main);
-                    }
-                    Err(e) => {
-                        eprintln!("OpenWeather API call failed ({}), proceeding without weather check", e);
-                    }
-                }
-            }
-        }
-    }
+    // Pre-fetch global Spin vars for weather — used as fallback when user has no per-user location.
+    let openweather_api_key = variables::get("openweather_api_key").ok().filter(|s| !s.is_empty());
+    let global_lat_str = variables::get("openweather_lat").ok().filter(|s| !s.is_empty());
+    let global_lon_str = variables::get("openweather_lon").ok().filter(|s| !s.is_empty());
 
     let mut sent = 0u32;
     let mut errors = 0u32;
@@ -1235,6 +1209,8 @@ async fn handle_trigger_reminders_post(_req: Request) -> anyhow::Result<Response
         let user_id = match &row[0] { DbValue::Str(s) => s.clone(), _ => continue };
         let phone_enc = match &row[1] { DbValue::Str(s) if !s.is_empty() => s.clone(), _ => continue };
         let timezone = match &row[2] { DbValue::Str(s) => s.clone(), _ => "UTC".to_string() };
+        let user_lat_str = match &row[3] { DbValue::Str(s) if !s.is_empty() => Some(s.as_str()), _ => None };
+        let user_lon_str = match &row[4] { DbValue::Str(s) if !s.is_empty() => Some(s.as_str()), _ => None };
 
         // Phase 3: timezone-aware local hour
         let local_hour = local_hour_from_timezone(&timezone, &now_utc);
@@ -1265,6 +1241,26 @@ async fn handle_trigger_reminders_post(_req: Request) -> anyhow::Result<Response
         if !should_dispatch_reminder(local_hour, step_count, minutes_since_last) {
             println!("Skipping reminder for user {} (hour={}, steps={}, mins_since_last={:?})", user_id, local_hour, step_count, minutes_since_last);
             continue;
+        }
+
+        // Phase 3: Per-user weather check — suppress reminder if weather is bad at user's location.
+        // Resolves per-user location first; falls back to global Spin vars if not set.
+        // Graceful degradation: if no location or API key, proceed without weather check.
+        if let Some(api_key) = &openweather_api_key {
+            if let Some((lat, lon)) = resolve_lat_lon(user_lat_str, user_lon_str, global_lat_str.as_deref(), global_lon_str.as_deref()) {
+                match fetch_weather_main(lat, lon, api_key).await {
+                    Ok(weather_main) => {
+                        if !is_weather_ok_for_walk(&weather_main) {
+                            println!("Skipping reminder for user {} — weather unsuitable ({})", user_id, weather_main);
+                            continue;
+                        }
+                        println!("Weather ok for user {} ({}), proceeding", user_id, weather_main);
+                    }
+                    Err(e) => {
+                        eprintln!("OpenWeather check failed for user {} ({}), proceeding", user_id, e);
+                    }
+                }
+            }
         }
 
         match decrypt_token(&phone_enc).await {
@@ -1344,6 +1340,32 @@ async fn fetch_weather_main(lat: f64, lon: f64, api_key: &str) -> anyhow::Result
         .next()
         .map(|c| c.main)
         .ok_or_else(|| anyhow::anyhow!("OpenWeather response had empty weather array"))
+}
+
+/// Resolves the effective (lat, lon) for an OpenWeather call given optional per-user and
+/// global-fallback coordinate strings. Returns None if no valid coordinates are available.
+///
+/// Priority: per-user coordinates → global Spin variable fallback → None.
+/// If the preferred source fails to parse, falls back to the next source.
+fn resolve_lat_lon(
+    user_lat: Option<&str>,
+    user_lon: Option<&str>,
+    global_lat: Option<&str>,
+    global_lon: Option<&str>,
+) -> Option<(f64, f64)> {
+    // Try per-user location first
+    if let (Some(lat_s), Some(lon_s)) = (user_lat, user_lon) {
+        if let (Ok(lat), Ok(lon)) = (lat_s.parse::<f64>(), lon_s.parse::<f64>()) {
+            return Some((lat, lon));
+        }
+    }
+    // Fall back to global Spin variables
+    if let (Some(lat_s), Some(lon_s)) = (global_lat, global_lon) {
+        if let (Ok(lat), Ok(lon)) = (lat_s.parse::<f64>(), lon_s.parse::<f64>()) {
+            return Some((lat, lon));
+        }
+    }
+    None
 }
 
 /// Returns true if the local hour (0-23) is within the active reminder window.
@@ -1726,6 +1748,36 @@ mod tests {
         // Unknown / empty defaults to false (conservative)
         assert!(!is_weather_ok_for_walk(""));
         assert!(!is_weather_ok_for_walk("Tornado"));
+    }
+
+    // --- resolve_lat_lon ---
+
+    #[test]
+    fn test_resolve_lat_lon_user_preferred() {
+        // Per-user coordinates take priority over global Spin vars
+        let result = resolve_lat_lon(Some("51.5074"), Some("-0.1278"), Some("40.7128"), Some("-74.0060"));
+        assert_eq!(result, Some((51.5074, -0.1278)));
+    }
+
+    #[test]
+    fn test_resolve_lat_lon_global_fallback() {
+        // No per-user location → fall back to global Spin variables
+        let result = resolve_lat_lon(None, None, Some("40.7128"), Some("-74.0060"));
+        assert_eq!(result, Some((40.7128, -74.0060)));
+    }
+
+    #[test]
+    fn test_resolve_lat_lon_parse_error_fallback() {
+        // Unparseable per-user coords → fall back to global
+        let result = resolve_lat_lon(Some("not-a-float"), Some("-0.1278"), Some("40.7128"), Some("-74.0060"));
+        assert_eq!(result, Some((40.7128, -74.0060)));
+    }
+
+    #[test]
+    fn test_resolve_lat_lon_none_when_no_coords() {
+        // No per-user and no global → None (skip weather check gracefully)
+        let result = resolve_lat_lon(None, None, None, None);
+        assert_eq!(result, None);
     }
 
     // --- aggregate_step_count ---
