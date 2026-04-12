@@ -10,5 +10,7 @@ test-python:
 test-rust:
 	@echo "🦀 Running Rust tests (Boris & Fiona)"
 	$(MAKE) -C boris-fiona-walker test
+	@echo "🦀 Running Rust tests (Sync Service)"
+	cd mecris-go-spin/sync-service && cargo test
 
 test-all: test

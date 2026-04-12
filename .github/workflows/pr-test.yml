@@ -126,7 +126,8 @@ jobs:
         run: |
           set +e
           set -o pipefail
-          cargo test --workspace 2>&1 | tee /tmp/cargo-test-output.txt
+          cargo test --manifest-path boris-fiona-walker/Cargo.toml 2>&1 | tee /tmp/cargo-test-output.txt
+          cargo test --manifest-path mecris-go-spin/sync-service/Cargo.toml 2>&1 | tee -a /tmp/cargo-test-output.txt
           echo "exit_code=$?" >> $GITHUB_OUTPUT
           set +o pipefail
           set -e
