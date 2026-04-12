@@ -2,6 +2,7 @@
 
 ## Current Status (2026-04-12)
 - **PR open upstream**: kingdonb/mecris#178 from yebyen:main — full Rust service (Twilio Phase 2 + Phase 3 heuristics + Phase 3 I/O dispatch loop + OpenWeather check + spin.toml fix). Not yet merged.
+- **PR description updated**: As of 2026-04-12 (2nd run), PR body accurately describes all 8 feature groups, 60 Rust tests, known CI gap, and closed yebyen issues. No longer references stale "14 Rust tests" scope. Closes yebyen/mecris#155.
 - **Python CI fully green**: pr-test run 24298599374 — confirmed green with updated head `b4d0c70` (2026-04-12). Python ✅ Android ✅.
 - **Android CI green**: unchanged from prior sessions.
 - **Rust CI still failing**: Known; `pr-test.yml` runs `cargo test` in wrong directory. Exact fix documented in yebyen/mecris#142. Needs `workflow` PAT scope to apply — bot cannot push workflow file changes.
@@ -9,6 +10,7 @@
 - **All Rust crates pass locally**: sync-service: 60 tests, all green. Total across 6 crates: 94 tests, all green.
 
 ## Verified This Session
+- [x] **PR #178 description updated (2026-04-12, 2nd run)**: Rewrote kingdonb/mecris#178 PR body via GITHUB_CLASSIC_PAT PATCH to accurately list all 8 feature groups (Phase 2 Twilio, Phase 3 heuristics/I/O/OpenWeather, spin.toml, Python cloud-sync tests, review-pump fix), 60 Rust tests, and known CI gap. Verified via GET. Closes yebyen/mecris#155.
 - [x] **spin.toml allowed_outbound_hosts fixed (2026-04-12)**: Added `https://api.twilio.com` and `https://api.openweathermap.org` to `allowed_outbound_hosts` for `sync-service` component. Declared 6 Spin variables (`twilio_account_sid`, `twilio_auth_token_encrypted`, `twilio_from_number`, `openweather_api_key`, `openweather_lat`, `openweather_lon`) in both `[variables]` and `[component.sync-service.variables]`. `cargo test`: 60 passed. Commit `704f6d4`. Closes yebyen/mecris#154.
 - [x] **pr-test #178 re-confirmed green (2026-04-12)**: run 24298599374 — Python ✅ Android ✅. Head SHA `b4d0c70`. Phase 3 + OpenWeather + archive commits confirmed non-regressive.
 - [x] **OpenWeather heuristic implemented (2026-04-11)**: `is_weather_ok_for_walk(weather_main)` returns true for "Clear"/"Clouds", false for Rain/Drizzle/Thunderstorm/Snow/Atmosphere/unknown. `fetch_weather_main(lat, lon, api_key)` calls OpenWeather Current Weather API via Spin outbound HTTP. Dispatch loop reads `openweather_api_key`, `openweather_lat`, `openweather_lon` from Spin variables; skips all reminders if weather is unsuitable; graceful no-op if variables absent. 8 new tests; `cargo test`: 60 passed. Commit `55a4e00`. Closes yebyen/mecris#152.

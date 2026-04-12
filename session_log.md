@@ -1105,3 +1105,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Done**: spin.toml updated with both hosts in `allowed_outbound_hosts` and all 6 variables declared. `cargo test`: 60 passed, 0 failed (config-only change, no Rust code touched). Commit `704f6d4`. Closes yebyen/mecris#154. Also re-ran pr-test #178: run 24298599374 — Python ✅ Android ✅ (head `b4d0c70`).
 **Skipped**: Nothing — plan was small and fully executed.
 **Next**: Await kingdonb review and merge of kingdonb/mecris#178. Once merged: sync yebyen from upstream, then configure Twilio + OpenWeather Spin variables in live Fermyon Cloud environment.
+
+## 2026-04-12 (2nd run) — Update kingdonb/mecris#178 PR description to reflect full Phase 2+3 scope
+
+**Planned**: yebyen/mecris#155 — Rewrite PR #178 body to accurately describe all 8 feature groups (Phase 2 Twilio, Phase 3 heuristics/I/O dispatch/OpenWeather, spin.toml, Python cloud-sync tests, review-pump fix), 60 Rust tests total, and known Rust CI gap.
+
+**Done**: PR body updated via `GITHUB_CLASSIC_PAT` PATCH to `https://api.github.com/repos/kingdonb/mecris/pulls/178`. New body replaces stale "14 Rust unit tests + 3 cloud-sync tests" description with complete 8-section inventory. Verified via GET. Issue yebyen/mecris#155 closed.
+
+**Skipped**: No code changes, no tests, no commits beyond NEXT_SESSION.md + session_log.md. The session was deliberately minimal — PR #178 is still awaiting kingdonb review.
+
+**Next**: Wait for kingdonb to review and merge kingdonb/mecris#178. Once merged: sync yebyen from upstream (`git fetch upstream && git merge upstream/main --no-edit`), then configure Twilio + OpenWeather Spin variables in live Fermyon Cloud environment.
