@@ -1098,3 +1098,10 @@ This document summarizes the collaborative debugging session to establish a func
 **Done**: Implemented `is_weather_ok_for_walk` (Clear/Clouds → true; Rain/Drizzle/Thunderstorm/Snow/Atmosphere/unknown → false), `OpenWeatherResponse`/`OpenWeatherCondition` deserialisation structs, `fetch_weather_main(lat, lon, api_key)` async Spin HTTP call, and wired the optional weather gate into the dispatch loop (reads `openweather_api_key`, `openweather_lat`, `openweather_lon` Spin vars; graceful no-op if absent). 8 new unit tests; `cargo test`: 60 passed (was 52). Commit `55a4e00`. Closes yebyen/mecris#152.
 **Skipped**: Live integration test (requires real OpenWeather API key in Spin vars + deployed instance). spin.toml `allowed_outbound_hosts` update (needs kingdonb action).
 **Next**: Await kingdonb review and merge of kingdonb/mecris#178. Then sync yebyen from upstream and configure OpenWeather + Twilio Spin vars in live environment.
+
+## 2026-04-12 (1st run) — Fix spin.toml: allowed_outbound_hosts + variable declarations for Twilio + OpenWeather
+
+**Planned**: yebyen/mecris#154 — Add `https://api.twilio.com` and `https://api.openweathermap.org` to `allowed_outbound_hosts` for sync-service; declare 6 Spin variables in `[variables]` and `[component.sync-service.variables]`.
+**Done**: spin.toml updated with both hosts in `allowed_outbound_hosts` and all 6 variables declared. `cargo test`: 60 passed, 0 failed (config-only change, no Rust code touched). Commit `704f6d4`. Closes yebyen/mecris#154. Also re-ran pr-test #178: run 24298599374 — Python ✅ Android ✅ (head `b4d0c70`).
+**Skipped**: Nothing — plan was small and fully executed.
+**Next**: Await kingdonb review and merge of kingdonb/mecris#178. Once merged: sync yebyen from upstream, then configure Twilio + OpenWeather Spin variables in live Fermyon Cloud environment.
