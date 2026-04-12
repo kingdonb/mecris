@@ -1132,3 +1132,10 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: Nothing — plan was small and fully executed.
 
 **Next**: Await kingdonb review and merge of kingdonb/mecris#179. After merge: sync yebyen from upstream. kingdonb must run `004_user_location.sql` migration against live Neon and configure Twilio + OpenWeather Spin variables in Fermyon Cloud.
+
+## 2026-04-12 (5th run) — Rust test coverage audit: nag-engine-rs +4, review-pump-rs +2
+
+**Planned**: yebyen/mecris#158 (Expand Rust unit tests — closed as already-satisfied after audit); yebyen/mecris#159 (nag-engine-rs edge cases); yebyen/mecris#160 (review-pump-rs boundary tests).
+**Done**: Audited all 6 Rust crates. Discovered `--quiet` masked review-pump's 17 tests — true baseline was 98 tests (not 64). Added 4 tests to nag-engine-rs (commits `b3429e7`): cooldown suppression, completed goal, empty goals, sleep boundary at hour=22. Added 2 tests to review-pump-rs (commit `f57890d`): backlog=0 exact boundary, multiplier=0.5 Maintenance path. Total: 98 → 104 tests across 6 crates. All pass.
+**Skipped**: No new features — PR #179 still awaiting kingdonb review. Live migration and Spin variables still require kingdonb.
+**Next**: Await kingdonb review and merge of kingdonb/mecris#179. After merge: sync yebyen from upstream, then track kingdonb configuring Twilio + OpenWeather Spin vars in Fermyon Cloud.

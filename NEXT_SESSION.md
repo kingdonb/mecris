@@ -2,18 +2,18 @@
 
 ## Current Status (2026-04-12)
 - **PR #179 open**: kingdonb/mecris#179 opened from yebyen:main — per-user OpenWeather location feature. pr-test: Python ✅ 321 passed Android ✅. Ready for review and merge by kingdonb.
-- **yebyen/mecris in sync with kingdonb/mecris**: Both at `ad5ed6c` as base; yebyen is 2 commits ahead with the feature + archive. PR #179 carries those 2 commits.
-- **64 Rust tests passing**: `cargo test` in `mecris-go-spin/sync-service/` — all 64 pass, 0 fail.
+- **yebyen/mecris in sync with kingdonb/mecris**: Both at `ad5ed6c` as base; yebyen is 4 commits ahead with the feature + archive + new tests.
+- **104 Rust tests passing**: All 6 crates in `mecris-go-spin/` — 104 total, 0 failed.
+  - sync-service: 64 | review-pump: 17 | nag-engine-rs: 8 (was 4) | goal-type-rs: 5 | review-pump-rs: 6 (was 4) | majesty-cake-rs: 4
 - **Rust CI still failing in pr-test.yml**: Pre-existing `working-directory` gap. Tracked in yebyen/mecris#142. Requires `workflow` PAT scope — cannot fix from bot.
 - **Live migration not yet run**: `scripts/migrations/004_user_location.sql` not yet applied to live Neon DB. Requires kingdonb.
 
 ## Verified This Session
-- [x] **PR #179 opened (2026-04-12)**: kingdonb/mecris#179 opened from yebyen:main → kingdonb:main. Title: "feat(rust): per-user OpenWeather location from users table". Closes yebyen/mecris#156.
-- [x] **pr-test #179 green (2026-04-12)**: Run 24310522452 — Python ✅ 321 passed, 4 skipped; Android ✅. Rust CI pre-existing error (yebyen/mecris#142).
-- [x] **PR #178 MERGED (2026-04-12)**: kingdonb/mecris#178 merged by kingdonb. Both repos synced to `ad5ed6c`.
-- [x] **Per-user location columns added (2026-04-12)**: `location_lat DOUBLE PRECISION` and `location_lon DOUBLE PRECISION` nullable columns in `mecris-go-spin/schema.sql` and `scripts/migrations/004_user_location.sql`. Commit `132e89e`. Closes yebyen/mecris#156.
-- [x] **resolve_lat_lon() implemented and tested**: Pure function — prefers per-user coords, falls back to global Spin vars, returns None if no valid coords. 4 unit tests cover all branches. All 64 tests pass.
-- [x] **Dispatch loop refactored**: Weather check moved inside user loop using per-user resolved coordinates. Global Spin vars pre-fetched as fallback. Global pre-loop weather check removed.
+- [x] **PR #179 still open (2026-04-12)**: kingdonb/mecris#179 open from yebyen:main → kingdonb:main. Title: "feat(rust): per-user OpenWeather location from users table".
+- [x] **98 Rust tests confirmed passing (2026-04-12)**: All 6 crates verified via `cargo test` — the `--quiet` flag had masked review-pump's 17 tests. True baseline was 98, not 64.
+- [x] **nag-engine-rs coverage expanded (2026-04-12)**: 4 new tests added — cooldown suppression, completed goal, empty goals list, sleep window boundary at hour=22. Commit `b3429e7`. Closes yebyen/mecris#159.
+- [x] **review-pump-rs boundary tests added (2026-04-12)**: 2 new tests — backlog=0 (exact cavitation boundary) and multiplier=0.5 (below-1.0 Maintenance). Commit `f57890d`. Closes yebyen/mecris#160.
+- [x] **Total Rust tests now 104**: nag-engine-rs 4→8, review-pump-rs 4→6. All pass.
 
 ## Pending Verification (Next Session)
 - [ ] **kingdonb/mecris#179 review and merge**: PR is open and green. Awaiting kingdonb review and merge.
@@ -54,8 +54,8 @@
 - **schema.sql token_bank**: Added in `c88d368` — `CREATE TABLE IF NOT EXISTS token_bank (user_id TEXT PRIMARY KEY REFERENCES users(pocket_id_sub), available_tokens BIGINT NOT NULL DEFAULT 0, monthly_limit BIGINT NOT NULL DEFAULT 1000000, last_refill TIMESTAMPTZ NOT NULL DEFAULT NOW())`.
 - **requirements.txt Python dep chain**: `apscheduler>=3.10` + `SQLAlchemy>=2.0` — both needed because `scheduler.py` imports `SQLAlchemyJobStore` from apscheduler.
 - **Upstream sync pattern**: `git remote add upstream https://github.com/kingdonb/mecris.git && git fetch upstream main && git merge upstream/main --no-edit`.
-- **Rust unit tests**: Pure functions extracted to module scope — `cargo test` in `mecris-go-spin/sync-service/` runs 64 tests natively without Spin host. Phase 3 weather: `is_weather_ok_for_walk` (8 tests), `resolve_lat_lon` (4 tests in `132e89e`), Phase 3 I/O helpers: `aggregate_step_count` (4), `local_hour_from_timezone` (3), `minutes_since_last_reminder` (4).
-- **Rust workspace**: No workspace Cargo.toml in `mecris-go-spin/`. `sync-service` has `[workspace]` making it self-contained (can't join a parent workspace). Each crate must be tested individually. 6 crates, 98 tests total.
+- **Rust unit tests**: 6 crates, 104 tests total (sync-service: 64, review-pump: 17, nag-engine-rs: 8, goal-type-rs: 5, review-pump-rs: 6, majesty-cake-rs: 4). All pure functions — `cargo test` runs without Spin host.
+- **Rust workspace**: No workspace Cargo.toml in `mecris-go-spin/`. Each crate has `[workspace]` making it self-contained. 6 crates: sync-service, review-pump, nag-engine-rs, goal-type-rs, review-pump-rs, majesty-cake-rs. arabic-skip-counter has no Cargo.toml.
 - **Rust workflow fix**: Add `working-directory: mecris-go-spin/sync-service` to `Run Rust tests` step in pr-test.yml. Exact diff in yebyen/mecris#142. Cannot push (no workflow PAT). Additional crates need separate CI steps.
 - **target_flow_rate semantics**: This field means "remaining work to reach target" = `(target - daily_completions).max(0)`. When at or above target, value is 0. See `services/review_pump.py:67` and `mecris-go-spin/review-pump/src/lib.rs:114`.
 - **Twilio helpers in sync-service**: `build_twilio_url`, `build_twilio_body`, `encode_basic_auth`, `build_sms_request_parts` are pure functions at module scope in `lib.rs`. `send_walk_reminder` is async and requires Spin host to dispatch. `handle_trigger_reminders_post` reads `twilio_account_sid`, `twilio_auth_token_encrypted`, `twilio_from_number` from Spin variables.
@@ -66,3 +66,4 @@
 - **Twilio outbound hosts**: `https://api.twilio.com` in `allowed_outbound_hosts` for sync-service (commit `704f6d4`).
 - **phone_number_encrypted column**: Exists in `users` table per `scripts/migrations/002_pii_encryption.sql` and `mecris-go-spin/schema.sql`. The trigger-reminders handler queries all users with this column set.
 - **message_log table**: Used for rate limiting. Query: `SELECT sent_at::TEXT FROM message_log WHERE user_id = $1 AND type = 'walk_reminder' ORDER BY sent_at DESC LIMIT 1`. Insert after send: `INSERT INTO message_log (user_id, type, channel) VALUES ($1, 'walk_reminder', 'sms')`.
+- **--quiet cargo test flag**: Masks unit test output when doc-tests follow with 0 results. Use `cargo test` (without --quiet) to see true per-test output. The `-- --list` flag works correctly.
