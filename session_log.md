@@ -1146,3 +1146,10 @@ This document summarizes the collaborative debugging session to establish a func
 **Done**: Added 2 tests to majesty-cake-rs (`test_empty_goals_list` — all_clear=false when no goals; `test_single_required_not_completed` — 0/1 state) and 2 tests to goal-type-rs (`test_backlog_increases` — negative delta still safe; `test_backlog_zero_delta` — safe unlike odometer zero delta). All 108 tests pass. Total: 104 → 108. Commit `49289e9`. Closes yebyen/mecris#161.
 **Skipped**: No new features — PR #179 still awaiting kingdonb review. Live migration and Spin variables still require kingdonb.
 **Next**: Await kingdonb review and merge of kingdonb/mecris#179. After merge: sync yebyen from upstream, then track kingdonb configuring Twilio + OpenWeather Spin vars in Fermyon Cloud.
+
+## 2026-04-12 (7th run) — Python WeatherService unit tests (19 tests)
+
+**Planned**: yebyen/mecris#163 — Create `tests/test_weather_service.py` with ≥10 unit tests covering all `is_walk_appropriate()` branches and `get_weather()` mock/cache paths; no network/DB/Spin host required.
+**Done**: `tests/test_weather_service.py` created with 19 tests — all `is_walk_appropriate()` branches (cold, hot, rain, wind, pre-sunrise, post-sunset, no-temp, error-no-temp, stale-with-temp, boundary edges for temp=20/95 and wind=30) and all `get_weather()` paths (mock mode, no-API-key fallback, cache hit, expired cache refresh, API error with stale cache, API error with no cache). Commit `d13e647`. Closes yebyen/mecris#163.
+**Skipped**: Local pytest run (Python venv not present in bot runner). Tests will be validated via pr-test workflow in a future session.
+**Next**: Await kingdonb review and merge of kingdonb/mecris#179. After merge: sync yebyen from upstream. Dispatch pr-test to validate WeatherService tests alongside existing suite.

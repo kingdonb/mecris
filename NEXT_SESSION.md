@@ -2,9 +2,10 @@
 
 ## Current Status (2026-04-12)
 - **PR #179 open**: kingdonb/mecris#179 opened from yebyen:main — per-user OpenWeather location feature. pr-test: Python ✅ 321 passed Android ✅. Ready for review and merge by kingdonb.
-- **yebyen/mecris in sync with kingdonb/mecris**: Both at `ad5ed6c` as base; yebyen is 5 commits ahead with the feature + tests.
+- **yebyen/mecris in sync with kingdonb/mecris**: Both at `ad5ed6c` as base; yebyen is 6 commits ahead with the feature + tests.
 - **108 Rust tests passing**: All 6 crates in `mecris-go-spin/` — 108 total, 0 failed.
-  - sync-service: 64 | review-pump: 17 | nag-engine-rs: 8 | goal-type-rs: 7 (was 5) | review-pump-rs: 6 | majesty-cake-rs: 6 (was 4)
+  - sync-service: 64 | review-pump: 17 | nag-engine-rs: 8 | goal-type-rs: 7 | review-pump-rs: 6 | majesty-cake-rs: 6
+- **WeatherService Python tests added**: `tests/test_weather_service.py` — 19 tests for `is_walk_appropriate()` and `get_weather()`. Commit `d13e647`. Closes yebyen/mecris#163.
 - **Rust CI still failing in pr-test.yml**: Pre-existing `working-directory` gap. Tracked in yebyen/mecris#142. Requires `workflow` PAT scope — cannot fix from bot.
 - **Live migration not yet run**: `scripts/migrations/004_user_location.sql` not yet applied to live Neon DB. Requires kingdonb.
 
@@ -16,8 +17,10 @@
 - [x] **Total Rust tests now 104 → 108**: majesty-cake-rs 4→6, goal-type-rs 5→7. All pass. Commit `49289e9`. Closes yebyen/mecris#161.
   - majesty-cake-rs new: `test_empty_goals_list` (all_clear=false boundary), `test_single_required_not_completed` (0/1 state)
   - goal-type-rs new: `test_backlog_increases` (negative delta still safe), `test_backlog_zero_delta` (safe unlike odometer)
+- [x] **WeatherService Python tests added (2026-04-12)**: `tests/test_weather_service.py` created — 19 unit tests covering all `is_walk_appropriate()` branches (cold, hot, rain, wind, pre-sunrise, post-sunset, no-temp, error-no-temp, boundary edges, stale-with-temp) and `get_weather()` paths (mock mode, no-API-key fallback, cache hit, expired cache refresh, API error with/without stale cache). Commit `d13e647`. Closes yebyen/mecris#163.
 
 ## Pending Verification (Next Session)
+- [ ] **WeatherService tests (pr-test validation)**: `tests/test_weather_service.py` (19 tests, commit `d13e647`) committed but not yet validated via pr-test workflow (Python venv not available in bot runner). Next session can dispatch pr-test on PR #179 or any subsequent PR to confirm all 19 pass.
 - [ ] **kingdonb/mecris#179 review and merge**: PR is open and green. Awaiting kingdonb review and merge.
 - [ ] **Sync yebyen from upstream after #179 merges**: After merge, run `git fetch upstream main && git merge upstream/main --no-edit` to bring yebyen:main in sync with kingdonb:main.
 - [ ] **Run 004_user_location.sql against live Neon**: `psql $NEON_DB_URL -f scripts/migrations/004_user_location.sql` — adds `location_lat`, `location_lon` columns to live `users` table. Requires kingdonb.
