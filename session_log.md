@@ -1139,3 +1139,10 @@ This document summarizes the collaborative debugging session to establish a func
 **Done**: Audited all 6 Rust crates. Discovered `--quiet` masked review-pump's 17 tests — true baseline was 98 tests (not 64). Added 4 tests to nag-engine-rs (commits `b3429e7`): cooldown suppression, completed goal, empty goals, sleep boundary at hour=22. Added 2 tests to review-pump-rs (commit `f57890d`): backlog=0 exact boundary, multiplier=0.5 Maintenance path. Total: 98 → 104 tests across 6 crates. All pass.
 **Skipped**: No new features — PR #179 still awaiting kingdonb review. Live migration and Spin variables still require kingdonb.
 **Next**: Await kingdonb review and merge of kingdonb/mecris#179. After merge: sync yebyen from upstream, then track kingdonb configuring Twilio + OpenWeather Spin vars in Fermyon Cloud.
+
+## 2026-04-12 (6th run) — Rust test coverage: majesty-cake-rs +2, goal-type-rs +2
+
+**Planned**: yebyen/mecris#161 — Audit and expand test coverage in `majesty-cake-rs` (4 tests) and `goal-type-rs` (5 tests), adding ≥2 boundary/edge-case tests per crate.
+**Done**: Added 2 tests to majesty-cake-rs (`test_empty_goals_list` — all_clear=false when no goals; `test_single_required_not_completed` — 0/1 state) and 2 tests to goal-type-rs (`test_backlog_increases` — negative delta still safe; `test_backlog_zero_delta` — safe unlike odometer zero delta). All 108 tests pass. Total: 104 → 108. Commit `49289e9`. Closes yebyen/mecris#161.
+**Skipped**: No new features — PR #179 still awaiting kingdonb review. Live migration and Spin variables still require kingdonb.
+**Next**: Await kingdonb review and merge of kingdonb/mecris#179. After merge: sync yebyen from upstream, then track kingdonb configuring Twilio + OpenWeather Spin vars in Fermyon Cloud.

@@ -2,9 +2,9 @@
 
 ## Current Status (2026-04-12)
 - **PR #179 open**: kingdonb/mecris#179 opened from yebyen:main — per-user OpenWeather location feature. pr-test: Python ✅ 321 passed Android ✅. Ready for review and merge by kingdonb.
-- **yebyen/mecris in sync with kingdonb/mecris**: Both at `ad5ed6c` as base; yebyen is 4 commits ahead with the feature + archive + new tests.
-- **104 Rust tests passing**: All 6 crates in `mecris-go-spin/` — 104 total, 0 failed.
-  - sync-service: 64 | review-pump: 17 | nag-engine-rs: 8 (was 4) | goal-type-rs: 5 | review-pump-rs: 6 (was 4) | majesty-cake-rs: 4
+- **yebyen/mecris in sync with kingdonb/mecris**: Both at `ad5ed6c` as base; yebyen is 5 commits ahead with the feature + tests.
+- **108 Rust tests passing**: All 6 crates in `mecris-go-spin/` — 108 total, 0 failed.
+  - sync-service: 64 | review-pump: 17 | nag-engine-rs: 8 | goal-type-rs: 7 (was 5) | review-pump-rs: 6 | majesty-cake-rs: 6 (was 4)
 - **Rust CI still failing in pr-test.yml**: Pre-existing `working-directory` gap. Tracked in yebyen/mecris#142. Requires `workflow` PAT scope — cannot fix from bot.
 - **Live migration not yet run**: `scripts/migrations/004_user_location.sql` not yet applied to live Neon DB. Requires kingdonb.
 
@@ -13,7 +13,9 @@
 - [x] **98 Rust tests confirmed passing (2026-04-12)**: All 6 crates verified via `cargo test` — the `--quiet` flag had masked review-pump's 17 tests. True baseline was 98, not 64.
 - [x] **nag-engine-rs coverage expanded (2026-04-12)**: 4 new tests added — cooldown suppression, completed goal, empty goals list, sleep window boundary at hour=22. Commit `b3429e7`. Closes yebyen/mecris#159.
 - [x] **review-pump-rs boundary tests added (2026-04-12)**: 2 new tests — backlog=0 (exact cavitation boundary) and multiplier=0.5 (below-1.0 Maintenance). Commit `f57890d`. Closes yebyen/mecris#160.
-- [x] **Total Rust tests now 104**: nag-engine-rs 4→8, review-pump-rs 4→6. All pass.
+- [x] **Total Rust tests now 104 → 108**: majesty-cake-rs 4→6, goal-type-rs 5→7. All pass. Commit `49289e9`. Closes yebyen/mecris#161.
+  - majesty-cake-rs new: `test_empty_goals_list` (all_clear=false boundary), `test_single_required_not_completed` (0/1 state)
+  - goal-type-rs new: `test_backlog_increases` (negative delta still safe), `test_backlog_zero_delta` (safe unlike odometer)
 
 ## Pending Verification (Next Session)
 - [ ] **kingdonb/mecris#179 review and merge**: PR is open and green. Awaiting kingdonb review and merge.
@@ -54,7 +56,7 @@
 - **schema.sql token_bank**: Added in `c88d368` — `CREATE TABLE IF NOT EXISTS token_bank (user_id TEXT PRIMARY KEY REFERENCES users(pocket_id_sub), available_tokens BIGINT NOT NULL DEFAULT 0, monthly_limit BIGINT NOT NULL DEFAULT 1000000, last_refill TIMESTAMPTZ NOT NULL DEFAULT NOW())`.
 - **requirements.txt Python dep chain**: `apscheduler>=3.10` + `SQLAlchemy>=2.0` — both needed because `scheduler.py` imports `SQLAlchemyJobStore` from apscheduler.
 - **Upstream sync pattern**: `git remote add upstream https://github.com/kingdonb/mecris.git && git fetch upstream main && git merge upstream/main --no-edit`.
-- **Rust unit tests**: 6 crates, 104 tests total (sync-service: 64, review-pump: 17, nag-engine-rs: 8, goal-type-rs: 5, review-pump-rs: 6, majesty-cake-rs: 4). All pure functions — `cargo test` runs without Spin host.
+- **Rust unit tests**: 6 crates, 108 tests total (sync-service: 64, review-pump: 17, nag-engine-rs: 8, goal-type-rs: 7, review-pump-rs: 6, majesty-cake-rs: 6). All pure functions — `cargo test` runs without Spin host.
 - **Rust workspace**: No workspace Cargo.toml in `mecris-go-spin/`. Each crate has `[workspace]` making it self-contained. 6 crates: sync-service, review-pump, nag-engine-rs, goal-type-rs, review-pump-rs, majesty-cake-rs. arabic-skip-counter has no Cargo.toml.
 - **Rust workflow fix**: Add `working-directory: mecris-go-spin/sync-service` to `Run Rust tests` step in pr-test.yml. Exact diff in yebyen/mecris#142. Cannot push (no workflow PAT). Additional crates need separate CI steps.
 - **target_flow_rate semantics**: This field means "remaining work to reach target" = `(target - daily_completions).max(0)`. When at or above target, value is 0. See `services/review_pump.py:67` and `mecris-go-spin/review-pump/src/lib.rs:114`.
