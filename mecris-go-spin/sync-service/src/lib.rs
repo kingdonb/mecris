@@ -380,6 +380,11 @@ async fn handle_cloud_sync(req: Request) -> anyhow::Result<Response> {
     // Fallback: Spin does the heavy lifting (Parallelized scrapper)
     match run_clozemaster_scraper(&db_url, &user_id).await {
         Ok(_) => {
+            // After successfully syncing Clozemaster, also evaluate and trigger any pending text reminders.
+            // We pass a dummy request because the handler currently doesn't use the request body.
+            let dummy_req = Request::post("/internal/trigger-reminders", "").build();
+            let _ = handle_trigger_reminders_post(dummy_req).await;
+
             let resp = StatusResponse { status: "success".to_string(), message: "Cloud sync complete (Autonomous)".to_string() };
             Ok(Response::builder().status(200).header("content-type", "application/json").body(serde_json::to_string(&resp).unwrap()).build())
         }
@@ -1380,7 +1385,8 @@ fn should_dispatch_reminder(local_hour: u32, step_count: u32, minutes_since_last
 fn aggregate_step_count(step_strings: &[String]) -> u32 {
     step_strings.iter()
         .filter_map(|s| s.trim().parse::<u32>().ok())
-        .sum()
+        .last()
+        .unwrap_or(0)
 }
 
 /// Returns the local hour (0–23) for the given UTC instant in the named IANA timezone.
@@ -1736,7 +1742,7 @@ mod tests {
 
     #[test]
     fn test_aggregate_step_count_multiple() {
-        assert_eq!(aggregate_step_count(&["1000".to_string(), "500".to_string(), "200".to_string()]), 1700);
+        assert_eq!(aggregate_step_count(&["1000".to_string(), "500".to_string(), "200".to_string()]), 200);
     }
 
     #[test]
