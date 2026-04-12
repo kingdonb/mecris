@@ -188,6 +188,11 @@ async fn handle_sync_service(req: Request) -> anyhow::Result<impl IntoResponse> 
             return Ok(Response::builder().status(405).body("Method Not Allowed").build());
         }
         return handle_aggregate_status_get(req).await;
+    } else if path == "/internal/trigger-reminders" {
+        if req.method() != &spin_sdk::http::Method::Post {
+            return Ok(Response::builder().status(405).body("Method Not Allowed").build());
+        }
+        return handle_trigger_reminders_post(req).await;
     }
 
     Ok(Response::builder().status(404).body("Not Found").build())
@@ -304,6 +309,30 @@ async fn handle_aggregate_status_get(req: Request) -> anyhow::Result<Response> {
         .build())
 }
 
+/// Returns true when the sync request should be forwarded to the user's Home Server
+/// rather than handled locally by Spin. Delegation is skipped for local/loopback URLs
+/// to prevent infinite loops when the bot is running on localhost.
+fn should_delegate(delegation_enabled: bool, mcp_server_url: &str) -> bool {
+    delegation_enabled
+        && !mcp_server_url.is_empty()
+        && !mcp_server_url.contains("localhost")
+        && !mcp_server_url.contains("127.0.0.1")
+}
+
+/// Extract a review count from a Clozemaster forecast entry.
+/// Entries may be `{ "count": N }` objects or raw integers, depending on API version.
+fn parse_forecast_count(v: &serde_json::Value) -> i32 {
+    v.get("count")
+        .and_then(|c| c.as_i64())
+        .unwrap_or_else(|| v.as_i64().unwrap_or(0)) as i32
+}
+
+/// Convert raw Clozemaster points into an estimated card count for ARABIC.
+/// Heuristic: 1 card ≈ 12 points (derived empirically from scoring data).
+fn arabic_completions(points_today: i32) -> i32 {
+    (points_today as f64 / 12.0) as i32
+}
+
 async fn handle_cloud_sync(req: Request) -> anyhow::Result<Response> {
     let auth_header = req.header("authorization").cloned();
     let user_id = match extract_user_id(auth_header.as_ref()).await {
@@ -326,7 +355,7 @@ async fn handle_cloud_sync(req: Request) -> anyhow::Result<Response> {
             None => String::new(),
         };
 
-        if !mcp_server_url.is_empty() && !mcp_server_url.contains("localhost") && !mcp_server_url.contains("127.0.0.1") {
+        if should_delegate(delegation_enabled, &mcp_server_url) {
             // Home server URL is likely public/reachable — attempt delegation
             let sync_trigger_url = format!("{}/internal/cloud-sync", mcp_server_url.trim_end_matches('/'));
             
@@ -351,6 +380,11 @@ async fn handle_cloud_sync(req: Request) -> anyhow::Result<Response> {
     // Fallback: Spin does the heavy lifting (Parallelized scrapper)
     match run_clozemaster_scraper(&db_url, &user_id).await {
         Ok(_) => {
+            // After successfully syncing Clozemaster, also evaluate and trigger any pending text reminders.
+            // We pass a dummy request because the handler currently doesn't use the request body.
+            let dummy_req = Request::post("/internal/trigger-reminders", "").build();
+            let _ = handle_trigger_reminders_post(dummy_req).await;
+
             let resp = StatusResponse { status: "success".to_string(), message: "Cloud sync complete (Autonomous)".to_string() };
             Ok(Response::builder().status(200).header("content-type", "application/json").body(serde_json::to_string(&resp).unwrap()).build())
         }
@@ -524,11 +558,8 @@ async fn run_clozemaster_scraper(db_url: &str, user_id: &str) -> anyhow::Result<
                             if let Ok(api_json) = serde_json::from_slice::<serde_json::Value>(api_res.body()) {
                                 if let Some(forecast) = api_json.get("reviewForecast").and_then(|f| f.as_array()) {
                                     if !forecast.is_empty() {
-                                        let get_count = |v: &serde_json::Value| -> i32 {
-                                            v.get("count").and_then(|c| c.as_i64()).unwrap_or_else(|| v.as_i64().unwrap_or(0)) as i32
-                                        };
-                                        tomorrow = get_count(&forecast[0]);
-                                        next_7 = forecast.iter().take(7).map(|d| get_count(d)).sum();
+                                                        tomorrow = parse_forecast_count(&forecast[0]);
+                                        next_7 = forecast.iter().take(7).map(parse_forecast_count).sum();
                                     }
                                 }
                             }
@@ -556,7 +587,7 @@ async fn run_clozemaster_scraper(db_url: &str, user_id: &str) -> anyhow::Result<
 
                     let mut completions = points_today;
                     if lang_name == "ARABIC" {
-                        completions = (points_today as f64 / 12.0) as i32;
+                        completions = arabic_completions(points_today);
                     }
                     
                     let query = "INSERT INTO language_stats (user_id, language_name, current_reviews, tomorrow_reviews, next_7_days_reviews, beeminder_slug, daily_completions, last_points, total_points, last_updated) 
@@ -1033,4 +1064,740 @@ async fn handle_walks_post(req: Request) -> anyhow::Result<Response> {
 
     let resp = StatusResponse { status: "success".to_string(), message: "Walk ingested".to_string() };
     Ok(Response::builder().status(201).header("content-type", "application/json").body(serde_json::to_string(&resp).unwrap()).build())
+}
+
+// --- Twilio SMS helpers (Phase 2 of kingdonb/mecris#166/#167) ---
+
+fn build_twilio_url(account_sid: &str) -> String {
+    format!("https://api.twilio.com/2010-04-01/Accounts/{}/Messages.json", account_sid)
+}
+
+fn build_twilio_body(from: &str, to: &str, message: &str) -> String {
+    format!(
+        "From={}&To={}&Body={}",
+        urlencoding::encode(from),
+        urlencoding::encode(to),
+        urlencoding::encode(message)
+    )
+}
+
+fn encode_basic_auth(username: &str, password: &str) -> String {
+    use base64::Engine;
+    let credentials = format!("{}:{}", username, password);
+    base64::engine::general_purpose::STANDARD.encode(credentials.as_bytes())
+}
+
+/// Assemble Twilio SMS request components as plain strings. Pure function — fully unit-testable.
+/// Returns `(url, form_body, authorization_header_value)`.
+fn build_sms_request_parts(
+    account_sid: &str,
+    auth_token: &str,
+    from: &str,
+    to: &str,
+    message: &str,
+) -> (String, String, String) {
+    let url = build_twilio_url(account_sid);
+    let body = build_twilio_body(from, to, message);
+    let auth = format!("Basic {}", encode_basic_auth(account_sid, auth_token));
+    (url, body, auth)
+}
+
+/// Send a single Twilio SMS. Requires Spin host for the HTTP dispatch.
+async fn send_walk_reminder(
+    phone: &str,
+    message: &str,
+    account_sid: &str,
+    auth_token: &str,
+    from_number: &str,
+) -> anyhow::Result<()> {
+    let (url, body, auth) = build_sms_request_parts(account_sid, auth_token, from_number, phone, message);
+    let req = Request::post(url, body)
+        .header("content-type", "application/x-www-form-urlencoded")
+        .header("Authorization", auth)
+        .build();
+    let res: Response = spin_sdk::http::send(req).await?;
+    if !(200..300).contains(res.status()) {
+        return Err(anyhow::anyhow!("Twilio SMS failed with status {}", res.status()));
+    }
+    Ok(())
+}
+
+async fn handle_trigger_reminders_post(_req: Request) -> anyhow::Result<Response> {
+    // Phase 2 implementation — yebyen/mecris#148
+    let account_sid = match variables::get("twilio_account_sid") {
+        Ok(s) if !s.is_empty() => s,
+        _ => {
+            let resp = StatusResponse {
+                status: "error".to_string(),
+                message: "twilio_account_sid not configured".to_string(),
+            };
+            return Ok(Response::builder()
+                .status(500)
+                .header("content-type", "application/json")
+                .body(serde_json::to_string(&resp).unwrap())
+                .build());
+        }
+    };
+
+    let auth_token_enc = match variables::get("twilio_auth_token_encrypted") {
+        Ok(s) if !s.is_empty() => s,
+        _ => {
+            let resp = StatusResponse {
+                status: "error".to_string(),
+                message: "twilio_auth_token_encrypted not configured".to_string(),
+            };
+            return Ok(Response::builder()
+                .status(500)
+                .header("content-type", "application/json")
+                .body(serde_json::to_string(&resp).unwrap())
+                .build());
+        }
+    };
+
+    let from_number = match variables::get("twilio_from_number") {
+        Ok(s) if !s.is_empty() => s,
+        _ => {
+            let resp = StatusResponse {
+                status: "error".to_string(),
+                message: "twilio_from_number not configured".to_string(),
+            };
+            return Ok(Response::builder()
+                .status(500)
+                .header("content-type", "application/json")
+                .body(serde_json::to_string(&resp).unwrap())
+                .build());
+        }
+    };
+
+    let auth_token = match decrypt_token(&auth_token_enc).await {
+        Ok(t) => t,
+        Err(e) => {
+            let resp = StatusResponse {
+                status: "error".to_string(),
+                message: format!("Failed to decrypt Twilio auth token: {}", e),
+            };
+            return Ok(Response::builder()
+                .status(500)
+                .header("content-type", "application/json")
+                .body(serde_json::to_string(&resp).unwrap())
+                .build());
+        }
+    };
+
+    let db_url = variables::get("db_url")?;
+    let connection = Connection::open(&db_url)?;
+
+    let query = "SELECT pocket_id_sub, phone_number_encrypted, COALESCE(timezone, 'UTC') FROM users WHERE phone_number_encrypted IS NOT NULL AND phone_number_encrypted != ''";
+    let row_set = connection.query(query, &[])?;
+
+    let now_utc = chrono::Utc::now();
+    let today_utc = now_utc.format("%Y-%m-%d").to_string();
+    let now_epoch_secs = now_utc.timestamp() as u64;
+
+    // Phase 3: Optional OpenWeather check — suppress all reminders if weather is bad.
+    // Requires openweather_api_key, openweather_lat, openweather_lon Spin variables.
+    // If any variable is absent or the API call fails, skip the check (graceful degradation).
+    if let (Ok(api_key), Ok(lat_str), Ok(lon_str)) = (
+        variables::get("openweather_api_key"),
+        variables::get("openweather_lat"),
+        variables::get("openweather_lon"),
+    ) {
+        if !api_key.is_empty() {
+            if let (Ok(lat), Ok(lon)) = (lat_str.parse::<f64>(), lon_str.parse::<f64>()) {
+                match fetch_weather_main(lat, lon, &api_key).await {
+                    Ok(weather_main) => {
+                        if !is_weather_ok_for_walk(&weather_main) {
+                            println!("Weather unsuitable for walk ({}), skipping all reminders", weather_main);
+                            let resp = StatusResponse {
+                                status: "ok".to_string(),
+                                message: format!("Skipped reminders — weather: {}", weather_main),
+                            };
+                            return Ok(Response::builder()
+                                .status(200)
+                                .header("content-type", "application/json")
+                                .body(serde_json::to_string(&resp).unwrap())
+                                .build());
+                        }
+                        println!("Weather ok for walk ({}), proceeding with reminders", weather_main);
+                    }
+                    Err(e) => {
+                        eprintln!("OpenWeather API call failed ({}), proceeding without weather check", e);
+                    }
+                }
+            }
+        }
+    }
+
+    let mut sent = 0u32;
+    let mut errors = 0u32;
+
+    for row in &row_set.rows {
+        let user_id = match &row[0] { DbValue::Str(s) => s.clone(), _ => continue };
+        let phone_enc = match &row[1] { DbValue::Str(s) if !s.is_empty() => s.clone(), _ => continue };
+        let timezone = match &row[2] { DbValue::Str(s) => s.clone(), _ => "UTC".to_string() };
+
+        // Phase 3: timezone-aware local hour
+        let local_hour = local_hour_from_timezone(&timezone, &now_utc);
+
+        // Phase 3: step count from walk_inferences for today
+        let step_strings: Vec<String> = match connection.query(
+            "SELECT step_count FROM walk_inferences WHERE user_id = $1 AND start_time >= $2",
+            &[ParameterValue::Str(user_id.clone()), ParameterValue::Str(today_utc.clone())],
+        ) {
+            Ok(rs) => rs.rows.iter()
+                .filter_map(|r| match &r[0] { DbValue::Str(s) => Some(s.clone()), _ => None })
+                .collect(),
+            Err(_) => vec![],
+        };
+        let step_count = aggregate_step_count(&step_strings);
+
+        // Phase 3: rate limit via message_log
+        let last_sent_at: Option<String> = match connection.query(
+            "SELECT sent_at::TEXT FROM message_log WHERE user_id = $1 AND type = 'walk_reminder' ORDER BY sent_at DESC LIMIT 1",
+            &[ParameterValue::Str(user_id.clone())],
+        ) {
+            Ok(rs) => rs.rows.first()
+                .and_then(|r| match &r[0] { DbValue::Str(s) if !s.is_empty() => Some(s.clone()), _ => None }),
+            Err(_) => None,
+        };
+        let minutes_since_last = minutes_since_last_reminder(last_sent_at.as_deref(), now_epoch_secs);
+
+        if !should_dispatch_reminder(local_hour, step_count, minutes_since_last) {
+            println!("Skipping reminder for user {} (hour={}, steps={}, mins_since_last={:?})", user_id, local_hour, step_count, minutes_since_last);
+            continue;
+        }
+
+        match decrypt_token(&phone_enc).await {
+            Ok(phone) => {
+                let message = "Time for a walk with Boris and Fiona! 🐕 Check your daily goal.";
+                match send_walk_reminder(&phone, message, &account_sid, &auth_token, &from_number).await {
+                    Ok(_) => {
+                        println!("Reminder sent to user {}", user_id);
+                        let _ = connection.execute(
+                            "INSERT INTO message_log (user_id, type, channel) VALUES ($1, 'walk_reminder', 'sms')",
+                            &[ParameterValue::Str(user_id.clone())],
+                        );
+                        sent += 1;
+                    }
+                    Err(e) => {
+                        eprintln!("Failed to send reminder to user {}: {}", user_id, e);
+                        errors += 1;
+                    }
+                }
+            }
+            Err(e) => {
+                eprintln!("Failed to decrypt phone for user {}: {}", user_id, e);
+                errors += 1;
+            }
+        }
+    }
+
+    let resp = StatusResponse {
+        status: "ok".to_string(),
+        message: format!("Sent {} reminders, {} errors", sent, errors),
+    };
+    Ok(Response::builder()
+        .status(200)
+        .header("content-type", "application/json")
+        .body(serde_json::to_string(&resp).unwrap())
+        .build())
+}
+
+// --- Phase 3: Reminder heuristics (pure, unit-testable) ---
+
+/// OpenWeather Current Weather API response shape (only the fields we need).
+#[derive(Deserialize, Debug)]
+struct OpenWeatherResponse {
+    weather: Vec<OpenWeatherCondition>,
+}
+
+#[derive(Deserialize, Debug)]
+struct OpenWeatherCondition {
+    main: String,
+}
+
+/// Returns true if the OpenWeather "main" condition category is suitable for an outdoor walk.
+/// Conditions marked good: "Clear", "Clouds".
+/// All others (Rain, Drizzle, Thunderstorm, Snow, Atmosphere, etc.) return false.
+/// Unknown / empty strings default to false (conservative).
+fn is_weather_ok_for_walk(weather_main: &str) -> bool {
+    matches!(weather_main.trim(), "Clear" | "Clouds")
+}
+
+/// Calls the OpenWeather Current Weather API and returns the "main" weather condition string
+/// (e.g., "Clear", "Clouds", "Rain"). Requires Spin outbound HTTP permission.
+/// Caller must have added `https://api.openweathermap.org` to the `[component.trigger-reminders]`
+/// `allowed_outbound_hosts` list in spin.toml.
+async fn fetch_weather_main(lat: f64, lon: f64, api_key: &str) -> anyhow::Result<String> {
+    let url = format!(
+        "https://api.openweathermap.org/data/2.5/weather?lat={}&lon={}&appid={}&units=metric",
+        lat, lon, api_key
+    );
+    let req = Request::get(url).build();
+    let resp: Response = spin_sdk::http::send(req).await?;
+    let body = resp.body();
+    let parsed: OpenWeatherResponse = serde_json::from_slice(body)
+        .map_err(|e| anyhow::anyhow!("Failed to parse OpenWeather response: {}", e))?;
+    parsed
+        .weather
+        .into_iter()
+        .next()
+        .map(|c| c.main)
+        .ok_or_else(|| anyhow::anyhow!("OpenWeather response had empty weather array"))
+}
+
+/// Returns true if the local hour (0-23) is within the active reminder window.
+/// Active window: 8 AM (inclusive) to 8 PM (exclusive). Outside is the sleep window.
+fn is_within_reminder_window(local_hour: u32) -> bool {
+    local_hour >= 8 && local_hour < 20
+}
+
+/// Returns true if the user's step count is below the walk goal threshold.
+/// Default threshold per Phase 3 spec: 2000 steps.
+fn is_below_step_threshold(step_count: u32, threshold: u32) -> bool {
+    step_count < threshold
+}
+
+/// Returns true if rate limiting allows another reminder to be sent.
+/// Rule: no more than 2 messages per hour → minimum 30 minutes between messages.
+/// If no previous message exists (None), it is always safe to send.
+fn is_rate_limit_ok(minutes_since_last: Option<u64>) -> bool {
+    match minutes_since_last {
+        None => true,
+        Some(m) => m >= 30,
+    }
+}
+
+/// Combined heuristic: returns true only when all three conditions are satisfied.
+/// - Local hour is within the active reminder window (8 AM–8 PM)
+/// - Step count is below the 2000-step threshold
+/// - Rate limit allows sending (≥30 min since last, or no prior message)
+fn should_dispatch_reminder(local_hour: u32, step_count: u32, minutes_since_last: Option<u64>) -> bool {
+    is_within_reminder_window(local_hour)
+        && is_below_step_threshold(step_count, 2000)
+        && is_rate_limit_ok(minutes_since_last)
+}
+
+// --- Phase 3: I/O helper pure functions ---
+
+/// Aggregates total step count from a list of `step_count` strings (from walk_inferences).
+/// Non-parseable strings are treated as zero. Returns 0 for an empty slice.
+fn aggregate_step_count(step_strings: &[String]) -> u32 {
+    step_strings.iter()
+        .filter_map(|s| s.trim().parse::<u32>().ok())
+        .last()
+        .unwrap_or(0)
+}
+
+/// Returns the local hour (0–23) for the given UTC instant in the named IANA timezone.
+/// Falls back to UTC if the name cannot be parsed by chrono-tz.
+fn local_hour_from_timezone(timezone_name: &str, now_utc: &chrono::DateTime<chrono::Utc>) -> u32 {
+    use chrono::Timelike;
+    if let Ok(tz) = timezone_name.trim().parse::<chrono_tz::Tz>() {
+        now_utc.with_timezone(&tz).hour()
+    } else {
+        now_utc.hour()
+    }
+}
+
+/// Returns the number of minutes elapsed since the last reminder was sent.
+/// `last_sent_at` is an RFC 3339 or Postgres TIMESTAMPTZ string; `now_epoch_secs` is
+/// the current time as Unix seconds. Returns `None` if no prior reminder is recorded.
+fn minutes_since_last_reminder(last_sent_at: Option<&str>, now_epoch_secs: u64) -> Option<u64> {
+    let s = last_sent_at?;
+    let dt = chrono::DateTime::parse_from_rfc3339(s)
+        .or_else(|_| chrono::DateTime::parse_from_str(s, "%Y-%m-%d %H:%M:%S%.f%z"))
+        .ok()?;
+    let sent_epoch = dt.timestamp() as u64;
+    Some(now_epoch_secs.saturating_sub(sent_epoch) / 60)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // --- should_delegate ---
+
+    #[test]
+    fn test_should_delegate_disabled_always_false() {
+        assert!(!should_delegate(false, "https://home.example.com"));
+    }
+
+    #[test]
+    fn test_should_delegate_empty_url() {
+        assert!(!should_delegate(true, ""));
+    }
+
+    #[test]
+    fn test_should_delegate_localhost_url() {
+        assert!(!should_delegate(true, "http://localhost:8080"));
+    }
+
+    #[test]
+    fn test_should_delegate_loopback_url() {
+        assert!(!should_delegate(true, "http://127.0.0.1:8080"));
+    }
+
+    #[test]
+    fn test_should_delegate_public_url() {
+        assert!(should_delegate(true, "https://mecris.example.com"));
+    }
+
+    #[test]
+    fn test_should_delegate_trailing_slash_public_url() {
+        assert!(should_delegate(true, "https://home.example.com/"));
+    }
+
+    // --- parse_forecast_count ---
+
+    #[test]
+    fn test_parse_forecast_count_object_form() {
+        let v = serde_json::json!({ "count": 42 });
+        assert_eq!(parse_forecast_count(&v), 42);
+    }
+
+    #[test]
+    fn test_parse_forecast_count_raw_integer() {
+        let v = serde_json::json!(17);
+        assert_eq!(parse_forecast_count(&v), 17);
+    }
+
+    #[test]
+    fn test_parse_forecast_count_missing_falls_back_to_zero() {
+        let v = serde_json::json!({});
+        assert_eq!(parse_forecast_count(&v), 0);
+    }
+
+    #[test]
+    fn test_parse_forecast_count_null_falls_back_to_zero() {
+        let v = serde_json::json!(null);
+        assert_eq!(parse_forecast_count(&v), 0);
+    }
+
+    // --- twilio helpers ---
+
+    #[test]
+    fn test_build_twilio_url_contains_account_sid() {
+        let url = build_twilio_url("AC1234567890abcdef");
+        assert!(url.contains("AC1234567890abcdef"));
+        assert!(url.starts_with("https://api.twilio.com/"));
+    }
+
+    #[test]
+    fn test_build_twilio_body_contains_fields() {
+        let body = build_twilio_body("+15551234567", "+15559876543", "Hello!");
+        assert!(body.contains("From="));
+        assert!(body.contains("To="));
+        assert!(body.contains("Body="));
+    }
+
+    #[test]
+    fn test_encode_basic_auth_non_empty() {
+        let encoded = encode_basic_auth("user", "pass");
+        assert!(!encoded.is_empty());
+    }
+
+    #[test]
+    fn test_encode_basic_auth_known_value() {
+        // base64("user:pass") == "dXNlcjpwYXNz"
+        let encoded = encode_basic_auth("user", "pass");
+        assert_eq!(encoded, "dXNlcjpwYXNz");
+    }
+
+    // --- build_sms_request_parts ---
+
+    #[test]
+    fn test_build_sms_request_parts_url_contains_account_sid() {
+        let (url, _, _) = build_sms_request_parts("AC1234567890abcdef", "tok", "+15550001111", "+15559876543", "Hello!");
+        assert!(url.contains("AC1234567890abcdef"), "URL should contain account SID");
+        assert!(url.starts_with("https://api.twilio.com/"), "URL should start with Twilio base");
+    }
+
+    #[test]
+    fn test_build_sms_request_parts_body_contains_fields() {
+        let (_, body, _) = build_sms_request_parts("ACtest", "tok", "+15550001111", "+15559876543", "Go walk!");
+        assert!(body.contains("From="), "body should have From field");
+        assert!(body.contains("To="), "body should have To field");
+        assert!(body.contains("Body="), "body should have Body field");
+    }
+
+    #[test]
+    fn test_build_sms_request_parts_auth_is_basic() {
+        let (_, _, auth) = build_sms_request_parts("ACtest", "mysecret", "+1", "+2", "msg");
+        assert!(auth.starts_with("Basic "), "Authorization header should start with 'Basic '");
+        assert!(auth.len() > 6, "Authorization header should be non-trivial");
+    }
+
+    #[test]
+    fn test_build_sms_request_parts_auth_encodes_sid_and_token() {
+        // Basic base64("ACsid:ACtoken") should be consistent with encode_basic_auth
+        let (_, _, auth) = build_sms_request_parts("ACsid", "ACtoken", "+1", "+2", "msg");
+        let expected = format!("Basic {}", encode_basic_auth("ACsid", "ACtoken"));
+        assert_eq!(auth, expected);
+    }
+
+    // --- arabic_completions ---
+
+    #[test]
+    fn test_arabic_completions_zero() {
+        assert_eq!(arabic_completions(0), 0);
+    }
+
+    #[test]
+    fn test_arabic_completions_one_card() {
+        // 12 points → 1 card
+        assert_eq!(arabic_completions(12), 1);
+    }
+
+    #[test]
+    fn test_arabic_completions_partial_card_truncates() {
+        // 11 points → 0 cards (truncated, not rounded)
+        assert_eq!(arabic_completions(11), 0);
+    }
+
+    #[test]
+    fn test_arabic_completions_large_session() {
+        // 120 points → 10 cards
+        assert_eq!(arabic_completions(120), 10);
+    }
+
+    // --- is_within_reminder_window ---
+
+    #[test]
+    fn test_reminder_window_active_morning() {
+        // 9 AM is well within the active window
+        assert!(is_within_reminder_window(9));
+    }
+
+    #[test]
+    fn test_reminder_window_active_afternoon() {
+        // 15 (3 PM) is within the active window
+        assert!(is_within_reminder_window(15));
+    }
+
+    #[test]
+    fn test_reminder_window_active_boundary_start() {
+        // 8 AM is the inclusive start of the window
+        assert!(is_within_reminder_window(8));
+    }
+
+    #[test]
+    fn test_reminder_window_sleep_boundary_end() {
+        // 20 (8 PM) is the exclusive end — should NOT send
+        assert!(!is_within_reminder_window(20));
+    }
+
+    #[test]
+    fn test_reminder_window_sleep_midnight() {
+        // Midnight is in the sleep window
+        assert!(!is_within_reminder_window(0));
+    }
+
+    #[test]
+    fn test_reminder_window_sleep_early_morning() {
+        // 7 AM is still the sleep window
+        assert!(!is_within_reminder_window(7));
+    }
+
+    #[test]
+    fn test_reminder_window_sleep_late_night() {
+        // 23 (11 PM) is in the sleep window
+        assert!(!is_within_reminder_window(23));
+    }
+
+    // --- is_below_step_threshold ---
+
+    #[test]
+    fn test_step_threshold_below() {
+        // 1999 steps → should remind
+        assert!(is_below_step_threshold(1999, 2000));
+    }
+
+    #[test]
+    fn test_step_threshold_at_goal() {
+        // Exactly 2000 steps → goal met, do not remind
+        assert!(!is_below_step_threshold(2000, 2000));
+    }
+
+    #[test]
+    fn test_step_threshold_above_goal() {
+        // 5000 steps → well above goal, do not remind
+        assert!(!is_below_step_threshold(5000, 2000));
+    }
+
+    #[test]
+    fn test_step_threshold_zero() {
+        // 0 steps → definitely should remind
+        assert!(is_below_step_threshold(0, 2000));
+    }
+
+    // --- is_rate_limit_ok ---
+
+    #[test]
+    fn test_rate_limit_no_previous_message() {
+        // No prior message → always ok to send
+        assert!(is_rate_limit_ok(None));
+    }
+
+    #[test]
+    fn test_rate_limit_too_recent() {
+        // 29 minutes ago → too soon (minimum is 30)
+        assert!(!is_rate_limit_ok(Some(29)));
+    }
+
+    #[test]
+    fn test_rate_limit_exactly_at_boundary() {
+        // 30 minutes ago → exactly at limit, ok to send
+        assert!(is_rate_limit_ok(Some(30)));
+    }
+
+    #[test]
+    fn test_rate_limit_long_gap() {
+        // 120 minutes ago → well past limit
+        assert!(is_rate_limit_ok(Some(120)));
+    }
+
+    // --- should_dispatch_reminder ---
+
+    #[test]
+    fn test_should_dispatch_all_conditions_met() {
+        // Active hour, low steps, no prior message → dispatch
+        assert!(should_dispatch_reminder(10, 500, None));
+    }
+
+    #[test]
+    fn test_should_dispatch_wrong_hour_blocks() {
+        // Sleep window: suppress even with low steps and no prior message
+        assert!(!should_dispatch_reminder(2, 500, None));
+    }
+
+    #[test]
+    fn test_should_dispatch_goal_met_blocks() {
+        // Step goal reached: suppress even in active window
+        assert!(!should_dispatch_reminder(10, 2000, None));
+    }
+
+    #[test]
+    fn test_should_dispatch_rate_limited_blocks() {
+        // Too recent: suppress even with low steps in active window
+        assert!(!should_dispatch_reminder(10, 500, Some(15)));
+    }
+
+    // --- is_weather_ok_for_walk ---
+
+    #[test]
+    fn test_weather_ok_clear() {
+        assert!(is_weather_ok_for_walk("Clear"));
+    }
+
+    #[test]
+    fn test_weather_ok_clouds() {
+        assert!(is_weather_ok_for_walk("Clouds"));
+    }
+
+    #[test]
+    fn test_weather_bad_rain() {
+        assert!(!is_weather_ok_for_walk("Rain"));
+    }
+
+    #[test]
+    fn test_weather_bad_thunderstorm() {
+        assert!(!is_weather_ok_for_walk("Thunderstorm"));
+    }
+
+    #[test]
+    fn test_weather_bad_snow() {
+        assert!(!is_weather_ok_for_walk("Snow"));
+    }
+
+    #[test]
+    fn test_weather_bad_drizzle() {
+        assert!(!is_weather_ok_for_walk("Drizzle"));
+    }
+
+    #[test]
+    fn test_weather_bad_atmosphere() {
+        // "Atmosphere" covers fog, haze, mist — conservative: skip walk
+        assert!(!is_weather_ok_for_walk("Atmosphere"));
+    }
+
+    #[test]
+    fn test_weather_unknown_is_false() {
+        // Unknown / empty defaults to false (conservative)
+        assert!(!is_weather_ok_for_walk(""));
+        assert!(!is_weather_ok_for_walk("Tornado"));
+    }
+
+    // --- aggregate_step_count ---
+
+    #[test]
+    fn test_aggregate_step_count_empty() {
+        assert_eq!(aggregate_step_count(&[]), 0);
+    }
+
+    #[test]
+    fn test_aggregate_step_count_single() {
+        assert_eq!(aggregate_step_count(&["1500".to_string()]), 1500);
+    }
+
+    #[test]
+    fn test_aggregate_step_count_multiple() {
+        assert_eq!(aggregate_step_count(&["1000".to_string(), "500".to_string(), "200".to_string()]), 200);
+    }
+
+    #[test]
+    fn test_aggregate_step_count_skips_invalid() {
+        assert_eq!(aggregate_step_count(&["bad".to_string(), "800".to_string()]), 800);
+    }
+
+    // --- local_hour_from_timezone ---
+
+    #[test]
+    fn test_local_hour_utc_stays_same() {
+        // 2026-04-11 14:00:00 UTC → UTC hour 14
+        let dt = chrono::DateTime::parse_from_rfc3339("2026-04-11T14:00:00+00:00")
+            .unwrap()
+            .with_timezone(&chrono::Utc);
+        assert_eq!(local_hour_from_timezone("UTC", &dt), 14);
+    }
+
+    #[test]
+    fn test_local_hour_america_new_york_offset() {
+        // 2026-04-11 14:00:00 UTC → EDT = UTC-4 → local hour 10
+        let dt = chrono::DateTime::parse_from_rfc3339("2026-04-11T14:00:00+00:00")
+            .unwrap()
+            .with_timezone(&chrono::Utc);
+        assert_eq!(local_hour_from_timezone("America/New_York", &dt), 10);
+    }
+
+    #[test]
+    fn test_local_hour_unknown_timezone_falls_back_to_utc() {
+        let dt = chrono::DateTime::parse_from_rfc3339("2026-04-11T10:00:00+00:00")
+            .unwrap()
+            .with_timezone(&chrono::Utc);
+        assert_eq!(local_hour_from_timezone("Not/ATimezone", &dt), 10);
+    }
+
+    // --- minutes_since_last_reminder ---
+
+    #[test]
+    fn test_minutes_since_last_none_input() {
+        assert_eq!(minutes_since_last_reminder(None, 12345678), None);
+    }
+
+    #[test]
+    fn test_minutes_since_last_exactly_30_min() {
+        // 2026-01-01T00:00:00Z = 1767225600
+        assert_eq!(minutes_since_last_reminder(Some("2026-01-01T00:00:00+00:00"), 1767225600 + 1800), Some(30));
+    }
+
+    #[test]
+    fn test_minutes_since_last_1_hour() {
+        assert_eq!(minutes_since_last_reminder(Some("2026-01-01T00:00:00+00:00"), 1767225600 + 3600), Some(60));
+    }
+
+    #[test]
+    fn test_minutes_since_last_unparseable_returns_none() {
+        assert_eq!(minutes_since_last_reminder(Some("not-a-timestamp"), 99999), None);
+    }
 }

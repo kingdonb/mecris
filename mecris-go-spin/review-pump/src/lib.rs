@@ -249,10 +249,10 @@ mod tests {
     #[test]
     fn flow_state_turbulent_when_at_or_above_target() {
         // 2.0x Steady: target = 50 + 140/14 = 60
-        // daily_completions = 60 → turbulent
+        // daily_completions = 60 → turbulent; remaining = (60-60).max(0) = 0
         let s = get_status(140, 50, 60, 20, "points");
         assert_eq!(s.status, "turbulent");
-        assert_eq!(s.target_flow_rate, 60);
+        assert_eq!(s.target_flow_rate, 0); // at target → nothing remaining
     }
 
     #[test]

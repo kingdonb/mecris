@@ -119,6 +119,12 @@ The Mecris-Go sync service requires specific variables to be set in Fermyon Clou
 | `oidc_discovery_url` | The URL to your OIDC provider's configuration. | `https://metnoom.urmanac.com/.well-known/openid-configuration` |
 | `master_encryption_key` | 32-byte key in hex format (64 chars) for AES-256-GCM. | `000102...1d1e` |
 | `db_url` | Neon PostgreSQL connection string. | `postgres://user:pass@host/db` |
+| `twilio_account_sid` | (Optional, Phase 2) Twilio Account SID for SMS. If missing, SMS fails silently. | `AC12345...` |
+| `twilio_auth_token_encrypted` | (Optional, Phase 2) Encrypted Twilio Auth Token. | `...` |
+| `twilio_from_number` | (Optional, Phase 2) The phone number to send from. | `+1234567890` |
+| `openweather_api_key` | (Optional, Phase 3) OpenWeather API Key. If missing, skips weather check. | `abcd1234...` |
+| `openweather_lat` | (Optional, Phase 3) Latitude for weather check. | `40.7128` |
+| `openweather_lon` | (Optional, Phase 3) Longitude for weather check. | `-74.0060` |
 
 ### Setting Variables via Spin CLI
 
@@ -126,6 +132,16 @@ The Mecris-Go sync service requires specific variables to be set in Fermyon Clou
 spin cloud variable set oidc_discovery_url="https://<your-oidc-domain>/.well-known/openid-configuration"
 spin cloud variable set master_encryption_key="$(openssl rand -hex 32)"
 spin cloud variable set db_url="<your-neon-db-url>"
+
+# Phase 2: Twilio SMS Integration
+spin cloud variable set twilio_account_sid="<your-twilio-sid>"
+spin cloud variable set twilio_auth_token_encrypted="<your-twilio-auth-token-encrypted>"
+spin cloud variable set twilio_from_number="<your-twilio-number>"
+
+# Phase 3: OpenWeather Heuristics
+spin cloud variable set openweather_api_key="<your-openweather-key>"
+spin cloud variable set openweather_lat="<your-latitude>"
+spin cloud variable set openweather_lon="<your-longitude>"
 ```
 
 ## 6. Maintenance Commands

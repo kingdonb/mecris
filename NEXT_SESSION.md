@@ -1,39 +1,43 @@
-# Next Session: kingdonb/mecris#177 is CI-green — awaiting kingdonb review and merge
+# Next Session: kingdonb review and merge of kingdonb/mecris#178
 
-## Current Status (2026-04-09)
-- **kingdonb/mecris#177 CI-GREEN**: pr-test run 24202342245 concluded `success`. Python tests ✅, Android tests ✅. PR is ready for kingdonb's review and merge.
-- **Ghost Archivist test coverage added**: `tests/test_ghost_archivist.py` (237631d) — 13 new tests covering `perform_archival_sync` and `archivists_round_robin`. Full suite now 295 passed, 5 skipped, 0 errors.
-- **Rust test gap (known/acknowledged)**: `cargo test --workspace` at repo root fails — no root `Cargo.toml`. Workflow file fix needs `workflow` PAT scope — bot cannot push workflow file changes. Not blocking the PR merge.
-- **yebyen/mecris is ahead of kingdonb/mecris**: After merge, repos re-sync and accumulated commits land in upstream main.
-
-## Verified This Session
-- [x] **Ghost Archivist unit tests**: 13 tests in `tests/test_ghost_archivist.py` — all passing locally and in CI (pr-test run 24202342245).
-- [x] **perform_archival_sync** fully covered: language sync happy/failure paths, Reality Enforcement (no datapoint push on no-activity), presence upsert to ACTIVE_GHOST, all exception paths isolated.
-- [x] **archivists_round_robin** fully covered: store unavailable, get_all_users failure, wakeup/skip logic, per-user exception isolation.
-- [x] **pr-test 177 still passes**: Run 24202342245 — conclusion `success`. New tests included, no regressions.
-
-## Pending Verification (Next Session)
-- [ ] **kingdonb/mecris#177 merge**: kingdonb needs to review and merge. Bot cannot merge upstream PRs.
-- [ ] **Rust test gap (workflow fix)**: Modify `pr-test.yml` step `Run Rust tests` to check `[ -f Cargo.toml ]` before running `cargo test`. Needs `workflow` PAT scope — bot cannot push workflow changes. Needs kingdonb's action or a token with workflow scope.
-- [ ] **Multiplier Sync Validation**: Verify setting the Review Pump lever in Android updates multiplier in Neon (`SELECT pump_multiplier FROM language_stats`). Requires live device + Neon access.
-- [ ] **Ghost Archivist End-to-End**: Run scheduler locally, let archivist job fire, confirm logs show correct reconciliation without pushing fake data to Beeminder. (Unit tests now complete; E2E still needs live environment.)
-# Next Session: Identify new bot-actionable work from kingdonb's async sync feature
-
-## Current Status (2026-04-09)
-- **yebyen/mecris is synced with kingdonb/mecris**: Merge commit `5503f07` brings in `fa5e601` (PR #177 squash merge). `git log HEAD..upstream/main` is empty.
-- **kingdonb merged PR #177** (2026-04-09T17:22:11Z): 13 commits squashed — CI fixes, encrypted credential tests, Ghost Archivist unit tests, SQL migration 003.
-- **Test suite healthy**: `PYTHONPATH=. .venv/bin/pytest` → **312 passed, 5 skipped, 0 errors** (up from 295 — kingdonb's additional tests now included after sync).
-- **kingdonb's async background sync landed**: `66396ee` ("feat(sync): implement async background sync and parallelized scraper") is now in our ancestry. Review it next session to see if it exposes new test gaps or bot-actionable work.
-- **No open tagged issues**: kingdonb/mecris and yebyen/mecris both have zero issues tagged needs-test, pr-review, or bug.
+## Current Status (2026-04-12)
+- **PR open upstream**: kingdonb/mecris#178 from yebyen:main — full Rust service (Twilio Phase 2 + Phase 3 heuristics + Phase 3 I/O dispatch loop + OpenWeather check + spin.toml fix). Not yet merged.
+- **PR description updated**: As of 2026-04-12 (2nd run), PR body accurately describes all 8 feature groups, 60 Rust tests, known CI gap, and closed yebyen issues. No longer references stale "14 Rust tests" scope. Closes yebyen/mecris#155.
+- **Python CI fully green**: pr-test run 24298599374 — confirmed green with updated head `b4d0c70` (2026-04-12). Python ✅ Android ✅.
+- **Android CI green**: unchanged from prior sessions.
+- **Rust CI still failing**: Known; `pr-test.yml` runs `cargo test` in wrong directory. Exact fix documented in yebyen/mecris#142. Needs `workflow` PAT scope to apply — bot cannot push workflow file changes.
+- **spin.toml fully updated**: `704f6d4` — added `https://api.twilio.com` and `https://api.openweathermap.org` to `allowed_outbound_hosts`; declared all 6 new variables. Closes yebyen/mecris#154.
+- **All Rust crates pass locally**: sync-service: 60 tests, all green. Total across 6 crates: 94 tests, all green.
 
 ## Verified This Session
-- [x] **kingdonb/mecris#177 merged**: Confirmed closed at 17:22:11Z on 2026-04-09 (squash merge, 1 merge commit).
-- [x] **Upstream sync complete**: `git merge upstream/main` (merge commit `5503f07`) — clean via 'ort' strategy, no conflicts.
-- [x] **Full test suite still passes**: 312 passed, 5 skipped, 0 errors — no regressions from sync.
+- [x] **PR #178 description updated (2026-04-12, 2nd run)**: Rewrote kingdonb/mecris#178 PR body via GITHUB_CLASSIC_PAT PATCH to accurately list all 8 feature groups (Phase 2 Twilio, Phase 3 heuristics/I/O/OpenWeather, spin.toml, Python cloud-sync tests, review-pump fix), 60 Rust tests, and known CI gap. Verified via GET. Closes yebyen/mecris#155.
+- [x] **spin.toml allowed_outbound_hosts fixed (2026-04-12)**: Added `https://api.twilio.com` and `https://api.openweathermap.org` to `allowed_outbound_hosts` for `sync-service` component. Declared 6 Spin variables (`twilio_account_sid`, `twilio_auth_token_encrypted`, `twilio_from_number`, `openweather_api_key`, `openweather_lat`, `openweather_lon`) in both `[variables]` and `[component.sync-service.variables]`. `cargo test`: 60 passed. Commit `704f6d4`. Closes yebyen/mecris#154.
+- [x] **pr-test #178 re-confirmed green (2026-04-12)**: run 24298599374 — Python ✅ Android ✅. Head SHA `b4d0c70`. Phase 3 + OpenWeather + archive commits confirmed non-regressive.
+- [x] **OpenWeather heuristic implemented (2026-04-11)**: `is_weather_ok_for_walk(weather_main)` returns true for "Clear"/"Clouds", false for Rain/Drizzle/Thunderstorm/Snow/Atmosphere/unknown. `fetch_weather_main(lat, lon, api_key)` calls OpenWeather Current Weather API via Spin outbound HTTP. Dispatch loop reads `openweather_api_key`, `openweather_lat`, `openweather_lon` from Spin variables; skips all reminders if weather is unsuitable; graceful no-op if variables absent. 8 new tests; `cargo test`: 60 passed. Commit `55a4e00`. Closes yebyen/mecris#152.
+- [x] **Phase 3 I/O helpers implemented and wired (2026-04-11)**: `aggregate_step_count`, `local_hour_from_timezone`, `minutes_since_last_reminder` — 11 new tests. Dispatch loop queries `walk_inferences` for today's step count, `message_log` for rate limiting, and `users.timezone` for local-hour computation. Commit `59394c2`. Closes yebyen/mecris#151.
+- [x] **Phase 3 heuristic pure functions implemented (2026-04-11)**: `is_within_reminder_window`, `is_below_step_threshold`, `is_rate_limit_ok`, `should_dispatch_reminder`. 19 new tests, 41 total in sync-service at the time. Commit `4d38b58`. Closes yebyen/mecris#150.
+- [x] **pr-test #178 re-confirmed green with Twilio Phase 2 commits (2026-04-11)**: run 24288151090 — 321 passed, 4 skipped, 0 failures. Python ✅ Android ✅. PR head SHA `8479bc7` includes `3a6d5f3` + `5ba5b96`. Closes yebyen/mecris#149.
+- [x] **send_walk_reminder implemented (2026-04-11)**: Pure function `build_sms_request_parts` + async `send_walk_reminder` + full `handle_trigger_reminders_post` handler. 4 new tests, 22 total at the time. Commit `5ba5b96`. Closes yebyen/mecris#148.
+- [x] **Twilio SMS helpers ported to sync-service (2026-04-11)**: 3 pure functions + route stub + 4 new tests. `cargo test` passes 18 tests. Commit `3a6d5f3`. Closes yebyen/mecris#146.
+- [x] **All open kingdonb/mecris issues scanned (2026-04-11, 2nd run)**: Full issue list reviewed — 30 open issues, all are epics/arch discussions/Android/WASM/live-env tasks. No new bot-actionable backend Python work found. Majesty Cake backend complete, reminder service complete (1156 lines of tests), test suite at 321+ passing.
+- [x] **PR #178 still open, upstream still stalled (2026-04-11)**: Orient confirmed kingdonb/mecris upstream has not moved since `ab7fef7` (2026-04-09). No new commits, no new issues. PR #178 still awaiting review.
+- [x] **pr-test #178 still green (re-confirmed 2026-04-11)**: run 24269477437 — 321 passed, 4 skipped, 0 failures. Python ✅ Android ✅. (2026-04-10)
+- [x] **test_narrator_context_standalone is SAFE**: Audited and confirmed in yebyen/mecris#140. (Verified prior session.)
+- [x] **Rust workflow fix documented**: yebyen/mecris#142 created with exact `working-directory: mecris-go-spin/sync-service` diff. Verified `Cargo.toml` exists at that path.
+- [x] **No upstream sync needed**: yebyen is AHEAD of kingdonb. kingdonb's latest is `ab7fef7` (merge commit, 2026-04-09).
+- [x] **All 6 Rust crates pass natively**: sync-service (60), review-pump (17), majesty-cake-rs (4), nag-engine-rs (4), review-pump-rs (4), goal-type-rs (5) — 94 total, all green.
+- [x] **review-pump test bug fixed**: `flow_state_turbulent_when_at_or_above_target` had wrong assertion `target_flow_rate == 60`; corrected to `0`. Commit `53b4fd7`. Closes yebyen/mecris#143.
 
 ## Pending Verification (Next Session)
-- [ ] **Explore kingdonb's async sync work**: Read `66396ee` ("feat(sync): implement async background sync and parallelized scraper") — understand what changed in Spin delegation and Home Server background tasks. Check if there are new test gaps or CI concerns from the Rust code.
-- [ ] **Rust test gap (workflow fix)**: Modify `pr-test.yml` step `Run Rust tests` to check `[ -f Cargo.toml ]` before running `cargo test`. Needs `workflow` PAT scope — bot cannot push workflow changes. Needs kingdonb's action or a token with workflow scope.
+- [ ] **Multi-Tenancy Location Data Gap**: OpenWeather location data (`openweather_lat`, `openweather_lon`) is currently stored as global Spin variables. It must be migrated to be an encrypted user property in the `users` table so each user gets local weather context.
+- [ ] **Android UI Gaps**: Add a "log out" button for PocketID auth. Add a UI for users to securely provide their phone number, grant/revoke authorization to receive texts, and manage their personal location for weather heuristics.
+- [ ] **PR kingdonb/mecris#178 merged**: Python + Android are green (re-confirmed 2026-04-12, run 24298599374). Rust is a known pre-existing gap with documented fix in yebyen/mecris#142. Needs kingdonb review and merge. Note: PR head will update after this session's push to include `704f6d4` (spin.toml fix) + archive commit.
+- [ ] **After PR #178 merge: sync yebyen from upstream**: `git fetch upstream && git merge upstream/main --no-edit`. Then verify yebyen is up to date.
+- [ ] **Rust test gap (workflow fix)**: Apply fix from yebyen/mecris#142: add `working-directory: mecris-go-spin/sync-service` to `Run Rust tests` step in `.github/workflows/pr-test.yml`. Needs `workflow` PAT scope or kingdonb direct action.
+- [ ] **send_walk_reminder integration test**: The HTTP dispatch (`spin_sdk::http::send`) in `send_walk_reminder` cannot be unit-tested without Spin host. Verify by deploying to Spin Cloud and triggering `POST /internal/trigger-reminders` with a configured `twilio_account_sid`, `twilio_auth_token_encrypted`, `twilio_from_number` in `spin.toml` variables.
+- [ ] **Twilio Spin variables not yet configured**: `twilio_account_sid`, `twilio_auth_token_encrypted`, `twilio_from_number` must be set by kingdonb in the live environment (declarations are now in `spin.toml` as of `704f6d4`).
+- [ ] **OpenWeather Spin variables not yet configured**: `openweather_api_key`, `openweather_lat`, `openweather_lon` must be set by kingdonb in the live environment (declarations are now in `spin.toml` as of `704f6d4`).
+- [ ] **spin.toml allowed_outbound_hosts**: DONE (`704f6d4`) — `https://api.twilio.com` and `https://api.openweathermap.org` added. No further action needed here.
 - [ ] **Multiplier Sync Validation**: Verify setting the Review Pump lever in Android updates multiplier in Neon (`SELECT pump_multiplier FROM language_stats`). Requires live device + Neon access.
 - [ ] **Ghost Archivist End-to-End**: Run scheduler locally, let archivist job fire, confirm logs show correct reconciliation without pushing fake data to Beeminder. (Unit tests complete; E2E still needs live environment.)
 - [ ] **kingdonb/mecris#132 verification**: Trigger `/internal/failover-sync` and confirm `daily_completions` is non-zero in Neon if reviews were done.
@@ -50,10 +54,27 @@
 - **Fine-grained PAT**: `GITHUB_TOKEN` is scoped to yebyen/mecris only — cannot comment or close issues on kingdonb/mecris.
 - **NEXT_SESSION.md merge conflict is permanently fixed**: `.gitattributes merge=union` on yebyen/mecris:main resolves this automatically.
 - **psycopg2 not installed in CI runner**: `test_presence_neon.py` may have pre-existing failures — not a regression.
-- **Test isolation pattern**: Tests that import `mcp_server` must use `sys.modules.pop("mcp_server", None)` + `patch.dict(os.environ, ...)` + `patch("psycopg2.connect")` before importing. See `_make_mcp_importable()` in `test_mcp_server.py`.
-- **Ghost Archivist lazy-import pattern**: `BeeminderClient` and `LanguageSyncService` are imported INSIDE `perform_archival_sync()` function body. Patch at source modules (`beeminder_client.BeeminderClient`, `services.language_sync_service.LanguageSyncService`), not at `ghost.archivist_logic`.
+- **Python venv not present in bot runner**: `PYTHONPATH=. .venv/bin/pytest` cannot run in bot context; Python tests validated via kingdonb/mecris pr-test workflow instead.
+- **Test isolation pattern**: Tests that import `mcp_server` must use `sys.modules.pop("mcp_server", None)` + `patch.dict(os.environ, ...)` + `patch("psycopg2.connect")` before importing. See `_make_mcp_importable()` in `test_mcp_server.py`, `test_cloud_sync.py`, `test_standalone_access.py`, `test_unauthorized_access.py`, `test_walk_sync.py`.
+- **standalone test safety**: `_record_presence` (mcp_server.py:46-54) is fully guarded — returns None if no store, wraps upsert in try/except. Main handler (mcp_server.py:367-490) has outer try/except that returns dict on failure. `/narrator/context` always returns HTTP 200 in standalone mode.
+- **Ghost Archivist lazy-import pattern**: `BeeminderClient` and `LanguageSyncService` are imported INSIDE `perform_archival_sync()` function body. Patch at source modules, not at `ghost.archivist_logic`.
+- **cloud-sync patch pattern**: `language_sync_service` is a module-level variable. Use `patch("mcp_server.language_sync_service")` AFTER importing mcp_server within env+psycopg2 patches.
 - **BeeminderClient note**: `UsageTracker.__init__` requires `NEON_DB_URL` even in the no-DB fallback path — mock UsageTracker when testing the env-var-only path.
-- **Multi-tenancy schema**: `language_stats` PK is `(user_id, language_name)`; `budget_tracking` has `user_id UNIQUE`. All queries scope by user_id. SQL migration 003 formalizes this for live Neon.
-- **pr-test workflow sets NEON_DB_URL** (line 93 of pr-test.yml): `postgresql://mecris:mecris@localhost:5432/mecrisdb`. This means conftest `pytest_ignore_collect` for NEON_DB_URL tests does NOT fire — those tests are collected and must not fail at import time.
-- **requirements.txt Python dep chain**: `apscheduler>=3.10` (bfa0e75) + `SQLAlchemy>=2.0` (02b6340) — both needed because `scheduler.py` imports `SQLAlchemyJobStore` from apscheduler.
-- **Upstream sync pattern**: `git remote add upstream https://github.com/kingdonb/mecris.git && git fetch upstream main && git merge upstream/main --no-edit` — clean via 'ort' strategy when histories diverge post-squash-merge.
+- **Multi-tenancy schema**: `language_stats` PK is `(user_id, language_name)`; `budget_tracking` has `user_id UNIQUE` with FK to `users(pocket_id_sub)`. All queries scope by user_id.
+- **pr-test.yml push constraint**: Bot dispatches pr-test but local commits are not on GitHub until bot workflow ends. Do NOT dispatch pr-test expecting to see local commits — always dispatch AFTER the push (i.e., in the NEXT session after commits land).
+- **pr-test.yml sets NEON_DB_URL** (line 93 of pr-test.yml): `postgresql://mecris:mecris@localhost:5432/mecrisdb`. Tests that import mcp_server MUST patch psycopg2.connect or they will try to connect to the real local postgres and hit FK constraints.
+- **schema.sql budget_tracking schema**: Fixed in `8597dbe` — columns are now `budget_period_start TEXT NOT NULL`, `budget_period_end TEXT NOT NULL`, `total_budget DOUBLE PRECISION NOT NULL`, `remaining_budget DOUBLE PRECISION NOT NULL`, `user_id UNIQUE REFERENCES users(pocket_id_sub)`.
+- **schema.sql token_bank**: Added in `c88d368` — `CREATE TABLE IF NOT EXISTS token_bank (user_id TEXT PRIMARY KEY REFERENCES users(pocket_id_sub), available_tokens BIGINT NOT NULL DEFAULT 0, monthly_limit BIGINT NOT NULL DEFAULT 1000000, last_refill TIMESTAMPTZ NOT NULL DEFAULT NOW())`.
+- **requirements.txt Python dep chain**: `apscheduler>=3.10` + `SQLAlchemy>=2.0` — both needed because `scheduler.py` imports `SQLAlchemyJobStore` from apscheduler.
+- **Upstream sync pattern**: `git remote add upstream https://github.com/kingdonb/mecris.git && git fetch upstream main && git merge upstream/main --no-edit`.
+- **Rust unit tests**: Pure functions extracted to module scope — `cargo test` in `mecris-go-spin/sync-service/` runs 60 tests natively without Spin host. Phase 3 weather: `is_weather_ok_for_walk` (8 tests in `55a4e00`), Phase 3 I/O helpers in `59394c2`: `aggregate_step_count` (4), `local_hour_from_timezone` (3), `minutes_since_last_reminder` (4).
+- **Rust workspace**: No workspace Cargo.toml in `mecris-go-spin/`. `sync-service` has `[workspace]` making it self-contained (can't join a parent workspace). Each crate must be tested individually. 6 crates, 94 tests total.
+- **Rust workflow fix**: Add `working-directory: mecris-go-spin/sync-service` to `Run Rust tests` step in pr-test.yml. Exact diff in yebyen/mecris#142. Cannot push (no workflow PAT). Additional crates need separate CI steps.
+- **target_flow_rate semantics**: This field means "remaining work to reach target" = `(target - daily_completions).max(0)`. When at or above target, value is 0. See `services/review_pump.py:67` and `mecris-go-spin/review-pump/src/lib.rs:114`.
+- **Twilio helpers in sync-service**: `build_twilio_url`, `build_twilio_body`, `encode_basic_auth`, `build_sms_request_parts` are pure functions at module scope in `lib.rs`. `send_walk_reminder` is async and requires Spin host to dispatch. `handle_trigger_reminders_post` reads `twilio_account_sid`, `twilio_auth_token_encrypted`, `twilio_from_number` from Spin variables.
+- **Phase 3 dispatch loop in sync-service**: `handle_trigger_reminders_post` queries `users` for timezone, `walk_inferences` for today's step count, `message_log` for last walk_reminder, evaluates `should_dispatch_reminder(local_hour, step_count, minutes_since_last)` per user. Logs sent reminders to `message_log (type='walk_reminder', channel='sms')`. Also evaluates weather via OpenWeather API before the user loop (optional, graceful degradation if vars absent).
+- **Phase 3 heuristics in sync-service**: `is_within_reminder_window(local_hour)`, `is_below_step_threshold(step_count, threshold)`, `is_rate_limit_ok(minutes_since_last: Option<u64>)`, `should_dispatch_reminder(local_hour, step_count, minutes_since_last)` — all pure, all tested. `is_weather_ok_for_walk(weather_main)` — pure, 8 tests. `fetch_weather_main(lat, lon, api_key)` — async, calls OpenWeather Current Weather API.
+- **OpenWeather integration in sync-service**: Reads `openweather_api_key`, `openweather_lat`, `openweather_lon` from Spin variables. If API key is present, calls `fetch_weather_main` before user loop; suppresses all reminders if `is_weather_ok_for_walk` returns false. On API error, logs and proceeds (graceful degradation). `https://api.openweathermap.org` now in `allowed_outbound_hosts` for sync-service in spin.toml (commit `704f6d4`).
+- **Twilio outbound hosts**: `https://api.twilio.com` now in `allowed_outbound_hosts` for sync-service in spin.toml (commit `704f6d4`).
+- **phone_number_encrypted column**: Exists in `users` table per `scripts/migrations/002_pii_encryption.sql` and `mecris-go-spin/schema.sql`. The trigger-reminders handler queries all users with this column set.
+- **message_log table**: Used for rate limiting. Query: `SELECT sent_at::TEXT FROM message_log WHERE user_id = $1 AND type = 'walk_reminder' ORDER BY sent_at DESC LIMIT 1`. Insert after send: `INSERT INTO message_log (user_id, type, channel) VALUES ($1, 'walk_reminder', 'sms')`.

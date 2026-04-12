@@ -932,3 +932,186 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: None — sync was the only bot-actionable task. All remaining pending items (live device tests, Rust workflow fix, Android UI verification) require human or kingdonb action.
 
 **Next**: Review kingdonb's async background sync (`66396ee`) for new test gaps or CI concerns. Open a plan issue if bot-actionable work is found.
+
+## 2026-04-09 🏛️ — Add tests for async /internal/cloud-sync endpoint (202 Accepted)
+
+**Planned**: Add ≥3 unit tests covering 202 status, fire-and-forget semantics, and exception isolation for the async cloud-sync endpoint changed in commit 66396ee (yebyen/mecris#133).
+**Done**: Wrote `tests/test_cloud_sync.py` with exactly 3 tests — all passing. Full suite: 315 passed, 5 skipped, 0 errors. Committed as 26735a1. Plan issue #133 created, commented with results, and closed.
+**Skipped**: Rust lib.rs changes from 66396ee (parallelized scraper, Spin delegation skip logic) — those are Rust unit test territory and were not reviewed for gaps this session. Carried forward.
+**Next**: Explore Rust-side changes from 66396ee for test gaps, OR look for new bot-actionable work from kingdonb's next async feature commits.
+
+## 2026-04-09 🏛️ — Add 14 Rust unit tests for delegation skip logic from 66396ee
+
+**Planned**: Extract delegation skip predicate and scraper helper logic into pure functions; add `#[cfg(test)]` unit tests covering all key branches; confirm `cargo test` passes.
+
+**Done**: Extracted `should_delegate`, `parse_forecast_count`, and `arabic_completions` from `handle_cloud_sync` / `run_clozemaster_scraper`. Added 14 unit tests covering: delegation disabled, empty URL, localhost, 127.0.0.1, public URL; forecast count in object vs raw integer form, null/missing; arabic heuristic zero/one-card/truncation/large. All 14 pass via `cargo test` in `mecris-go-spin/sync-service/`. Confirmed Spin SDK does NOT block native test compilation for `cdylib` crates.
+
+**Skipped**: Nothing. Scope matched the plan exactly.
+
+**Next**: No new bot-actionable test gaps identified. Remaining pending items require live environment (Neon, Android device) or workflow PAT scope. Next session should orient and check for upstream changes or new issues.
+
+## 2026-04-09 🏛️ — Open PR kingdonb/mecris#178 with Rust + cloud-sync test additions
+
+**Planned**: Open a pull request from yebyen:main to kingdonb:main containing the 14 Rust unit tests and 3 cloud-sync endpoint tests added in the previous session (yebyen/mecris#135).
+**Done**: PR kingdonb/mecris#178 opened successfully — 4 commits from yebyen:main (26735a1–24a7a4c), no merge conflicts. Plan issue yebyen/mecris#135 created, commented with PR link, and closed.
+**Skipped**: None — the single bot-actionable task was completed in full. All remaining pending items (live environment verifications, workflow PAT fix, Android UI, Neon migration) still require human or kingdonb action.
+**Next**: Check if PR #178 has been merged or has review feedback. If merged, sync yebyen/mecris from upstream. If no new tagged issues, look for new test gaps or orient for the next actionable feature.
+
+## 2026-04-10 🏛️ — Diagnose and fix schema.sql budget_tracking column mismatch blocking pr-test #178
+
+**Planned**: Run pr-test for kingdonb/mecris#178 and confirm 14 Rust + 3 cloud-sync tests pass (yebyen/mecris#136).
+**Done**: Dispatched pr-test twice. First run revealed: ✅ Android, ❌ Python (schema bug), ❌ Rust (known Cargo.toml path). Root cause: `initialize_neon.py` runs `mecris-go-spin/schema.sql` first in CI, creating `budget_tracking` with `period_start`/`period_end` columns; `usage_tracker.py` then hits a no-op `CREATE TABLE IF NOT EXISTS` and fails when trying to INSERT into `budget_period_start`. Fix committed as `8597dbe` — aligns `schema.sql` column names/types with `usage_tracker.py`. Second pr-test run still failed (fix not yet pushed to GitHub remote). Plan issue documented with root cause and fix commit.
+**Skipped**: Rust test gap fix (needs workflow PAT scope, out of bot authority). Confirming Python tests pass after schema fix (requires push to take effect, deferred to next session).
+**Next**: After session push lands, re-run `/mecris-pr-test 178` — Python tests should now pass. Rust test still needs kingdonb or workflow-scoped PAT to fix `pr-test.yml`.
+
+## 2026-04-10 🏛️ — Apply test isolation pattern to fix FK violation at pytest collection
+
+**Planned**: Refactor `test_standalone_access.py` and `test_unauthorized_access.py` to use `_make_mcp_importable()` pattern so mcp_server is not imported at module level (yebyen/mecris#137).
+**Done**: Root cause confirmed: both files imported `from mcp_server import app` at module level, triggering `UsageTracker()` init which tried to INSERT into `budget_tracking` with FK to empty `users` table. Fix committed as `0fc0bf3` — both files now use `sys.modules.pop` + `patch.dict(env)` + `patch("psycopg2.connect")` fixture pattern before importing mcp_server. Two pr-test runs dispatched (24241880849, 24242162639) — both saw old code because push hadn't happened yet.
+**Skipped**: CI verification of the fix — commit 0fc0bf3 is local; push happens when this bot workflow ends. Runtime behavior of `test_narrator_context_standalone` (standalone mode endpoint behavior with mocked DB) not yet observable.
+**Next**: After session push, run `/mecris-pr-test 178` — expect Python collection errors gone. Watch for any runtime failures in standalone access tests.
+
+## 2026-04-10 🏛️ — Identify and fix 3 remaining runtime failures blocking pr-test #178 green
+
+**Planned**: Re-run pr-test #178 after test isolation fix push; expect collection errors gone; verify Python tests pass (yebyen/mecris#138).
+
+**Done**: Ran pr-test (run 24247632948) — confirmed collection errors completely gone (318 passed, 4 skipped). Identified 3 remaining runtime failures: (1) `test_walk_sync.py` x2 — `patch("mcp_server.scheduler", ...)` triggered mcp_server import before psycopg2 was mocked; (2) `test_autonomous_tables_exist` — `token_bank` table not in `mecris-go-spin/schema.sql`. Fixed both in commit `c88d368`: added `_make_mcp_importable()` to `test_walk_sync.py`; added `CREATE TABLE IF NOT EXISTS token_bank` to schema.sql. Ran pr-test again (run 24248010663) — showed same failures because c88d368 was local-only (push hasn't happened yet). Plan issue yebyen/mecris#138 commented with root cause and next steps.
+
+**Skipped**: Verifying the fix — pr-test dispatched in-session tests GitHub's HEAD (e020d8a), not local commits. Cannot close plan issue #138 until next session confirms green run.
+
+**Next**: After push of `c88d368`, run `/mecris-pr-test 178` — expect all Python tests to pass. Then close yebyen/mecris#138 and request kingdonb to review PR #178.
+
+## 2026-04-10 🏛️ — Verify pr-test #178 is fully green after c88d368 push
+
+**Planned**: Dispatch pr-test for kingdonb/mecris#178 and confirm all 3 previously-failing tests now pass (yebyen/mecris#139).
+**Done**: Dispatched pr-test (run 24252329711). Result: 321 passed, 4 skipped, 0 failures — all 3 previously-failing tests now pass (`test_autonomous_tables_exist`, `test_global_walk_sync_job_success`, `test_global_walk_sync_job_skips_when_not_leader`). Closed yebyen/mecris#138 (carried-over plan issue from prior session). Comment posted on kingdonb/mecris#178 with full results.
+**Skipped**: None — validation criterion fully met.
+**Next**: kingdonb to review and merge kingdonb/mecris#178. Rust test gap in pr-test.yml still needs workflow PAT (kingdonb action required).
+
+## 2026-04-10 — Audit test_narrator_context_standalone safety; verify false alarm
+
+**Planned**: Verify `test_narrator_context_standalone` runtime failure risk flagged in NEXT_SESSION.md (yebyen/mecris#140).
+**Done**: Audited `mcp_server.py` — confirmed `_record_presence` (lines 46-54) is fully guarded (returns None if no store, wraps upsert in try/except), and the main handler body (lines 367-490) has an outer try/except that catches all service failures and returns a dict (HTTP 200). Test will pass reliably. Findings posted to yebyen/mecris#140. NEXT_SESSION.md updated to mark item verified. No code changes needed.
+**Skipped**: All other pending items require live environment (device, Neon, live scheduler) or kingdonb action (PR #178 review, workflow PAT). Not actionable in bot context.
+**Next**: kingdonb to review and merge kingdonb/mecris#178. Rust test gap in pr-test.yml still needs workflow PAT (kingdonb action required).
+
+## 2026-04-10 — Session health report + document Rust workflow fix (yebyen/mecris#142)
+
+**Planned**: Produce health report documenting current repo state; create actionable issue for Rust workflow fix in pr-test.yml (yebyen/mecris#141).
+**Done**: Confirmed no labeled bot work exists. PR kingdonb/mecris#178 CI-green, awaiting human merge. Created yebyen/mecris#142 with exact `working-directory: mecris-go-spin/sync-service` diff for pr-test.yml Rust test step — verified `Cargo.toml` exists at that path. Issue is self-contained for kingdonb to apply with workflow PAT scope.
+**Skipped**: No code changes — all pending items require live environment, live devices, or workflow PAT scope. No pr-test dispatch (PR #178 already confirmed green; no new commits to validate).
+**Next**: kingdonb to review and merge kingdonb/mecris#178; kingdonb to apply Rust workflow fix from yebyen/mecris#142. After merge, next bot session should sync yebyen from upstream.
+
+## 2026-04-10 — Fix failing Rust test in review-pump + audit all 6 Rust crates
+
+**Planned**: Fix the wrong `target_flow_rate` assertion in `mecris-go-spin/review-pump/src/lib.rs` (yebyen/mecris#143). The field means remaining work = `(target - daily_completions).max(0)`, so when at target it's 0, not 60.
+
+**Done**: Fixed assertion on line 255. `cargo test` in `review-pump/` now 17/17 passed. Ran `cargo test` across all 6 Rust crates in `mecris-go-spin/` and confirmed 47 total tests all green. Added scope-broadening comment to yebyen/mecris#142 documenting the full 47-test picture and noting that no workspace Cargo.toml exists (each crate must be tested individually in CI). Commit: `53b4fd7`.
+
+**Skipped**: Upstream sync (yebyen is ahead of kingdonb, PR #178 still awaiting merge). Workflow file fix (#142) still blocked on `workflow` PAT scope.
+
+**Next**: Wait for kingdonb to merge kingdonb/mecris#178. Once merged, sync yebyen from upstream and verify all pending NEXT_SESSION.md items.
+
+## 2026-04-10 — Re-run pr-test #178; confirm green before kingdonb merge
+
+**Planned**: Dispatch pr-test for kingdonb/mecris#178, confirm Python + Android still green, archive session state (yebyen/mecris#144).
+
+**Done**: Ran pr-test run 24269477437 — 321 passed, 4 skipped, 0 failures. Python ✅ Android ✅. Matches prior run 24252329711 exactly. Green status posted as comment on kingdonb/mecris#178. No code changes needed this session — all prior work holds.
+
+**Skipped**: No code work. All remaining pending items require human action: kingdonb merge of PR #178, workflow PAT for Rust CI fix, live Neon/device tests.
+
+**Next**: Wait for kingdonb to merge kingdonb/mecris#178. Once merged, sync yebyen from upstream and verify pending NEXT_SESSION.md items.
+
+## 2026-04-11 🏛️ — Health report: all pending work blocked; upstream unchanged
+
+**Planned**: Document stalled state — kingdonb/mecris#178 awaiting merge, Rust workflow fix blocked on PAT scope, all other items need live environment or human action (yebyen/mecris#145).
+
+**Done**: Orient confirmed kingdonb/mecris has not moved since `ab7fef7` (2026-04-09). PR #178 still open. No `needs-test`/`pr-review`/`bug` issues exist on kingdonb/mecris. No new bot-actionable coding work available. Created plan issue yebyen/mecris#145 and archived cleanly.
+
+**Skipped**: pr-test re-run — PR #178 confirmed green on 2026-04-10 (run 24269477437, 321 passed). No new commits since then; re-running would be redundant. All other pending items require workflow PAT, live Neon/device, or kingdonb action.
+
+**Next**: Wait for kingdonb to review and merge kingdonb/mecris#178. Once merged: sync yebyen from upstream, then apply Rust workflow fix from yebyen/mecris#142 if kingdonb grants workflow PAT scope.
+
+## 2026-04-11 (2nd run) — Orientation scan only; stalled state confirmed again
+
+**Planned**: no-plan — second bot run of the day; scanned for any new bot-actionable work.
+
+**Done**: Full orient: confirmed kingdonb/mecris still at `ab7fef7` (2026-04-09). Reviewed all 20 open kingdonb/mecris issues — all are epics, WASM/Android/live-env tasks, or architectural discussions. Scanned test coverage: Majesty Cake backend complete (7+ tests), reminder service complete (1156 lines tests), 321+ total tests passing. No gaps found. No new work performed.
+
+**Skipped**: Everything — nothing was bot-actionable.
+
+**Next**: Wait for kingdonb to review and merge kingdonb/mecris#178. If upstream moves, sync yebyen from upstream then apply Rust workflow fix from yebyen/mecris#142 if workflow PAT is available.
+
+## 2026-04-11 (3rd run) — Port Twilio SMS helpers to sync-service; advance kingdonb/mecris#166 Phase 2
+
+**Planned**: yebyen/mecris#146 — Port `build_twilio_url`, `build_twilio_body`, `encode_basic_auth` from `boris-fiona-walker/src/sms.rs` into `sync-service/src/lib.rs` + add `POST /internal/trigger-reminders` stub + 4 unit tests.
+
+**Done**: All 4 plan items complete. Commit `3a6d5f3`. `cargo test` passes 18/18 (14 existing + 4 new Twilio helper tests). Route stub returns 202 Accepted with TODO message. Pure functions are module-scope and unit-testable without Spin host. Advances kingdonb/mecris#166 Phase 2 (#167). Issue yebyen/mecris#146 closed.
+
+**Skipped**: Actual HTTP dispatch (`spin_sdk::http::send`) — not unit-testable; needs Spin integration environment. Deferred to next session or live test.
+
+**Next**: kingdonb merge of PR #178 remains the primary blocker. If unmerged, next bot session could continue Twilio Phase 2 by wiring `send_walk_reminder` using existing `decrypt_token` — but this requires Spin live env to verify.
+
+## 2026-04-11 (4th run) 🏛️ — Twilio Phase 2: implement send_walk_reminder + wire trigger-reminders handler
+
+**Planned**: yebyen/mecris#148 — Implement `send_walk_reminder(phone, message, ...)` in `mecris-go-spin/sync-service/src/lib.rs` using existing helpers + `spin_sdk::http::send`, wire into `/internal/trigger-reminders` handler, add ≥4 unit tests for pure-function layer. Target: ≥20 tests passing.
+
+**Done**: All plan items complete. Added `build_sms_request_parts()` pure function (returns url, body, auth_header as strings — fully unit-testable), `send_walk_reminder()` async fn (dispatches via `spin_sdk::http::send`), and replaced the stub `handle_trigger_reminders_post` with a real multi-tenant implementation that reads Twilio credentials from Spin variables, fetches all users with `phone_number_encrypted` set, decrypts each phone number, and dispatches SMS with graceful error reporting. 4 new unit tests for `build_sms_request_parts`. `cargo test` passes 22/22. Commit `5ba5b96`. Issue yebyen/mecris#148 closed.
+
+**Skipped**: Integration test — `spin_sdk::http::send` requires live Spin host; the actual Twilio dispatch can only be verified in a deployed environment. Twilio Spin variables (`twilio_account_sid`, `twilio_auth_token_encrypted`, `twilio_from_number`) not yet configured in `spin.toml` — must be set by kingdonb in live deployment.
+
+**Next**: Wait for kingdonb to review and merge kingdonb/mecris#178. Once merged: sync yebyen from upstream, re-run cargo test to confirm all 55 tests still green across 6 crates, then work toward Twilio integration test in live Spin environment.
+
+## 2026-04-11 (5th run) — Re-run pr-test #178 to verify Twilio Phase 2 commits green
+
+**Planned**: yebyen/mecris#149 — Re-run pr-test for kingdonb/mecris#178 to confirm Twilio Phase 2 commits (`3a6d5f3`, `5ba5b96`) don't regress Python or Android CI.
+
+**Done**: Dispatched pr-test workflow (run 24288151090). Completed in ~2.5 min. Result: 321 passed, 4 skipped, 0 failures Python ✅; Android ✅. Latest PR head SHA `8479bc7` is confirmed clean. Posted result comment on PR #178. Issue yebyen/mecris#149 closed.
+
+**Skipped**: Nothing — plan was small and completed cleanly. Upstream (kingdonb/mecris) still at `ab7fef7` (2026-04-09) — no new work to pull.
+
+**Next**: Wait for kingdonb to review and merge kingdonb/mecris#178. Once merged: sync yebyen from upstream, then assess Phase 3 Rust work (kingdonb/mecris#169) if any is bot-actionable.
+
+## 2026-04-11 (6th run) — Phase 3 reminder heuristics: pure Rust functions in sync-service
+
+**Planned**: yebyen/mecris#150 — Add `is_within_reminder_window`, `is_below_step_threshold`, `is_rate_limit_ok`, and `should_dispatch_reminder` as pure functions in `mecris-go-spin/sync-service/src/lib.rs` with ≥10 unit tests covering kingdonb/mecris#169 decision logic.
+
+**Done**: All 4 functions implemented and tested. 19 new unit tests added (7 for reminder window, 4 for step threshold, 4 for rate limiting, 4 for combined dispatch). `cargo test` in `mecris-go-spin/sync-service/` passes 41/41 (was 22). Commit `4d38b58`. Issue yebyen/mecris#150 closed. Orient also confirmed: upstream still at `ab7fef7`, PR #178 still open, no new upstream commits.
+
+**Skipped**: I/O-bound Phase 3 tasks — the multi-tenant dispatch loop (querying `walk_inferences` for step counts, applying heuristics per-user inside `handle_trigger_reminders_post`) and OpenWeather API integration require Spin HTTP calls and cannot be unit-tested. These will be wired in a future session once PR #178 is merged.
+
+**Next**: Wait for kingdonb to review and merge kingdonb/mecris#178. Once merged: sync yebyen from upstream, then wire Phase 3 I/O integration into `handle_trigger_reminders_post` (query step counts from `walk_inferences`, apply `should_dispatch_reminder` per user before dispatching SMS).
+
+## 2026-04-11 (7th run) — Phase 3 I/O integration: wire heuristics into dispatch loop
+
+**Planned**: yebyen/mecris#151 — Extend `handle_trigger_reminders_post` to query `walk_inferences` for step count, `message_log` for rate limiting, and `users.timezone` for local-hour computation; gate each SMS send on `should_dispatch_reminder`.
+
+**Done**: Three pure helper functions added (`aggregate_step_count`, `local_hour_from_timezone`, `minutes_since_last_reminder`) with 11 new unit tests. Dispatch loop fully wired: per-user step count from `walk_inferences`, rate-limit check via `message_log`, timezone-aware local hour via chrono-tz, `should_dispatch_reminder` gate before every send, and `message_log` insert on success. `cargo test` passes 52/52 (was 41, +11). Commit `59394c2`. Issue yebyen/mecris#151 closed.
+
+**Skipped**: OpenWeather API integration (not specified in plan; would require new Spin variable). Live-env validation (requires Spin Cloud deployment with Twilio variables configured).
+
+**Next**: Wait for kingdonb to review and merge kingdonb/mecris#178. Once merged: sync yebyen from upstream. The entire reminder pipeline (Phase 1 schema + Phase 2 Twilio + Phase 3 heuristics + Phase 3 I/O dispatch) is now complete in Rust — live deployment is the only remaining gate.
+
+## 2026-04-11 (8th run) — Phase 3 OpenWeather heuristic: weather gate in reminder dispatch loop
+
+**Planned**: Add `is_weather_ok_for_walk(weather_main: &str) -> bool` pure function + wire optional OpenWeather API check into `handle_trigger_reminders_post` (yebyen/mecris#152).
+**Done**: Implemented `is_weather_ok_for_walk` (Clear/Clouds → true; Rain/Drizzle/Thunderstorm/Snow/Atmosphere/unknown → false), `OpenWeatherResponse`/`OpenWeatherCondition` deserialisation structs, `fetch_weather_main(lat, lon, api_key)` async Spin HTTP call, and wired the optional weather gate into the dispatch loop (reads `openweather_api_key`, `openweather_lat`, `openweather_lon` Spin vars; graceful no-op if absent). 8 new unit tests; `cargo test`: 60 passed (was 52). Commit `55a4e00`. Closes yebyen/mecris#152.
+**Skipped**: Live integration test (requires real OpenWeather API key in Spin vars + deployed instance). spin.toml `allowed_outbound_hosts` update (needs kingdonb action).
+**Next**: Await kingdonb review and merge of kingdonb/mecris#178. Then sync yebyen from upstream and configure OpenWeather + Twilio Spin vars in live environment.
+
+## 2026-04-12 (1st run) — Fix spin.toml: allowed_outbound_hosts + variable declarations for Twilio + OpenWeather
+
+**Planned**: yebyen/mecris#154 — Add `https://api.twilio.com` and `https://api.openweathermap.org` to `allowed_outbound_hosts` for sync-service; declare 6 Spin variables in `[variables]` and `[component.sync-service.variables]`.
+**Done**: spin.toml updated with both hosts in `allowed_outbound_hosts` and all 6 variables declared. `cargo test`: 60 passed, 0 failed (config-only change, no Rust code touched). Commit `704f6d4`. Closes yebyen/mecris#154. Also re-ran pr-test #178: run 24298599374 — Python ✅ Android ✅ (head `b4d0c70`).
+**Skipped**: Nothing — plan was small and fully executed.
+**Next**: Await kingdonb review and merge of kingdonb/mecris#178. Once merged: sync yebyen from upstream, then configure Twilio + OpenWeather Spin variables in live Fermyon Cloud environment.
+
+## 2026-04-12 (2nd run) — Update kingdonb/mecris#178 PR description to reflect full Phase 2+3 scope
+
+**Planned**: yebyen/mecris#155 — Rewrite PR #178 body to accurately describe all 8 feature groups (Phase 2 Twilio, Phase 3 heuristics/I/O dispatch/OpenWeather, spin.toml, Python cloud-sync tests, review-pump fix), 60 Rust tests total, and known Rust CI gap.
+
+**Done**: PR body updated via `GITHUB_CLASSIC_PAT` PATCH to `https://api.github.com/repos/kingdonb/mecris/pulls/178`. New body replaces stale "14 Rust unit tests + 3 cloud-sync tests" description with complete 8-section inventory. Verified via GET. Issue yebyen/mecris#155 closed.
+
+**Skipped**: No code changes, no tests, no commits beyond NEXT_SESSION.md + session_log.md. The session was deliberately minimal — PR #178 is still awaiting kingdonb review.
+
+**Next**: Wait for kingdonb to review and merge kingdonb/mecris#178. Once merged: sync yebyen from upstream (`git fetch upstream && git merge upstream/main --no-edit`), then configure Twilio + OpenWeather Spin variables in live Fermyon Cloud environment.

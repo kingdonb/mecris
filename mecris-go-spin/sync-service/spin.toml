@@ -17,6 +17,12 @@ clozemaster_email = { required = false, default = "" }
 clozemaster_password = { required = false, default = "" }
 master_encryption_key = { required = false, default = "" }
 neon_db_url = { required = false, default = "" }
+twilio_account_sid = { required = false, default = "" }
+twilio_auth_token_encrypted = { required = false, default = "" }
+twilio_from_number = { required = false, default = "" }
+openweather_api_key = { required = false, default = "" }
+openweather_lat = { required = false, default = "" }
+openweather_lon = { required = false, default = "" }
 
 [[trigger.http]]
 route = "/internal/review-pump-status"
@@ -38,7 +44,7 @@ component = "sync-service"
 
 [component.sync-service]
 source = "target/wasm32-wasip1/release/sync_service.wasm"
-allowed_outbound_hosts = ["postgres://*:*", "https://www.beeminder.com", "https://www.clozemaster.com"]
+allowed_outbound_hosts = ["postgres://*:*", "https://www.beeminder.com", "https://www.clozemaster.com", "https://api.twilio.com", "https://api.openweathermap.org"]
 key_value_stores = ["default"]
 [component.sync-service.variables]
 db_url = "{{ db_url }}"
@@ -48,6 +54,12 @@ oidc_jwks_json = "{{ oidc_jwks_json }}"
 clozemaster_email = "{{ clozemaster_email }}"
 clozemaster_password = "{{ clozemaster_password }}"
 master_encryption_key = "{{ master_encryption_key }}"
+twilio_account_sid = "{{ twilio_account_sid }}"
+twilio_auth_token_encrypted = "{{ twilio_auth_token_encrypted }}"
+twilio_from_number = "{{ twilio_from_number }}"
+openweather_api_key = "{{ openweather_api_key }}"
+openweather_lat = "{{ openweather_lat }}"
+openweather_lon = "{{ openweather_lon }}"
 [component.sync-service.build]
 command = "cargo build --target wasm32-wasip1 --release"
 watch = ["src/**/*.rs", "Cargo.toml"]
