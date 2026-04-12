@@ -1115,3 +1115,10 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: No code changes, no tests, no commits beyond NEXT_SESSION.md + session_log.md. The session was deliberately minimal — PR #178 is still awaiting kingdonb review.
 
 **Next**: Wait for kingdonb to review and merge kingdonb/mecris#178. Once merged: sync yebyen from upstream (`git fetch upstream && git merge upstream/main --no-edit`), then configure Twilio + OpenWeather Spin variables in live Fermyon Cloud environment.
+
+## 2026-04-12 (3rd run) — Per-user OpenWeather location from users table
+
+**Planned**: yebyen/mecris#156 — Add nullable `location_lat`/`location_lon` DOUBLE PRECISION columns to `users` table, create migration `004_user_location.sql`, add `resolve_lat_lon()` pure function, and move weather check inside user loop to use per-user coordinates with global-variable fallback.
+**Done**: All planned work complete. `mecris-go-spin/schema.sql` updated with two new nullable columns. `scripts/migrations/004_user_location.sql` created with ALTER TABLE + COMMENT ON COLUMN. `mecris-go-spin/sync-service/src/lib.rs` refactored: SELECT now fetches per-user lat/lon; global Spin vars pre-fetched as fallback; global pre-loop weather gate removed; weather check moved inside user loop using `resolve_lat_lon()`; 4 new unit tests. `cargo test`: 64 passed, 0 failed (up from 60). Commit `132e89e`. Closes yebyen/mecris#156.
+**Skipped**: Opening the new PR to kingdonb/mecris (commit not yet pushed — happens via workflow). Running pr-test (will wait until next session after push lands).
+**Next**: Open PR from yebyen:main to kingdonb:main for commit `132e89e` (per-user location feature). Dispatch pr-test on the new PR.
