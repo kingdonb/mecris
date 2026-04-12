@@ -29,6 +29,8 @@
 - [x] **review-pump test bug fixed**: `flow_state_turbulent_when_at_or_above_target` had wrong assertion `target_flow_rate == 60`; corrected to `0`. Commit `53b4fd7`. Closes yebyen/mecris#143.
 
 ## Pending Verification (Next Session)
+- [ ] **Multi-Tenancy Location Data Gap**: OpenWeather location data (`openweather_lat`, `openweather_lon`) is currently stored as global Spin variables. It must be migrated to be an encrypted user property in the `users` table so each user gets local weather context.
+- [ ] **Android UI Gaps**: Add a "log out" button for PocketID auth. Add a UI for users to securely provide their phone number, grant/revoke authorization to receive texts, and manage their personal location for weather heuristics.
 - [ ] **PR kingdonb/mecris#178 merged**: Python + Android are green (re-confirmed 2026-04-12, run 24298599374). Rust is a known pre-existing gap with documented fix in yebyen/mecris#142. Needs kingdonb review and merge. Note: PR head will update after this session's push to include `704f6d4` (spin.toml fix) + archive commit.
 - [ ] **After PR #178 merge: sync yebyen from upstream**: `git fetch upstream && git merge upstream/main --no-edit`. Then verify yebyen is up to date.
 - [ ] **Rust test gap (workflow fix)**: Apply fix from yebyen/mecris#142: add `working-directory: mecris-go-spin/sync-service` to `Run Rust tests` step in `.github/workflows/pr-test.yml`. Needs `workflow` PAT scope or kingdonb direct action.
