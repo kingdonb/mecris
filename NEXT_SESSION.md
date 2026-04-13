@@ -1,14 +1,13 @@
-# Next Session: No open PRs — yebyen/mecris fully synced with kingdonb/mecris
+# Next Session: Open PR from yebyen:main → kingdonb:main (2 commits ahead) to validate pr-test count
 
 ## Current Status (2026-04-13)
-- **yebyen/mecris synced with kingdonb:main**: Both at `5dbc67e`. `git rev-list HEAD..upstream/main` = 0. `git rev-list upstream/main..HEAD` = 0.
-- **kingdonb merged yebyen:main directly (2026-04-13)**: `f91e346` (Merge remote-tracking branch 'yebyen/main') brought in `1b3cd4f` (cross-instance reload test). No PR was opened — merge was direct.
-- **pr-test for 363 Python tests NOT run**: Direct merge bypassed the PR flow. pr-test was never dispatched for the cross-instance reload test. Count unverified; however all SMSConsentManager tests landed in kingdonb:main.
+- **yebyen/mecris is 2 commits ahead of kingdonb:main**: `e0b71d1` (archive) + `20cfc7b` (delete_user_data feat) not yet in upstream. `git rev-list HEAD..upstream/main` = 0. `git rev-list upstream/main..HEAD` = 2.
+- **delete_user_data MCP tool added (2026-04-13)**: Commit `20cfc7b` — `mcp_server.py` now has `delete_user_data()` tool. FK-safe: deletes `token_bank` first, then `users` (CASCADE handles rest). Tests in `tests/test_delete_user_data.py` (4 tests). Closes GDPR right-to-erasure gap.
 - **SMSConsentManager tests (22)**: 21 from `e0acfe4` + 1 cross-instance reload from `1b3cd4f`. In kingdonb:main via `f91e346`.
 - **108 Rust tests passing**: All 6 crates in `mecris-go-spin/` — unchanged since 2026-04-12.
-- **Issue #180 resolved by kingdonb**: `ORDER BY start_time ASC` in walk_inferences query (`a48244d`); Health Connect double-counting fixed in `HealthConnectManager.kt`.
+- **Issue #180 resolved by kingdonb**: `ORDER BY start_time ASC` in walk_inferences query (`a48244d`); Health Connect double-counting fixed in `HealthConnectManager.kt`. Issue still open (bot cannot close kingdonb issues).
 - **Rust CI still failing in pr-test.yml**: Pre-existing `working-directory` gap. Tracked in yebyen/mecris#142. Requires `workflow` PAT scope.
-- **New docs (2026-04-13)**: `docs/DATA_ARCHITECTURE_AND_PRIVACY.md` + `docs/AGENT_OPS_RUNBOOK.md` updates — kingdonb commit `5dbc67e`. Documents "Master Mode" MCP permissiveness, PII encryption via AES-256-GCM, and GDPR-style compliance gaps (no right-to-erasure, no data portability, no centralized consent for broader data collection).
+- **GDPR data portability gap remains**: No user-data-export endpoint. Only deletion is now covered.
 
 ## Verified This Session
 - [x] **Upstream sync complete (2026-04-13)**: Fast-forward merge of 7 commits from kingdonb/mecris main. `git rev-list HEAD..upstream/main` = 0.
@@ -16,10 +15,11 @@
 - [x] **SMSConsentManager mock fix reviewed (2026-04-13)**: kingdonb commit `1be0021` — removed conflicting `return_value.date.return_value` + `side_effect` from `test_within_window_and_under_limit_can_send`; `return_value` alone is the correct pattern.
 - [x] **get_user_preferences reload test added (2026-04-13)**: Commit `1b3cd4f` — `TestOptIn.test_get_user_preferences_reloads_cross_instance` tests the new disk-reload behavior from `a48244d`.
 - [x] **yebyen/mecris#165 cross-instance reload test**: Merged by kingdonb via `f91e346`. Issue can be closed — validation criterion met (test in kingdonb:main).
-- [x] **NEXT_SESSION.md audited (2026-04-13)**: Current session. Resolved items marked. NEXT_SESSION.md reflects true state. Plan: yebyen/mecris#166.
+- [x] **NEXT_SESSION.md audited (2026-04-13)**: Previous session. Resolved items marked. NEXT_SESSION.md reflects true state. Plan: yebyen/mecris#166.
+- [x] **GDPR right-to-erasure MCP tool (2026-04-13)**: `delete_user_data()` added to `mcp_server.py` (commit `20cfc7b`). 4 unit tests in `tests/test_delete_user_data.py`. FK-safe order: token_bank → users (CASCADE). Syntax validated ✅. Plan: yebyen/mecris#167 (closed).
 
 ## Pending Verification (Next Session)
-- [ ] **pr-test Python count ≥ 363**: Not yet run. Direct merge bypassed pr-test workflow. To verify: open any PR from yebyen → kingdonb (even a doc fix) and dispatch pr-test, or ask kingdonb to confirm count via local pytest. Note: if no code work is queued, this may be verified only when next substantive PR is opened.
+- [ ] **pr-test Python count ≥ 367**: Not yet run for delete_user_data tests (4 new tests + prior 363 = 367 expected). To verify: open PR from yebyen:main → kingdonb:main and dispatch pr-test. yebyen is now 2 commits ahead of kingdonb:main.
 - [ ] **Run 004_user_location.sql against live Neon**: `psql $NEON_DB_URL -f scripts/migrations/004_user_location.sql` — adds `location_lat`, `location_lon` columns to live `users` table. Requires kingdonb.
 - [ ] **Multi-Tenancy — Android UI Gaps**: Add "log out" button for PocketID auth. Add UI for users to provide phone number, grant/revoke SMS auth, set personal location (lat/lon) for weather heuristics, and select their **Preferred Health Source** (e.g., Google Fit) to prevent double-counting. Tracked in kingdonb/mecris#168.
 - [ ] **Rust test gap (workflow fix)**: Apply fix from yebyen/mecris#142: add `working-directory: mecris-go-spin/sync-service` to `Run Rust tests` step in `.github/workflows/pr-test.yml`. Needs `workflow` PAT scope or kingdonb direct action.
@@ -34,8 +34,7 @@
 - [ ] **Android app has_goal UI**: Confirm Android app picks up `has_goal=false` flag and visually dims untracked languages. Requires live app test.
 - [ ] **Majesty Cake Android integration**: `/aggregate-status` backend complete; Android app needs to consume it (kingdonb/mecris#170).
 - [ ] **003_multi_tenancy.sql live run**: Run `psql $NEON_DB_URL -f scripts/migrations/003_multi_tenancy.sql` against live Neon.
-- [ ] **GDPR-style gap: right to erasure**: No delete-account functionality. Would require manual SQL. Document as issue on kingdonb/mecris or implement in admin tooling. See `docs/DATA_ARCHITECTURE_AND_PRIVACY.md`.
-- [ ] **GDPR-style gap: data portability**: No user-data-export endpoint. See `docs/DATA_ARCHITECTURE_AND_PRIVACY.md`.
+- [ ] **GDPR-style gap: data portability**: No user-data-export endpoint. See `docs/DATA_ARCHITECTURE_AND_PRIVACY.md`. Right-to-erasure is now implemented (`delete_user_data` MCP tool, commit `20cfc7b`).
 
 ## Infrastructure Notes
 - Spin Cron trigger is **DISABLED** in `spin.toml` — do not re-enable.

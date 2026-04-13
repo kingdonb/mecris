@@ -1183,3 +1183,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: No code work — no actionable labeled issues, no PRs to test, all infrastructure tasks blocked on kingdonb.
 
 **Next**: If kingdonb queues a PR, dispatch pr-test to finally confirm Python count ≥ 363. Otherwise await kingdonb action on Twilio/OpenWeather Spin vars, 004_user_location.sql migration, Android UI gaps (#168), and Rust workflow PAT fix (#142).
+
+## 🏛️ 2026-04-13 (4th run) — GDPR right-to-erasure: delete_user_data MCP tool
+
+**Planned**: yebyen/mecris#167 — Add `delete_user_data` MCP tool to `mcp_server.py` with unit tests covering happy path, unknown-user guard, no-NEON_DB_URL guard, and resolve_user_id(None) delegation.
+
+**Done**: Oriented — yebyen/mecris 1 commit ahead of kingdonb, no needs-test or pr-review issues. Planned yebyen/mecris#167. Investigated schema.sql FK constraints: `token_bank` has no ON DELETE CASCADE, all other child tables do. Implemented `delete_user_data()` as `@mcp.tool` in `mcp_server.py` (line 1120, commit `20cfc7b`). Wrote `tests/test_delete_user_data.py` (4 tests: happy path FK order, unknown-user no-DELETE guard, no-NEON_DB_URL, resolve_user_id delegation). Syntax validated ✅. Plan issue yebyen/mecris#167 closed. GDPR right-to-erasure gap from `docs/DATA_ARCHITECTURE_AND_PRIVACY.md` is now addressed.
+
+**Skipped**: pr-test dispatch — push constraint applies; commits not on GitHub until workflow ends. Data portability (export_user_data) — deferred to next session.
+
+**Next**: Open PR from yebyen:main → kingdonb:main (2 commits ahead: archive + delete_user_data), dispatch pr-test, confirm Python count ≥ 367.
