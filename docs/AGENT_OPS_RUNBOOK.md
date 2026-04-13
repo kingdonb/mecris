@@ -51,10 +51,26 @@ spin cloud variables set --app mecris-sync-v2 twilio_account_sid="AC123..."
 ```
 *Note: Twilio auth tokens must be encrypted using `AES-256-GCM` with the `MASTER_ENCRYPTION_KEY` before being stored in Spin variables.*
 
-## 5. Multi-Tenancy Technical Debt
+## 5. MCP Server Operations & Auth Workarounds
 
 **The Problem:**
-The system is currently hardcoded to South Bend / RIT coordinates for weather, and SMS preferences are stored in a local `data/sms_consent.json` file.
+In `MECRIS_MODE=multi-tenant`, the MCP server strictly requires a `user_id` for almost every tool call. If an agent calls a tool (like `get_narrator_context`) without an explicit ID, the server returns "Authentication Required," even if the user has successfully run `mecris login` on the local machine.
+
+**The Workaround:**
+Agents must explicitly provide the `user_id` in tool calls. 
+1.  Locate the local user ID: `cat ~/.mecris/credentials.json | jq -r .user_id`.
+2.  Pass it to the tool: `mcp_mecris_get_narrator_context(user_id="...")`.
+
+**Process Restarts:**
+If the server hangs or needs to pick up changes to local files (like `data/sms_consent.json`), it can be manually restarted:
+1.  Find the PID: `ps aux | grep mcp_server.py`
+2.  Terminate it: `kill <PID>`
+3.  The host environment (e.g., Gemini/Claude CLI) should automatically attempt to restart the STDIO server on the next tool call, but there may be a 2-5 second delay where tools report "Not connected."
+
+## 6. Multi-Tenancy Technical Debt (Updated)
+
+**The Problem:**
+The system is currently hardcoded to South Bend coordinates for weather, and SMS preferences are stored in a local `data/sms_consent.json` file. Additionally, the local `CredentialsManager` ignores stored credentials when the mode is set to `multi-tenant`, breaking the "default user" experience for local operators.
 
 **Operational Rule for Agents:**
-Until true database-backed multi-tenancy is built for these features, agents must manually manipulate `data/sms_consent.json` to toggle `vacation_mode` or adjust time windows. Weather coordinates must be manually updated via Spin Cloud variables if the user travels.
+Until true database-backed multi-tenancy is built for these features, agents must manually manipulate `data/sms_consent.json` to toggle `vacation_mode` or adjust time windows. Weather coordinates must be manually updated via Spin Cloud variables if the user travels. If auth fails, use the `user_id` workaround in section 5.

@@ -39,30 +39,28 @@ class CredentialsManager:
         if provided_user_id:
             return provided_user_id
 
-        # Mode-based behavior
-        # Note: We re-check env here because self.mode is set at init time
-        # but in long-running processes (like uvicorn in tests) it might change.
+        # 2. Check local credentials file (The "Default User" for local operators)
+        creds = self.load_credentials()
+        if "user_id" in creds:
+            return creds["user_id"]
+
+        # 3. Check explicit DEFAULT_USER_ID env var for backward compatibility
+        default_id = os.getenv("DEFAULT_USER_ID")
+        if default_id:
+            return default_id
+
+        # Mode-based behavior for generating NEW IDs
         current_mode = os.getenv("MECRIS_MODE", "standalone")
         
         if current_mode == "standalone":
-            # 2. Check explicit DEFAULT_USER_ID env var for backward compatibility
-            default_id = os.getenv("DEFAULT_USER_ID")
-            if default_id:
-                return default_id
-
-            # 3. Check local credentials file
-            creds = self.load_credentials()
-            if "user_id" in creds:
-                return creds["user_id"]
-
             # 4. Generate a persistent local ID if none exists
             import uuid
             new_id = f"local-{uuid.uuid4().hex[:8]}"
             self.save_credentials({"user_id": new_id})
             return new_id
         
-        # In non-standalone modes (cloud, multi-tenant), we do NOT fall back to local credentials.
-        # The user must provide a token (handled by get_current_user).
+        # In non-standalone modes (cloud, multi-tenant), we do NOT automatically 
+        # generate new IDs if no credentials exist.
         return None
 
 # Singleton instance
