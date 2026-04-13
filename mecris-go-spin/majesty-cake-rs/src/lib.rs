@@ -142,4 +142,33 @@ mod tests {
         assert_eq!(res.all_clear, true); // The optional goal completion does not impact required_count
         assert_eq!(res.status_message, "1/1 goals satisfied.");
     }
+
+    #[test]
+    fn test_empty_goals_list() {
+        // No goals at all — not a rest day, just an empty payload.
+        // all_clear requires required_count > 0, so this must be false.
+        let req = AggregateRequest { goals: vec![] };
+        let res = aggregate_status_logic(&req);
+        assert_eq!(res.required_count, 0);
+        assert_eq!(res.completed_count, 0);
+        assert_eq!(res.all_clear, false); // no required goals → no cake
+        assert_eq!(res.status_message, "0/0 goals satisfied.");
+        assert_eq!(res.template_id, None);
+    }
+
+    #[test]
+    fn test_single_required_not_completed() {
+        // One required goal, nothing done yet — 0/1 state.
+        let req = AggregateRequest {
+            goals: vec![
+                GoalStatus { slug: "steps".to_string(), is_required_today: true, is_completed: false },
+            ],
+        };
+        let res = aggregate_status_logic(&req);
+        assert_eq!(res.required_count, 1);
+        assert_eq!(res.completed_count, 0);
+        assert_eq!(res.all_clear, false);
+        assert_eq!(res.status_message, "0/1 goals satisfied.");
+        assert_eq!(res.template_id, None);
+    }
 }

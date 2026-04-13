@@ -113,7 +113,7 @@ mod tests {
         let input = "{\"bad\": json";
         let result: Result<PumpRequest, _> = serde_json::from_str(&input);
         assert!(result.is_err());
-        
+
         let fallback = PumpResult {
             required_clearance: 0,
             is_goal_met: false,
@@ -121,5 +121,31 @@ mod tests {
         };
         assert_eq!(fallback.pump_status, "Error");
         assert_eq!(fallback.required_clearance, 0);
+    }
+
+    #[test]
+    fn test_cavitation_at_exact_zero_backlog() {
+        // backlog=0 satisfies `<= 0`, so Cavitation — not Active.
+        let req = PumpRequest {
+            current_backlog: 0,
+            pump_multiplier: 2.0,
+            base_daily_target: 100,
+        };
+        let result = calculate_pump_logic(&req);
+        assert_eq!(result.pump_status, "Cavitation");
+        assert_eq!(result.required_clearance, 100);
+    }
+
+    #[test]
+    fn test_maintenance_below_one_multiplier() {
+        // pump_multiplier=0.5 satisfies `<= 1.0`, so Maintenance.
+        let req = PumpRequest {
+            current_backlog: 200,
+            pump_multiplier: 0.5,
+            base_daily_target: 50,
+        };
+        let result = calculate_pump_logic(&req);
+        assert_eq!(result.pump_status, "Maintenance");
+        assert_eq!(result.required_clearance, 50);
     }
 }

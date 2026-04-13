@@ -1115,3 +1115,51 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: No code changes, no tests, no commits beyond NEXT_SESSION.md + session_log.md. The session was deliberately minimal — PR #178 is still awaiting kingdonb review.
 
 **Next**: Wait for kingdonb to review and merge kingdonb/mecris#178. Once merged: sync yebyen from upstream (`git fetch upstream && git merge upstream/main --no-edit`), then configure Twilio + OpenWeather Spin variables in live Fermyon Cloud environment.
+
+## 2026-04-12 (3rd run) — Per-user OpenWeather location from users table
+
+**Planned**: yebyen/mecris#156 — Add nullable `location_lat`/`location_lon` DOUBLE PRECISION columns to `users` table, create migration `004_user_location.sql`, add `resolve_lat_lon()` pure function, and move weather check inside user loop to use per-user coordinates with global-variable fallback.
+**Done**: All planned work complete. `mecris-go-spin/schema.sql` updated with two new nullable columns. `scripts/migrations/004_user_location.sql` created with ALTER TABLE + COMMENT ON COLUMN. `mecris-go-spin/sync-service/src/lib.rs` refactored: SELECT now fetches per-user lat/lon; global Spin vars pre-fetched as fallback; global pre-loop weather gate removed; weather check moved inside user loop using `resolve_lat_lon()`; 4 new unit tests. `cargo test`: 64 passed, 0 failed (up from 60). Commit `132e89e`. Closes yebyen/mecris#156.
+**Skipped**: Opening the new PR to kingdonb/mecris (commit not yet pushed — happens via workflow). Running pr-test (will wait until next session after push lands).
+**Next**: Open PR from yebyen:main to kingdonb:main for commit `132e89e` (per-user location feature). Dispatch pr-test on the new PR.
+
+## 2026-04-12 (4th run) — Open PR #179 to kingdonb/mecris and run pr-test
+
+**Planned**: yebyen/mecris#157 — Open PR from yebyen:main to kingdonb:main for per-user OpenWeather location feature (commits `132e89e` + `606b480`), then dispatch pr-test to validate Python ✅ Android ✅.
+
+**Done**: PR opened: kingdonb/mecris#179. pr-test dispatched (run 24310522452) — Python ✅ 321 passed 4 skipped, Android ✅. Result posted as comment on kingdonb/mecris#179. Plan issue yebyen/mecris#157 closed.
+
+**Skipped**: Nothing — plan was small and fully executed.
+
+**Next**: Await kingdonb review and merge of kingdonb/mecris#179. After merge: sync yebyen from upstream. kingdonb must run `004_user_location.sql` migration against live Neon and configure Twilio + OpenWeather Spin variables in Fermyon Cloud.
+
+## 2026-04-12 (5th run) — Rust test coverage audit: nag-engine-rs +4, review-pump-rs +2
+
+**Planned**: yebyen/mecris#158 (Expand Rust unit tests — closed as already-satisfied after audit); yebyen/mecris#159 (nag-engine-rs edge cases); yebyen/mecris#160 (review-pump-rs boundary tests).
+**Done**: Audited all 6 Rust crates. Discovered `--quiet` masked review-pump's 17 tests — true baseline was 98 tests (not 64). Added 4 tests to nag-engine-rs (commits `b3429e7`): cooldown suppression, completed goal, empty goals, sleep boundary at hour=22. Added 2 tests to review-pump-rs (commit `f57890d`): backlog=0 exact boundary, multiplier=0.5 Maintenance path. Total: 98 → 104 tests across 6 crates. All pass.
+**Skipped**: No new features — PR #179 still awaiting kingdonb review. Live migration and Spin variables still require kingdonb.
+**Next**: Await kingdonb review and merge of kingdonb/mecris#179. After merge: sync yebyen from upstream, then track kingdonb configuring Twilio + OpenWeather Spin vars in Fermyon Cloud.
+
+## 2026-04-12 (6th run) — Rust test coverage: majesty-cake-rs +2, goal-type-rs +2
+
+**Planned**: yebyen/mecris#161 — Audit and expand test coverage in `majesty-cake-rs` (4 tests) and `goal-type-rs` (5 tests), adding ≥2 boundary/edge-case tests per crate.
+**Done**: Added 2 tests to majesty-cake-rs (`test_empty_goals_list` — all_clear=false when no goals; `test_single_required_not_completed` — 0/1 state) and 2 tests to goal-type-rs (`test_backlog_increases` — negative delta still safe; `test_backlog_zero_delta` — safe unlike odometer zero delta). All 108 tests pass. Total: 104 → 108. Commit `49289e9`. Closes yebyen/mecris#161.
+**Skipped**: No new features — PR #179 still awaiting kingdonb review. Live migration and Spin variables still require kingdonb.
+**Next**: Await kingdonb review and merge of kingdonb/mecris#179. After merge: sync yebyen from upstream, then track kingdonb configuring Twilio + OpenWeather Spin vars in Fermyon Cloud.
+
+## 2026-04-12 (7th run) — Python WeatherService unit tests (19 tests)
+
+**Planned**: yebyen/mecris#163 — Create `tests/test_weather_service.py` with ≥10 unit tests covering all `is_walk_appropriate()` branches and `get_weather()` mock/cache paths; no network/DB/Spin host required.
+**Done**: `tests/test_weather_service.py` created with 19 tests — all `is_walk_appropriate()` branches (cold, hot, rain, wind, pre-sunrise, post-sunset, no-temp, error-no-temp, stale-with-temp, boundary edges for temp=20/95 and wind=30) and all `get_weather()` paths (mock mode, no-API-key fallback, cache hit, expired cache refresh, API error with stale cache, API error with no cache). Commit `d13e647`. Closes yebyen/mecris#163.
+**Skipped**: Local pytest run (Python venv not present in bot runner). Tests will be validated via pr-test workflow in a future session.
+**Next**: Await kingdonb review and merge of kingdonb/mecris#179. After merge: sync yebyen from upstream. Dispatch pr-test to validate WeatherService tests alongside existing suite.
+
+## 2026-04-13 (1st run) — WeatherService pr-test validated ✅; 21 SMSConsentManager tests added
+
+**Planned**: Validate WeatherService tests via pr-test on kingdonb/mecris#179 (pending from last session); then yebyen/mecris#164 — write `tests/test_sms_consent_manager.py` with unit tests for opt-in, opt-out, can_send_message (all branches), log_message_sent, and get_consent_summary.
+
+**Done**: Dispatched pr-test on PR #179 (run 24319436448) — Python ✅ 341 passed 4 skipped, Android ✅ BUILD SUCCESSFUL, Rust ✅ 64 passed. All 19 WeatherService tests confirmed. Result posted as comment on kingdonb/mecris#179. Then wrote `tests/test_sms_consent_manager.py` with 21 tests: TestOptIn (4), TestOptOut (4), TestCanSendMessage (6 — unknown, opted-out, wrong type, within window, outside window, daily limit), TestLogMessageSent (4 — adds, unknown user, 30-day trim, keeps recent), TestGetConsentSummary (5), TestUpdateUserPreferences (3). Commit `e0acfe4`. Closes yebyen/mecris#164.
+
+**Skipped**: pr-test validation of SMSConsentManager tests — commits pushed by workflow after session ends; pr-test can only see them in the NEXT session.
+
+**Next**: Dispatch pr-test on PR #179 (or any subsequent PR) to validate SMSConsentManager tests — confirm Python count rises above 341. Await kingdonb review and merge of PR #179.
