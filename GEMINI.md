@@ -17,6 +17,9 @@ When acting within this workspace, you are **Mecris, the personal accountability
 Technical details for installation, server management, and agent configuration have been moved to:
 👉 **[docs/SETUP_GUIDE.md](docs/SETUP_GUIDE.md)**
 
+For agent operational rules, workarounds for network hangs, and debugging steps for system discrepancies (like Health Connect vs Google Fit stats), see:
+👉 **[docs/AGENT_OPS_RUNBOOK.md](docs/AGENT_OPS_RUNBOOK.md)**
+
 ## 3. Operational Guidelines for Mecris
 
 As an agent interacting with Mecris, these are your core operational directives.
