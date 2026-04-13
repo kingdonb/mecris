@@ -21,7 +21,8 @@
 - [ ] **kingdonb/mecris#179 review and merge**: PR is open and green. Awaiting kingdonb review and merge.
 - [ ] **Sync yebyen from upstream after #179 merges**: After merge, run `git fetch upstream main && git merge upstream/main --no-edit` to bring yebyen:main in sync with kingdonb:main.
 - [ ] **Run 004_user_location.sql against live Neon**: `psql $NEON_DB_URL -f scripts/migrations/004_user_location.sql` — adds `location_lat`, `location_lon` columns to live `users` table. Requires kingdonb.
-- [ ] **Multi-Tenancy — Android UI Gaps**: Add "log out" button for PocketID auth. Add UI for users to provide phone number, grant/revoke SMS auth, and set personal location (lat/lon) for weather heuristics. Tracked in kingdonb/mecris#168.
+- [ ] **Multi-Tenancy — Android UI Gaps**: Add "log out" button for PocketID auth. Add UI for users to provide phone number, grant/revoke SMS auth, set personal location (lat/lon) for weather heuristics, and select their **Preferred Health Source** (e.g., Google Fit) to prevent double-counting. Tracked in kingdonb/mecris#168.
+- [x] **Issue #180 Resolved**: Fixed Health Connect double-counting in Android and non-deterministic Rust DB queries.
 - [ ] **Rust test gap (workflow fix)**: Apply fix from yebyen/mecris#142: add `working-directory: mecris-go-spin/sync-service` to `Run Rust tests` step in `.github/workflows/pr-test.yml`. Needs `workflow` PAT scope or kingdonb direct action.
 - [ ] **send_walk_reminder integration test**: Requires live Spin Cloud deploy with Twilio variables configured.
 - [ ] **Twilio Spin variables not yet configured**: `twilio_account_sid`, `twilio_auth_token_encrypted`, `twilio_from_number` — kingdonb must set in Fermyon Cloud.

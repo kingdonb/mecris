@@ -149,16 +149,42 @@ class HealthConnectManager(private val context: Context) {
             timeRangeFilter = timeRangeFilter
         )
         val aggregateResponse = healthConnectClient.aggregate(aggregateRequest)
-        val totalSteps = aggregateResponse[StepsRecord.COUNT_TOTAL] ?: 0L
+        var totalSteps = aggregateResponse[StepsRecord.COUNT_TOTAL] ?: 0L
         val totalDistanceMeters = aggregateResponse[DistanceRecord.DISTANCE_TOTAL]?.inMeters ?: 0.0
         
+        // --- Source-Specific Filtering (Issue #180) ---
+        var source = if (totalDistanceMeters > 0) "Health Connect (Deduplicated)" else "Health Connect (Passive)"
+        val appPrefs = context.getSharedPreferences("mecris_app_prefs", Context.MODE_PRIVATE)
+        val preferredSource = appPrefs.getString("preferred_health_source", null)
+        
+        if (preferredSource != null && preferredSource.isNotEmpty()) {
+            try {
+                val sourceRequest = AggregateRequest(
+                    metrics = setOf(StepsRecord.COUNT_TOTAL),
+                    timeRangeFilter = timeRangeFilter,
+                    dataOriginFilter = setOf(androidx.health.connect.client.records.metadata.DataOrigin(preferredSource))
+                )
+                val sourceResponse = healthConnectClient.aggregate(sourceRequest)
+                val sourceSteps = sourceResponse[StepsRecord.COUNT_TOTAL] ?: 0L
+                if (sourceSteps > 0) {
+                    Log.i("HealthConnectManager", "Filtering to preferred source ($preferredSource): $sourceSteps (Original deduplicated sum: $totalSteps)")
+                    totalSteps = sourceSteps
+                    source = "Health Connect ($preferredSource)"
+                } else {
+                    Log.w("HealthConnectManager", "Preferred source ($preferredSource) returned 0 steps. Falling back to deduplicated sum ($totalSteps).")
+                }
+            } catch (e: Exception) {
+                Log.e("HealthConnectManager", "Failed to query preferred source $preferredSource: ${e.message}")
+            }
+        }
+        // ----------------------------------------------
+
         val sessions = healthConnectClient.readRecords(ReadRecordsRequest(ExerciseSessionRecord::class, timeRangeFilter)).records
         val walkingSessions = sessions.filter {
             it.exerciseType == ExerciseSessionRecord.EXERCISE_TYPE_WALKING ||
             it.exerciseType == ExerciseSessionRecord.EXERCISE_TYPE_OTHER_WORKOUT
         }
         
-        var source = if (totalDistanceMeters > 0) "Health Connect (Deduplicated)" else "Health Connect (Passive)"
         if (walkingSessions.isNotEmpty()) { source = "Health Connect (Workouts)" }
 
         var hasRoutes = false
