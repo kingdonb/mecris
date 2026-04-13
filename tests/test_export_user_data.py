@@ -38,6 +38,10 @@ def _make_cursor_with_tables(user_row, table_rows=None):
     # description is used to build column names; return a single col for simplicity
     mock_cur.description = [("pocket_id_sub",)]
 
+    # fetchone returns None so UsageTracker.resolve_user_id's familiar_id lookup
+    # falls through to returning the provided user_id string unchanged
+    mock_cur.fetchone.return_value = None
+
     # First fetchall → users row; subsequent → empty (language_stats, etc.)
     mock_cur.fetchall.side_effect = [[user_row]] + [table_rows] * 5
     return mock_cur
