@@ -1118,10 +1118,38 @@ async def get_daily_aggregate_status(user_id: str = None) -> Dict[str, Any]:
         }
     }
 
+@mcp.tool(description="GDPR right-to-erasure: permanently delete all data for a user. Removes token_bank first (no CASCADE), then users row (CASCADE deletes walk_inferences, language_stats, goals, message_log, usage_sessions, autonomous_turns, budget_tracking).")
+def delete_user_data(user_id: str = None) -> Dict[str, Any]:
+    target_user_id = usage_tracker.resolve_user_id(user_id)
+    neon_url = os.getenv("NEON_DB_URL")
+    if not neon_url:
+        return {"deleted": False, "error": "NEON_DB_URL not configured"}
+
+    def _delete():
+        import psycopg2
+        with psycopg2.connect(neon_url) as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT pocket_id_sub FROM users WHERE pocket_id_sub = %s",
+                    (target_user_id,)
+                )
+                if cur.fetchone() is None:
+                    return {"deleted": False, "error": f"User not found: {target_user_id}"}
+                cur.execute("DELETE FROM token_bank WHERE user_id = %s", (target_user_id,))
+                cur.execute("DELETE FROM users WHERE pocket_id_sub = %s", (target_user_id,))
+                return {"deleted": True, "user_id": target_user_id}
+
+    try:
+        return _delete()
+    except Exception as e:
+        logger.error(f"delete_user_data failed: {e}")
+        return {"deleted": False, "error": str(e)}
+
+
 if __name__ == "__main__":
     import sys
     import asyncio
-    
+
     if len(sys.argv) > 1 and sys.argv[1] == "--stdio":
         async def run_stdio():
             scheduler.start()
