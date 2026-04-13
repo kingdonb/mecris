@@ -54,14 +54,14 @@ def test_delete_user_data_deletes_token_bank_then_users():
     executed_sqls = [str(c.args[0]).strip() for c in mock_cur.execute.call_args_list]
     assert any("SELECT" in sql and "users" in sql for sql in executed_sqls), \
         f"Expected SELECT from users, got: {executed_sqls}"
-    assert any("DELETE" in sql and "token_bank" in sql for sql in executed_sqls), \
+    assert any("DELETE FROM token_bank" in sql for sql in executed_sqls), \
         f"Expected DELETE from token_bank, got: {executed_sqls}"
-    assert any("DELETE" in sql and "users" in sql for sql in executed_sqls), \
+    assert any("DELETE FROM users" in sql for sql in executed_sqls), \
         f"Expected DELETE from users, got: {executed_sqls}"
 
     # token_bank DELETE must come before users DELETE
-    token_bank_idx = next(i for i, s in enumerate(executed_sqls) if "DELETE" in s and "token_bank" in s)
-    users_idx = next(i for i, s in enumerate(executed_sqls) if "DELETE" in s and "users" in s)
+    token_bank_idx = next(i for i, s in enumerate(executed_sqls) if "DELETE FROM token_bank" in s)
+    users_idx = next(i for i, s in enumerate(executed_sqls) if "DELETE FROM users" in s)
     assert token_bank_idx < users_idx, "token_bank must be deleted before users"
 
 
@@ -92,18 +92,21 @@ def test_delete_user_data_unknown_user_returns_error():
 
     # No DELETE statements should have been issued
     executed_sqls = [str(c.args[0]).strip() for c in mock_cur.execute.call_args_list]
-    assert not any("DELETE" in sql for sql in executed_sqls), \
+    assert not any("DELETE FROM" in sql for sql in executed_sqls), \
         f"Should not DELETE when user not found, got: {executed_sqls}"
 
 
 def test_delete_user_data_no_neon_url():
-    """Returns error dict when NEON_DB_URL is not configured."""
+    """Returns error dict when NEON_DB_URL is not configured at call time."""
     sys.modules.pop("mcp_server", None)
 
-    with patch.dict("os.environ", {"NEON_DB_URL": "", "DEFAULT_USER_ID": "test-user"}), \
-         patch("psycopg2.connect"):
+    env_patch, db_patch = _make_mcp_importable()
+
+    with env_patch, db_patch:
         from mcp_server import delete_user_data
-        result = delete_user_data(user_id="test-user")
+        # Remove NEON_DB_URL at call time (module already imported safely above)
+        with patch.dict("os.environ", {"NEON_DB_URL": ""}):
+            result = delete_user_data(user_id="test-user")
 
     assert result["deleted"] is False
     assert "neon" in result["error"].lower() or "not configured" in result["error"].lower()
