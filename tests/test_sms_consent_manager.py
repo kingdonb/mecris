@@ -118,9 +118,6 @@ class TestCanSendMessage:
         # Default window: 14-17; mock hour=15
         with patch("sms_consent_manager.datetime") as mock_dt:
             mock_dt.now.return_value = datetime(2026, 4, 12, 15, 0, 0)
-            mock_dt.now.return_value.date.return_value = datetime(2026, 4, 12).date()
-            # Let can_send_message use a real now() for date comparisons
-            mock_dt.now.side_effect = lambda: datetime(2026, 4, 12, 15, 0, 0)
             result = mgr.can_send_message("+15550001234", "walk_reminder")
         assert result["can_send"] is True
 
