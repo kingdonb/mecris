@@ -1146,6 +1146,50 @@ def delete_user_data(user_id: str = None) -> Dict[str, Any]:
         return {"deleted": False, "error": str(e)}
 
 
+@mcp.tool(description="GDPR data portability: export all data for a user as structured JSON. Returns rows from users, language_stats, budget_tracking, token_bank, walk_inferences, and message_log tables.")
+def export_user_data(user_id: str = None) -> Dict[str, Any]:
+    target_user_id = usage_tracker.resolve_user_id(user_id)
+    neon_url = os.getenv("NEON_DB_URL")
+    if not neon_url:
+        return {"exported": False, "error": "NEON_DB_URL not configured"}
+
+    def _rows(cur, table: str, col: str) -> list:
+        cur.execute(f"SELECT * FROM {table} WHERE {col} = %s", (target_user_id,))
+        cols = [d[0] for d in cur.description]
+        return [dict(zip(cols, row)) for row in cur.fetchall()]
+
+    def _export():
+        import psycopg2
+        with psycopg2.connect(neon_url) as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT * FROM users WHERE pocket_id_sub = %s",
+                    (target_user_id,)
+                )
+                cols = [d[0] for d in cur.description]
+                user_rows = [dict(zip(cols, row)) for row in cur.fetchall()]
+                if not user_rows:
+                    return {"exported": False, "error": f"User not found: {target_user_id}"}
+                return {
+                    "exported": True,
+                    "user_id": target_user_id,
+                    "data": {
+                        "users": user_rows,
+                        "language_stats": _rows(cur, "language_stats", "user_id"),
+                        "budget_tracking": _rows(cur, "budget_tracking", "user_id"),
+                        "token_bank": _rows(cur, "token_bank", "user_id"),
+                        "walk_inferences": _rows(cur, "walk_inferences", "user_id"),
+                        "message_log": _rows(cur, "message_log", "user_id"),
+                    }
+                }
+
+    try:
+        return _export()
+    except Exception as e:
+        logger.error(f"export_user_data failed: {e}")
+        return {"exported": False, "error": str(e)}
+
+
 if __name__ == "__main__":
     import sys
     import asyncio
