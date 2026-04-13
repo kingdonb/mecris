@@ -1,28 +1,24 @@
-# Next Session: Await kingdonb review and merge of kingdonb/mecris#179, then run live migration
+# Next Session: Open PR from yebyen:main to kingdonb:main and dispatch pr-test to validate 363 Python tests
 
 ## Current Status (2026-04-13)
-- **PR #179 open**: kingdonb/mecris#179 opened from yebyen:main — per-user OpenWeather location feature. pr-test (run 24319436448): Python ✅ 341 passed Android ✅ Rust ✅ 64 passed. Ready for review and merge by kingdonb.
-- **yebyen/mecris is 11 commits ahead of kingdonb:main**: base diverged at `ad5ed6c`; yebyen is ahead with per-user location feature, Rust audit, WeatherService tests, and SMSConsentManager tests.
-- **108 Rust tests passing**: All 6 crates in `mecris-go-spin/` — 108 total, 0 failed.
-  - sync-service: 64 | review-pump: 17 | nag-engine-rs: 8 | goal-type-rs: 7 | review-pump-rs: 6 | majesty-cake-rs: 6
-- **341 Python tests passing**: Confirmed via pr-test run 24319436448 on PR #179.
-- **WeatherService Python tests validated**: `tests/test_weather_service.py` — 19 tests, all pass in pr-test. Closes yebyen/mecris#163.
-- **SMSConsentManager tests added**: `tests/test_sms_consent_manager.py` — 21 tests. Commit `e0acfe4`. Closes yebyen/mecris#164. Not yet validated via pr-test.
-- **Rust CI still failing in pr-test.yml**: Pre-existing `working-directory` gap. Tracked in yebyen/mecris#142. Requires `workflow` PAT scope — cannot fix from bot.
-- **Live migration not yet run**: `scripts/migrations/004_user_location.sql` not yet applied to live Neon DB. Requires kingdonb.
+- **yebyen/mecris synced with kingdonb:main**: Fast-forward merge of 7 commits (`ea27286`…`a48244d`). `git rev-list HEAD..upstream/main` = 0.
+- **yebyen:main is 1 commit ahead of kingdonb:main**: Commit `1b3cd4f` — new test `TestOptIn.test_get_user_preferences_reloads_cross_instance` validates the reload-from-disk behavior added in `a48244d`. This commit lands on GitHub when bot workflow ends.
+- **SMSConsentManager tests (21+1=22)**: 21 from `e0acfe4` in kingdonb:main; +1 cross-instance reload test from `1b3cd4f` in yebyen:main. Expected Python count after pr-test: 363.
+- **108 Rust tests passing**: All 6 crates in `mecris-go-spin/` — unchanged since 2026-04-12.
+- **Issue #180 resolved by kingdonb**: `ORDER BY start_time ASC` in walk_inferences query (`a48244d`); Health Connect double-counting fixed in `HealthConnectManager.kt`.
+- **Rust CI still failing in pr-test.yml**: Pre-existing `working-directory` gap. Tracked in yebyen/mecris#142. Requires `workflow` PAT scope.
 
 ## Verified This Session
-- [x] **WeatherService tests validated via pr-test (2026-04-13)**: Run 24319436448 — 341 Python passed, Android ✅, Rust 64 passed. All 19 WeatherService tests confirmed passing in CI. Comment posted on kingdonb/mecris#179.
-- [x] **PR #179 still open (2026-04-13)**: kingdonb/mecris#179 open, green, awaiting review.
-- [x] **SMSConsentManager tests committed (2026-04-13)**: `tests/test_sms_consent_manager.py` — 21 tests covering opt_in_user (4), opt_out_user (4), can_send_message (6), log_message_sent (4), get_consent_summary (5), update_user_preferences (3). Commit `e0acfe4`. Closes yebyen/mecris#164.
+- [x] **Upstream sync complete (2026-04-13)**: Fast-forward merge of 7 commits from kingdonb/mecris main. `git rev-list HEAD..upstream/main` = 0.
+- [x] **PR #179 merged by kingdonb (2026-04-13)**: Confirmed merged at 02:09 UTC. All bot work from prior sessions is now in kingdonb:main.
+- [x] **SMSConsentManager mock fix reviewed (2026-04-13)**: kingdonb commit `1be0021` — removed conflicting `return_value.date.return_value` + `side_effect` from `test_within_window_and_under_limit_can_send`; `return_value` alone is the correct pattern.
+- [x] **get_user_preferences reload test added (2026-04-13)**: Commit `1b3cd4f` — `TestOptIn.test_get_user_preferences_reloads_cross_instance` tests the new disk-reload behavior from `a48244d`.
 
 ## Pending Verification (Next Session)
-- [ ] **SMSConsentManager tests (pr-test validation)**: `tests/test_sms_consent_manager.py` (21 tests, commit `e0acfe4`) committed but not yet validated via pr-test workflow. Dispatch pr-test on PR #179 or any subsequent PR to confirm count rises above 341.
-- [ ] **kingdonb/mecris#179 review and merge**: PR is open and green. Awaiting kingdonb review and merge.
-- [ ] **Sync yebyen from upstream after #179 merges**: After merge, run `git fetch upstream main && git merge upstream/main --no-edit` to bring yebyen:main in sync with kingdonb:main.
+- [ ] **Open PR from yebyen:main → kingdonb:main**: yebyen is 1 commit ahead (`1b3cd4f`). After push lands on GitHub, open a PR and dispatch pr-test to validate 22 SMSConsentManager tests. Plan: yebyen/mecris#165.
+- [ ] **pr-test Python count ≥ 363**: Run pr-test on the new PR; confirm count rises above 341. Closes yebyen/mecris#165 validation criterion.
 - [ ] **Run 004_user_location.sql against live Neon**: `psql $NEON_DB_URL -f scripts/migrations/004_user_location.sql` — adds `location_lat`, `location_lon` columns to live `users` table. Requires kingdonb.
-- [ ] **Multi-Tenancy — Android UI Gaps**: Add "log out" button for PocketID auth. Add UI for users to provide phone number, grant/revoke SMS auth, set personal location (lat/lon) for weather heuristics, and select their **Preferred Health Source** (e.g., Google Fit) to prevent double-counting. Tracked in kingdonb/mecris#168.
-- [x] **Issue #180 Resolved**: Fixed Health Connect double-counting in Android and non-deterministic Rust DB queries.
+- [ ] **Multi-Tenancy — Android UI Gaps**: Add "log out" button for PocketID auth. Add UI for users to provide phone number, grant/revoke SMS auth, and set personal location. Tracked in kingdonb/mecris#168.
 - [ ] **Rust test gap (workflow fix)**: Apply fix from yebyen/mecris#142: add `working-directory: mecris-go-spin/sync-service` to `Run Rust tests` step in `.github/workflows/pr-test.yml`. Needs `workflow` PAT scope or kingdonb direct action.
 - [ ] **send_walk_reminder integration test**: Requires live Spin Cloud deploy with Twilio variables configured.
 - [ ] **Twilio Spin variables not yet configured**: `twilio_account_sid`, `twilio_auth_token_encrypted`, `twilio_from_number` — kingdonb must set in Fermyon Cloud.
@@ -70,4 +66,6 @@
 - **phone_number_encrypted column**: Exists in `users` table per `scripts/migrations/002_pii_encryption.sql` and `mecris-go-spin/schema.sql`. The trigger-reminders handler queries all users with this column set.
 - **message_log table**: Used for rate limiting. Query: `SELECT sent_at::TEXT FROM message_log WHERE user_id = $1 AND type = 'walk_reminder' ORDER BY sent_at DESC LIMIT 1`. Insert after send: `INSERT INTO message_log (user_id, type, channel) VALUES ($1, 'walk_reminder', 'sms')`.
 - **--quiet cargo test flag**: Masks unit test output when doc-tests follow with 0 results. Use `cargo test` (without --quiet) to see true per-test output. The `-- --list` flag works correctly.
-- **SMSConsentManager datetime mock**: Time-window and daily-limit branches in `can_send_message` use `datetime.now()`. In tests, patch `sms_consent_manager.datetime` (the class imported via `from datetime import datetime`) and use `side_effect = lambda: datetime(Y, M, D, H, 0, 0)`. This allows `.date().isoformat()` and `.hour` to work on the returned real datetime object.
+- **SMSConsentManager datetime mock**: Time-window and daily-limit branches in `can_send_message` use `datetime.now()`. In tests, patch `sms_consent_manager.datetime` and use `mock_dt.now.return_value = datetime(Y, M, D, H, 0, 0)` — `return_value` alone is correct; do NOT also set `side_effect` (it overrides `return_value`). `.date().isoformat()` and `.hour` work naturally on the returned real datetime object.
+- **SMSConsentManager get_user_preferences reload**: As of `a48244d` (kingdonb), `get_user_preferences` reloads from disk on every call. `can_send_message` reads `self.consent_data` directly (NOT via `get_user_preferences`) so direct in-memory mutations in tests for daily-limit branch still work correctly.
+- **Upstream sync pattern**: `git remote add upstream https://github.com/kingdonb/mecris.git && git fetch upstream main && git merge upstream/main --no-edit`.

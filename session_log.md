@@ -1163,3 +1163,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: pr-test validation of SMSConsentManager tests — commits pushed by workflow after session ends; pr-test can only see them in the NEXT session.
 
 **Next**: Dispatch pr-test on PR #179 (or any subsequent PR) to validate SMSConsentManager tests — confirm Python count rises above 341. Await kingdonb review and merge of PR #179.
+
+## 2026-04-13 (2nd run) — Upstream sync + cross-instance reload test for SMSConsentManager
+
+**Planned**: Sync yebyen/mecris from kingdonb/mecris main (7 commits behind after #179 merge); dispatch pr-test to validate SMSConsentManager tests count ≥ 362. (yebyen/mecris#165)
+
+**Done**: Fast-forward merge of 7 commits from kingdonb/mecris (`ea27286`…`a48244d`). Notable changes pulled in: `1be0021` (fix broken mock in SMSConsentManager tests — removed redundant `return_value.date.return_value` + `side_effect`), `a48244d` (Issue #180 fix: `ORDER BY start_time ASC` in walk_inferences; Health Connect double-counting fix), `sms_consent_manager.py` reload-on-`get_user_preferences`. Added 1 new test `test_get_user_preferences_reloads_cross_instance` (commit `1b3cd4f`) to validate the reload behavior.
+
+**Skipped**: pr-test dispatch — push constraint applies (commit `1b3cd4f` not on GitHub until workflow ends). Must dispatch in next session after push lands.
+
+**Next**: Open PR from yebyen:main → kingdonb:main (1 commit ahead), dispatch pr-test, confirm Python count ≥ 363. Plan issue: yebyen/mecris#165 (left open — validation pending).
