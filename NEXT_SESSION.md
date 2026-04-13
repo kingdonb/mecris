@@ -1,25 +1,19 @@
-# Next Session: Re-run pr-test for PR #181 after push lands (test fix committed)
+# Next Session: Await kingdonb merge of PR #181 or pick up next feature
 
 ## Current Status (2026-04-13)
-- **yebyen/mecris is 4 commits ahead of kingdonb:main**: `5f25fa9` (test fix) + `aba465b` (archive) + `20cfc7b` (delete_user_data feat) + `e0b71d1` (archive). PR #181 (yebyen:main → kingdonb:main) is open on kingdonb/mecris.
-- **delete_user_data test fix committed (2026-04-13)**: Commit `5f25fa9` — SQL matching in `tests/test_delete_user_data.py` tightened: `"DELETE FROM token_bank"` / `"DELETE FROM users"` instead of `"DELETE" in sql` (was matching `ON DELETE CASCADE` in CREATE TABLE statements). Also fixed `test_delete_user_data_no_neon_url` import-time crash (now uses `_make_mcp_importable()` for import, then clears `NEON_DB_URL` at call time).
-- **pr-test run for PR #181 returned 3 failures**: Run `24355140457` — `3 failed, 369 passed`. Failures were all in `tests/test_delete_user_data.py`. Fix committed but not yet pushed (push happens when workflow ends).
+- **PR #181 (yebyen:main → kingdonb:main) is open and fully green**: pr-test run `24359503584` — 372 passed, 4 skipped, 0 failed. Python ✅, Android ✅ (24 tasks), Rust ✅ (64 passed). Ready for kingdonb to merge.
+- **yebyen/mecris is 4 commits ahead of kingdonb:main**: `5f25fa9` (test fix) + `aba465b` (archive) + `20cfc7b` (delete_user_data feat) + `e0b71d1` (archive). All are in PR #181.
 - **delete_user_data MCP tool**: `mcp_server.py` has `delete_user_data()` (commit `20cfc7b`). FK-safe: deletes `token_bank` first, then `users` (CASCADE handles rest). GDPR right-to-erasure gap addressed.
 - **108 Rust tests passing**: All 6 crates in `mecris-go-spin/` — unchanged since 2026-04-12.
 
 ## Verified This Session
-- [x] **pr-test dispatched for kingdonb/mecris#181 (2026-04-13)**: Run `24355140457` completed. Android tests ✅ (24 tasks). Python: 3 failed (all in test_delete_user_data.py), 369 passed.
-- [x] **Test failures diagnosed and fixed (2026-04-13)**: `"DELETE" in sql` matched `ON DELETE CASCADE` in CREATE TABLE stmts; `test_delete_user_data_no_neon_url` crashed on import. Both fixed in commit `5f25fa9`.
-- [x] **Upstream sync complete (2026-04-13)**: Fast-forward merge of 7 commits from kingdonb/mecris main. `git rev-list HEAD..upstream/main` = 0.
-- [x] **PR #179 merged by kingdonb (2026-04-13)**: Confirmed merged at 02:09 UTC. All bot work from prior sessions is now in kingdonb:main.
-- [x] **SMSConsentManager mock fix reviewed (2026-04-13)**: kingdonb commit `1be0021` — removed conflicting `return_value.date.return_value` + `side_effect` from `test_within_window_and_under_limit_can_send`; `return_value` alone is the correct pattern.
-- [x] **get_user_preferences reload test added (2026-04-13)**: Commit `1b3cd4f` — `TestOptIn.test_get_user_preferences_reloads_cross_instance` tests the new disk-reload behavior from `a48244d`.
-- [x] **yebyen/mecris#165 cross-instance reload test**: Merged by kingdonb via `f91e346`. Issue can be closed — validation criterion met (test in kingdonb:main).
-- [x] **NEXT_SESSION.md audited (2026-04-13)**: Previous session. Resolved items marked. NEXT_SESSION.md reflects true state. Plan: yebyen/mecris#166.
-- [x] **GDPR right-to-erasure MCP tool (2026-04-13)**: `delete_user_data()` added to `mcp_server.py` (commit `20cfc7b`). 4 unit tests in `tests/test_delete_user_data.py`. FK-safe order: token_bank → users (CASCADE). Syntax validated ✅. Plan: yebyen/mecris#167 (closed).
+- [x] **pr-test for kingdonb/mecris#181 passed (2026-04-13)**: Run `24359503584` — 372 passed, 4 skipped, 0 failed. All 3 previously-failing `test_delete_user_data.py` tests now passing after SQL fix `5f25fa9`. Android 24 tasks ✅. Rust 64 passed ✅.
+- [x] **SQL fix `5f25fa9` confirmed working**: `"DELETE FROM token_bank"` / `"DELETE FROM users"` assertion pattern avoids matching `ON DELETE CASCADE` in CREATE TABLE strings.
+- [x] **delete_user_data MCP tool (2026-04-13)**: `mcp_server.py` has `delete_user_data()` (commit `20cfc7b`). 4 unit tests in `tests/test_delete_user_data.py`. FK-safe order: token_bank → users (CASCADE). Syntax validated ✅. Plan: yebyen/mecris#167 (closed).
+- [x] **PR #181 opened (2026-04-13)**: yebyen:main → kingdonb:main. Tracks delete_user_data tool + cross-instance reload test.
 
 ## Pending Verification (Next Session)
-- [ ] **Re-run pr-test for kingdonb/mecris#181 (PRIORITY)**: Test fix in commit `5f25fa9` is now on yebyen:main (after push). Dispatch pr-test for PR #181 again. Expected: ≥ 367 Python tests passing (363 prior + 4 new delete_user_data tests), all 3 previously-failing tests now passing. To dispatch: `curl -X POST ... /actions/workflows/pr-test.yml/dispatches` with `pr_number=181`.
+- [ ] **kingdonb/mecris#181 merge**: PR is green and ready. kingdonb must merge. After merge, verify yebyen/mecris is synced (0 commits behind kingdonb:main).
 - [ ] **Run 004_user_location.sql against live Neon**: `psql $NEON_DB_URL -f scripts/migrations/004_user_location.sql` — adds `location_lat`, `location_lon` columns to live `users` table. Requires kingdonb.
 - [ ] **Multi-Tenancy — Android UI Gaps**: Add "log out" button for PocketID auth. Add UI for users to provide phone number, grant/revoke SMS auth, set personal location (lat/lon) for weather heuristics, and select their **Preferred Health Source** (e.g., Google Fit) to prevent double-counting. Tracked in kingdonb/mecris#168.
 - [ ] **Rust test gap (workflow fix)**: Apply fix from yebyen/mecris#142: add `working-directory: mecris-go-spin/sync-service` to `Run Rust tests` step in `.github/workflows/pr-test.yml`. Needs `workflow` PAT scope or kingdonb direct action.
