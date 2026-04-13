@@ -158,4 +158,46 @@ mod tests {
         assert_eq!(res.tier, 3);
         assert_eq!(res.template_id, "NAG_EMERGENCY");
     }
+
+    #[test]
+    fn test_cooldown_suppresses_tier1_and_tier2() {
+        // Global cooldown active, non-sleep hour, incomplete goal with plenty of runway.
+        // Tier 3 would bypass cooldown, but runway=12h → no tier 3.
+        let r = req(12.0, false, 8.0, 14, true);
+        let res = nag_ladder_logic(&r);
+        assert_eq!(res.should_send, false);
+        assert_eq!(res.tier, 0);
+    }
+
+    #[test]
+    fn test_completed_goal_sends_nothing() {
+        // A completed goal, regardless of idle time and hour, should produce no nag.
+        let r = req(12.0, true, 10.0, 15, false);
+        let res = nag_ladder_logic(&r);
+        assert_eq!(res.should_send, false);
+        assert_eq!(res.tier, 0);
+    }
+
+    #[test]
+    fn test_empty_goals_list_sends_nothing() {
+        let r = NagRequest {
+            goals: vec![],
+            idle_hours: 10.0,
+            current_hour_local: 15,
+            global_cooldown_active: false,
+        };
+        let res = nag_ladder_logic(&r);
+        assert_eq!(res.should_send, false);
+        assert_eq!(res.tier, 0);
+    }
+
+    #[test]
+    fn test_sleep_window_boundary_at_hour_22() {
+        // hour=22 is the first sleep hour (>= 22 || < 7).
+        // Tier 1/2 should be suppressed; no tier 3 (runway=12h).
+        let r = req(12.0, false, 8.0, 22, false);
+        let res = nag_ladder_logic(&r);
+        assert_eq!(res.should_send, false);
+        assert_eq!(res.tier, 0);
+    }
 }

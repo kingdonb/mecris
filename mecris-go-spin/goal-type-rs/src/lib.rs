@@ -136,4 +136,27 @@ mod tests {
         let res = validate_push_logic(&r);
         assert_eq!(res.is_safe_to_push, false); // safety valve activates!
     }
+
+    #[test]
+    fn test_backlog_increases() {
+        // Backlog grew (more work accumulated): current=45, intended=50.
+        // Unlike odometer, this is still safe to push — it's just a snapshot.
+        // delta = current - intended = 45 - 50 = -5 (negative: backlog grew)
+        let r = req("backlog", 45.0, 50.0);
+        let res = validate_push_logic(&r);
+        assert_eq!(res.is_safe_to_push, true);
+        assert_eq!(res.validated_delta, -5.0);
+        assert_eq!(res.status_message, "Safe to push backlog snapshot.");
+    }
+
+    #[test]
+    fn test_backlog_zero_delta() {
+        // Backlog unchanged: current == intended. Safe for backlog (unlike odometer zero delta).
+        // delta = current - intended = 0
+        let r = req("backlog", 50.0, 50.0);
+        let res = validate_push_logic(&r);
+        assert_eq!(res.is_safe_to_push, true);
+        assert_eq!(res.validated_delta, 0.0);
+        assert_eq!(res.status_message, "Safe to push backlog snapshot.");
+    }
 }
