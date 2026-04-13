@@ -1217,7 +1217,7 @@ async fn handle_trigger_reminders_post(_req: Request) -> anyhow::Result<Response
 
         // Phase 3: step count from walk_inferences for today
         let step_strings: Vec<String> = match connection.query(
-            "SELECT step_count FROM walk_inferences WHERE user_id = $1 AND start_time >= $2",
+            "SELECT step_count FROM walk_inferences WHERE user_id = $1 AND start_time >= $2 ORDER BY start_time ASC",
             &[ParameterValue::Str(user_id.clone()), ParameterValue::Str(today_utc.clone())],
         ) {
             Ok(rs) => rs.rows.iter()
