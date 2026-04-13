@@ -51,6 +51,16 @@ class TestOptIn:
         # Should be findable via the cleaned-up key
         assert mgr.get_user_preferences("+1-555-000-1234") is not None
 
+    def test_get_user_preferences_reloads_cross_instance(self, tmp_path):
+        """get_user_preferences reloads from disk so a live instance sees changes made by another."""
+        mgr1 = _make_manager(tmp_path)
+        mgr2 = _make_manager(tmp_path)
+        mgr1.opt_in_user("+15550001234", "web")  # mgr1 saves to disk
+        # mgr2 was created before the opt_in — stale in-memory state
+        prefs = mgr2.get_user_preferences("+15550001234")
+        assert prefs is not None
+        assert prefs["opted_in"] is True
+
 
 # ---------------------------------------------------------------------------
 # opt_out_user
