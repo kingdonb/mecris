@@ -1223,3 +1223,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: pr-test dispatch — push constraint applies; `1cbf337` not on GitHub until workflow ends. PR #181 does not include export_user_data (separate commit); will need new PR or #181 update after merge.
 
 **Next**: After push lands, dispatch pr-test to validate export_user_data tests (expect Python count ≥ 376). Await kingdonb merge of PR #181; then open new PR for export_user_data commit.
+
+## 🏛️ 2026-04-13 (8th run) — pr-test for PR #181: found 1 test failure, fix committed
+
+**Planned**: yebyen/mecris#172 — Dispatch pr-test for kingdonb/mecris#181, verify export_user_data tests (≥ 376 Python tests passing, 0 failed).
+
+**Done**: Oriented — PR #181 still open, 8 commits ahead of upstream. Planned yebyen/mecris#172. Dispatched pr-test (run `24369277280`): 376 passed, 1 failed (`test_export_user_data_returns_all_tables`). Root cause identified: `UsageTracker.resolve_user_id` calls `cursor.fetchone()` for familiar_id lookup; mock cursor returned truthy MagicMock, making `target_user_id` a MagicMock. Fixed in `ac0a0c0` — added `mock_cur.fetchone.return_value = None` to `_make_cursor_with_tables`. Dispatched second pr-test (run `24369605291`) — still 1 failed as expected (push constraint: local commits not on GitHub until session ends).
+
+**Skipped**: Full CI verification of fix — push constraint prevents seeing `ac0a0c0` in pr-test this session. Will verify next session.
+
+**Next**: After push lands, dispatch pr-test on PR #181 (or new PR if merged). Expected: 377 passed, 0 failed. Then await kingdonb merge.

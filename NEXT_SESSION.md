@@ -1,18 +1,21 @@
-# Next Session: Await kingdonb merge of PR #181; dispatch pr-test for export_user_data
+# Next Session: Re-run pr-test after push lands; await kingdonb merge of PR #181
 
 ## Current Status (2026-04-13)
-- **PR #181 (yebyen:main → kingdonb:main) is open and fully green**: pr-test run `24359503584` — 372 passed, 4 skipped, 0 failed. Python ✅, Android ✅ (24 tasks), Rust ✅ (64 passed). Ready for kingdonb to merge.
-- **yebyen/mecris is 7 commits ahead of kingdonb:main**: 6 from last session (delete_user_data feat + test fix + archive commits) + 1 new this session (`1cbf337` export_user_data feat). All in PR #181 except the new export_user_data commit.
-- **export_user_data MCP tool**: `mcp_server.py` has `export_user_data()` (commit `1cbf337`). Returns all 6 tables: users, language_stats, budget_tracking, token_bank, walk_inferences, message_log. 4 unit tests in `tests/test_export_user_data.py`. GDPR data portability gap addressed.
-- **delete_user_data MCP tool**: `mcp_server.py` has `delete_user_data()` (commit `20cfc7b`). FK-safe: deletes `token_bank` first, then `users` (CASCADE handles rest). GDPR right-to-erasure gap addressed.
+- **PR #181 (yebyen:main → kingdonb:main) is open**: Last pr-test before test fix showed 376 passed / 1 failed. Fix committed locally as `ac0a0c0` (not yet on GitHub).
+- **Test fix committed (ac0a0c0)**: `_make_cursor_with_tables` in `tests/test_export_user_data.py` now sets `mock_cur.fetchone.return_value = None` so `UsageTracker.resolve_user_id` doesn't return a MagicMock as `target_user_id`. Fix is correct but unverified in CI (push constraint applies).
+- **yebyen/mecris is 9 commits ahead of kingdonb:main**: All changes in or beyond PR #181. Includes export_user_data feat + test fix.
+- **export_user_data MCP tool**: `mcp_server.py` has `export_user_data()` (commit `1cbf337`). Returns all 6 tables. 4 unit tests. Test had a mock gap — fixed in `ac0a0c0`.
+- **delete_user_data MCP tool**: `mcp_server.py` has `delete_user_data()` (commit `20cfc7b`). FK-safe. GDPR right-to-erasure gap addressed.
 
 ## Verified This Session
-- [x] **export_user_data MCP tool implemented (2026-04-13)**: `mcp_server.py` exports all user data across 6 tables as structured JSON. 4 unit tests: happy path (all 6 table keys present), users row populated, unknown user (exported=False), no NEON_DB_URL, default user resolution. Commit `1cbf337`. Plan: yebyen/mecris#170 (closed).
+- [x] **pr-test dispatched for PR #181 (2026-04-13)**: Run `24369277280` — 376 passed, 1 failed, 4 skipped. Android ✅ 24 tasks, Rust ✅ 64 passed. The failure is `test_export_user_data_returns_all_tables` (mock gap in cursor helper).
+- [x] **Root cause identified**: `UsageTracker.resolve_user_id` calls `cursor.fetchone()` to resolve familiar_id. Mock cursor had no `fetchone.return_value`, so it returned a truthy MagicMock. `row[0]` became `target_user_id`. Fix: `mock_cur.fetchone.return_value = None`.
+- [x] **Fix committed locally**: `ac0a0c0` — `fix(test): mock fetchone=None in export_user_data cursor helper`. Will be pushed when session ends.
 
 ## Pending Verification (Next Session)
-- [ ] **pr-test for export_user_data**: After push lands, dispatch pr-test on PR #181 (or open a new PR if #181 was merged). Expected Python count ≥ 376 (372 + 4 new export_user_data tests). Verify all 4 new tests pass.
-- [ ] **kingdonb/mecris#181 merge**: PR is green and ready. kingdonb must merge. After merge, verify yebyen/mecris is synced (0 commits behind kingdonb:main).
-- [ ] **Open new PR after #181 merges**: Once kingdonb merges #181, sync yebyen from upstream, then open a new PR for the export_user_data commit (`1cbf337`).
+- [ ] **CRITICAL: pr-test after push lands**: Dispatch pr-test on PR #181 (or new PR if #181 was merged). Expected: **377 passed, 0 failed** (376 + the fixed test). All 4 export_user_data tests should be green.
+- [ ] **kingdonb/mecris#181 merge**: PR is ready pending the test fix landing. After push, kingdonb should see 0 failures.
+- [ ] **Open new PR after #181 merges**: Once kingdonb merges #181, sync yebyen from upstream, then open a new PR for export_user_data + test fix commits (`1cbf337`, `ac0a0c0`).
 - [ ] **Run 004_user_location.sql against live Neon**: `psql $NEON_DB_URL -f scripts/migrations/004_user_location.sql` — adds `location_lat`, `location_lon` columns to live `users` table. Requires kingdonb.
 - [ ] **Multi-Tenancy — Android UI Gaps**: Add "log out" button for PocketID auth. Add UI for users to provide phone number, grant/revoke SMS auth, set personal location (lat/lon) for weather heuristics, and select their **Preferred Health Source** (e.g., Google Fit) to prevent double-counting. Tracked in kingdonb/mecris#168.
 - [ ] **Rust test gap (workflow fix)**: Apply fix from yebyen/mecris#142: add `working-directory: mecris-go-spin/sync-service` to `Run Rust tests` step in `.github/workflows/pr-test.yml`. Needs `workflow` PAT scope or kingdonb direct action.
@@ -40,7 +43,8 @@
 - **Test isolation pattern**: Tests that import `mcp_server` must use `sys.modules.pop("mcp_server", None)` + `patch.dict(os.environ, ...)` + `patch("psycopg2.connect")` before importing. See `_make_mcp_importable()` in `test_mcp_server.py`, `test_cloud_sync.py`, `test_standalone_access.py`, `test_unauthorized_access.py`, `test_walk_sync.py`.
 - **SQL mock matching pitfall**: `"DELETE" in sql` matches `ON DELETE CASCADE` in CREATE TABLE strings. Use `"DELETE FROM <table>" in sql` for precise assertions. See test_delete_user_data.py commit `5f25fa9`.
 - **delete_user_data import note**: `UsageTracker()` runs at module import time (mcp_server.py:249). Tests must import with NEON_DB_URL set; test the no-URL case by clearing env var at call time (after import), not before.
-- **export_user_data cursor pattern**: `_rows(cur, table, col)` helper uses `cur.description` for column names and returns list of dicts. Mock `cursor.description` as `[("pocket_id_sub",)]` and `fetchall.side_effect` as `[[user_row]] + [[]]*5` for happy-path tests.
+- **export_user_data cursor pattern**: `_rows(cur, table, col)` helper uses `cur.description` for column names and returns list of dicts. Mock `cursor.description` as `[("pocket_id_sub",)]` and `fetchall.side_effect` as `[[user_row]] + [[]]*5` for happy-path tests. ALSO mock `cursor.fetchone.return_value = None` to prevent `UsageTracker.resolve_user_id` from returning a MagicMock via the familiar_id lookup branch.
+- **UsageTracker.resolve_user_id DB call pitfall**: When NEON_DB_URL is set (even fake), `resolve_user_id(non_None_user_id)` calls `psycopg2.connect → cursor.execute → cursor.fetchone()`. If `fetchone` is not mocked, it returns a truthy MagicMock and `row[0]` becomes `target_user_id`. Always set `mock_cur.fetchone.return_value = None` in cursor mocks for export_user_data tests.
 - **standalone test safety**: `_record_presence` (mcp_server.py:46-54) is fully guarded — returns None if no store, wraps upsert in try/except. Main handler (mcp_server.py:367-490) has outer try/except that returns dict on failure. `/narrator/context` always returns HTTP 200 in standalone mode.
 - **Ghost Archivist lazy-import pattern**: `BeeminderClient` and `LanguageSyncService` are imported INSIDE `perform_archival_sync()` function body. Patch at source modules, not at `ghost.archivist_logic`.
 - **cloud-sync patch pattern**: `language_sync_service` is a module-level variable. Use `patch("mcp_server.language_sync_service")` AFTER importing mcp_server within env+psycopg2 patches.
@@ -52,7 +56,7 @@
 - **schema.sql token_bank**: Added in `c88d368` — `CREATE TABLE IF NOT EXISTS token_bank (user_id TEXT PRIMARY KEY REFERENCES users(pocket_id_sub), available_tokens BIGINT NOT NULL DEFAULT 0, monthly_limit BIGINT NOT NULL DEFAULT 1000000, last_refill TIMESTAMPTZ NOT NULL DEFAULT NOW())`.
 - **requirements.txt Python dep chain**: `apscheduler>=3.10` + `SQLAlchemy>=2.0` — both needed because `scheduler.py` imports `SQLAlchemyJobStore` from apscheduler.
 - **Upstream sync pattern**: `git remote add upstream https://github.com/kingdonb/mecris.git && git fetch upstream main && git merge upstream/main --no-edit`.
-- **Rust unit tests**: 6 crates, 108 tests total (sync-service: 64, review-pump: 17, nag-engine-rs: 8, goal-type-rs: 7, review-pump-rs: 6, majesty-cake-rs: 6). All pure functions — `cargo test` runs without Spin host.
+- **Rust unit tests**: 6 crates, 64 tests in sync-service (108 total across all crates). All pure functions — `cargo test` runs without Spin host.
 - **Rust workspace**: No workspace Cargo.toml in `mecris-go-spin/`. Each crate has `[workspace]` making it self-contained. 6 crates: sync-service, review-pump, nag-engine-rs, goal-type-rs, review-pump-rs, majesty-cake-rs. arabic-skip-counter has no Cargo.toml.
 - **Rust workflow fix**: Add `working-directory: mecris-go-spin/sync-service` to `Run Rust tests` step in pr-test.yml. Exact diff in yebyen/mecris#142. Cannot push (no workflow PAT). Additional crates need separate CI steps.
 - **target_flow_rate semantics**: This field means "remaining work to reach target" = `(target - daily_completions).max(0)`. When at or above target, value is 0. See `services/review_pump.py:67` and `mecris-go-spin/review-pump/src/lib.rs:114`.
