@@ -1,26 +1,23 @@
 # Next Session: Await kingdonb review and merge of kingdonb/mecris#179, then run live migration
 
-## Current Status (2026-04-12)
-- **PR #179 open**: kingdonb/mecris#179 opened from yebyen:main — per-user OpenWeather location feature. pr-test: Python ✅ 321 passed Android ✅. Ready for review and merge by kingdonb.
-- **yebyen/mecris in sync with kingdonb/mecris**: Both at `ad5ed6c` as base; yebyen is 6 commits ahead with the feature + tests.
+## Current Status (2026-04-13)
+- **PR #179 open**: kingdonb/mecris#179 opened from yebyen:main — per-user OpenWeather location feature. pr-test (run 24319436448): Python ✅ 341 passed Android ✅ Rust ✅ 64 passed. Ready for review and merge by kingdonb.
+- **yebyen/mecris is 11 commits ahead of kingdonb:main**: base diverged at `ad5ed6c`; yebyen is ahead with per-user location feature, Rust audit, WeatherService tests, and SMSConsentManager tests.
 - **108 Rust tests passing**: All 6 crates in `mecris-go-spin/` — 108 total, 0 failed.
   - sync-service: 64 | review-pump: 17 | nag-engine-rs: 8 | goal-type-rs: 7 | review-pump-rs: 6 | majesty-cake-rs: 6
-- **WeatherService Python tests added**: `tests/test_weather_service.py` — 19 tests for `is_walk_appropriate()` and `get_weather()`. Commit `d13e647`. Closes yebyen/mecris#163.
+- **341 Python tests passing**: Confirmed via pr-test run 24319436448 on PR #179.
+- **WeatherService Python tests validated**: `tests/test_weather_service.py` — 19 tests, all pass in pr-test. Closes yebyen/mecris#163.
+- **SMSConsentManager tests added**: `tests/test_sms_consent_manager.py` — 21 tests. Commit `e0acfe4`. Closes yebyen/mecris#164. Not yet validated via pr-test.
 - **Rust CI still failing in pr-test.yml**: Pre-existing `working-directory` gap. Tracked in yebyen/mecris#142. Requires `workflow` PAT scope — cannot fix from bot.
 - **Live migration not yet run**: `scripts/migrations/004_user_location.sql` not yet applied to live Neon DB. Requires kingdonb.
 
 ## Verified This Session
-- [x] **PR #179 still open (2026-04-12)**: kingdonb/mecris#179 open from yebyen:main → kingdonb:main. Title: "feat(rust): per-user OpenWeather location from users table".
-- [x] **98 Rust tests confirmed passing (2026-04-12)**: All 6 crates verified via `cargo test` — the `--quiet` flag had masked review-pump's 17 tests. True baseline was 98, not 64.
-- [x] **nag-engine-rs coverage expanded (2026-04-12)**: 4 new tests added — cooldown suppression, completed goal, empty goals list, sleep window boundary at hour=22. Commit `b3429e7`. Closes yebyen/mecris#159.
-- [x] **review-pump-rs boundary tests added (2026-04-12)**: 2 new tests — backlog=0 (exact cavitation boundary) and multiplier=0.5 (below-1.0 Maintenance). Commit `f57890d`. Closes yebyen/mecris#160.
-- [x] **Total Rust tests now 104 → 108**: majesty-cake-rs 4→6, goal-type-rs 5→7. All pass. Commit `49289e9`. Closes yebyen/mecris#161.
-  - majesty-cake-rs new: `test_empty_goals_list` (all_clear=false boundary), `test_single_required_not_completed` (0/1 state)
-  - goal-type-rs new: `test_backlog_increases` (negative delta still safe), `test_backlog_zero_delta` (safe unlike odometer)
-- [x] **WeatherService Python tests added (2026-04-12)**: `tests/test_weather_service.py` created — 19 unit tests covering all `is_walk_appropriate()` branches (cold, hot, rain, wind, pre-sunrise, post-sunset, no-temp, error-no-temp, boundary edges, stale-with-temp) and `get_weather()` paths (mock mode, no-API-key fallback, cache hit, expired cache refresh, API error with/without stale cache). Commit `d13e647`. Closes yebyen/mecris#163.
+- [x] **WeatherService tests validated via pr-test (2026-04-13)**: Run 24319436448 — 341 Python passed, Android ✅, Rust 64 passed. All 19 WeatherService tests confirmed passing in CI. Comment posted on kingdonb/mecris#179.
+- [x] **PR #179 still open (2026-04-13)**: kingdonb/mecris#179 open, green, awaiting review.
+- [x] **SMSConsentManager tests committed (2026-04-13)**: `tests/test_sms_consent_manager.py` — 21 tests covering opt_in_user (4), opt_out_user (4), can_send_message (6), log_message_sent (4), get_consent_summary (5), update_user_preferences (3). Commit `e0acfe4`. Closes yebyen/mecris#164.
 
 ## Pending Verification (Next Session)
-- [ ] **WeatherService tests (pr-test validation)**: `tests/test_weather_service.py` (19 tests, commit `d13e647`) committed but not yet validated via pr-test workflow (Python venv not available in bot runner). Next session can dispatch pr-test on PR #179 or any subsequent PR to confirm all 19 pass.
+- [ ] **SMSConsentManager tests (pr-test validation)**: `tests/test_sms_consent_manager.py` (21 tests, commit `e0acfe4`) committed but not yet validated via pr-test workflow. Dispatch pr-test on PR #179 or any subsequent PR to confirm count rises above 341.
 - [ ] **kingdonb/mecris#179 review and merge**: PR is open and green. Awaiting kingdonb review and merge.
 - [ ] **Sync yebyen from upstream after #179 merges**: After merge, run `git fetch upstream main && git merge upstream/main --no-edit` to bring yebyen:main in sync with kingdonb:main.
 - [ ] **Run 004_user_location.sql against live Neon**: `psql $NEON_DB_URL -f scripts/migrations/004_user_location.sql` — adds `location_lat`, `location_lon` columns to live `users` table. Requires kingdonb.
@@ -72,3 +69,4 @@
 - **phone_number_encrypted column**: Exists in `users` table per `scripts/migrations/002_pii_encryption.sql` and `mecris-go-spin/schema.sql`. The trigger-reminders handler queries all users with this column set.
 - **message_log table**: Used for rate limiting. Query: `SELECT sent_at::TEXT FROM message_log WHERE user_id = $1 AND type = 'walk_reminder' ORDER BY sent_at DESC LIMIT 1`. Insert after send: `INSERT INTO message_log (user_id, type, channel) VALUES ($1, 'walk_reminder', 'sms')`.
 - **--quiet cargo test flag**: Masks unit test output when doc-tests follow with 0 results. Use `cargo test` (without --quiet) to see true per-test output. The `-- --list` flag works correctly.
+- **SMSConsentManager datetime mock**: Time-window and daily-limit branches in `can_send_message` use `datetime.now()`. In tests, patch `sms_consent_manager.datetime` (the class imported via `from datetime import datetime`) and use `side_effect = lambda: datetime(Y, M, D, H, 0, 0)`. This allows `.date().isoformat()` and `.hour` to work on the returned real datetime object.

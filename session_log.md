@@ -1153,3 +1153,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Done**: `tests/test_weather_service.py` created with 19 tests — all `is_walk_appropriate()` branches (cold, hot, rain, wind, pre-sunrise, post-sunset, no-temp, error-no-temp, stale-with-temp, boundary edges for temp=20/95 and wind=30) and all `get_weather()` paths (mock mode, no-API-key fallback, cache hit, expired cache refresh, API error with stale cache, API error with no cache). Commit `d13e647`. Closes yebyen/mecris#163.
 **Skipped**: Local pytest run (Python venv not present in bot runner). Tests will be validated via pr-test workflow in a future session.
 **Next**: Await kingdonb review and merge of kingdonb/mecris#179. After merge: sync yebyen from upstream. Dispatch pr-test to validate WeatherService tests alongside existing suite.
+
+## 2026-04-13 (1st run) — WeatherService pr-test validated ✅; 21 SMSConsentManager tests added
+
+**Planned**: Validate WeatherService tests via pr-test on kingdonb/mecris#179 (pending from last session); then yebyen/mecris#164 — write `tests/test_sms_consent_manager.py` with unit tests for opt-in, opt-out, can_send_message (all branches), log_message_sent, and get_consent_summary.
+
+**Done**: Dispatched pr-test on PR #179 (run 24319436448) — Python ✅ 341 passed 4 skipped, Android ✅ BUILD SUCCESSFUL, Rust ✅ 64 passed. All 19 WeatherService tests confirmed. Result posted as comment on kingdonb/mecris#179. Then wrote `tests/test_sms_consent_manager.py` with 21 tests: TestOptIn (4), TestOptOut (4), TestCanSendMessage (6 — unknown, opted-out, wrong type, within window, outside window, daily limit), TestLogMessageSent (4 — adds, unknown user, 30-day trim, keeps recent), TestGetConsentSummary (5), TestUpdateUserPreferences (3). Commit `e0acfe4`. Closes yebyen/mecris#164.
+
+**Skipped**: pr-test validation of SMSConsentManager tests — commits pushed by workflow after session ends; pr-test can only see them in the NEXT session.
+
+**Next**: Dispatch pr-test on PR #179 (or any subsequent PR) to validate SMSConsentManager tests — confirm Python count rises above 341. Await kingdonb review and merge of PR #179.
