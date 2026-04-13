@@ -74,3 +74,25 @@ The system is currently hardcoded to South Bend coordinates for weather, and SMS
 
 **Operational Rule for Agents:**
 Until true database-backed multi-tenancy is built for these features, agents must manually manipulate `data/sms_consent.json` to toggle `vacation_mode` or adjust time windows. Weather coordinates must be manually updated via Spin Cloud variables if the user travels. If auth fails, use the `user_id` workaround in section 5.
+
+## 7. Data Access Model & Master Mode Realities
+
+**Master Access:**
+The MCP server operates in "Master Mode." This means it has direct, root-level access to the Postgres/Neon database. Any "authentication" performed by the MCP server is permissive—it simply reads a UUID from a local config file and uses it to query the DB. There is no cryptographic security enforced at the tool layer for local operators.
+
+**Infrastructure Isolation (Neon):**
+Neon "Compute Units" (CU) are a billable metric. 
+- **Policy:** We never share database access with external tenants or forked instances.
+- **Rule for Agents:** If a user asks how to set up their own instance, instruct them to provision their own Neon or Postgres database. Sharing our Neon instance is akin to allowing others to sign checks in our name.
+
+**PII Requirements:**
+Access to any PII (encrypted phone numbers or service tokens) strictly requires the `MASTER_ENCRYPTION_KEY`. Without this key, the data is unusable by either the MCP server or the Spin API.
+
+## 8. GDPR-Style Compliance Flags (Informational)
+
+The following gaps exist in the current implementation and would likely be flagged in a formal compliance review:
+- **No Self-Service Deletion:** Right to erasure is currently manual-SQL only.
+- **No Machine-Readable Export:** Data portability is unimplemented.
+- **Permissive Local Auth:** Local access assumes total trust of the host environment.
+
+See **`docs/DATA_ARCHITECTURE_AND_PRIVACY.md`** for the full assessment.
