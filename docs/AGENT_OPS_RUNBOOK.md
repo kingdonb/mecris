@@ -62,10 +62,10 @@ Agents must explicitly provide the `user_id` in tool calls.
 2.  Pass it to the tool: `mcp_mecris_get_narrator_context(user_id="...")`.
 
 **Process Restarts:**
-If the server hangs or needs to pick up changes to local files (like `data/sms_consent.json`), it can be manually restarted:
+If the server hangs or needs to pick up changes to local files (like `data/sms_consent.json`), it can be manually restarted by killing the process. **The Gemini CLI acts as the supervisor** and will automatically attempt to re-spawn the STDIO server upon the next tool call.
 1.  Find the PID: `ps aux | grep mcp_server.py`
 2.  Terminate it: `kill <PID>`
-3.  The host environment (e.g., Gemini/Claude CLI) should automatically attempt to restart the STDIO server on the next tool call, but there may be a 2-5 second delay where tools report "Not connected."
+3.  The Gemini CLI will restart the server on the next turn, though there may be a brief "Not connected" error during the transition.
 
 ## 6. Multi-Tenancy Technical Debt (Updated)
 
