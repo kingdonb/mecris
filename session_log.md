@@ -1213,3 +1213,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: No code work this session — pure validation run.
 
 **Next**: Await kingdonb merge of PR #181. If merged: sync yebyen from upstream, confirm 0 commits behind. Then pick up next feature (data portability export_user_data, Android UI gaps #168, or Twilio/OpenWeather Spin vars).
+
+## 🏛️ 2026-04-13 (7th run) — GDPR data portability: export_user_data MCP tool
+
+**Planned**: yebyen/mecris#170 — Implement `export_user_data(user_id)` MCP tool returning all rows from 6 tables as structured JSON; 4 unit tests mirroring `test_delete_user_data.py` pattern.
+
+**Done**: Oriented — 6 commits ahead of kingdonb (PR #181 still open), no needs-test/pr-review labels, yebyen/mecris#142 still blocked on workflow PAT. Planned yebyen/mecris#170. Implemented `export_user_data()` as `@mcp.tool` in `mcp_server.py` using a `_rows(cur, table, col)` helper that extracts column names from `cur.description`. Queries: users, language_stats, budget_tracking, token_bank, walk_inferences, message_log. Returns `{"exported": True, "user_id": ..., "data": {...}}` or `{"exported": False, "error": ...}`. Wrote `tests/test_export_user_data.py` (4 tests): happy path (6 table keys), users row populated, unknown user (exported=False), no NEON_DB_URL, default user resolution. Commit `1cbf337`. Plan issue yebyen/mecris#170 closed.
+
+**Skipped**: pr-test dispatch — push constraint applies; `1cbf337` not on GitHub until workflow ends. PR #181 does not include export_user_data (separate commit); will need new PR or #181 update after merge.
+
+**Next**: After push lands, dispatch pr-test to validate export_user_data tests (expect Python count ≥ 376). Await kingdonb merge of PR #181; then open new PR for export_user_data commit.
