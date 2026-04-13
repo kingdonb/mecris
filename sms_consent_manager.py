@@ -177,6 +177,7 @@ class SMSConsentManager:
     
     def get_user_preferences(self, phone_number: str) -> Optional[Dict]:
         """Get user's current preferences"""
+        self.consent_data = self._load_consent_data()  # Reload to pick up manual edits
         user_id = phone_number.replace('+', '').replace('-', '').replace(' ', '')
         return self.consent_data["users"].get(user_id)
     

@@ -88,7 +88,7 @@ def exchange_code_for_tokens(code: str, verifier: str, port: int) -> Dict[str, A
         "redirect_uri": redirect_uri
     }
 
-    resp = requests.post(token_url, data=data)
+    resp = requests.post(token_url, data=data, timeout=(3.0, 10.0))
     resp.raise_for_status()
     return resp.json()
 
@@ -103,6 +103,6 @@ def exchange_refresh_token(refresh_token: str) -> Dict[str, Any]:
         "refresh_token": refresh_token,
     }
 
-    resp = requests.post(token_url, data=data)
+    resp = requests.post(token_url, data=data, timeout=(3.0, 10.0))
     resp.raise_for_status()
     return resp.json()

@@ -4,12 +4,24 @@ import asyncio
 import json
 import logging
 import os
+import signal
 from typing import Optional
 from dotenv import load_dotenv
 from services.credentials_manager import credentials_manager
 
 # Load environment variables from .env if present
 load_dotenv()
+
+def handle_termination(sig, frame):
+    print(f"\n👋 Received signal {sig}. Exiting...")
+    os._exit(130)
+
+def main():
+    # Set up signal handlers for graceful exit
+    signal.signal(signal.SIGINT, handle_termination)
+    signal.signal(signal.SIGTERM, handle_termination)
+
+    _actual_main()
 
 def setup_logging(verbose: bool):
     level = logging.DEBUG if verbose else logging.INFO
@@ -58,7 +70,7 @@ async def try_token_refresh() -> bool:
 
     print("Access token expired. Attempting silent refresh...")
     try:
-        tokens = exchange_refresh_token(refresh_token)
+        tokens = await asyncio.to_thread(exchange_refresh_token, refresh_token)
         if "access_token" not in tokens:
             return False
         creds["access_token"] = tokens.get("access_token")
@@ -139,7 +151,7 @@ async def run_login(args):
     try:
         from services.auth_utils import exchange_code_for_tokens
         print("Exchanging code for tokens...")
-        tokens = exchange_code_for_tokens(code, verifier, port)
+        tokens = await asyncio.to_thread(exchange_code_for_tokens, code, verifier, port)
         
         if "access_token" not in tokens:
             print(f"❌ Login failed: No access token received. Response: {tokens}")
@@ -152,7 +164,7 @@ async def run_login(args):
         user_id = decoded.get("sub")
         
         if not user_id:
-            print("❌ Login failed: Could not determine user ID from token.")
+            print("❌ Login failed: Could determine user ID from token.")
             return
 
         # 7. Resolve Familiar ID from Neon if possible
@@ -279,13 +291,6 @@ async def run_internal_presence(args):
     except Exception as e:
         print(f"❌ Failed to report presence: {e}")
         sys.exit(1)
-
-def main():
-    try:
-        _actual_main()
-    except KeyboardInterrupt:
-        print("\nInterrupted by user.")
-        sys.exit(0)
 
 def _actual_main():
     parser = argparse.ArgumentParser(description="Mecris CLI - The Ground Truth")
