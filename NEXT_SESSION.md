@@ -1,26 +1,27 @@
-# Next Session: Open PR from yebyen:main to kingdonb:main and dispatch pr-test to validate 363 Python tests
+# Next Session: No open PRs — yebyen/mecris fully synced with kingdonb/mecris
 
 ## Current Status (2026-04-13)
-- **yebyen/mecris synced with kingdonb:main**: Fast-forward merge of 7 commits (`ea27286`…`a48244d`). `git rev-list HEAD..upstream/main` = 0.
-- **yebyen:main is 1 commit ahead of kingdonb:main**: Commit `1b3cd4f` — new test `TestOptIn.test_get_user_preferences_reloads_cross_instance` validates the reload-from-disk behavior added in `a48244d`. This commit lands on GitHub when bot workflow ends.
-- **SMSConsentManager tests (21+1=22)**: 21 from `e0acfe4` in kingdonb:main; +1 cross-instance reload test from `1b3cd4f` in yebyen:main. Expected Python count after pr-test: 363.
+- **yebyen/mecris synced with kingdonb:main**: Both at `5dbc67e`. `git rev-list HEAD..upstream/main` = 0. `git rev-list upstream/main..HEAD` = 0.
+- **kingdonb merged yebyen:main directly (2026-04-13)**: `f91e346` (Merge remote-tracking branch 'yebyen/main') brought in `1b3cd4f` (cross-instance reload test). No PR was opened — merge was direct.
+- **pr-test for 363 Python tests NOT run**: Direct merge bypassed the PR flow. pr-test was never dispatched for the cross-instance reload test. Count unverified; however all SMSConsentManager tests landed in kingdonb:main.
+- **SMSConsentManager tests (22)**: 21 from `e0acfe4` + 1 cross-instance reload from `1b3cd4f`. In kingdonb:main via `f91e346`.
 - **108 Rust tests passing**: All 6 crates in `mecris-go-spin/` — unchanged since 2026-04-12.
 - **Issue #180 resolved by kingdonb**: `ORDER BY start_time ASC` in walk_inferences query (`a48244d`); Health Connect double-counting fixed in `HealthConnectManager.kt`.
 - **Rust CI still failing in pr-test.yml**: Pre-existing `working-directory` gap. Tracked in yebyen/mecris#142. Requires `workflow` PAT scope.
+- **New docs (2026-04-13)**: `docs/DATA_ARCHITECTURE_AND_PRIVACY.md` + `docs/AGENT_OPS_RUNBOOK.md` updates — kingdonb commit `5dbc67e`. Documents "Master Mode" MCP permissiveness, PII encryption via AES-256-GCM, and GDPR-style compliance gaps (no right-to-erasure, no data portability, no centralized consent for broader data collection).
 
 ## Verified This Session
 - [x] **Upstream sync complete (2026-04-13)**: Fast-forward merge of 7 commits from kingdonb/mecris main. `git rev-list HEAD..upstream/main` = 0.
 - [x] **PR #179 merged by kingdonb (2026-04-13)**: Confirmed merged at 02:09 UTC. All bot work from prior sessions is now in kingdonb:main.
 - [x] **SMSConsentManager mock fix reviewed (2026-04-13)**: kingdonb commit `1be0021` — removed conflicting `return_value.date.return_value` + `side_effect` from `test_within_window_and_under_limit_can_send`; `return_value` alone is the correct pattern.
 - [x] **get_user_preferences reload test added (2026-04-13)**: Commit `1b3cd4f` — `TestOptIn.test_get_user_preferences_reloads_cross_instance` tests the new disk-reload behavior from `a48244d`.
+- [x] **yebyen/mecris#165 cross-instance reload test**: Merged by kingdonb via `f91e346`. Issue can be closed — validation criterion met (test in kingdonb:main).
+- [x] **NEXT_SESSION.md audited (2026-04-13)**: Current session. Resolved items marked. NEXT_SESSION.md reflects true state. Plan: yebyen/mecris#166.
 
 ## Pending Verification (Next Session)
-- [ ] **Open PR from yebyen:main → kingdonb:main**: yebyen is 1 commit ahead (`1b3cd4f`). After push lands on GitHub, open a PR and dispatch pr-test to validate 22 SMSConsentManager tests. Plan: yebyen/mecris#165.
-- [ ] **pr-test Python count ≥ 363**: Run pr-test on the new PR; confirm count rises above 341. Closes yebyen/mecris#165 validation criterion.
+- [ ] **pr-test Python count ≥ 363**: Not yet run. Direct merge bypassed pr-test workflow. To verify: open any PR from yebyen → kingdonb (even a doc fix) and dispatch pr-test, or ask kingdonb to confirm count via local pytest. Note: if no code work is queued, this may be verified only when next substantive PR is opened.
 - [ ] **Run 004_user_location.sql against live Neon**: `psql $NEON_DB_URL -f scripts/migrations/004_user_location.sql` — adds `location_lat`, `location_lon` columns to live `users` table. Requires kingdonb.
 - [ ] **Multi-Tenancy — Android UI Gaps**: Add "log out" button for PocketID auth. Add UI for users to provide phone number, grant/revoke SMS auth, set personal location (lat/lon) for weather heuristics, and select their **Preferred Health Source** (e.g., Google Fit) to prevent double-counting. Tracked in kingdonb/mecris#168.
-- [x] **Issue #180 Resolved**: Fixed Health Connect double-counting in Android and non-deterministic Rust DB queries.
-- [ ] **Multi-Tenancy — Android UI Gaps**: Add "log out" button for PocketID auth. Add UI for users to provide phone number, grant/revoke SMS auth, and set personal location. Tracked in kingdonb/mecris#168.
 - [ ] **Rust test gap (workflow fix)**: Apply fix from yebyen/mecris#142: add `working-directory: mecris-go-spin/sync-service` to `Run Rust tests` step in `.github/workflows/pr-test.yml`. Needs `workflow` PAT scope or kingdonb direct action.
 - [ ] **send_walk_reminder integration test**: Requires live Spin Cloud deploy with Twilio variables configured.
 - [ ] **Twilio Spin variables not yet configured**: `twilio_account_sid`, `twilio_auth_token_encrypted`, `twilio_from_number` — kingdonb must set in Fermyon Cloud.
@@ -33,6 +34,8 @@
 - [ ] **Android app has_goal UI**: Confirm Android app picks up `has_goal=false` flag and visually dims untracked languages. Requires live app test.
 - [ ] **Majesty Cake Android integration**: `/aggregate-status` backend complete; Android app needs to consume it (kingdonb/mecris#170).
 - [ ] **003_multi_tenancy.sql live run**: Run `psql $NEON_DB_URL -f scripts/migrations/003_multi_tenancy.sql` against live Neon.
+- [ ] **GDPR-style gap: right to erasure**: No delete-account functionality. Would require manual SQL. Document as issue on kingdonb/mecris or implement in admin tooling. See `docs/DATA_ARCHITECTURE_AND_PRIVACY.md`.
+- [ ] **GDPR-style gap: data portability**: No user-data-export endpoint. See `docs/DATA_ARCHITECTURE_AND_PRIVACY.md`.
 
 ## Infrastructure Notes
 - Spin Cron trigger is **DISABLED** in `spin.toml` — do not re-enable.
@@ -71,3 +74,4 @@
 - **SMSConsentManager datetime mock**: Time-window and daily-limit branches in `can_send_message` use `datetime.now()`. In tests, patch `sms_consent_manager.datetime` and use `mock_dt.now.return_value = datetime(Y, M, D, H, 0, 0)` — `return_value` alone is correct; do NOT also set `side_effect` (it overrides `return_value`). `.date().isoformat()` and `.hour` work naturally on the returned real datetime object.
 - **SMSConsentManager get_user_preferences reload**: As of `a48244d` (kingdonb), `get_user_preferences` reloads from disk on every call. `can_send_message` reads `self.consent_data` directly (NOT via `get_user_preferences`) so direct in-memory mutations in tests for daily-limit branch still work correctly.
 - **Upstream sync pattern**: `git remote add upstream https://github.com/kingdonb/mecris.git && git fetch upstream main && git merge upstream/main --no-edit`.
+- **MCP "Master Mode" security reality**: MCP server has full DB read/write via direct Neon connection. Auth is permissive (reads UUID from local file). Any agent with execution rights on host has full DB access. Documented in `docs/DATA_ARCHITECTURE_AND_PRIVACY.md`.
