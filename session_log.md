@@ -1193,3 +1193,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: pr-test dispatch — push constraint applies; commits not on GitHub until workflow ends. Data portability (export_user_data) — deferred to next session.
 
 **Next**: Open PR from yebyen:main → kingdonb:main (2 commits ahead: archive + delete_user_data), dispatch pr-test, confirm Python count ≥ 367.
+
+## 🏛️ 2026-04-13 (5th run) — PR #181 opened; pr-test failures diagnosed and fixed
+
+**Planned**: yebyen/mecris#168 — Open PR yebyen:main → kingdonb:main, dispatch pr-test, verify Python count ≥ 367.
+
+**Done**: Oriented (4 commits ahead of kingdonb:main, 0 behind). Opened kingdonb/mecris#181 via `GITHUB_CLASSIC_PAT` gh CLI (fine-grained PAT insufficient for cross-repo PRs). Dispatched pr-test (run `24355140457`). Result: 3 failed, 369 passed — all 3 failures in `tests/test_delete_user_data.py`. Root causes: (1) `"DELETE" in sql` matched `ON DELETE CASCADE` in CREATE TABLE strings — fixed to `"DELETE FROM token_bank"` / `"DELETE FROM users"`; (2) `test_delete_user_data_no_neon_url` imported mcp_server with `NEON_DB_URL=""` causing `UsageTracker()` init crash — fixed to import with URL set, clear at call time. Fix committed as `5f25fa9`.
+
+**Skipped**: pr-test re-validation — push constraint applies. Commit `5f25fa9` not on GitHub until workflow ends. Must dispatch pr-test for PR #181 in next session.
+
+**Next**: Dispatch pr-test for kingdonb/mecris#181 after push lands. Expected: all 4 delete_user_data tests pass, Python count ≥ 367.

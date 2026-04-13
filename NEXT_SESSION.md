@@ -1,15 +1,15 @@
-# Next Session: Open PR from yebyen:main → kingdonb:main (2 commits ahead) to validate pr-test count
+# Next Session: Re-run pr-test for PR #181 after push lands (test fix committed)
 
 ## Current Status (2026-04-13)
-- **yebyen/mecris is 2 commits ahead of kingdonb:main**: `e0b71d1` (archive) + `20cfc7b` (delete_user_data feat) not yet in upstream. `git rev-list HEAD..upstream/main` = 0. `git rev-list upstream/main..HEAD` = 2.
-- **delete_user_data MCP tool added (2026-04-13)**: Commit `20cfc7b` — `mcp_server.py` now has `delete_user_data()` tool. FK-safe: deletes `token_bank` first, then `users` (CASCADE handles rest). Tests in `tests/test_delete_user_data.py` (4 tests). Closes GDPR right-to-erasure gap.
-- **SMSConsentManager tests (22)**: 21 from `e0acfe4` + 1 cross-instance reload from `1b3cd4f`. In kingdonb:main via `f91e346`.
+- **yebyen/mecris is 4 commits ahead of kingdonb:main**: `5f25fa9` (test fix) + `aba465b` (archive) + `20cfc7b` (delete_user_data feat) + `e0b71d1` (archive). PR #181 (yebyen:main → kingdonb:main) is open on kingdonb/mecris.
+- **delete_user_data test fix committed (2026-04-13)**: Commit `5f25fa9` — SQL matching in `tests/test_delete_user_data.py` tightened: `"DELETE FROM token_bank"` / `"DELETE FROM users"` instead of `"DELETE" in sql` (was matching `ON DELETE CASCADE` in CREATE TABLE statements). Also fixed `test_delete_user_data_no_neon_url` import-time crash (now uses `_make_mcp_importable()` for import, then clears `NEON_DB_URL` at call time).
+- **pr-test run for PR #181 returned 3 failures**: Run `24355140457` — `3 failed, 369 passed`. Failures were all in `tests/test_delete_user_data.py`. Fix committed but not yet pushed (push happens when workflow ends).
+- **delete_user_data MCP tool**: `mcp_server.py` has `delete_user_data()` (commit `20cfc7b`). FK-safe: deletes `token_bank` first, then `users` (CASCADE handles rest). GDPR right-to-erasure gap addressed.
 - **108 Rust tests passing**: All 6 crates in `mecris-go-spin/` — unchanged since 2026-04-12.
-- **Issue #180 resolved by kingdonb**: `ORDER BY start_time ASC` in walk_inferences query (`a48244d`); Health Connect double-counting fixed in `HealthConnectManager.kt`. Issue still open (bot cannot close kingdonb issues).
-- **Rust CI still failing in pr-test.yml**: Pre-existing `working-directory` gap. Tracked in yebyen/mecris#142. Requires `workflow` PAT scope.
-- **GDPR data portability gap remains**: No user-data-export endpoint. Only deletion is now covered.
 
 ## Verified This Session
+- [x] **pr-test dispatched for kingdonb/mecris#181 (2026-04-13)**: Run `24355140457` completed. Android tests ✅ (24 tasks). Python: 3 failed (all in test_delete_user_data.py), 369 passed.
+- [x] **Test failures diagnosed and fixed (2026-04-13)**: `"DELETE" in sql` matched `ON DELETE CASCADE` in CREATE TABLE stmts; `test_delete_user_data_no_neon_url` crashed on import. Both fixed in commit `5f25fa9`.
 - [x] **Upstream sync complete (2026-04-13)**: Fast-forward merge of 7 commits from kingdonb/mecris main. `git rev-list HEAD..upstream/main` = 0.
 - [x] **PR #179 merged by kingdonb (2026-04-13)**: Confirmed merged at 02:09 UTC. All bot work from prior sessions is now in kingdonb:main.
 - [x] **SMSConsentManager mock fix reviewed (2026-04-13)**: kingdonb commit `1be0021` — removed conflicting `return_value.date.return_value` + `side_effect` from `test_within_window_and_under_limit_can_send`; `return_value` alone is the correct pattern.
@@ -19,7 +19,7 @@
 - [x] **GDPR right-to-erasure MCP tool (2026-04-13)**: `delete_user_data()` added to `mcp_server.py` (commit `20cfc7b`). 4 unit tests in `tests/test_delete_user_data.py`. FK-safe order: token_bank → users (CASCADE). Syntax validated ✅. Plan: yebyen/mecris#167 (closed).
 
 ## Pending Verification (Next Session)
-- [ ] **pr-test Python count ≥ 367**: Not yet run for delete_user_data tests (4 new tests + prior 363 = 367 expected). To verify: open PR from yebyen:main → kingdonb:main and dispatch pr-test. yebyen is now 2 commits ahead of kingdonb:main.
+- [ ] **Re-run pr-test for kingdonb/mecris#181 (PRIORITY)**: Test fix in commit `5f25fa9` is now on yebyen:main (after push). Dispatch pr-test for PR #181 again. Expected: ≥ 367 Python tests passing (363 prior + 4 new delete_user_data tests), all 3 previously-failing tests now passing. To dispatch: `curl -X POST ... /actions/workflows/pr-test.yml/dispatches` with `pr_number=181`.
 - [ ] **Run 004_user_location.sql against live Neon**: `psql $NEON_DB_URL -f scripts/migrations/004_user_location.sql` — adds `location_lat`, `location_lon` columns to live `users` table. Requires kingdonb.
 - [ ] **Multi-Tenancy — Android UI Gaps**: Add "log out" button for PocketID auth. Add UI for users to provide phone number, grant/revoke SMS auth, set personal location (lat/lon) for weather heuristics, and select their **Preferred Health Source** (e.g., Google Fit) to prevent double-counting. Tracked in kingdonb/mecris#168.
 - [ ] **Rust test gap (workflow fix)**: Apply fix from yebyen/mecris#142: add `working-directory: mecris-go-spin/sync-service` to `Run Rust tests` step in `.github/workflows/pr-test.yml`. Needs `workflow` PAT scope or kingdonb direct action.
@@ -41,11 +41,13 @@
 - `MECRIS_MODE=standalone` bypasses JWKS for local dev; `MECRIS_MODE=cloud` enforces RSA verification + issuer check.
 - `MASTER_ENCRYPTION_KEY` must be a 64-char hex string (32-byte AES-256 key).
 - **Classic PAT scope**: `GITHUB_CLASSIC_PAT` has `repo` scope ONLY — no `workflow` scope. Workflow file fixes must be committed by kingdonb or a token with `workflow` scope.
-- **Fine-grained PAT**: `GITHUB_TOKEN` is scoped to yebyen/mecris only — cannot comment or close issues on kingdonb/mecris.
+- **Fine-grained PAT**: `GITHUB_TOKEN` is scoped to yebyen/mecris only — cannot comment or close issues on kingdonb/mecris. Cannot create PRs on kingdonb/mecris either — use `GITHUB_CLASSIC_PAT` via `gh` CLI.
 - **NEXT_SESSION.md merge conflict is permanently fixed**: `.gitattributes merge=union` on yebyen/mecris:main resolves this automatically.
 - **psycopg2 not installed in CI runner**: `test_presence_neon.py` may have pre-existing failures — not a regression.
 - **Python venv not present in bot runner**: `PYTHONPATH=. .venv/bin/pytest` cannot run in bot context; Python tests validated via kingdonb/mecris pr-test workflow instead.
 - **Test isolation pattern**: Tests that import `mcp_server` must use `sys.modules.pop("mcp_server", None)` + `patch.dict(os.environ, ...)` + `patch("psycopg2.connect")` before importing. See `_make_mcp_importable()` in `test_mcp_server.py`, `test_cloud_sync.py`, `test_standalone_access.py`, `test_unauthorized_access.py`, `test_walk_sync.py`.
+- **SQL mock matching pitfall**: `"DELETE" in sql` matches `ON DELETE CASCADE` in CREATE TABLE strings. Use `"DELETE FROM <table>" in sql` for precise assertions. See test_delete_user_data.py commit `5f25fa9`.
+- **delete_user_data import note**: `UsageTracker()` runs at module import time (mcp_server.py:249). Tests must import with NEON_DB_URL set; test the no-URL case by clearing env var at call time (after import), not before.
 - **standalone test safety**: `_record_presence` (mcp_server.py:46-54) is fully guarded — returns None if no store, wraps upsert in try/except. Main handler (mcp_server.py:367-490) has outer try/except that returns dict on failure. `/narrator/context` always returns HTTP 200 in standalone mode.
 - **Ghost Archivist lazy-import pattern**: `BeeminderClient` and `LanguageSyncService` are imported INSIDE `perform_archival_sync()` function body. Patch at source modules, not at `ghost.archivist_logic`.
 - **cloud-sync patch pattern**: `language_sync_service` is a module-level variable. Use `patch("mcp_server.language_sync_service")` AFTER importing mcp_server within env+psycopg2 patches.
