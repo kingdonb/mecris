@@ -1263,3 +1263,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: Actual DB user-lookup wiring (matching From phone against `phone_number_encrypted` in users table) and live Beeminder push — requires Spin host + Twilio variables configured (kingdonb action). `message_log` insert also deferred to Phase 2 wiring step.
 
 **Next**: Await kingdonb merge of PR #181. Once merged: sync yebyen from upstream, open new PR for GDPR + Twilio commits. Then wire DB user-lookup + Beeminder push + message_log insert into `handle_twilio_webhook_post`.
+
+## 2026-04-14 — 🏛️ Twilio webhook Phase 2: DB user-lookup + Beeminder push + walk_ack log
+
+**Planned**: Sync from upstream (1 commit behind), then wire `handle_twilio_webhook_post` with DB user-lookup → Beeminder push → message_log insert (yebyen/mecris#178).
+
+**Done**: Synced upstream `9bdf4e75` (Groq-Beeminder integration from kingdonb). Implemented full Phase 2 wiring in `handle_twilio_webhook_post`: queries `users` for `phone_number_encrypted + beeminder_goal`, decrypts each phone with `decrypt_token()`, compares to Twilio `From` via `phones_match()` (new E.164 normalization helper), calls `push_to_beeminder(beeminder_goal, 1.0)` on match, inserts `message_log (type='walk_ack', channel='sms')`. Added `normalize_phone()` + `phones_match()` pure helpers. 91 Rust tests pass (was 82; +9 new). Commit `db9c8fa`.
+
+**Skipped**: PR to kingdonb/mecris — cannot open until commit is visible on GitHub after bot workflow push. Must open next session.
+
+**Next**: Verify `db9c8fa` pushed to yebyen/mecris, open PR yebyen:main → kingdonb:main, run pr-test to confirm 91 Rust + ≥377 Python tests green.
