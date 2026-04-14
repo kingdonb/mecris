@@ -1173,3 +1173,93 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: pr-test dispatch — push constraint applies (commit `1b3cd4f` not on GitHub until workflow ends). Must dispatch in next session after push lands.
 
 **Next**: Open PR from yebyen:main → kingdonb:main (1 commit ahead), dispatch pr-test, confirm Python count ≥ 363. Plan issue: yebyen/mecris#165 (left open — validation pending).
+
+## 🏛️ 2026-04-13 (3rd run) — Health report: NEXT_SESSION.md audit, resolved items marked
+
+**Planned**: yebyen/mecris#166 — Audit NEXT_SESSION.md against current repo state; mark resolved items; produce clean archive commit.
+
+**Done**: Orient confirmed yebyen/mecris fully synced with kingdonb/mecris at `5dbc67e` (0 commits ahead, 0 behind). kingdonb merged yebyen:main via `f91e346` (direct merge, no PR), bringing in `1b3cd4f` (cross-instance reload test). No labeled issues in kingdonb/mecris. yebyen/mecris#142 (Rust workflow fix) remains open but blocked on `workflow` PAT. NEXT_SESSION.md rewritten: removed duplicate "Android UI Gaps" entry, marked yebyen/mecris#165 cross-instance reload as resolved, added note that pr-test 363-count was never run (direct merge bypassed PR flow), documented GDPR-style gap items from `docs/DATA_ARCHITECTURE_AND_PRIVACY.md` (`5dbc67e`), added MCP "Master Mode" security note to Infrastructure section.
+
+**Skipped**: No code work — no actionable labeled issues, no PRs to test, all infrastructure tasks blocked on kingdonb.
+
+**Next**: If kingdonb queues a PR, dispatch pr-test to finally confirm Python count ≥ 363. Otherwise await kingdonb action on Twilio/OpenWeather Spin vars, 004_user_location.sql migration, Android UI gaps (#168), and Rust workflow PAT fix (#142).
+
+## 🏛️ 2026-04-13 (4th run) — GDPR right-to-erasure: delete_user_data MCP tool
+
+**Planned**: yebyen/mecris#167 — Add `delete_user_data` MCP tool to `mcp_server.py` with unit tests covering happy path, unknown-user guard, no-NEON_DB_URL guard, and resolve_user_id(None) delegation.
+
+**Done**: Oriented — yebyen/mecris 1 commit ahead of kingdonb, no needs-test or pr-review issues. Planned yebyen/mecris#167. Investigated schema.sql FK constraints: `token_bank` has no ON DELETE CASCADE, all other child tables do. Implemented `delete_user_data()` as `@mcp.tool` in `mcp_server.py` (line 1120, commit `20cfc7b`). Wrote `tests/test_delete_user_data.py` (4 tests: happy path FK order, unknown-user no-DELETE guard, no-NEON_DB_URL, resolve_user_id delegation). Syntax validated ✅. Plan issue yebyen/mecris#167 closed. GDPR right-to-erasure gap from `docs/DATA_ARCHITECTURE_AND_PRIVACY.md` is now addressed.
+
+**Skipped**: pr-test dispatch — push constraint applies; commits not on GitHub until workflow ends. Data portability (export_user_data) — deferred to next session.
+
+**Next**: Open PR from yebyen:main → kingdonb:main (2 commits ahead: archive + delete_user_data), dispatch pr-test, confirm Python count ≥ 367.
+
+## 🏛️ 2026-04-13 (5th run) — PR #181 opened; pr-test failures diagnosed and fixed
+
+**Planned**: yebyen/mecris#168 — Open PR yebyen:main → kingdonb:main, dispatch pr-test, verify Python count ≥ 367.
+
+**Done**: Oriented (4 commits ahead of kingdonb:main, 0 behind). Opened kingdonb/mecris#181 via `GITHUB_CLASSIC_PAT` gh CLI (fine-grained PAT insufficient for cross-repo PRs). Dispatched pr-test (run `24355140457`). Result: 3 failed, 369 passed — all 3 failures in `tests/test_delete_user_data.py`. Root causes: (1) `"DELETE" in sql` matched `ON DELETE CASCADE` in CREATE TABLE strings — fixed to `"DELETE FROM token_bank"` / `"DELETE FROM users"`; (2) `test_delete_user_data_no_neon_url` imported mcp_server with `NEON_DB_URL=""` causing `UsageTracker()` init crash — fixed to import with URL set, clear at call time. Fix committed as `5f25fa9`.
+
+**Skipped**: pr-test re-validation — push constraint applies. Commit `5f25fa9` not on GitHub until workflow ends. Must dispatch pr-test for PR #181 in next session.
+
+**Next**: Dispatch pr-test for kingdonb/mecris#181 after push lands. Expected: all 4 delete_user_data tests pass, Python count ≥ 367.
+
+## 🏛️ 2026-04-13 (6th run) — pr-test for PR #181 confirmed green
+
+**Planned**: yebyen/mecris#169 — Dispatch pr-test for kingdonb/mecris#181, verify all 3 previously-failing `test_delete_user_data.py` tests now pass after SQL fix `5f25fa9`.
+
+**Done**: Oriented — PR #181 open, head SHA `42d8729` confirmed on yebyen:main (push landed). No needs-test/pr-review labels on kingdonb issues. Dispatched pr-test (run `24359503584`). Result: **372 passed, 4 skipped, 0 failed** — Python ✅, Android 24 tasks ✅, Rust 64 passed ✅. All 3 previously-failing delete_user_data tests now green. SQL fix `5f25fa9` confirmed. PR #181 is ready for kingdonb to merge.
+
+**Skipped**: No code work this session — pure validation run.
+
+**Next**: Await kingdonb merge of PR #181. If merged: sync yebyen from upstream, confirm 0 commits behind. Then pick up next feature (data portability export_user_data, Android UI gaps #168, or Twilio/OpenWeather Spin vars).
+
+## 🏛️ 2026-04-13 (7th run) — GDPR data portability: export_user_data MCP tool
+
+**Planned**: yebyen/mecris#170 — Implement `export_user_data(user_id)` MCP tool returning all rows from 6 tables as structured JSON; 4 unit tests mirroring `test_delete_user_data.py` pattern.
+
+**Done**: Oriented — 6 commits ahead of kingdonb (PR #181 still open), no needs-test/pr-review labels, yebyen/mecris#142 still blocked on workflow PAT. Planned yebyen/mecris#170. Implemented `export_user_data()` as `@mcp.tool` in `mcp_server.py` using a `_rows(cur, table, col)` helper that extracts column names from `cur.description`. Queries: users, language_stats, budget_tracking, token_bank, walk_inferences, message_log. Returns `{"exported": True, "user_id": ..., "data": {...}}` or `{"exported": False, "error": ...}`. Wrote `tests/test_export_user_data.py` (4 tests): happy path (6 table keys), users row populated, unknown user (exported=False), no NEON_DB_URL, default user resolution. Commit `1cbf337`. Plan issue yebyen/mecris#170 closed.
+
+**Skipped**: pr-test dispatch — push constraint applies; `1cbf337` not on GitHub until workflow ends. PR #181 does not include export_user_data (separate commit); will need new PR or #181 update after merge.
+
+**Next**: After push lands, dispatch pr-test to validate export_user_data tests (expect Python count ≥ 376). Await kingdonb merge of PR #181; then open new PR for export_user_data commit.
+
+## 🏛️ 2026-04-13 (8th run) — pr-test for PR #181: found 1 test failure, fix committed
+
+**Planned**: yebyen/mecris#172 — Dispatch pr-test for kingdonb/mecris#181, verify export_user_data tests (≥ 376 Python tests passing, 0 failed).
+
+**Done**: Oriented — PR #181 still open, 8 commits ahead of upstream. Planned yebyen/mecris#172. Dispatched pr-test (run `24369277280`): 376 passed, 1 failed (`test_export_user_data_returns_all_tables`). Root cause identified: `UsageTracker.resolve_user_id` calls `cursor.fetchone()` for familiar_id lookup; mock cursor returned truthy MagicMock, making `target_user_id` a MagicMock. Fixed in `ac0a0c0` — added `mock_cur.fetchone.return_value = None` to `_make_cursor_with_tables`. Dispatched second pr-test (run `24369605291`) — still 1 failed as expected (push constraint: local commits not on GitHub until session ends).
+
+**Skipped**: Full CI verification of fix — push constraint prevents seeing `ac0a0c0` in pr-test this session. Will verify next session.
+
+**Next**: After push lands, dispatch pr-test on PR #181 (or new PR if merged). Expected: 377 passed, 0 failed. Then await kingdonb merge.
+
+## 🏛️ 2026-04-14 (9th run) — pr-test for PR #181 confirmed green: 377 passed, 0 failed
+
+**Planned**: yebyen/mecris#173 — Dispatch pr-test workflow against PR #181 to verify test fix `ac0a0c0` (mock fetchone=None) is green in CI; expected 377 passed, 0 failed.
+
+**Done**: Oriented — NEXT_SESSION.md listed CRITICAL: pr-test after push lands. PR #181 head SHA `720d95cc` confirmed on yebyen:main (pushed 2026-04-13T22:21:53Z — fix landed). Dispatched pr-test (run `24373313213`). Result: **377 passed, 4 skipped, 0 failed** — Python ✅, Android 24 tasks ✅, Rust 64 passed ✅. `test_export_user_data_returns_all_tables` is now GREEN. PR #181 is fully verified and merge-ready. Plan issue yebyen/mecris#173 closed.
+
+**Skipped**: No code work this session — pure validation run. kingdonb merge of PR #181 is awaited (external action, cannot be done by bot).
+
+**Next**: Await kingdonb merge of PR #181. Once merged: sync yebyen from upstream, then open new PR for export_user_data commits (`1cbf337`, `ac0a0c0`).
+
+## 🏛️ 2026-04-14 (10th run) — Twilio inbound webhook foundation (pure functions + stub endpoint)
+
+**Planned**: yebyen/mecris#176 — Add `is_affirmative_response()` + `validate_twilio_signature()` pure functions and `/internal/twilio-webhook` POST stub to sync-service Rust crate; 12 new unit tests.
+
+**Done**: Oriented — PR #181 still open (no action from kingdonb), yebyen 11 commits ahead. Identified kingdonb/mecris#180 as candidate but found it already fixed in commits `a48244d`/`404fdec` — closed false-start plan yebyen/mecris#175 honestly. Pivoted to kingdonb/mecris#140 (Two-Way Webhook Integration). Implemented: `parse_form_field()`, `parse_form_body()` URL form helpers; `is_affirmative_response()` matching YES/Y/DONE/OK/1/✅; `validate_twilio_signature()` with HMAC-SHA1 per Twilio spec; `handle_twilio_webhook_post()` stub (sig validation → 403, affirmative → TwiML ✅). Added `sha1 = "0.10"` to Cargo.toml. 12 new tests, 76 total (was 64). All pass. Committed `3e5d47c`.
+
+**Skipped**: DB persistence and Beeminder datapoint push in webhook handler — Phase 2 of kingdonb/mecris#140, requires live DB schema knowledge and Beeminder client wiring in Rust.
+
+**Next**: Await kingdonb merge of PR #181. Once merged: sync upstream, open new PR for export_user_data + Twilio webhook commits. Then implement Twilio webhook Phase 2 (DB log + Beeminder push).
+
+## 🏛️ 2026-04-14 (11th run) — Twilio Phase 2 pure functions: extract_from_number + build_beeminder_datapoint_body
+
+**Planned**: yebyen/mecris#177 — Add `build_beeminder_walk_datapoint()` and `build_message_log_insert()` pure functions to `handle_twilio_webhook_post`; Rust test count ≥ 82.
+
+**Done**: Oriented — PR #181 still open (kingdonb action pending), yebyen 13 commits ahead, 0 behind. No needs-test/pr-review issues on kingdonb. Planned Twilio Phase 2 (yebyen/mecris#177). Implemented `extract_from_number(body: &str) -> Option<String>` (extracts From phone number from form-encoded Twilio body) and `build_beeminder_datapoint_body(auth_token, value, comment) -> String` (builds form-encoded Beeminder POST body). Handler now logs From number on affirmative response. 6 new tests added; **82 Rust tests total** (was 76), all pass. Committed `01a0ebc`. Plan #177 closed.
+
+**Skipped**: Actual DB user-lookup wiring (matching From phone against `phone_number_encrypted` in users table) and live Beeminder push — requires Spin host + Twilio variables configured (kingdonb action). `message_log` insert also deferred to Phase 2 wiring step.
+
+**Next**: Await kingdonb merge of PR #181. Once merged: sync yebyen from upstream, open new PR for GDPR + Twilio commits. Then wire DB user-lookup + Beeminder push + message_log insert into `handle_twilio_webhook_post`.

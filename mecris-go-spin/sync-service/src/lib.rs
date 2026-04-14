@@ -193,6 +193,11 @@ async fn handle_sync_service(req: Request) -> anyhow::Result<impl IntoResponse> 
             return Ok(Response::builder().status(405).body("Method Not Allowed").build());
         }
         return handle_trigger_reminders_post(req).await;
+    } else if path == "/internal/twilio-webhook" {
+        if req.method() != &spin_sdk::http::Method::Post {
+            return Ok(Response::builder().status(405).body("Method Not Allowed").build());
+        }
+        return handle_twilio_webhook_post(req).await;
     }
 
     Ok(Response::builder().status(404).body("Not Found").build())
@@ -1434,6 +1439,146 @@ fn minutes_since_last_reminder(last_sent_at: Option<&str>, now_epoch_secs: u64) 
     Some(now_epoch_secs.saturating_sub(sent_epoch) / 60)
 }
 
+// --- Twilio inbound webhook helpers (kingdonb/mecris#140) ---
+
+/// Parse a single field from a URL form-encoded body string.
+/// Handles `+` as space and percent-decoding.
+fn parse_form_field(body: &str, field: &str) -> Option<String> {
+    body.split('&').find_map(|pair| {
+        let mut iter = pair.splitn(2, '=');
+        let key = iter.next()?;
+        let val = iter.next().unwrap_or("");
+        if key == field {
+            let plus_decoded = val.replace('+', " ");
+            Some(urlencoding::decode(&plus_decoded).unwrap_or_default().into_owned())
+        } else {
+            None
+        }
+    })
+}
+
+/// Parse all fields from a URL form-encoded body into a list of decoded (key, value) pairs.
+fn parse_form_body(body: &str) -> Vec<(String, String)> {
+    body.split('&')
+        .filter_map(|pair| {
+            let mut iter = pair.splitn(2, '=');
+            let key = iter.next().map(|s| {
+                let plus = s.replace('+', " ");
+                urlencoding::decode(&plus).unwrap_or_default().into_owned()
+            })?;
+            let val = iter.next().map(|s| {
+                let plus = s.replace('+', " ");
+                urlencoding::decode(&plus).unwrap_or_default().into_owned()
+            }).unwrap_or_default();
+            Some((key, val))
+        })
+        .collect()
+}
+
+/// Returns true if the Twilio SMS `Body` field contains an affirmative reply.
+/// Matches case-insensitively: YES, Y, DONE, OK, 1, ✅.
+fn is_affirmative_response(body: &str) -> bool {
+    let sms_body = parse_form_field(body, "Body").unwrap_or_default();
+    matches!(sms_body.trim().to_uppercase().as_str(), "YES" | "Y" | "DONE" | "OK" | "1" | "✅")
+}
+
+/// Validates a Twilio webhook request using HMAC-SHA1.
+/// `auth_token` is the plaintext Twilio auth token.
+/// `url` is the full URL of the webhook endpoint.
+/// `params` is the decoded POST parameter list (key, value pairs) from the request body.
+/// `signature` is the X-Twilio-Signature header value.
+/// Returns true only if the computed signature matches.
+fn validate_twilio_signature(auth_token: &str, url: &str, params: &[(String, String)], signature: &str) -> bool {
+    use hmac::{Hmac, Mac};
+    use sha1::Sha1;
+    type HmacSha1 = Hmac<Sha1>;
+
+    let mut sorted = params.to_vec();
+    sorted.sort_by(|a, b| a.0.cmp(&b.0));
+
+    let mut input = url.to_string();
+    for (k, v) in &sorted {
+        input.push_str(k);
+        input.push_str(v);
+    }
+
+    let Ok(mut mac) = <HmacSha1 as KeyInit>::new_from_slice(auth_token.as_bytes()) else {
+        return false;
+    };
+    mac.update(input.as_bytes());
+    let result = mac.finalize().into_bytes();
+    let computed = base64::engine::general_purpose::STANDARD.encode(result);
+    computed == signature
+}
+
+/// Stub handler for incoming Twilio SMS webhooks (kingdonb/mecris#140).
+/// Validates the Twilio HMAC-SHA1 signature, parses the response, and returns TwiML.
+/// TODO: persist affirmative responses to DB and push Beeminder datapoints.
+async fn handle_twilio_webhook_post(req: Request) -> anyhow::Result<Response> {
+    let auth_token_enc = match variables::get("twilio_auth_token_encrypted") {
+        Ok(s) if !s.is_empty() => s,
+        _ => return Ok(Response::builder().status(503).body("twilio_auth_token_encrypted not configured").build()),
+    };
+    let auth_token = match decrypt_token(&auth_token_enc).await {
+        Ok(t) => t,
+        Err(e) => {
+            println!("Twilio webhook: failed to decrypt auth token: {}", e);
+            return Ok(Response::builder().status(503).body("Failed to decrypt auth token").build());
+        }
+    };
+
+    let body_bytes = req.body();
+    let body_str = std::str::from_utf8(body_bytes).unwrap_or("");
+
+    let host = req.header("host").and_then(|v| v.as_str()).unwrap_or("localhost");
+    let webhook_url = format!("https://{}{}", host, req.path());
+    let params = parse_form_body(body_str);
+    let sig_header = req.header("x-twilio-signature").and_then(|v| v.as_str()).unwrap_or("");
+
+    if !validate_twilio_signature(&auth_token, &webhook_url, &params, sig_header) {
+        println!("Twilio webhook: invalid signature (url={}, sig={})", webhook_url, sig_header);
+        return Ok(Response::builder().status(403).body("Forbidden: Invalid Twilio Signature").build());
+    }
+
+    let twiml = if is_affirmative_response(body_str) {
+        println!("Twilio webhook: affirmative response received");
+        // TODO(kingdonb/mecris#140): persist activity log entry, push Beeminder datapoint
+        r#"<?xml version="1.0" encoding="UTF-8"?><Response><Message>Logged. Great job!</Message></Response>"#
+    } else {
+        println!("Twilio webhook: non-affirmative response received");
+        r#"<?xml version="1.0" encoding="UTF-8"?><Response><Message>Got it. Reply YES to log your activity.</Message></Response>"#
+    };
+
+    if is_affirmative_response(body_str) {
+        if let Some(from_num) = extract_from_number(body_str) {
+            println!("Twilio webhook: affirmative from {} — TODO(#140): DB log + Beeminder push", from_num);
+        }
+    }
+
+    Ok(Response::builder()
+        .status(200)
+        .header("content-type", "text/xml")
+        .body(twiml)
+        .build())
+}
+
+/// Extracts the `From` phone number from a Twilio webhook form-encoded body.
+/// Returns None if the field is absent or empty.
+fn extract_from_number(body: &str) -> Option<String> {
+    parse_form_field(body, "From").filter(|s| !s.is_empty())
+}
+
+/// Builds the form-encoded POST body for a Beeminder datapoints API call.
+/// `auth_token` must be the plaintext token (decrypted by caller from DB).
+fn build_beeminder_datapoint_body(auth_token: &str, value: f64, comment: &str) -> String {
+    format!(
+        "auth_token={}&value={}&comment={}",
+        auth_token,
+        value,
+        urlencoding::encode(comment)
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1851,5 +1996,125 @@ mod tests {
     #[test]
     fn test_minutes_since_last_unparseable_returns_none() {
         assert_eq!(minutes_since_last_reminder(Some("not-a-timestamp"), 99999), None);
+    }
+
+    // --- is_affirmative_response ---
+
+    #[test]
+    fn test_affirmative_yes_uppercase() {
+        assert!(is_affirmative_response("Body=YES&From=%2B15551234567"));
+    }
+
+    #[test]
+    fn test_affirmative_yes_lowercase() {
+        assert!(is_affirmative_response("Body=yes&From=%2B15551234567"));
+    }
+
+    #[test]
+    fn test_affirmative_y() {
+        assert!(is_affirmative_response("Body=Y&From=%2B15551234567"));
+    }
+
+    #[test]
+    fn test_affirmative_done() {
+        assert!(is_affirmative_response("Body=DONE&From=%2B15551234567"));
+    }
+
+    #[test]
+    fn test_affirmative_ok() {
+        assert!(is_affirmative_response("Body=OK&From=%2B15551234567"));
+    }
+
+    #[test]
+    fn test_affirmative_no_is_false() {
+        assert!(!is_affirmative_response("Body=NO&From=%2B15551234567"));
+    }
+
+    #[test]
+    fn test_affirmative_empty_body_is_false() {
+        assert!(!is_affirmative_response(""));
+    }
+
+    #[test]
+    fn test_affirmative_missing_body_field_is_false() {
+        assert!(!is_affirmative_response("From=%2B15551234567&To=%2B15559876543"));
+    }
+
+    // --- validate_twilio_signature ---
+
+    #[test]
+    fn test_twilio_signature_valid_twilio_example() {
+        // Known test vector: Twilio documentation example
+        // python: hmac.new(b"12345", b"https://mycompany.com/myapp.php?foo=1&bar=2CallSidCA1234567890ABCDECaller+14158675310Digits1234From+14158675310To+18005551212", hashlib.sha1)
+        let auth_token = "12345";
+        let url = "https://mycompany.com/myapp.php?foo=1&bar=2";
+        let params: Vec<(String, String)> = vec![
+            ("CallSid".to_string(), "CA1234567890ABCDE".to_string()),
+            ("Caller".to_string(), "+14158675310".to_string()),
+            ("Digits".to_string(), "1234".to_string()),
+            ("From".to_string(), "+14158675310".to_string()),
+            ("To".to_string(), "+18005551212".to_string()),
+        ];
+        let signature = "GvWf1cFY/Q7PnoempGyD5oXAezc=";
+        assert!(validate_twilio_signature(auth_token, url, &params, signature));
+    }
+
+    #[test]
+    fn test_twilio_signature_empty_params() {
+        // python: base64.b64encode(hmac.new(b"secret", b"https://example.com/hook", hashlib.sha1).digest())
+        let signature = "73HVjq6EFDqxMRzMDoRH96HHWAM=";
+        assert!(validate_twilio_signature("secret", "https://example.com/hook", &[], signature));
+    }
+
+    #[test]
+    fn test_twilio_signature_wrong_token_fails() {
+        assert!(!validate_twilio_signature("wrongtoken", "https://example.com/hook", &[], "invalid=="));
+    }
+
+    #[test]
+    fn test_twilio_signature_wrong_sig_fails() {
+        assert!(!validate_twilio_signature("secret", "https://example.com/hook", &[], "WRONGSIG=="));
+    }
+
+    // --- extract_from_number ---
+
+    #[test]
+    fn test_extract_from_number_present() {
+        assert_eq!(
+            extract_from_number("Body=YES&From=%2B15551234567"),
+            Some("+15551234567".to_string())
+        );
+    }
+
+    #[test]
+    fn test_extract_from_number_absent() {
+        assert_eq!(extract_from_number("Body=YES&To=%2B15551234567"), None);
+    }
+
+    #[test]
+    fn test_extract_from_number_empty_body() {
+        assert_eq!(extract_from_number(""), None);
+    }
+
+    // --- build_beeminder_datapoint_body ---
+
+    #[test]
+    fn test_build_beeminder_datapoint_body_basic() {
+        let body = build_beeminder_datapoint_body("mytoken", 1.0, "walk done");
+        assert!(body.starts_with("auth_token=mytoken&value=1&comment="));
+        assert!(body.contains("walk%20done"));
+    }
+
+    #[test]
+    fn test_build_beeminder_datapoint_body_zero_value() {
+        let body = build_beeminder_datapoint_body("tok", 0.0, "");
+        assert_eq!(body, "auth_token=tok&value=0&comment=");
+    }
+
+    #[test]
+    fn test_build_beeminder_datapoint_body_fractional_value() {
+        let body = build_beeminder_datapoint_body("tok", 1.5, "morning walk");
+        assert!(body.contains("value=1.5"));
+        assert!(body.contains("morning%20walk"));
     }
 }
