@@ -1283,3 +1283,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: Nothing — plan completed in full.
 
 **Next**: Await kingdonb review/merge of PR #182. Then identify next Rust or Python feature to cook in the fork.
+
+## 🏛️ 2026-04-14 (3rd run) — Satellite Rust crate test expansion: 135→147 tests, gauge type added
+
+**Planned**: yebyen/mecris#180 — Add 2-3 boundary/edge-case tests to each of nag-engine-rs, goal-type-rs, review-pump-rs, majesty-cake-rs; bring each to ≥9 tests; total Rust tests ≥147.
+
+**Done**: Oriented — PR #182 still open awaiting kingdonb review, no tagged issues needing action. Planned yebyen/mecris#180. Added 3 tests to nag-engine-rs (8→11): hour=6 sleep boundary, hour=7 first active, runway=2.0 not tier3. Added 3 tests + `"gauge"` type support to goal-type-rs (7→10): gauge upward, gauge downward, odometer negative-current. Added 3 tests to review-pump-rs (6→9): multiplier=1.01 Active boundary, zero base_daily_target, large backlog + high multiplier. Added 3 tests to majesty-cake-rs (6→9): all-optional no-cake, required+optional mix, 3/5 partial. All 4 crates pass `cargo test`. Committed `df23970`. Plan #180 closed.
+
+**Skipped**: Nothing — plan completed in full. CI expansion (5 additional pr-test steps for satellite crates) remains blocked on workflow PAT scope per yebyen/mecris#142.
+
+**Next**: Await kingdonb merge of PR #182. Once merged, consider opening new PR for `df23970` (satellite tests + gauge type). Investigate whether next useful feature is in Rust crates or Python layer.

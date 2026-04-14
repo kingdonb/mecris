@@ -1,22 +1,28 @@
-# Next Session: Await kingdonb merge of PR #182; then identify next Rust/Python feature
+# Next Session: Await kingdonb merge of PR #182; consider opening updated PR with satellite crate tests
 
 ## Current Status (2026-04-14)
-- **PR #182 open on kingdonb/mecris** (yebyen:main → kingdonb:main): Twilio webhook Phase 2 wiring — `db9c8fa` + `7b7bb66` (archive). Awaiting kingdonb review/merge.
+- **PR #182 open on kingdonb/mecris** (yebyen:main → kingdonb:main): Twilio webhook Phase 2 wiring — `db9c8fa` + archive + `df23970` (satellite crate tests). Awaiting kingdonb review/merge.
 - **pr-test passed green on PR #182**: 91 Rust tests ✅, 381 Python tests ✅, Android ✅. Results posted as comment on kingdonb/mecris#182.
-- **yebyen/mecris is in sync** with itself — no new local commits this session (all work from previous session).
-- **yebyen/mecris#179** (plan: open PR + pr-test) — closed as complete.
+- **New commit `df23970` in yebyen:main**: 12 new boundary/edge-case tests added to 4 satellite crates (nag-engine-rs 8→11, goal-type-rs 7→10, review-pump-rs 6→9, majesty-cake-rs 6→9). Also added `"gauge"` goal-type support to `goal-type-rs`.
+- **Total Rust tests across all 6 crates**: 135→147.
+- **yebyen/mecris is ahead of kingdonb/mecris** — PR #182 covers the Twilio Phase 2 work; `df23970` (satellite tests) is an additional commit on top.
 
 ## Verified This Session
-- [x] **Commit `db9c8fa` pushed**: visible on yebyen/mecris GitHub as expected.
-- [x] **PR #182 opened**: kingdonb/mecris#182 (yebyen:main → kingdonb:main, Twilio Phase 2 wiring).
-- [x] **pr-test green on PR #182**: 91 Rust ✅, 381 Python ✅ (4 skipped), Android ✅.
+- [x] **PR #182 still open**: confirmed — kingdonb has not yet merged.
+- [x] **nag-engine-rs**: 8→11 tests (hour=6 sleep boundary, hour=7 first active, runway=2.0 not tier3) — all pass.
+- [x] **goal-type-rs**: 7→10 tests + `"gauge"` type support (gauge up/down always safe) — all pass.
+- [x] **review-pump-rs**: 6→9 tests (multiplier=1.01 Active boundary, zero base target, large backlog) — all pass.
+- [x] **majesty-cake-rs**: 6→9 tests (all-optional no-cake, required+optional mix, 3/5 partial) — all pass.
+- [x] **Commit `df23970` created**: visible in git log as expected.
+- [x] **yebyen/mecris#180 closed**: plan issue closed with ✅ complete.
 
 ## Pending Verification (Next Session)
 - [ ] **Confirm PR #182 merged by kingdonb**: check kingdonb/mecris main for commit `db9c8fa`.
+- [ ] **Consider opening an updated PR**: `df23970` (satellite crate tests + gauge type) is also in yebyen:main but NOT covered by PR #182. Once #182 is merged, a new PR for this commit may be warranted.
 - [ ] **Run 004_user_location.sql against live Neon**: `psql $NEON_DB_URL -f scripts/migrations/004_user_location.sql` — adds `location_lat`, `location_lon` columns to live `users` table. Requires kingdonb.
 - [ ] **Twilio webhook Phase 2 live E2E**: requires Twilio Spin variables in Fermyon Cloud (`twilio_account_sid`, `twilio_auth_token_encrypted`, `twilio_from_number`) — set by kingdonb.
 - [ ] **Multi-Tenancy — Android UI Gaps**: Add "log out" button for PocketID auth. Add UI for users to provide phone number, grant/revoke SMS auth, set personal location (lat/lon) for weather heuristics, and select their **Preferred Health Source** (e.g., Google Fit) to prevent double-counting. Tracked in kingdonb/mecris#168.
-- [ ] **Rust test gap (workflow fix)**: Apply fix from yebyen/mecris#142: add `working-directory: mecris-go-spin/sync-service` to `Run Rust tests` step in `.github/workflows/pr-test.yml`. Needs `workflow` PAT scope or kingdonb direct action.
+- [ ] **Rust test gap (workflow fix)**: Apply fix from yebyen/mecris#142: add `working-directory: mecris-go-spin/sync-service` to `Run Rust tests` step in `.github/workflows/pr-test.yml`. Needs `workflow` PAT scope or kingdonb direct action. Also: 5 additional CI steps needed for the other crates (review-pump, nag-engine-rs, goal-type-rs, review-pump-rs, majesty-cake-rs).
 - [ ] **send_walk_reminder integration test**: Requires live Spin Cloud deploy with Twilio variables configured.
 - [ ] **OpenWeather Spin variables not yet configured**: `openweather_api_key` — global fallback — kingdonb must set in Fermyon Cloud.
 - [ ] **Per-user location not yet set in live DB**: Once migration runs, use admin tooling (or manual SQL) to set `location_lat`/`location_lon` for each user in `users` table.
@@ -53,8 +59,9 @@
 - **requirements.txt Python dep chain**: `apscheduler>=3.10` + `SQLAlchemy>=2.0` — both needed because `scheduler.py` imports `SQLAlchemyJobStore` from apscheduler.
 - **Upstream sync pattern**: `git remote add upstream https://github.com/kingdonb/mecris.git && git fetch upstream main && git merge upstream/main --no-edit`.
 - **Rust unit tests**: 91 tests in sync-service (as of `db9c8fa`). All pure functions — `cargo test` runs without Spin host.
+- **Rust satellite crates**: nag-engine-rs 11 tests, goal-type-rs 10 tests (+ gauge type), review-pump-rs 9 tests, majesty-cake-rs 9 tests, review-pump 17 tests (as of `df23970`). All pure functions.
 - **Rust workspace**: No workspace Cargo.toml in `mecris-go-spin/`. Each crate has `[workspace]` making it self-contained. 6 crates: sync-service, review-pump, nag-engine-rs, goal-type-rs, review-pump-rs, majesty-cake-rs. arabic-skip-counter has no Cargo.toml.
-- **Rust workflow fix**: Add `working-directory: mecris-go-spin/sync-service` to `Run Rust tests` step in pr-test.yml. Exact diff in yebyen/mecris#142. Cannot push (no workflow PAT). Additional crates need separate CI steps.
+- **Rust workflow fix**: Add `working-directory: mecris-go-spin/sync-service` to `Run Rust tests` step in pr-test.yml. Exact diff in yebyen/mecris#142. Cannot push (no workflow PAT). Additional CI steps needed for the 5 other crates.
 - **target_flow_rate semantics**: This field means "remaining work to reach target" = `(target - daily_completions).max(0)`. When at or above target, value is 0. See `services/review_pump.py:67` and `mecris-go-spin/review-pump/src/lib.rs:114`.
 - **Twilio helpers in sync-service**: `build_twilio_url`, `build_twilio_body`, `encode_basic_auth`, `build_sms_request_parts` are pure functions at module scope in `lib.rs`. `send_walk_reminder` is async and requires Spin host to dispatch. `handle_trigger_reminders_post` reads `twilio_account_sid`, `twilio_auth_token_encrypted`, `twilio_from_number` from Spin variables.
 - **Twilio inbound webhook Phase 2 complete**: `handle_twilio_webhook_post` validates sig (403 on fail), on affirmative: queries all users with `phone_number_encrypted`, decrypts each, matches against `From` via `phones_match()`, calls `push_to_beeminder(beeminder_goal, 1.0)`, inserts `message_log (type='walk_ack', channel='sms')`. `normalize_phone()` strips formatting for E.164 comparison. Graceful degradation if `db_url` not configured.
@@ -70,3 +77,4 @@
 - **SMSConsentManager get_user_preferences reload**: As of `a48244d` (kingdonb), `get_user_preferences` reloads from disk on every call. `can_send_message` reads `self.consent_data` directly (NOT via `get_user_preferences`) so direct in-memory mutations in tests for daily-limit branch still work correctly.
 - **MCP "Master Mode" security reality**: MCP server has full DB read/write via direct Neon connection. Auth is permissive (reads UUID from local file). Any agent with execution rights on host has full DB access. Documented in `docs/DATA_ARCHITECTURE_AND_PRIVACY.md`.
 - **kingdonb/mecris#180 already fixed**: ORDER BY and Health Connect deduplication were resolved in commits `a48244d`/`404fdec` (both in kingdonb:main and yebyen:main). Issue still open on kingdonb/mecris — bot cannot close it.
+- **goal-type-rs gauge support**: `"gauge"` goal type added in `df23970`. Gauge goals allow any absolute value (up or down). Delta = `intended_push_value - current_value`. Always safe to push.
