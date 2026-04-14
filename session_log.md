@@ -1303,3 +1303,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: Nothing — plan completed in full. No new code written (validation-only session).
 
 **Next**: Await kingdonb review/merge of PR #182. Once merged, identify next autonomous work (Rust or Python feature in the fork). Satellite CI expansion remains blocked on yebyen/mecris#142 (workflow PAT scope).
+
+## 🏛️ 2026-04-14 (5th run) — CredentialsManager unit tests: 14 tests covering all resolution branches
+
+**Planned**: yebyen/mecris#183 — Write `tests/test_credentials_manager.py` covering all code paths in `CredentialsManager.resolve_user_id`, `_is_uuid`, and `resolve_familiar_id` (added in kingdonb's `9bdf4e7`), which had zero direct unit tests.
+
+**Done**: Oriented — PR #182 still open, no tagged issues needing action, yebyen is 5 ahead of kingdonb. Identified zero coverage for `services/credentials_manager.py`. Created plan yebyen/mecris#183. Wrote 14 tests: `_is_uuid` (6 cases: UUID with hyphens, hex 32-char, familiar name, None, empty string, local- prefix), `resolve_familiar_id` (4 cases: no DB URL, found in DB, not found, DB exception), `resolve_user_id` (8 cases: provided UUID, provided local-id, credentials file, DEFAULT_USER_ID env, standalone auto-generate + save, cloud mode returns None, familiar name resolves via DB, familiar name not in DB falls through). Syntax-verified locally. Committed at `933819e`.
+
+**Skipped**: pr-test dispatch — `933819e` not yet on GitHub until bot workflow ends. Will validate next session.
+
+**Next**: Dispatch pr-test on kingdonb/mecris#182 after `933819e` lands, confirm Python test count rises to ≥395. Await kingdonb merge of PR #182.

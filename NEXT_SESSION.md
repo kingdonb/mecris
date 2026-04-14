@@ -1,17 +1,19 @@
-# Next Session: Await kingdonb merge of PR #182; all commits verified green in CI
+# Next Session: Verify CredentialsManager tests pass in pr-test; await kingdonb merge of PR #182
 
 ## Current Status (2026-04-14)
 - **PR #182 open on kingdonb/mecris** (yebyen:main → kingdonb:main): Twilio webhook Phase 2 + satellite crate tests + gauge type. Awaiting kingdonb review/merge.
 - **pr-test re-verified green at HEAD `41be973`**: 91 Rust (sync-service) ✅, 381 Python ✅, Android ✅. Run: https://github.com/yebyen/mecris/actions/runs/24420818218
-- **yebyen/mecris is 5 commits ahead of kingdonb/mecris**: All 5 covered by PR #182 (head=`41be973`).
+- **yebyen/mecris is 6 commits ahead of kingdonb/mecris**: 5 in PR #182 + `933819e` (CredentialsManager tests).
 - **Satellite crate tests (147 total)**: In code but NOT yet in CI — requires workflow PAT fix (yebyen/mecris#142).
+- **CredentialsManager tests added** (`933819e`): 14 tests in `tests/test_credentials_manager.py` — not yet validated by pr-test.
 
 ## Verified This Session
 - [x] **pr-test green at HEAD `41be973`**: 91 Rust, 381 Python (4 skipped), Android BUILD SUCCESSFUL — confirmed 2026-04-14 run ID 24420818218.
 - [x] **PR #182 still open**: kingdonb has not yet merged as of this session.
-- [x] **No new issues needing action**: kingdonb/mecris has no `needs-test`, `pr-review`, or `bug` labeled issues.
+- [x] **CredentialsManager unit tests committed** at `933819e`: 14 tests covering `_is_uuid`, `resolve_familiar_id`, `resolve_user_id` (all branches). Syntax-verified locally.
 
 ## Pending Verification (Next Session)
+- [ ] **Dispatch pr-test on PR #182** after `933819e` lands on GitHub — confirm Python count rises from 381 → ≥395 (14 new CredentialsManager tests) and all Rust/Android still pass.
 - [ ] **Confirm PR #182 merged by kingdonb**: check kingdonb/mecris main for commit `db9c8fa`.
 - [ ] **Run 004_user_location.sql against live Neon**: `psql $NEON_DB_URL -f scripts/migrations/004_user_location.sql` — adds `location_lat`, `location_lon` columns to live `users` table. Requires kingdonb.
 - [ ] **Twilio webhook Phase 2 live E2E**: requires Twilio Spin variables in Fermyon Cloud (`twilio_account_sid`, `twilio_auth_token_encrypted`, `twilio_from_number`) — set by kingdonb.
@@ -39,6 +41,7 @@
 - **psycopg2 not installed in CI runner**: `test_presence_neon.py` may have pre-existing failures — not a regression.
 - **Python venv not present in bot runner**: `PYTHONPATH=. .venv/bin/pytest` cannot run in bot context; Python tests validated via kingdonb/mecris pr-test workflow instead.
 - **Test isolation pattern**: Tests that import `mcp_server` must use `sys.modules.pop("mcp_server", None)` + `patch.dict(os.environ, ...)` + `patch("psycopg2.connect")` before importing. See `_make_mcp_importable()` in `test_mcp_server.py`, `test_cloud_sync.py`, `test_standalone_access.py`, `test_unauthorized_access.py`, `test_walk_sync.py`.
+- **CredentialsManager test isolation**: Uses `sys.modules.pop("services.credentials_manager", None)` + `tmp_path` fixture for file I/O + `patch("psycopg2.connect")` for DB paths. See `tests/test_credentials_manager.py`.
 - **SQL mock matching pitfall**: `"DELETE" in sql` matches `ON DELETE CASCADE` in CREATE TABLE strings. Use `"DELETE FROM <table>" in sql` for precise assertions. See test_delete_user_data.py commit `5f25fa9`.
 - **delete_user_data import note**: `UsageTracker()` runs at module import time (mcp_server.py:249). Tests must import with NEON_DB_URL set; test the no-URL case by clearing env var at call time (after import), not before.
 - **export_user_data cursor pattern**: `_rows(cur, table, col)` helper uses `cur.description` for column names and returns list of dicts. Mock `cursor.description` as `[("pocket_id_sub",)]` and `fetchall.side_effect` as `[[user_row]] + [[]]*5` for happy-path tests. ALSO mock `cursor.fetchone.return_value = None` to prevent `UsageTracker.resolve_user_id` from returning a MagicMock via the familiar_id lookup branch.
