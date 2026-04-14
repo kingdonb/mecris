@@ -262,13 +262,26 @@ class BeeminderClient:
                     "message": f"API Error: {str(e)}"
                 }
     
-    async def add_datapoint(self, goal_slug: str, value: float, comment: str = "", requestid: Optional[str] = None) -> bool:
-        """Add a datapoint to a goal"""
+    async def add_datapoint(self, goal_slug: str, value: float, comment: str = "", requestid: Optional[str] = None, daystamp: Optional[str] = None) -> bool:
+        """Add a datapoint to a goal
+        
+        Args:
+            goal_slug: The goal to fetch datapoints for
+            value: The value of the datapoint
+            comment: Optional comment for the datapoint
+            requestid: Optional unique ID to prevent duplicate datapoints
+            daystamp: Optional date in YYYYMMDD format
+        """
         data = {
             "value": value,
             "comment": comment,
-            "timestamp": int(datetime.now().timestamp())
         }
+        
+        if daystamp:
+            data["daystamp"] = daystamp
+        else:
+            data["timestamp"] = int(datetime.now().timestamp())
+            
         if requestid:
             data["requestid"] = requestid
         

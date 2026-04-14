@@ -692,12 +692,66 @@ def update_budget(remaining_budget: float, total_budget: Optional[float] = None,
     return usage_tracker.update_budget(remaining_budget, total_budget, period_end, target_user_id)
 
 @mcp.tool(description="Record manual Groq odometer reading with cumulative cost.")
-def record_groq_reading(value: float, notes: str = "", month: Optional[str] = None, user_id: str = None) -> Dict[str, Any]:
+async def record_groq_reading(value: float, notes: str = "", month: Optional[str] = None, user_id: str = None) -> Dict[str, Any]:
     target_user_id = resolve_target_user(user_id)
     if not target_user_id:
         return {"error": "Authentication Required"}
-    from groq_odometer_tracker import record_groq_reading as record_groq
-    return record_groq(value, notes, month, target_user_id)
+    
+    # Record locally in Neon first
+    result = record_groq_reading_from_tracker(value, notes, month, target_user_id)
+    
+    if result.get("recorded"):
+        # Sync to Beeminder groqspend goal
+        try:
+            # 1. Check goal start date restriction
+            GROQSPEND_START_DATE = "2026-04-13"
+            
+            # Use the timestamp from the result
+            import zoneinfo
+            eastern = zoneinfo.ZoneInfo("US/Eastern")
+            
+            if "timestamp" in result:
+                # result["timestamp"] is ISO format from groq_odometer_tracker
+                ts_str = result["timestamp"]
+                # If it doesn't have TZ info, assume it's UTC or Local? 
+                # groq_odometer_tracker uses datetime.now() (naive local) or historical_date (naive)
+                # To be safe, let's treat it as naive and attach system local if it's missing
+                record_dt = datetime.fromisoformat(ts_str)
+                if record_dt.tzinfo is None:
+                    # Treat naive as UTC for consistent mapping if coming from DB, 
+                    # but groq_tracker uses .now() which is local.
+                    # Best to just use the date part if it's an odometer.
+                    record_dt = record_dt.replace(tzinfo=timezone.utc)
+            else:
+                record_dt = datetime.now(timezone.utc)
+            
+            daystamp = record_dt.astimezone(eastern).strftime("%Y%m%d")
+            
+            if daystamp < GROQSPEND_START_DATE.replace("-", ""):
+                logger.info(f"Skipping Beeminder sync for {daystamp}: before goal start date {GROQSPEND_START_DATE}")
+                return result
+
+            # 2. Initialize Beeminder client
+            bm_client = get_user_beeminder_client(target_user_id)
+            goal_slug = "groqspend"
+            
+            # 3. Handle @TARE reset if detected
+            if result.get("reset_detected"):
+                tare_comment = f"@TARE reset for {result.get('month', 'new month')} Transition"
+                await bm_client.add_datapoint(goal_slug, 0.0, comment=tare_comment, daystamp=daystamp)
+                logger.info(f"Sent @TARE datapoint to Beeminder for {goal_slug}")
+
+            # 4. Push the actual reading
+            reading_comment = notes if notes else f"Manual update: {result.get('month', 'current month')} spend"
+            await bm_client.add_datapoint(goal_slug, value, comment=reading_comment, daystamp=daystamp)
+            logger.info(f"Sent reading {value} to Beeminder goal {goal_slug}")
+            
+            result["beeminder_sync"] = "success"
+        except Exception as e:
+            logger.error(f"Failed to sync Groq reading to Beeminder: {e}")
+            result["beeminder_sync"] = f"failed: {str(e)}"
+            
+    return result
 
 @mcp.tool(description="Get Groq odometer status and usage reminders.")
 def get_groq_status(user_id: str = None) -> Dict[str, Any]:

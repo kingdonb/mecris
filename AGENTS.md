@@ -42,7 +42,7 @@ Copy `.github/skills/` into your project's `.claude/skills/` directory.
 
 ## Integrated MCP Tools
 
-The system features 29 distinct tools for agent interaction, including:
+The system features 30 distinct tools for agent interaction, including:
 - **Strategic Context**: `get_narrator_context`
 - **Goal Mastery**: `get_beeminder_status`
 - **System Health**: `get_system_health`

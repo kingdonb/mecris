@@ -167,15 +167,16 @@ class GroqOdometerTracker:
             with psycopg2.connect(self.neon_url) as conn:
                 with conn.cursor(cursor_factory=RealDictCursor) as cur:
                     cur.execute("""
-                        SELECT timestamp, month, cumulative_value as value, is_final_reading as is_final, is_reset
+                        SELECT timestamp, created_at, month, cumulative_value as value, is_final_reading as is_final, is_reset
                         FROM groq_odometer_readings
                         WHERE user_id = %s
-                        ORDER BY timestamp DESC
+                        ORDER BY created_at DESC
                         LIMIT 1
                     """, (target_user_id,))
                     row = cur.fetchone()
                     if row:
                         row['timestamp'] = row['timestamp'].isoformat()
+                        row['created_at'] = row['created_at'].isoformat()
                         return dict(row)
         except Exception as e:
             logger.error(f"GroqOdometerTracker: Neon get_last_reading failed: {e}")
@@ -223,8 +224,9 @@ class GroqOdometerTracker:
         last_reading = self.get_last_reading(target_user_id)
         days_since = None
         if last_reading:
-            last_ts = datetime.fromisoformat(last_reading['timestamp'].replace('Z', '+00:00')) if isinstance(last_reading['timestamp'], str) else last_reading['timestamp']
-            days_since = (now.astimezone() - last_ts.astimezone()).days if last_ts.tzinfo else (now - last_ts).days
+            # Use created_at for "stale" calculation, as timestamp might be backdated to month-start
+            last_actual = datetime.fromisoformat(last_reading['created_at'].replace('Z', '+00:00'))
+            days_since = (now.astimezone() - last_actual.astimezone()).days
             if days_since > 7:
                 status = OdometerStatus.STALE
                 reminders_needed.append({"type": "stale_data", "urgency": "low", "message": f"📈 Groq data is {days_since} days old"})

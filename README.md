@@ -50,7 +50,7 @@ curl http://127.0.0.1:8000/health
 - **Secure localhost binding** (127.0.0.1 only)
 - **Robust startup/shutdown** with process management
 - **Enhanced error handling** and logging
-- **Industry-Leading Toolset**: Features **29 distinct MCP tools**—a larger specialized toolset than even the standard [GitHub MCP server](https://github.com/modelcontextprotocol/servers/tree/main/src/github) (which provides 20+).
+- **Industry-Leading Toolset**: Features **30 distinct MCP tools**—a larger specialized toolset than even the standard [GitHub MCP server](https://github.com/modelcontextprotocol/servers/tree/main/src/github) (which provides 20+).
 
 **Key Tool Categories:**
 - **Strategic Context**: `get_narrator_context`, `get_coaching_insight`
