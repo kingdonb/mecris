@@ -1253,3 +1253,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: DB persistence and Beeminder datapoint push in webhook handler — Phase 2 of kingdonb/mecris#140, requires live DB schema knowledge and Beeminder client wiring in Rust.
 
 **Next**: Await kingdonb merge of PR #181. Once merged: sync upstream, open new PR for export_user_data + Twilio webhook commits. Then implement Twilio webhook Phase 2 (DB log + Beeminder push).
+
+## 🏛️ 2026-04-14 (11th run) — Twilio Phase 2 pure functions: extract_from_number + build_beeminder_datapoint_body
+
+**Planned**: yebyen/mecris#177 — Add `build_beeminder_walk_datapoint()` and `build_message_log_insert()` pure functions to `handle_twilio_webhook_post`; Rust test count ≥ 82.
+
+**Done**: Oriented — PR #181 still open (kingdonb action pending), yebyen 13 commits ahead, 0 behind. No needs-test/pr-review issues on kingdonb. Planned Twilio Phase 2 (yebyen/mecris#177). Implemented `extract_from_number(body: &str) -> Option<String>` (extracts From phone number from form-encoded Twilio body) and `build_beeminder_datapoint_body(auth_token, value, comment) -> String` (builds form-encoded Beeminder POST body). Handler now logs From number on affirmative response. 6 new tests added; **82 Rust tests total** (was 76), all pass. Committed `01a0ebc`. Plan #177 closed.
+
+**Skipped**: Actual DB user-lookup wiring (matching From phone against `phone_number_encrypted` in users table) and live Beeminder push — requires Spin host + Twilio variables configured (kingdonb action). `message_log` insert also deferred to Phase 2 wiring step.
+
+**Next**: Await kingdonb merge of PR #181. Once merged: sync yebyen from upstream, open new PR for GDPR + Twilio commits. Then wire DB user-lookup + Beeminder push + message_log insert into `handle_twilio_webhook_post`.
