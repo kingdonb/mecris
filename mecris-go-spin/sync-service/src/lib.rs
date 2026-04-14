@@ -1549,11 +1549,34 @@ async fn handle_twilio_webhook_post(req: Request) -> anyhow::Result<Response> {
         r#"<?xml version="1.0" encoding="UTF-8"?><Response><Message>Got it. Reply YES to log your activity.</Message></Response>"#
     };
 
+    if is_affirmative_response(body_str) {
+        if let Some(from_num) = extract_from_number(body_str) {
+            println!("Twilio webhook: affirmative from {} — TODO(#140): DB log + Beeminder push", from_num);
+        }
+    }
+
     Ok(Response::builder()
         .status(200)
         .header("content-type", "text/xml")
         .body(twiml)
         .build())
+}
+
+/// Extracts the `From` phone number from a Twilio webhook form-encoded body.
+/// Returns None if the field is absent or empty.
+fn extract_from_number(body: &str) -> Option<String> {
+    parse_form_field(body, "From").filter(|s| !s.is_empty())
+}
+
+/// Builds the form-encoded POST body for a Beeminder datapoints API call.
+/// `auth_token` must be the plaintext token (decrypted by caller from DB).
+fn build_beeminder_datapoint_body(auth_token: &str, value: f64, comment: &str) -> String {
+    format!(
+        "auth_token={}&value={}&comment={}",
+        auth_token,
+        value,
+        urlencoding::encode(comment)
+    )
 }
 
 #[cfg(test)]
@@ -2051,5 +2074,47 @@ mod tests {
     #[test]
     fn test_twilio_signature_wrong_sig_fails() {
         assert!(!validate_twilio_signature("secret", "https://example.com/hook", &[], "WRONGSIG=="));
+    }
+
+    // --- extract_from_number ---
+
+    #[test]
+    fn test_extract_from_number_present() {
+        assert_eq!(
+            extract_from_number("Body=YES&From=%2B15551234567"),
+            Some("+15551234567".to_string())
+        );
+    }
+
+    #[test]
+    fn test_extract_from_number_absent() {
+        assert_eq!(extract_from_number("Body=YES&To=%2B15551234567"), None);
+    }
+
+    #[test]
+    fn test_extract_from_number_empty_body() {
+        assert_eq!(extract_from_number(""), None);
+    }
+
+    // --- build_beeminder_datapoint_body ---
+
+    #[test]
+    fn test_build_beeminder_datapoint_body_basic() {
+        let body = build_beeminder_datapoint_body("mytoken", 1.0, "walk done");
+        assert!(body.starts_with("auth_token=mytoken&value=1&comment="));
+        assert!(body.contains("walk%20done"));
+    }
+
+    #[test]
+    fn test_build_beeminder_datapoint_body_zero_value() {
+        let body = build_beeminder_datapoint_body("tok", 0.0, "");
+        assert_eq!(body, "auth_token=tok&value=0&comment=");
+    }
+
+    #[test]
+    fn test_build_beeminder_datapoint_body_fractional_value() {
+        let body = build_beeminder_datapoint_body("tok", 1.5, "morning walk");
+        assert!(body.contains("value=1.5"));
+        assert!(body.contains("morning%20walk"));
     }
 }
