@@ -1,20 +1,18 @@
-# Next Session: Open PR for Twilio Phase 2 wiring; run pr-test to confirm 91 Rust tests green
+# Next Session: Await kingdonb merge of PR #182; then identify next Rust/Python feature
 
 ## Current Status (2026-04-14)
-- **Twilio webhook Phase 2 wiring complete** (commit `db9c8fa`, yebyen/mecris#178): `handle_twilio_webhook_post` now decrypts `phone_number_encrypted` per user, matches against Twilio `From`, pushes Beeminder datapoint, and inserts `message_log (type='walk_ack', channel='sms')`. 91 Rust tests pass (was 82; +9 for `normalize_phone`/`phones_match` helpers).
-- **yebyen/mecris is 2 commits ahead of kingdonb:main**: `9bdf4e75` (synced from upstream this session) + `db9c8fa` (Phase 2 wiring). Bot workflow will push at end of this run.
-- **PR #182 (or new) must be opened next session**: the push hasn't landed yet — PR creation requires commit to be visible on GitHub.
-- **kingdonb commit `9bdf4e75`** (Groq-Beeminder sync) is now in yebyen:main (synced this session).
+- **PR #182 open on kingdonb/mecris** (yebyen:main → kingdonb:main): Twilio webhook Phase 2 wiring — `db9c8fa` + `7b7bb66` (archive). Awaiting kingdonb review/merge.
+- **pr-test passed green on PR #182**: 91 Rust tests ✅, 381 Python tests ✅, Android ✅. Results posted as comment on kingdonb/mecris#182.
+- **yebyen/mecris is in sync** with itself — no new local commits this session (all work from previous session).
+- **yebyen/mecris#179** (plan: open PR + pr-test) — closed as complete.
 
 ## Verified This Session
-- [x] **Upstream sync**: pulled `9bdf4e75` (Groq-Beeminder sync, feat: Groq odometer + Beeminder integration) from kingdonb. Fast-forward merge succeeded.
-- [x] **Twilio Phase 2 wiring** (commit `db9c8fa`): `handle_twilio_webhook_post` replaces TODO block — DB user-lookup loop, `phones_match()` comparison, `push_to_beeminder()` call, `message_log` insert. 91 Rust tests pass.
-- [x] **PR #181 confirmed merged**: kingdonb merged `yebyen:main → kingdonb:main` at 14:13 UTC today.
+- [x] **Commit `db9c8fa` pushed**: visible on yebyen/mecris GitHub as expected.
+- [x] **PR #182 opened**: kingdonb/mecris#182 (yebyen:main → kingdonb:main, Twilio Phase 2 wiring).
+- [x] **pr-test green on PR #182**: 91 Rust ✅, 381 Python ✅ (4 skipped), Android ✅.
 
 ## Pending Verification (Next Session)
-- [ ] **Verify commit `db9c8fa` pushed**: check `git log --oneline -2` on yebyen/mecris after workflow ends.
-- [ ] **Open new PR (yebyen:main → kingdonb:main)**: one commit `db9c8fa` — Twilio Phase 2 wiring. PR description: references kingdonb/mecris#140, mentions 91 Rust tests.
-- [ ] **Run pr-test on new PR**: dispatch pr-test once PR is open. Expect 91 Rust tests + ≥377 Python tests green.
+- [ ] **Confirm PR #182 merged by kingdonb**: check kingdonb/mecris main for commit `db9c8fa`.
 - [ ] **Run 004_user_location.sql against live Neon**: `psql $NEON_DB_URL -f scripts/migrations/004_user_location.sql` — adds `location_lat`, `location_lon` columns to live `users` table. Requires kingdonb.
 - [ ] **Twilio webhook Phase 2 live E2E**: requires Twilio Spin variables in Fermyon Cloud (`twilio_account_sid`, `twilio_auth_token_encrypted`, `twilio_from_number`) — set by kingdonb.
 - [ ] **Multi-Tenancy — Android UI Gaps**: Add "log out" button for PocketID auth. Add UI for users to provide phone number, grant/revoke SMS auth, set personal location (lat/lon) for weather heuristics, and select their **Preferred Health Source** (e.g., Google Fit) to prevent double-counting. Tracked in kingdonb/mecris#168.
