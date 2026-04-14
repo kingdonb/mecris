@@ -1551,7 +1551,37 @@ async fn handle_twilio_webhook_post(req: Request) -> anyhow::Result<Response> {
 
     if is_affirmative_response(body_str) {
         if let Some(from_num) = extract_from_number(body_str) {
-            println!("Twilio webhook: affirmative from {} — TODO(#140): DB log + Beeminder push", from_num);
+            match variables::get("db_url") {
+                Ok(db_url) if !db_url.is_empty() => {
+                    match Connection::open(&db_url) {
+                        Ok(connection) => {
+                            let query = "SELECT pocket_id_sub, phone_number_encrypted, beeminder_goal \
+                                         FROM users WHERE phone_number_encrypted IS NOT NULL AND phone_number_encrypted != ''";
+                            if let Ok(row_set) = connection.query(query, &[]) {
+                                for row in &row_set.rows {
+                                    let user_id = match &row[0] { DbValue::Str(s) => s.clone(), _ => continue };
+                                    let phone_enc = match &row[1] { DbValue::Str(s) if !s.is_empty() => s.clone(), _ => continue };
+                                    let beeminder_goal = match &row[2] { DbValue::Str(s) if !s.is_empty() => s.clone(), _ => "bike".to_string() };
+                                    if let Ok(phone) = decrypt_token(&phone_enc).await {
+                                        if phones_match(&phone, &from_num) {
+                                            let comment = "Walk logged via SMS reply";
+                                            let _ = push_to_beeminder(&user_id, &beeminder_goal, 1.0, comment, &connection).await;
+                                            let _ = connection.execute(
+                                                "INSERT INTO message_log (user_id, type, channel) VALUES ($1, 'walk_ack', 'sms')",
+                                                &[ParameterValue::Str(user_id.clone())],
+                                            );
+                                            println!("Twilio webhook: walk_ack logged for user {} via {}", user_id, from_num);
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        Err(e) => eprintln!("Twilio webhook: DB connect failed: {}", e),
+                    }
+                }
+                _ => eprintln!("Twilio webhook: db_url not configured, skipping DB+Beeminder wiring"),
+            }
         }
     }
 
@@ -1577,6 +1607,17 @@ fn build_beeminder_datapoint_body(auth_token: &str, value: f64, comment: &str) -
         value,
         urlencoding::encode(comment)
     )
+}
+
+/// Normalizes a phone number to E.164 digits-and-plus for comparison.
+/// Strips spaces, dashes, parentheses, and dots. Keeps the leading `+`.
+fn normalize_phone(phone: &str) -> String {
+    phone.chars().filter(|c| c.is_ascii_digit() || *c == '+').collect()
+}
+
+/// Returns true if two phone numbers refer to the same subscriber after normalization.
+fn phones_match(a: &str, b: &str) -> bool {
+    !a.is_empty() && !b.is_empty() && normalize_phone(a) == normalize_phone(b)
 }
 
 #[cfg(test)]
@@ -2116,5 +2157,52 @@ mod tests {
         let body = build_beeminder_datapoint_body("tok", 1.5, "morning walk");
         assert!(body.contains("value=1.5"));
         assert!(body.contains("morning%20walk"));
+    }
+
+    // --- normalize_phone / phones_match ---
+
+    #[test]
+    fn test_normalize_phone_strips_formatting() {
+        assert_eq!(normalize_phone("+1 (555) 123-4567"), "+15551234567");
+    }
+
+    #[test]
+    fn test_normalize_phone_plain_e164() {
+        assert_eq!(normalize_phone("+15551234567"), "+15551234567");
+    }
+
+    #[test]
+    fn test_normalize_phone_empty() {
+        assert_eq!(normalize_phone(""), "");
+    }
+
+    #[test]
+    fn test_phones_match_identical_e164() {
+        assert!(phones_match("+15551234567", "+15551234567"));
+    }
+
+    #[test]
+    fn test_phones_match_formatted_vs_e164() {
+        assert!(phones_match("+1 (555) 123-4567", "+15551234567"));
+    }
+
+    #[test]
+    fn test_phones_match_different_numbers() {
+        assert!(!phones_match("+15551234567", "+15559876543"));
+    }
+
+    #[test]
+    fn test_phones_match_empty_a_is_false() {
+        assert!(!phones_match("", "+15551234567"));
+    }
+
+    #[test]
+    fn test_phones_match_empty_b_is_false() {
+        assert!(!phones_match("+15551234567", ""));
+    }
+
+    #[test]
+    fn test_phones_match_both_empty_is_false() {
+        assert!(!phones_match("", ""));
     }
 }
