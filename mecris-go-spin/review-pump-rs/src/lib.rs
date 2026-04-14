@@ -148,4 +148,46 @@ mod tests {
         assert_eq!(result.pump_status, "Maintenance");
         assert_eq!(result.required_clearance, 50);
     }
+
+    #[test]
+    fn test_multiplier_just_above_one_is_active() {
+        // pump_multiplier=1.01 is > 1.0, so it goes Active (not Maintenance).
+        // extra_clearance = 100 * 0.01 * 0.10 = 0.1 -> ceil(0.1) = 1
+        let req = PumpRequest {
+            current_backlog: 100,
+            pump_multiplier: 1.01,
+            base_daily_target: 50,
+        };
+        let result = calculate_pump_logic(&req);
+        assert_eq!(result.pump_status, "Active");
+        assert_eq!(result.required_clearance, 51);
+    }
+
+    #[test]
+    fn test_zero_base_daily_target_active() {
+        // base_daily_target=0 with active pumping: only extra_clearance matters.
+        // extra_clearance = 200 * 1.0 * 0.10 = 20.0 -> ceil = 20
+        let req = PumpRequest {
+            current_backlog: 200,
+            pump_multiplier: 2.0,
+            base_daily_target: 0,
+        };
+        let result = calculate_pump_logic(&req);
+        assert_eq!(result.pump_status, "Active");
+        assert_eq!(result.required_clearance, 20);
+    }
+
+    #[test]
+    fn test_large_backlog_high_multiplier() {
+        // backlog=10_000, multiplier=5.0 → extra = 10000 * 4.0 * 0.10 = 4000
+        // required = 100 + 4000 = 4100
+        let req = PumpRequest {
+            current_backlog: 10_000,
+            pump_multiplier: 5.0,
+            base_daily_target: 100,
+        };
+        let result = calculate_pump_logic(&req);
+        assert_eq!(result.pump_status, "Active");
+        assert_eq!(result.required_clearance, 4100);
+    }
 }

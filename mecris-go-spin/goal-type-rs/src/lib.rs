@@ -61,13 +61,23 @@ fn validate_push_logic(req: &ValidationRequest) -> ValidationResult {
             }
         },
         "backlog" => {
-            // Delta for backlog is technically current - intended (as intended is lower if you did work), 
+            // Delta for backlog is technically current - intended (as intended is lower if you did work),
             // but safety is true either way.
             let delta = req.current_value - req.intended_push_value;
             ValidationResult {
                 is_safe_to_push: true,
                 validated_delta: delta,
                 status_message: "Safe to push backlog snapshot.".to_string(),
+            }
+        },
+        "gauge" => {
+            // Gauge goals track absolute values over time. Unlike odometer, decreasing
+            // values are valid (e.g. weight loss). Delta is the signed change.
+            let delta = req.intended_push_value - req.current_value;
+            ValidationResult {
+                is_safe_to_push: true,
+                validated_delta: delta,
+                status_message: "Safe to push gauge value.".to_string(),
             }
         },
         _ => {
@@ -158,5 +168,34 @@ mod tests {
         assert_eq!(res.is_safe_to_push, true);
         assert_eq!(res.validated_delta, 0.0);
         assert_eq!(res.status_message, "Safe to push backlog snapshot.");
+    }
+
+    #[test]
+    fn test_gauge_upward_push() {
+        // Gauge: value increased (e.g. weight up). Always safe. delta = intended - current.
+        let r = req("gauge", 70.0, 72.5);
+        let res = validate_push_logic(&r);
+        assert_eq!(res.is_safe_to_push, true);
+        assert_eq!(res.validated_delta, 2.5);
+        assert_eq!(res.status_message, "Safe to push gauge value.");
+    }
+
+    #[test]
+    fn test_gauge_downward_push() {
+        // Gauge: value decreased (e.g. weight loss goal). Unlike odometer, this is valid.
+        let r = req("gauge", 72.5, 70.0);
+        let res = validate_push_logic(&r);
+        assert_eq!(res.is_safe_to_push, true);
+        assert_eq!(res.validated_delta, -2.5);
+        assert_eq!(res.status_message, "Safe to push gauge value.");
+    }
+
+    #[test]
+    fn test_odometer_negative_current_blocks_regression() {
+        // Odometer with negative current value: push to positive is valid (delta > 0).
+        let r = req("odometer", -5.0, 10.0);
+        let res = validate_push_logic(&r);
+        assert_eq!(res.is_safe_to_push, true);
+        assert_eq!(res.validated_delta, 15.0);
     }
 }
