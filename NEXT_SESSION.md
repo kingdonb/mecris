@@ -1,20 +1,16 @@
-# Next Session: Re-run pr-test after push lands; await kingdonb merge of PR #181
+# Next Session: Await kingdonb merge of PR #181; then sync + open new PR for export_user_data
 
-## Current Status (2026-04-13)
-- **PR #181 (yebyen:main → kingdonb:main) is open**: Last pr-test before test fix showed 376 passed / 1 failed. Fix committed locally as `ac0a0c0` (not yet on GitHub).
-- **Test fix committed (ac0a0c0)**: `_make_cursor_with_tables` in `tests/test_export_user_data.py` now sets `mock_cur.fetchone.return_value = None` so `UsageTracker.resolve_user_id` doesn't return a MagicMock as `target_user_id`. Fix is correct but unverified in CI (push constraint applies).
-- **yebyen/mecris is 9 commits ahead of kingdonb:main**: All changes in or beyond PR #181. Includes export_user_data feat + test fix.
-- **export_user_data MCP tool**: `mcp_server.py` has `export_user_data()` (commit `1cbf337`). Returns all 6 tables. 4 unit tests. Test had a mock gap — fixed in `ac0a0c0`.
+## Current Status (2026-04-14)
+- **PR #181 (yebyen:main → kingdonb:main) is open and merge-ready**: pr-test run `24373313213` confirmed **377 passed, 4 skipped, 0 failed**. Python ✅, Android 24 tasks ✅, Rust 64 passed ✅. No further fixes needed.
+- **yebyen/mecris is 10 commits ahead of kingdonb:main**: All changes in or beyond PR #181. Includes delete_user_data + export_user_data feat + test fix.
+- **export_user_data MCP tool**: `mcp_server.py` has `export_user_data()` (commit `1cbf337`). Returns all 6 tables. 4 unit tests. Test fix in `ac0a0c0` (mock fetchone=None).
 - **delete_user_data MCP tool**: `mcp_server.py` has `delete_user_data()` (commit `20cfc7b`). FK-safe. GDPR right-to-erasure gap addressed.
 
 ## Verified This Session
-- [x] **pr-test dispatched for PR #181 (2026-04-13)**: Run `24369277280` — 376 passed, 1 failed, 4 skipped. Android ✅ 24 tasks, Rust ✅ 64 passed. The failure is `test_export_user_data_returns_all_tables` (mock gap in cursor helper).
-- [x] **Root cause identified**: `UsageTracker.resolve_user_id` calls `cursor.fetchone()` to resolve familiar_id. Mock cursor had no `fetchone.return_value`, so it returned a truthy MagicMock. `row[0]` became `target_user_id`. Fix: `mock_cur.fetchone.return_value = None`.
-- [x] **Fix committed locally**: `ac0a0c0` — `fix(test): mock fetchone=None in export_user_data cursor helper`. Will be pushed when session ends.
+- [x] **pr-test for PR #181 (2026-04-14)**: Run `24373313213` — 377 passed, 4 skipped, 0 failed. Android ✅ 24 tasks, Rust ✅ 64 passed. The `test_export_user_data_returns_all_tables` test is now GREEN. Fix `ac0a0c0` confirmed working in CI.
 
 ## Pending Verification (Next Session)
-- [ ] **CRITICAL: pr-test after push lands**: Dispatch pr-test on PR #181 (or new PR if #181 was merged). Expected: **377 passed, 0 failed** (376 + the fixed test). All 4 export_user_data tests should be green.
-- [ ] **kingdonb/mecris#181 merge**: PR is ready pending the test fix landing. After push, kingdonb should see 0 failures.
+- [ ] **kingdonb/mecris#181 merge**: PR is fully verified. After kingdonb merges, sync yebyen from upstream (`git merge upstream/main --no-edit`).
 - [ ] **Open new PR after #181 merges**: Once kingdonb merges #181, sync yebyen from upstream, then open a new PR for export_user_data + test fix commits (`1cbf337`, `ac0a0c0`).
 - [ ] **Run 004_user_location.sql against live Neon**: `psql $NEON_DB_URL -f scripts/migrations/004_user_location.sql` — adds `location_lat`, `location_lon` columns to live `users` table. Requires kingdonb.
 - [ ] **Multi-Tenancy — Android UI Gaps**: Add "log out" button for PocketID auth. Add UI for users to provide phone number, grant/revoke SMS auth, set personal location (lat/lon) for weather heuristics, and select their **Preferred Health Source** (e.g., Google Fit) to prevent double-counting. Tracked in kingdonb/mecris#168.

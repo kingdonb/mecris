@@ -1233,3 +1233,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: Full CI verification of fix — push constraint prevents seeing `ac0a0c0` in pr-test this session. Will verify next session.
 
 **Next**: After push lands, dispatch pr-test on PR #181 (or new PR if merged). Expected: 377 passed, 0 failed. Then await kingdonb merge.
+
+## 🏛️ 2026-04-14 (9th run) — pr-test for PR #181 confirmed green: 377 passed, 0 failed
+
+**Planned**: yebyen/mecris#173 — Dispatch pr-test workflow against PR #181 to verify test fix `ac0a0c0` (mock fetchone=None) is green in CI; expected 377 passed, 0 failed.
+
+**Done**: Oriented — NEXT_SESSION.md listed CRITICAL: pr-test after push lands. PR #181 head SHA `720d95cc` confirmed on yebyen:main (pushed 2026-04-13T22:21:53Z — fix landed). Dispatched pr-test (run `24373313213`). Result: **377 passed, 4 skipped, 0 failed** — Python ✅, Android 24 tasks ✅, Rust 64 passed ✅. `test_export_user_data_returns_all_tables` is now GREEN. PR #181 is fully verified and merge-ready. Plan issue yebyen/mecris#173 closed.
+
+**Skipped**: No code work this session — pure validation run. kingdonb merge of PR #181 is awaited (external action, cannot be done by bot).
+
+**Next**: Await kingdonb merge of PR #181. Once merged: sync yebyen from upstream, then open new PR for export_user_data commits (`1cbf337`, `ac0a0c0`).
