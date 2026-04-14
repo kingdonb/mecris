@@ -1,24 +1,18 @@
-# Next Session: Await kingdonb merge of PR #182; consider opening updated PR with satellite crate tests
+# Next Session: Await kingdonb merge of PR #182; all commits verified green in CI
 
 ## Current Status (2026-04-14)
-- **PR #182 open on kingdonb/mecris** (yebyen:main → kingdonb:main): Twilio webhook Phase 2 wiring — `db9c8fa` + archive + `df23970` (satellite crate tests). Awaiting kingdonb review/merge.
-- **pr-test passed green on PR #182**: 91 Rust tests ✅, 381 Python tests ✅, Android ✅. Results posted as comment on kingdonb/mecris#182.
-- **New commit `df23970` in yebyen:main**: 12 new boundary/edge-case tests added to 4 satellite crates (nag-engine-rs 8→11, goal-type-rs 7→10, review-pump-rs 6→9, majesty-cake-rs 6→9). Also added `"gauge"` goal-type support to `goal-type-rs`.
-- **Total Rust tests across all 6 crates**: 135→147.
-- **yebyen/mecris is ahead of kingdonb/mecris** — PR #182 covers the Twilio Phase 2 work; `df23970` (satellite tests) is an additional commit on top.
+- **PR #182 open on kingdonb/mecris** (yebyen:main → kingdonb:main): Twilio webhook Phase 2 + satellite crate tests + gauge type. Awaiting kingdonb review/merge.
+- **pr-test re-verified green at HEAD `41be973`**: 91 Rust (sync-service) ✅, 381 Python ✅, Android ✅. Run: https://github.com/yebyen/mecris/actions/runs/24420818218
+- **yebyen/mecris is 5 commits ahead of kingdonb/mecris**: All 5 covered by PR #182 (head=`41be973`).
+- **Satellite crate tests (147 total)**: In code but NOT yet in CI — requires workflow PAT fix (yebyen/mecris#142).
 
 ## Verified This Session
-- [x] **PR #182 still open**: confirmed — kingdonb has not yet merged.
-- [x] **nag-engine-rs**: 8→11 tests (hour=6 sleep boundary, hour=7 first active, runway=2.0 not tier3) — all pass.
-- [x] **goal-type-rs**: 7→10 tests + `"gauge"` type support (gauge up/down always safe) — all pass.
-- [x] **review-pump-rs**: 6→9 tests (multiplier=1.01 Active boundary, zero base target, large backlog) — all pass.
-- [x] **majesty-cake-rs**: 6→9 tests (all-optional no-cake, required+optional mix, 3/5 partial) — all pass.
-- [x] **Commit `df23970` created**: visible in git log as expected.
-- [x] **yebyen/mecris#180 closed**: plan issue closed with ✅ complete.
+- [x] **pr-test green at HEAD `41be973`**: 91 Rust, 381 Python (4 skipped), Android BUILD SUCCESSFUL — confirmed 2026-04-14 run ID 24420818218.
+- [x] **PR #182 still open**: kingdonb has not yet merged as of this session.
+- [x] **No new issues needing action**: kingdonb/mecris has no `needs-test`, `pr-review`, or `bug` labeled issues.
 
 ## Pending Verification (Next Session)
 - [ ] **Confirm PR #182 merged by kingdonb**: check kingdonb/mecris main for commit `db9c8fa`.
-- [ ] **Consider opening an updated PR**: `df23970` (satellite crate tests + gauge type) is also in yebyen:main but NOT covered by PR #182. Once #182 is merged, a new PR for this commit may be warranted.
 - [ ] **Run 004_user_location.sql against live Neon**: `psql $NEON_DB_URL -f scripts/migrations/004_user_location.sql` — adds `location_lat`, `location_lon` columns to live `users` table. Requires kingdonb.
 - [ ] **Twilio webhook Phase 2 live E2E**: requires Twilio Spin variables in Fermyon Cloud (`twilio_account_sid`, `twilio_auth_token_encrypted`, `twilio_from_number`) — set by kingdonb.
 - [ ] **Multi-Tenancy — Android UI Gaps**: Add "log out" button for PocketID auth. Add UI for users to provide phone number, grant/revoke SMS auth, set personal location (lat/lon) for weather heuristics, and select their **Preferred Health Source** (e.g., Google Fit) to prevent double-counting. Tracked in kingdonb/mecris#168.
