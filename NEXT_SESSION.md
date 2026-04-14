@@ -1,18 +1,20 @@
-# Next Session: Await kingdonb merge of PR #181; then sync + open new PR for export_user_data
+# Next Session: Await kingdonb merge of PR #181; open new PR for export_user_data + Twilio webhook
 
 ## Current Status (2026-04-14)
-- **PR #181 (yebyen:main → kingdonb:main) is open and merge-ready**: pr-test run `24373313213` confirmed **377 passed, 4 skipped, 0 failed**. Python ✅, Android 24 tasks ✅, Rust 64 passed ✅. No further fixes needed.
-- **yebyen/mecris is 10 commits ahead of kingdonb:main**: All changes in or beyond PR #181. Includes delete_user_data + export_user_data feat + test fix.
-- **export_user_data MCP tool**: `mcp_server.py` has `export_user_data()` (commit `1cbf337`). Returns all 6 tables. 4 unit tests. Test fix in `ac0a0c0` (mock fetchone=None).
-- **delete_user_data MCP tool**: `mcp_server.py` has `delete_user_data()` (commit `20cfc7b`). FK-safe. GDPR right-to-erasure gap addressed.
+- **PR #181 (yebyen:main → kingdonb:main) is open and merge-ready**: pr-test run `24373313213` confirmed **377 passed, 4 skipped, 0 failed**. No further fixes needed.
+- **yebyen/mecris is 12 commits ahead of kingdonb:main**: Includes delete_user_data + export_user_data GDPR tools + Twilio inbound webhook foundation.
+- **Twilio inbound webhook foundation added** (commit `3e5d47c`, yebyen/mecris#176): `is_affirmative_response()`, `validate_twilio_signature()`, `parse_form_body()` pure functions + `/internal/twilio-webhook` POST stub. 76 Rust unit tests (was 64). Foundation for kingdonb/mecris#140.
+- **kingdonb/mecris#180 already resolved**: ORDER BY fix and Health Connect deduplication fix were in commits `a48244d`/`404fdec` (both in kingdonb:main and yebyen:main). Issue not yet closed by kingdonb.
 
 ## Verified This Session
-- [x] **pr-test for PR #181 (2026-04-14)**: Run `24373313213` — 377 passed, 4 skipped, 0 failed. Android ✅ 24 tasks, Rust ✅ 64 passed. The `test_export_user_data_returns_all_tables` test is now GREEN. Fix `ac0a0c0` confirmed working in CI.
+- [x] **Twilio webhook foundation (yebyen/mecris#176)**: `is_affirmative_response()` + `validate_twilio_signature()` pure functions + stub handler committed `3e5d47c`. All 76 Rust tests pass (`cargo test`).
+- [x] **kingdonb/mecris#180 already fixed**: Checked — ORDER BY already in `lib.rs:1220`. No code change needed.
 
 ## Pending Verification (Next Session)
-- [ ] **kingdonb/mecris#181 merge**: PR is fully verified. After kingdonb merges, sync yebyen from upstream (`git merge upstream/main --no-edit`).
-- [ ] **Open new PR after #181 merges**: Once kingdonb merges #181, sync yebyen from upstream, then open a new PR for export_user_data + test fix commits (`1cbf337`, `ac0a0c0`).
+- [ ] **kingdonb/mecris#181 merge**: PR is fully verified. After kingdonb merges, sync yebyen from upstream (`git remote add upstream ... && git fetch upstream main && git merge upstream/main --no-edit`).
+- [ ] **Open new PR after #181 merges**: Once kingdonb merges #181, sync upstream, then open new PR for: export_user_data + test fix (`1cbf337`, `ac0a0c0`) + Twilio webhook foundation (`3e5d47c`). All commits are already in yebyen:main.
 - [ ] **Run 004_user_location.sql against live Neon**: `psql $NEON_DB_URL -f scripts/migrations/004_user_location.sql` — adds `location_lat`, `location_lon` columns to live `users` table. Requires kingdonb.
+- [ ] **Twilio webhook Phase 2 (kingdonb/mecris#140)**: `handle_twilio_webhook_post` stub needs: DB log entry (insert to `activity_log` or `walk_inferences`), Beeminder datapoint push via `beeminder_client`. Signature validation and affirmative parsing are done.
 - [ ] **Multi-Tenancy — Android UI Gaps**: Add "log out" button for PocketID auth. Add UI for users to provide phone number, grant/revoke SMS auth, set personal location (lat/lon) for weather heuristics, and select their **Preferred Health Source** (e.g., Google Fit) to prevent double-counting. Tracked in kingdonb/mecris#168.
 - [ ] **Rust test gap (workflow fix)**: Apply fix from yebyen/mecris#142: add `working-directory: mecris-go-spin/sync-service` to `Run Rust tests` step in `.github/workflows/pr-test.yml`. Needs `workflow` PAT scope or kingdonb direct action.
 - [ ] **send_walk_reminder integration test**: Requires live Spin Cloud deploy with Twilio variables configured.
@@ -52,11 +54,12 @@
 - **schema.sql token_bank**: Added in `c88d368` — `CREATE TABLE IF NOT EXISTS token_bank (user_id TEXT PRIMARY KEY REFERENCES users(pocket_id_sub), available_tokens BIGINT NOT NULL DEFAULT 0, monthly_limit BIGINT NOT NULL DEFAULT 1000000, last_refill TIMESTAMPTZ NOT NULL DEFAULT NOW())`.
 - **requirements.txt Python dep chain**: `apscheduler>=3.10` + `SQLAlchemy>=2.0` — both needed because `scheduler.py` imports `SQLAlchemyJobStore` from apscheduler.
 - **Upstream sync pattern**: `git remote add upstream https://github.com/kingdonb/mecris.git && git fetch upstream main && git merge upstream/main --no-edit`.
-- **Rust unit tests**: 6 crates, 64 tests in sync-service (108 total across all crates). All pure functions — `cargo test` runs without Spin host.
+- **Rust unit tests**: 76 tests in sync-service (as of `3e5d47c`). All pure functions — `cargo test` runs without Spin host.
 - **Rust workspace**: No workspace Cargo.toml in `mecris-go-spin/`. Each crate has `[workspace]` making it self-contained. 6 crates: sync-service, review-pump, nag-engine-rs, goal-type-rs, review-pump-rs, majesty-cake-rs. arabic-skip-counter has no Cargo.toml.
 - **Rust workflow fix**: Add `working-directory: mecris-go-spin/sync-service` to `Run Rust tests` step in pr-test.yml. Exact diff in yebyen/mecris#142. Cannot push (no workflow PAT). Additional crates need separate CI steps.
 - **target_flow_rate semantics**: This field means "remaining work to reach target" = `(target - daily_completions).max(0)`. When at or above target, value is 0. See `services/review_pump.py:67` and `mecris-go-spin/review-pump/src/lib.rs:114`.
 - **Twilio helpers in sync-service**: `build_twilio_url`, `build_twilio_body`, `encode_basic_auth`, `build_sms_request_parts` are pure functions at module scope in `lib.rs`. `send_walk_reminder` is async and requires Spin host to dispatch. `handle_trigger_reminders_post` reads `twilio_account_sid`, `twilio_auth_token_encrypted`, `twilio_from_number` from Spin variables.
+- **Twilio inbound webhook in sync-service**: `is_affirmative_response(body)` parses form-encoded SMS body, matches YES/Y/DONE/OK/1/✅. `validate_twilio_signature(token, url, params, sig)` computes HMAC-SHA1 per Twilio spec. `handle_twilio_webhook_post` stub: validates sig (403 on fail), returns TwiML 200. DB/Beeminder integration TODO.
 - **Phase 3 dispatch loop in sync-service**: `handle_trigger_reminders_post` queries `users` for timezone + location, `walk_inferences` for today's step count, `message_log` for last walk_reminder, evaluates `should_dispatch_reminder(local_hour, step_count, minutes_since_last)` per user. Per-user weather check uses `resolve_lat_lon()` with fallback to global Spin vars. Logs sent reminders to `message_log (type='walk_reminder', channel='sms')`.
 - **Per-user location in sync-service**: `resolve_lat_lon(user_lat, user_lon, global_lat, global_lon) -> Option<(f64, f64)>` — pure function, prefers per-user DB columns (`users.location_lat`, `users.location_lon`), falls back to global Spin vars, returns None if no coords. Migration: `scripts/migrations/004_user_location.sql`.
 - **Phase 3 heuristics in sync-service**: `is_within_reminder_window(local_hour)`, `is_below_step_threshold(step_count, threshold)`, `is_rate_limit_ok(minutes_since_last: Option<u64>)`, `should_dispatch_reminder(local_hour, step_count, minutes_since_last)` — all pure, all tested. `is_weather_ok_for_walk(weather_main)` — pure, 8 tests. `fetch_weather_main(lat, lon, api_key)` — async, calls OpenWeather Current Weather API.
@@ -68,3 +71,4 @@
 - **SMSConsentManager datetime mock**: Time-window and daily-limit branches in `can_send_message` use `datetime.now()`. In tests, patch `sms_consent_manager.datetime` and use `mock_dt.now.return_value = datetime(Y, M, D, H, 0, 0)` — `return_value` alone is correct; do NOT also set `side_effect` (it overrides `return_value`). `.date().isoformat()` and `.hour` work naturally on the returned real datetime object.
 - **SMSConsentManager get_user_preferences reload**: As of `a48244d` (kingdonb), `get_user_preferences` reloads from disk on every call. `can_send_message` reads `self.consent_data` directly (NOT via `get_user_preferences`) so direct in-memory mutations in tests for daily-limit branch still work correctly.
 - **MCP "Master Mode" security reality**: MCP server has full DB read/write via direct Neon connection. Auth is permissive (reads UUID from local file). Any agent with execution rights on host has full DB access. Documented in `docs/DATA_ARCHITECTURE_AND_PRIVACY.md`.
+- **kingdonb/mecris#180 already fixed**: ORDER BY and Health Connect deduplication were resolved in commits `a48244d`/`404fdec` (both in kingdonb:main and yebyen:main). Issue still open on kingdonb/mecris — bot cannot close it.
