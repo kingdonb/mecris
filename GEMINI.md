@@ -93,9 +93,14 @@ As the lead Gemini agent, you are the **keeper and critic** of the `mecris-bot` 
 - [x] Full migration from SQLite to Neon (Postgres).
 - [x] Accurate cost calculation using official Anthropic pricing.
 - [x] Leader election across distributed instances.
-- [x] Consistently green test suite (76/76 passing).
+- [x] Consistently green test suite (437 Python, 158 Rust passing).
+- [x] Akamai Functions Deployment (Trial): `sync-service` active with live Neon DB and Twilio variables.
+- [x] Akamai Cron Automation: `trigger-reminders` (2h) and `failover-sync` (Daily EST/EDT) scheduled.
 
 ### Pending Verification (Next Session)
+- **Akamai Validation**: Verify cron jobs are firing (check Akamai logs if accessible).
+- **Akamai E2E**: Manually trigger `/internal/failover-sync` and `/internal/trigger-reminders` via `POST` (requires no auth) to verify logic works in cloud environment.
+- **Security Hardening**: Secure the `/internal/failover-sync` and `/internal/trigger-reminders` endpoints on Akamai (e.g., via simple API key or IP restriction).
 - **Manual Trigger**: Verify that the Android app's "Cloud Sync" results in a Beeminder datapoint with the correct comment.
 - **Multiplier Sync**: Set the lever in the app and verify it persists in Neon (`SELECT pump_multiplier FROM language_stats`).
 - **Autonomous Presence**: Begin Goal 1 Implementation — detection of `presence.lock` and spawning the first "Archivist" Ghost Session.

@@ -46,10 +46,13 @@ Voice Messages  Rate Limiting     Context Memory   Usage APIs
 ## Deployment Architecture
 
 ### Production Environment
-- **Containerized Deployment**: Docker-based for portability
-- **Ephemeral Infrastructure**: Daily EC2 instances with user_data bootstrapping
-- **Stateless Design**: No persistent local storage requirements
-- **Health Monitoring**: Comprehensive service monitoring and alerting
+- **Multi-Cloud/Hybrid Deployment**:
+  - **Daily EC2 (Legacy/Heavy)**: Daily 5-hour operational window for heavy processing and archival.
+  - **Fermyon Cloud (Standard)**: Primary WASM-based cloud triggers.
+  - **Akamai Functions (Trial)**: Experimenting with persistent cron triggers for reminders and failover syncing.
+  - **Local/Home Server**: Home-based execution via MCP bridge.
+  - **SpinKube**: Ready for Kubernetes-native execution.
+- **Health Monitoring**: Unified `system_pulse` and process status reporting via `scheduler_election` table.
 
 ### Autonomous Operation
 - **Scheduled Compute**: 5-hour daily operational window (7am-12pm ET)
