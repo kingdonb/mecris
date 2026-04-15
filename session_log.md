@@ -1323,3 +1323,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: No code written this session — validation-only run.
 
 **Next**: Await kingdonb review/merge of PR #182. Once merged, identify next feature or test coverage target. Satellite CI expansion remains blocked on yebyen/mecris#142 (workflow PAT scope).
+
+## 🏛️ 2026-04-15 (2nd run) — NeonSyncChecker.update_pump_multiplier unit tests (8 tests)
+
+**Planned**: yebyen/mecris#186 — Add unit tests covering all branches of `NeonSyncChecker.update_pump_multiplier`, the only untested write method in `services/neon_sync_checker.py`.
+
+**Done**: Oriented — PR #182 still open, no tagged issues needing action, yebyen 9 ahead of kingdonb, Python at 399. Identified `update_pump_multiplier` as sole untested method with 3 control-flow branches. Created plan yebyen/mecris#186. Wrote 8 tests in `tests/test_neon_sync_checker_update_pump_multiplier.py`: no-db-url → False, success → True, commit-called, language_name.upper() (lowercase input), mixed-case uppercased, correct SQL params (multiplier + user_id positions), connect exception → False, execute exception → False. Committed at `3615c62`. Python count expected to rise 399 → 407 after pr-test next session.
+
+**Skipped**: pr-test dispatch — `3615c62` not yet on GitHub until bot workflow ends. Will validate next session.
+
+**Next**: Dispatch pr-test on kingdonb/mecris#182 after `3615c62` lands, confirm Python count rises to 407. Await kingdonb merge of PR #182.

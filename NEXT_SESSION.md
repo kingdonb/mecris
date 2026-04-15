@@ -1,19 +1,20 @@
-# Next Session: Await kingdonb merge of PR #182; consider next feature work
+# Next Session: Dispatch pr-test for new update_pump_multiplier tests; await kingdonb merge of PR #182
 
 ## Current Status (2026-04-15)
 - **PR #182 open on kingdonb/mecris** (yebyen:main → kingdonb:main): Twilio webhook Phase 2 + satellite crate tests + gauge type + CredentialsManager tests. Awaiting kingdonb review/merge.
 - **pr-test verified green at HEAD `11fb50c`**: 91 Rust (sync-service) ✅, 399 Python ✅ (4 skipped), Android ✅. Run: https://github.com/yebyen/mecris/actions/runs/24429115400
-- **yebyen/mecris is 6 commits ahead of kingdonb/mecris**: all in PR #182.
+- **yebyen/mecris is 10 commits ahead of kingdonb/mecris**: all in PR #182 (including `3615c62`).
+- **8 new tests added (`3615c62`)**: `tests/test_neon_sync_checker_update_pump_multiplier.py` — covers all branches of `NeonSyncChecker.update_pump_multiplier`. Python count expected to rise 399 → 407 after pr-test.
 - **Satellite crate tests (147 total)**: In code but NOT yet in CI — requires workflow PAT fix (yebyen/mecris#142).
-- **CredentialsManager tests confirmed counted**: 399 Python (was 381 before last session's 14 new tests + 4 pre-existing tests from kingdonb's `9bdf4e7`).
 
 ## Verified This Session
 - [x] **pr-test green at HEAD `11fb50c`**: 91 Rust, 399 Python (4 skipped), Android BUILD SUCCESSFUL — confirmed 2026-04-15 run ID 24429115400.
 - [x] **CredentialsManager tests (14) counted by CI**: Python count rose 381 → 399 (+18 total, including 14 from `933819e` and 4 from kingdonb's `9bdf4e7`).
-- [x] **PR #182 still open**: kingdonb has not yet merged as of this session.
+- [x] **8 tests for `update_pump_multiplier` committed**: `3615c62` — covers no-db-url, success, commit-called, language uppercasing (lower + mixed), correct SQL params, connect exception, execute exception.
 
 ## Pending Verification (Next Session)
-- [ ] **Confirm PR #182 merged by kingdonb**: check kingdonb/mecris main for commits `db9c8fa`, `df23970`, `933819e`, `11fb50c`.
+- [ ] **Dispatch pr-test on PR #182**: confirm Python count rises 399 → 407 after `3615c62` lands on GitHub. Dispatch only AFTER the bot workflow completes and the commit is live on GitHub.
+- [ ] **Confirm PR #182 merged by kingdonb**: check kingdonb/mecris main for commits `db9c8fa`, `df23970`, `933819e`, `11fb50c`, `3615c62`.
 - [ ] **Run 004_user_location.sql against live Neon**: `psql $NEON_DB_URL -f scripts/migrations/004_user_location.sql` — adds `location_lat`, `location_lon` columns to live `users` table. Requires kingdonb.
 - [ ] **Twilio webhook Phase 2 live E2E**: requires Twilio Spin variables in Fermyon Cloud (`twilio_account_sid`, `twilio_auth_token_encrypted`, `twilio_from_number`) — set by kingdonb.
 - [ ] **Multi-Tenancy — Android UI Gaps**: Add "log out" button for PocketID auth. Add UI for users to provide phone number, grant/revoke SMS auth, set personal location (lat/lon) for weather heuristics, and select their **Preferred Health Source** (e.g., Google Fit) to prevent double-counting. Tracked in kingdonb/mecris#168.
@@ -28,7 +29,7 @@
 - [ ] **Android app has_goal UI**: Confirm Android app picks up `has_goal=false` flag and visually dims untracked languages. Requires live app test.
 - [ ] **Majesty Cake Android integration**: `/aggregate-status` backend complete; Android app needs to consume it (kingdonb/mecris#170).
 - [ ] **003_multi_tenancy.sql live run**: Run `psql $NEON_DB_URL -f scripts/migrations/003_multi_tenancy.sql` against live Neon.
-- [ ] **Next feature work**: With PR #182 verified green, consider what new feature or test coverage to add next. Options: Python coverage gaps, additional Rust features, or Android integration work.
+- [ ] **Next feature work**: With PR #182 verified green and #186 complete, consider what new feature or test coverage to add next. Options: Python coverage gaps in other service modules, additional Rust features, or Android integration work.
 
 ## Infrastructure Notes
 - Spin Cron trigger is **DISABLED** in `spin.toml` — do not re-enable.
@@ -42,6 +43,7 @@
 - **Python venv not present in bot runner**: `PYTHONPATH=. .venv/bin/pytest` cannot run in bot context; Python tests validated via kingdonb/mecris pr-test workflow instead.
 - **Test isolation pattern**: Tests that import `mcp_server` must use `sys.modules.pop("mcp_server", None)` + `patch.dict(os.environ, ...)` + `patch("psycopg2.connect")` before importing. See `_make_mcp_importable()` in `test_mcp_server.py`, `test_cloud_sync.py`, `test_standalone_access.py`, `test_unauthorized_access.py`, `test_walk_sync.py`.
 - **CredentialsManager test isolation**: Uses `sys.modules.pop("services.credentials_manager", None)` + `tmp_path` fixture for file I/O + `patch("psycopg2.connect")` for DB paths. See `tests/test_credentials_manager.py`.
+- **update_pump_multiplier test isolation**: `patch.object(checker, "resolve_user_id", return_value=FAKE_UUID)` at instance level bypasses both credentials_manager lookup and DB lookup in resolve_user_id. Patch target for execute: `services.neon_sync_checker.psycopg2.connect`. See `tests/test_neon_sync_checker_update_pump_multiplier.py`.
 - **SQL mock matching pitfall**: `"DELETE" in sql` matches `ON DELETE CASCADE` in CREATE TABLE strings. Use `"DELETE FROM <table>" in sql` for precise assertions. See test_delete_user_data.py commit `5f25fa9`.
 - **delete_user_data import note**: `UsageTracker()` runs at module import time (mcp_server.py:249). Tests must import with NEON_DB_URL set; test the no-URL case by clearing env var at call time (after import), not before.
 - **export_user_data cursor pattern**: `_rows(cur, table, col)` helper uses `cur.description` for column names and returns list of dicts. Mock `cursor.description` as `[("pocket_id_sub",)]` and `fetchall.side_effect` as `[[user_row]] + [[]]*5` for happy-path tests. ALSO mock `cursor.fetchone.return_value = None` to prevent `UsageTracker.resolve_user_id` from returning a MagicMock via the familiar_id lookup branch.
@@ -75,4 +77,4 @@
 - **MCP "Master Mode" security reality**: MCP server has full DB read/write via direct Neon connection. Auth is permissive (reads UUID from local file). Any agent with execution rights on host has full DB access. Documented in `docs/DATA_ARCHITECTURE_AND_PRIVACY.md`.
 - **kingdonb/mecris#180 already fixed**: ORDER BY and Health Connect deduplication were resolved in commits `a48244d`/`404fdec` (both in kingdonb:main and yebyen:main). Issue still open on kingdonb/mecris — bot cannot close it.
 - **goal-type-rs gauge support**: `"gauge"` goal type added in `df23970`. Gauge goals allow any absolute value (up or down). Delta = `intended_push_value - current_value`. Always safe to push.
-- **Python test count baseline**: 399 passed, 4 skipped as of pr-test run 24429115400 (2026-04-15). Previous baseline was 381 (before CredentialsManager tests in `933819e` + 4 tests from kingdonb's `9bdf4e7`).
+- **Python test count baseline**: 399 passed, 4 skipped as of pr-test run 24429115400 (2026-04-15). New baseline expected: 407 after `3615c62` (8 new tests for update_pump_multiplier) — to be confirmed by next pr-test.
