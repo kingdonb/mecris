@@ -1,19 +1,19 @@
-# Next Session: Dispatch pr-test for HealthChecker tests; await kingdonb merge of PR #182
+# Next Session: Dispatch pr-test for BeeminderClient datapoint tests; await kingdonb merge of PR #182
 
 ## Current Status (2026-04-15)
 - **PR #182 open on kingdonb/mecris** (yebyen:main → kingdonb:main): Twilio webhook Phase 2 + satellite crate tests + gauge type + CredentialsManager tests + update_pump_multiplier tests + HealthChecker tests. Awaiting kingdonb review/merge.
-- **pr-test verified green at HEAD `ec1a257` (PR #182)**: 91 Rust ✅, 407 Python ✅ (4 skipped), Android ✅. Run: https://github.com/yebyen/mecris/actions/runs/24453558266
-- **yebyen/mecris is 12 commits ahead of kingdonb/mecris**: all in PR #182 (including `d3e51dc` — 9 HealthChecker tests).
-- **9 new tests added (`d3e51dc`)**: `tests/test_health_checker.py` — covers `get_process_statuses` (no URL, rows mapped, None heartbeat, exception) and `get_system_health` (no URL, healthy, degraded, empty, exception). Python count expected to rise 407 → 416 after pr-test.
+- **pr-test verified green at HEAD `baafcf5` (PR #182)**: 91 Rust ✅, 416 Python ✅ (4 skipped), Android ✅. Run: https://github.com/yebyen/mecris/actions/runs/24461727003
+- **yebyen/mecris is 14 commits ahead of kingdonb/mecris**: all in PR #182 (including `267db48` — 7 BeeminderClient.add_datapoint tests).
+- **7 new tests added (`267db48`)**: `tests/test_beeminder_client_datapoint.py` — covers `add_datapoint` daystamp/no-daystamp, requestid, return True/False, endpoint format. Python count expected to rise 416 → 423 after pr-test.
 - **Satellite crate tests (147 total)**: In code but NOT yet in CI — requires workflow PAT fix (yebyen/mecris#142).
 
 ## Verified This Session
-- [x] **pr-test green at HEAD `ec1a257`**: 91 Rust, 407 Python (4 skipped), Android BUILD SUCCESSFUL — confirmed 2026-04-15 run ID 24453558266.
-- [x] **Python count 399→407 (+8 confirmed)**: `update_pump_multiplier` tests (`3615c62`) counted by CI — baseline rises to 407.
-- [x] **9 HealthChecker tests committed**: `d3e51dc` — `tests/test_health_checker.py` covers all branches of `get_process_statuses` and `get_system_health`. No matching test file previously existed.
+- [x] **pr-test green at HEAD `baafcf5`**: 91 Rust, 416 Python (4 skipped), Android BUILD SUCCESSFUL — confirmed 2026-04-15 run ID 24461727003.
+- [x] **Python count 407→416 (+9 confirmed)**: `health_checker.py` tests (`d3e51dc`) counted by CI — baseline rises to 416.
+- [x] **7 BeeminderClient.add_datapoint tests committed**: `267db48` — `tests/test_beeminder_client_datapoint.py` covers daystamp parameter behavioral changes from kingdonb commit `9bdf4e75`.
 
 ## Pending Verification (Next Session)
-- [ ] **Dispatch pr-test on PR #182**: confirm Python count rises 407 → 416 after `d3e51dc` lands on GitHub. Dispatch only AFTER the bot workflow completes and the commit is live on GitHub.
+- [ ] **Dispatch pr-test on PR #182**: confirm Python count rises 416 → 423 after `267db48` (BeeminderClient tests) lands on GitHub. Dispatch only AFTER the bot workflow completes and the commit is live on GitHub.
 - [ ] **Confirm PR #182 merged by kingdonb**: check kingdonb/mecris main for commits `db9c8fa`, `df23970`, `933819e`, `11fb50c`, `3615c62`, `d3e51dc`.
 - [ ] **Run 004_user_location.sql against live Neon**: `psql $NEON_DB_URL -f scripts/migrations/004_user_location.sql` — adds `location_lat`, `location_lon` columns to live `users` table. Requires kingdonb.
 - [ ] **Twilio webhook Phase 2 live E2E**: requires Twilio Spin variables in Fermyon Cloud (`twilio_account_sid`, `twilio_auth_token_encrypted`, `twilio_from_number`) — set by kingdonb.
