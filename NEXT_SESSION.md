@@ -1,20 +1,18 @@
-# Next Session: Dispatch pr-test for BeeminderClient datapoint tests; await kingdonb merge of PR #182
+# Next Session: Await kingdonb merge of PR #182; consider new Python test coverage work
 
 ## Current Status (2026-04-15)
-- **PR #182 open on kingdonb/mecris** (yebyen:main → kingdonb:main): Twilio webhook Phase 2 + satellite crate tests + gauge type + CredentialsManager tests + update_pump_multiplier tests + HealthChecker tests. Awaiting kingdonb review/merge.
-- **pr-test verified green at HEAD `baafcf5` (PR #182)**: 91 Rust ✅, 416 Python ✅ (4 skipped), Android ✅. Run: https://github.com/yebyen/mecris/actions/runs/24461727003
-- **yebyen/mecris is 14 commits ahead of kingdonb/mecris**: all in PR #182 (including `267db48` — 7 BeeminderClient.add_datapoint tests).
-- **7 new tests added (`267db48`)**: `tests/test_beeminder_client_datapoint.py` — covers `add_datapoint` daystamp/no-daystamp, requestid, return True/False, endpoint format. Python count expected to rise 416 → 423 after pr-test.
+- **PR #182 open on kingdonb/mecris** (yebyen:main → kingdonb:main): Twilio webhook Phase 2 + satellite crate tests + gauge type + CredentialsManager tests + update_pump_multiplier tests + HealthChecker tests + BeeminderClient.add_datapoint tests. Awaiting kingdonb review/merge.
+- **pr-test verified green at HEAD `3efb119` (PR #182)**: 423 Python ✅, 91 Rust ✅, Android ✅. Run: https://github.com/yebyen/mecris/actions/runs/24465449369
+- **yebyen/mecris is 14 commits ahead of kingdonb/mecris**: all in PR #182.
+- **Python baseline confirmed at 423**: 7 BeeminderClient.add_datapoint tests (`267db48`) confirmed counted by CI. All service methods now have at least one test file.
 - **Satellite crate tests (147 total)**: In code but NOT yet in CI — requires workflow PAT fix (yebyen/mecris#142).
 
 ## Verified This Session
-- [x] **pr-test green at HEAD `baafcf5`**: 91 Rust, 416 Python (4 skipped), Android BUILD SUCCESSFUL — confirmed 2026-04-15 run ID 24461727003.
-- [x] **Python count 407→416 (+9 confirmed)**: `health_checker.py` tests (`d3e51dc`) counted by CI — baseline rises to 416.
-- [x] **7 BeeminderClient.add_datapoint tests committed**: `267db48` — `tests/test_beeminder_client_datapoint.py` covers daystamp parameter behavioral changes from kingdonb commit `9bdf4e75`.
+- [x] **pr-test green at HEAD `3efb119`**: 423 Python (4 skipped), 91 Rust, Android BUILD SUCCESSFUL — confirmed 2026-04-15 run ID 24465449369.
+- [x] **Python count 416→423 confirmed (+7)**: BeeminderClient.add_datapoint tests (`267db48`) counted by CI — new baseline is 423.
 
 ## Pending Verification (Next Session)
-- [ ] **Dispatch pr-test on PR #182**: confirm Python count rises 416 → 423 after `267db48` (BeeminderClient tests) lands on GitHub. Dispatch only AFTER the bot workflow completes and the commit is live on GitHub.
-- [ ] **Confirm PR #182 merged by kingdonb**: check kingdonb/mecris main for commits `db9c8fa`, `df23970`, `933819e`, `11fb50c`, `3615c62`, `d3e51dc`.
+- [ ] **Confirm PR #182 merged by kingdonb**: check kingdonb/mecris main for commits `db9c8fa`, `df23970`, `933819e`, `11fb50c`, `3615c62`, `d3e51dc`, `267db48`.
 - [ ] **Run 004_user_location.sql against live Neon**: `psql $NEON_DB_URL -f scripts/migrations/004_user_location.sql` — adds `location_lat`, `location_lon` columns to live `users` table. Requires kingdonb.
 - [ ] **Twilio webhook Phase 2 live E2E**: requires Twilio Spin variables in Fermyon Cloud (`twilio_account_sid`, `twilio_auth_token_encrypted`, `twilio_from_number`) — set by kingdonb.
 - [ ] **Multi-Tenancy — Android UI Gaps**: Add "log out" button for PocketID auth. Add UI for users to provide phone number, grant/revoke SMS auth, set personal location (lat/lon) for weather heuristics, and select their **Preferred Health Source** (e.g., Google Fit) to prevent double-counting. Tracked in kingdonb/mecris#168.
@@ -29,7 +27,7 @@
 - [ ] **Android app has_goal UI**: Confirm Android app picks up `has_goal=false` flag and visually dims untracked languages. Requires live app test.
 - [ ] **Majesty Cake Android integration**: `/aggregate-status` backend complete; Android app needs to consume it (kingdonb/mecris#170).
 - [ ] **003_multi_tenancy.sql live run**: Run `psql $NEON_DB_URL -f scripts/migrations/003_multi_tenancy.sql` against live Neon.
-- [ ] **Next feature work**: With HealthChecker tests added, all service methods now have at least one test file. Consider: Python coverage gaps in mcp_server.py handler functions, additional Rust features, or Android integration work.
+- [ ] **Next feature work**: All service methods now have at least one test file (Python baseline 423). Consider: Python coverage gaps in mcp_server.py handler functions, additional Rust features, or Android integration work.
 
 ## Infrastructure Notes
 - Spin Cron trigger is **DISABLED** in `spin.toml` — do not re-enable.
@@ -78,4 +76,4 @@
 - **MCP "Master Mode" security reality**: MCP server has full DB read/write via direct Neon connection. Auth is permissive (reads UUID from local file). Any agent with execution rights on host has full DB access. Documented in `docs/DATA_ARCHITECTURE_AND_PRIVACY.md`.
 - **kingdonb/mecris#180 already fixed**: ORDER BY and Health Connect deduplication were resolved in commits `a48244d`/`404fdec` (both in kingdonb:main and yebyen:main). Issue still open on kingdonb/mecris — bot cannot close it.
 - **goal-type-rs gauge support**: `"gauge"` goal type added in `df23970`. Gauge goals allow any absolute value (up or down). Delta = `intended_push_value - current_value`. Always safe to push.
-- **Python test count baseline**: 407 passed, 4 skipped as of pr-test run 24453558266 (2026-04-15). New baseline expected: 416 after `d3e51dc` (9 new HealthChecker tests) — to be confirmed by next pr-test.
+- **Python test count baseline**: 423 passed, 4 skipped as of pr-test run 24465449369 (2026-04-15).
