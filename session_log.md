@@ -1388,3 +1388,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: pr-test re-run to confirm Rust fix and 446 Python — push constraint (fixes land on GitHub after bot workflow ends). Next session must run pr-test.
 
 **Next**: Dispatch pr-test for PR #182 / yebyen:main HEAD; confirm Rust ✅ and Python ≥446. Then await kingdonb merge of PR #182.
+
+## 2026-04-15 🏛️ — Verify Rust fix + 446 Python baseline via pr-test (#184)
+
+**Planned**: yebyen/mecris#194 — Create PR yebyen:main → kingdonb:main (3 commits ahead), dispatch pr-test, confirm Rust 91 ✅ and Python 446 ✅.
+
+**Done**: Oriented — confirmed PR #182 merged at `1aabc8f5`; yebyen 3 commits ahead of kingdonb. Created plan yebyen/mecris#194. Opened PR kingdonb/mecris#184 (Rust fix `f5a4b09` + 9 Python tests `f568c15` + archive `993c4b3`). Dispatched pr-test (run 24480880265) — Python **446 ✅**, Rust **91 ✅**, Android ✅. All validation criteria met.
+
+**Skipped**: Nothing — single focused verification task, fully completed.
+
+**Next**: Await kingdonb review/merge of PR #184. If merged, yebyen/mecris will be in sync. Consider Akamai E2E verification or security hardening of `/internal/*` endpoints as next coding task.

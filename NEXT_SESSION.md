@@ -1,23 +1,20 @@
-# Next Session: Run pr-test to verify Rust fix + 446 Python baseline (f568c15)
+# Next Session: PR #184 (kingdonb/mecris) awaiting kingdonb review/merge
 
 ## Current Status (2026-04-15)
-- **PR #182 open on kingdonb/mecris** (yebyen:main → kingdonb:main): Awaiting kingdonb review/merge.
-- **pr-test run 24475982299**: Python 437 ✅, Android ✅, Rust ❌ (compile error in kingdonb's `be513c92` — missing `return` before `match` in `/internal/failover-sync` handler).
-- **Rust compile error FIXED**: `f5a4b09` adds `return` before the `match` in `handle_sync_service` failover-sync branch. Fix compiles clean (91 tests pass locally). Needs pr-test to confirm in CI.
-- **9 new Python tests committed** at `f568c15` — `get_recent_usage`, `get_weather_full_report`, `add_goal`, `update_budget`, `complete_goal` (auth guard + delegation). Expected Python count: **446** (437 + 9).
-- **yebyen/mecris is ahead of kingdonb/mecris**: kingdonb merged yebyen at `1aabc8f5`, then added `be513c92` + `94f2c543`; bot added `f5a4b09` + `f568c15` on top.
-- **Akamai Functions (Trial)**: `sync-service` deployed. Cron jobs: `trigger-reminders` (2h), `failover-sync-edt` (04:05 UTC), `failover-sync-est` (05:05 UTC).
+- **PR #184 open on kingdonb/mecris** (yebyen:main → kingdonb:main): Contains Rust fix (`f5a4b09`), 9 Python handler tests (`f568c15`), archive commit (`993c4b3`). Awaiting kingdonb review/merge.
+- **pr-test run 24480880265**: Python **446 ✅**, Rust **91 ✅**, Android ✅ — all green. Validation complete.
+- **yebyen/mecris is 3 commits ahead of kingdonb/mecris**: `f5a4b09`, `f568c15`, `993c4b3` pending in PR #184.
 - **Satellite crate tests (147 total)**: In code but NOT yet in CI — requires workflow PAT fix (yebyen/mecris#142).
+- **Akamai Functions (Trial)**: `sync-service` deployed. Cron jobs: `trigger-reminders` (2h), `failover-sync-edt` (04:05 UTC), `failover-sync-est` (05:05 UTC).
 
 ## Verified This Session
-- [x] **pr-test run 24475982299**: Python **437 passed, 4 skipped** — baseline confirmed.
-- [x] **Rust compile error root-caused**: kingdonb's `be513c92` (`/internal/failover-sync` route) missing `return` before `match run_clozemaster_scraper(...)`.
-- [x] **Rust fix committed** at `f5a4b09`: `return match ...;` — 91 sync-service tests pass locally.
-- [x] **9 new mcp_server handler tests committed** at `f568c15`: covers `get_recent_usage`, `get_weather_full_report`, `add_goal`, `update_budget`, `complete_goal`.
+- [x] **PR #182 merged by kingdonb**: Confirmed merged at `1aabc8f5` (2026-04-15T20:12:10Z).
+- [x] **PR #184 created**: kingdonb/mecris#184 (yebyen:main → kingdonb:main) — 3 commits ahead.
+- [x] **pr-test run 24480880265**: Python **446 passed, 4 skipped** ✅ — 9 new tests confirmed counted.
+- [x] **Rust fix verified in CI**: 91 Rust tests pass ✅ (`f5a4b09` resolves compile error from `be513c92`).
 
 ## Pending Verification (Next Session)
-- [ ] **Dispatch pr-test for PR #182 (or latest yebyen:main) to verify**: Rust should now pass (fix in `f5a4b09`); Python should show **446** (9 new tests in `f568c15`). Run ID from this session: 24475982299 (pre-fix). Next session's run should show Rust ✅.
-- [ ] **Confirm PR #182 merged by kingdonb**: Check kingdonb/mecris main for commits through `f568c15`.
+- [ ] **Confirm PR #184 merged by kingdonb**: Check kingdonb/mecris main for commits through `993c4b3`.
 - [ ] **Confirm Akamai cron jobs firing**: Check Akamai logs for `trigger-reminders`, `failover-sync-edt`, `failover-sync-est` executions.
 - [ ] **Akamai E2E Logic Test**: Manually POST to `/internal/failover-sync` on Akamai endpoint.
 - [ ] **Security Hardening (Akamai)**: Unauthenticated `/internal/*` endpoints need API key or IP whitelist.
@@ -43,7 +40,7 @@
 - **Rust compile fix pattern**: All branches in `handle_sync_service` that return a value must use explicit `return`. Bare `match` without `return` causes type error (expected `()`, found `Result<Response, _>`).
 - **Test isolation pattern**: Tests that import `mcp_server` must use `sys.modules.pop("mcp_server", None)` + `patch.dict(os.environ, ...)` + `patch("psycopg2.connect")` before importing.
 - **mcp_server handler test patterns** (`test_mcp_server_handlers.py`): Patch `mcp_server.resolve_target_user` for auth guard tests; patch `mcp_server.usage_tracker` for delegation tests; patch `mcp_server.weather_service` for weather tests.
-- **Python test count baseline**: 437 passed (4 skipped) as of pr-test run 24475982299. Expected after `f568c15`: **446 passed**.
+- **Python test count baseline**: 446 passed (4 skipped) as of pr-test run 24480880265. New baseline: **446**.
 - **schema.sql budget_tracking schema**: columns are `budget_period_start TEXT NOT NULL`, `budget_period_end TEXT NOT NULL`, `total_budget DOUBLE PRECISION NOT NULL`, `remaining_budget DOUBLE PRECISION NOT NULL`, `user_id UNIQUE REFERENCES users(pocket_id_sub)`.
 - **Upstream sync pattern**: `git fetch https://github.com/kingdonb/mecris.git main && git merge FETCH_HEAD --no-edit`.
 - **Groq-Beeminder sync**: kingdonb's `9bdf4e7` added automated @TARE reset logic and DB-backed identity resolution. Unit tests for Groq-Beeminder sync in `test_groq_beeminder_sync.py`.
