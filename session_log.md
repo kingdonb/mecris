@@ -1263,3 +1263,113 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: Actual DB user-lookup wiring (matching From phone against `phone_number_encrypted` in users table) and live Beeminder push — requires Spin host + Twilio variables configured (kingdonb action). `message_log` insert also deferred to Phase 2 wiring step.
 
 **Next**: Await kingdonb merge of PR #181. Once merged: sync yebyen from upstream, open new PR for GDPR + Twilio commits. Then wire DB user-lookup + Beeminder push + message_log insert into `handle_twilio_webhook_post`.
+
+## 2026-04-14 — 🏛️ Twilio webhook Phase 2: DB user-lookup + Beeminder push + walk_ack log
+
+**Planned**: Sync from upstream (1 commit behind), then wire `handle_twilio_webhook_post` with DB user-lookup → Beeminder push → message_log insert (yebyen/mecris#178).
+
+**Done**: Synced upstream `9bdf4e75` (Groq-Beeminder integration from kingdonb). Implemented full Phase 2 wiring in `handle_twilio_webhook_post`: queries `users` for `phone_number_encrypted + beeminder_goal`, decrypts each phone with `decrypt_token()`, compares to Twilio `From` via `phones_match()` (new E.164 normalization helper), calls `push_to_beeminder(beeminder_goal, 1.0)` on match, inserts `message_log (type='walk_ack', channel='sms')`. Added `normalize_phone()` + `phones_match()` pure helpers. 91 Rust tests pass (was 82; +9 new). Commit `db9c8fa`.
+
+**Skipped**: PR to kingdonb/mecris — cannot open until commit is visible on GitHub after bot workflow push. Must open next session.
+
+**Next**: Verify `db9c8fa` pushed to yebyen/mecris, open PR yebyen:main → kingdonb:main, run pr-test to confirm 91 Rust + ≥377 Python tests green.
+
+## 2026-04-14 (2nd run) — PR #182 opened + pr-test green (91 Rust, 381 Python, Android ✅)
+
+**Planned**: Verify push of `db9c8fa` landed on yebyen/mecris, open PR yebyen:main → kingdonb:main, dispatch pr-test to confirm 91 Rust + ≥377 Python tests green (yebyen/mecris#179).
+
+**Done**: Confirmed both `db9c8fa` (Twilio Phase 2 wiring) and `7b7bb66` (archive) on yebyen/mecris GitHub. Opened kingdonb/mecris#182 (yebyen:main → kingdonb:main). Dispatched pr-test; workflow completed success: 91 Rust tests ✅, 381 Python tests ✅ (4 skipped), Android ✅. Results posted as bot comment on PR #182.
+
+**Skipped**: Nothing — plan completed in full.
+
+**Next**: Await kingdonb review/merge of PR #182. Then identify next Rust or Python feature to cook in the fork.
+
+## 🏛️ 2026-04-14 (3rd run) — Satellite Rust crate test expansion: 135→147 tests, gauge type added
+
+**Planned**: yebyen/mecris#180 — Add 2-3 boundary/edge-case tests to each of nag-engine-rs, goal-type-rs, review-pump-rs, majesty-cake-rs; bring each to ≥9 tests; total Rust tests ≥147.
+
+**Done**: Oriented — PR #182 still open awaiting kingdonb review, no tagged issues needing action. Planned yebyen/mecris#180. Added 3 tests to nag-engine-rs (8→11): hour=6 sleep boundary, hour=7 first active, runway=2.0 not tier3. Added 3 tests + `"gauge"` type support to goal-type-rs (7→10): gauge upward, gauge downward, odometer negative-current. Added 3 tests to review-pump-rs (6→9): multiplier=1.01 Active boundary, zero base_daily_target, large backlog + high multiplier. Added 3 tests to majesty-cake-rs (6→9): all-optional no-cake, required+optional mix, 3/5 partial. All 4 crates pass `cargo test`. Committed `df23970`. Plan #180 closed.
+
+**Skipped**: Nothing — plan completed in full. CI expansion (5 additional pr-test steps for satellite crates) remains blocked on workflow PAT scope per yebyen/mecris#142.
+
+**Next**: Await kingdonb merge of PR #182. Once merged, consider opening new PR for `df23970` (satellite tests + gauge type). Investigate whether next useful feature is in Rust crates or Python layer.
+
+## 2026-04-14 (4th run) — Re-verified PR #182 green at HEAD 41be973 (satellite crate tests included)
+
+**Planned**: yebyen/mecris#182 — Dispatch pr-test on kingdonb/mecris#182 to confirm HEAD `41be973` (post-satellite-test additions) is still green. Prior pr-test was at `d665748`; two commits added since.
+
+**Done**: Oriented — PR #182 still open, no tagged issues needing action, yebyen is 5 ahead of kingdonb. Created plan issue yebyen/mecris#182. Dispatched pr-test (run ID 24420818218); completed success: 91 Rust ✅, 381 Python ✅ (4 skipped), Android BUILD SUCCESSFUL ✅. Posted results as comment on kingdonb/mecris#182. Closed plan issue.
+
+**Skipped**: Nothing — plan completed in full. No new code written (validation-only session).
+
+**Next**: Await kingdonb review/merge of PR #182. Once merged, identify next autonomous work (Rust or Python feature in the fork). Satellite CI expansion remains blocked on yebyen/mecris#142 (workflow PAT scope).
+
+## 🏛️ 2026-04-14 (5th run) — CredentialsManager unit tests: 14 tests covering all resolution branches
+
+**Planned**: yebyen/mecris#183 — Write `tests/test_credentials_manager.py` covering all code paths in `CredentialsManager.resolve_user_id`, `_is_uuid`, and `resolve_familiar_id` (added in kingdonb's `9bdf4e7`), which had zero direct unit tests.
+
+**Done**: Oriented — PR #182 still open, no tagged issues needing action, yebyen is 5 ahead of kingdonb. Identified zero coverage for `services/credentials_manager.py`. Created plan yebyen/mecris#183. Wrote 14 tests: `_is_uuid` (6 cases: UUID with hyphens, hex 32-char, familiar name, None, empty string, local- prefix), `resolve_familiar_id` (4 cases: no DB URL, found in DB, not found, DB exception), `resolve_user_id` (8 cases: provided UUID, provided local-id, credentials file, DEFAULT_USER_ID env, standalone auto-generate + save, cloud mode returns None, familiar name resolves via DB, familiar name not in DB falls through). Syntax-verified locally. Committed at `933819e`.
+
+**Skipped**: pr-test dispatch — `933819e` not yet on GitHub until bot workflow ends. Will validate next session.
+
+**Next**: Dispatch pr-test on kingdonb/mecris#182 after `933819e` lands, confirm Python test count rises to ≥395. Await kingdonb merge of PR #182.
+
+## 2026-04-15 — pr-test validation of PR #182 at HEAD 11fb50c (CredentialsManager tests confirmed)
+
+**Planned**: yebyen/mecris#185 — Dispatch pr-test on kingdonb/mecris#182 to validate 14 new CredentialsManager unit tests (`933819e`) now live on GitHub; confirm Python count rises 381 → ≥395, Rust 91, Android ✅.
+
+**Done**: Oriented — PR #182 still open, HEAD `11fb50c` on GitHub, no tagged issues. Created plan yebyen/mecris#185. Dispatched pr-test (run ID 24429115400); completed success: 91 Rust ✅, 399 Python ✅ (4 skipped; +18 from last session's CredentialsManager tests + kingdonb's prior additions), Android BUILD SUCCESSFUL ✅. Posted validation comment on yebyen/mecris#185. All criteria met.
+
+**Skipped**: No code written this session — validation-only run.
+
+**Next**: Await kingdonb review/merge of PR #182. Once merged, identify next feature or test coverage target. Satellite CI expansion remains blocked on yebyen/mecris#142 (workflow PAT scope).
+
+## 🏛️ 2026-04-15 (2nd run) — NeonSyncChecker.update_pump_multiplier unit tests (8 tests)
+
+**Planned**: yebyen/mecris#186 — Add unit tests covering all branches of `NeonSyncChecker.update_pump_multiplier`, the only untested write method in `services/neon_sync_checker.py`.
+
+**Done**: Oriented — PR #182 still open, no tagged issues needing action, yebyen 9 ahead of kingdonb, Python at 399. Identified `update_pump_multiplier` as sole untested method with 3 control-flow branches. Created plan yebyen/mecris#186. Wrote 8 tests in `tests/test_neon_sync_checker_update_pump_multiplier.py`: no-db-url → False, success → True, commit-called, language_name.upper() (lowercase input), mixed-case uppercased, correct SQL params (multiplier + user_id positions), connect exception → False, execute exception → False. Committed at `3615c62`. Python count expected to rise 399 → 407 after pr-test next session.
+
+**Skipped**: pr-test dispatch — `3615c62` not yet on GitHub until bot workflow ends. Will validate next session.
+
+**Next**: Dispatch pr-test on kingdonb/mecris#182 after `3615c62` lands, confirm Python count rises to 407. Await kingdonb merge of PR #182.
+
+## 🏛️ 2026-04-15 (3rd run) — pr-test confirmed 407 Python; HealthChecker unit tests (9 tests)
+
+**Planned**: yebyen/mecris#188 — Dispatch pr-test on kingdonb/mecris#182 to confirm Python count rises 399→407 after `3615c62` (update_pump_multiplier tests) lands on GitHub.
+
+**Done**: Oriented — PR #182 still open on kingdonb, no tagged issues, `ec1a257` is live HEAD on yebyen/mecris. Created plan yebyen/mecris#188. Dispatched pr-test (run ID 24453558266); completed success: 91 Rust ✅, 407 Python ✅ (+8 from `3615c62`, baseline confirmed), Android BUILD SUCCESSFUL ✅. Closed #188. Identified `health_checker.py` as only service without a test file. Created plan yebyen/mecris#189. Wrote 9 tests in `tests/test_health_checker.py` covering `get_process_statuses` (no URL → [], DB rows → mapped, None heartbeat → None, exception → re-raises) and `get_system_health` (no URL → error dict, any active → healthy, all inactive → degraded, empty → degraded, exception → error dict). Committed at `d3e51dc`.
+
+**Skipped**: pr-test for `d3e51dc` — commit not yet on GitHub until bot workflow ends. Will validate next session.
+
+**Next**: Dispatch pr-test on kingdonb/mecris#182 after `d3e51dc` lands, confirm Python count rises 407→416. Await kingdonb merge of PR #182.
+
+## 🏛️ 2026-04-15 (4th run) — pr-test confirmed 416 Python; BeeminderClient.add_datapoint unit tests (7 tests)
+
+**Planned**: yebyen/mecris#190 — Dispatch pr-test on kingdonb/mecris#182 to confirm Python count rises 407→416 after `d3e51dc` (HealthChecker tests) lands on GitHub; add unit tests for `BeeminderClient.add_datapoint` daystamp parameter added in kingdonb commit `9bdf4e75`.
+
+**Done**: Oriented — PR #182 still open on kingdonb, yebyen 13 commits ahead (0 behind), no tagged issues. Confirmed upstream sync not needed (`9bdf4e75` already in yebyen ancestry). Dispatched pr-test (run ID 24461727003); completed success: 91 Rust ✅, 416 Python ✅ (+9 from `d3e51dc` HealthChecker tests, baseline confirmed), Android BUILD SUCCESSFUL ✅. While pr-test ran, wrote 7 unit tests for `BeeminderClient.add_datapoint` in `tests/test_beeminder_client_datapoint.py` covering daystamp/no-daystamp, requestid, True/False return, endpoint format. Committed at `267db48`. Closed plan yebyen/mecris#190.
+
+**Skipped**: pr-test for `267db48` — commit not yet on GitHub until bot workflow ends. Will validate next session.
+
+**Next**: Dispatch pr-test on kingdonb/mecris#182 after `267db48` lands, confirm Python count rises 416→423. Await kingdonb merge of PR #182.
+
+## 2026-04-15 — pr-test verified green at HEAD 3efb119: 423 Python ✅, 91 Rust ✅, Android ✅
+
+**Planned**: Dispatch pr-test for PR #182 to confirm Python count rises 416 → 423 after BeeminderClient.add_datapoint tests (`267db48`) land on GitHub. (yebyen/mecris#191)
+
+**Done**: Dispatched pr-test workflow (run 24465449369). Confirmed 423 Python passed (4 skipped), 91 Rust passed, Android BUILD SUCCESSFUL. +7 BeeminderClient tests from `267db48` confirmed counted by CI. New Python baseline: 423.
+
+**Skipped**: Nothing — single focused verification task, fully completed.
+
+**Next**: Await kingdonb merge of PR #182. If no merge, consider new Python coverage work (mcp_server.py handler functions or additional Rust features).
+
+## 🏛️ 2026-04-15 (5th run) — mcp_server.py handler unit tests (14 tests)
+
+**Planned**: yebyen/mecris#192 — Write unit tests for four untested mcp_server.py handler functions: `_record_governor_spend` (bucket routing), `get_budget_status` (auth guard + delegation), `get_weather_report` (wrapper), `record_usage_session` (happy + error).
+
+**Done**: Oriented — PR #182 still open on kingdonb, no tagged issues, yebyen 14 ahead, Python baseline 423. Created plan yebyen/mecris#192. Wrote 14 tests in `tests/test_mcp_server_handlers.py`: `_record_governor_spend` (5 tests: gemini/groq/helix/anthropic_api routing + exception swallow), `get_budget_status` (2 tests: auth guard returns error + delegates to usage_tracker), `get_weather_report` (2 tests: combined dict + not-appropriate), `record_usage_session` (3 tests: happy path + auth error + exception), `record_claude_code_usage` (2 tests: happy path + exception). Committed at `a566629`. Dispatched pr-test (run 24470904515) — baseline confirmed at 423 Python ✅, 91 Rust ✅, Android ✅. New tests not yet counted (push happens at bot workflow end).
+
+**Skipped**: Full pr-test count verification for `a566629` — push constraint means new tests not on GitHub until bot workflow ends. Count verification deferred to next session.
+
+**Next**: Dispatch pr-test for PR #182 after `a566629` lands, confirm Python count rises to ≥437. Await kingdonb merge of PR #182.

@@ -200,4 +200,35 @@ mod tests {
         assert_eq!(res.should_send, false);
         assert_eq!(res.tier, 0);
     }
+
+    #[test]
+    fn test_sleep_window_boundary_at_hour_6() {
+        // hour=6 is the last sleep hour (< 7 is still sleep window).
+        // Tier 1/2 should be suppressed; no tier 3 (runway=12h).
+        let r = req(12.0, false, 8.0, 6, false);
+        let res = nag_ladder_logic(&r);
+        assert_eq!(res.should_send, false);
+        assert_eq!(res.tier, 0);
+    }
+
+    #[test]
+    fn test_first_active_hour_at_7() {
+        // hour=7 is the first non-sleep hour (>= 7 and < 22).
+        // Tier 2 should fire: off cooldown, idle=8h > 6h, incomplete goal.
+        let r = req(12.0, false, 8.0, 7, false);
+        let res = nag_ladder_logic(&r);
+        assert_eq!(res.should_send, true);
+        assert_eq!(res.tier, 2);
+        assert_eq!(res.template_id, "NAG_ESCALATED");
+    }
+
+    #[test]
+    fn test_runway_at_exactly_2_hours_is_not_tier3() {
+        // runway_hours < 2.0 triggers Tier 3, but 2.0 exactly does NOT.
+        // With sleep window active, this should produce no nag.
+        let r = req(2.0, false, 8.0, 3, false);
+        let res = nag_ladder_logic(&r);
+        assert_eq!(res.should_send, false);
+        assert_eq!(res.tier, 0);
+    }
 }

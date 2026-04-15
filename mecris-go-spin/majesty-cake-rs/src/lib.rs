@@ -171,4 +171,66 @@ mod tests {
         assert_eq!(res.status_message, "0/1 goals satisfied.");
         assert_eq!(res.template_id, None);
     }
+
+    #[test]
+    fn test_all_optional_completed_yields_no_cake() {
+        // Optional goals completed but no required goals — 0/0 state, no celebration.
+        // all_clear requires required_count > 0.
+        let req = AggregateRequest {
+            goals: vec![
+                GoalStatus { slug: "bonus-1".to_string(), is_required_today: false, is_completed: true },
+                GoalStatus { slug: "bonus-2".to_string(), is_required_today: false, is_completed: true },
+            ],
+        };
+        let res = aggregate_status_logic(&req);
+        assert_eq!(res.required_count, 0);
+        assert_eq!(res.completed_count, 0);
+        assert_eq!(res.all_clear, false);
+        assert_eq!(res.status_message, "0/0 goals satisfied.");
+        assert_eq!(res.template_id, None);
+    }
+
+    #[test]
+    fn test_required_and_optional_mix_only_required_counted() {
+        // 1 required (completed) + 2 optional (1 completed, 1 not).
+        // Only the required goal affects counts — all_clear = true.
+        let req = AggregateRequest {
+            goals: vec![
+                GoalStatus { slug: "steps".to_string(), is_required_today: true, is_completed: true },
+                GoalStatus { slug: "bonus-a".to_string(), is_required_today: false, is_completed: true },
+                GoalStatus { slug: "bonus-b".to_string(), is_required_today: false, is_completed: false },
+            ],
+        };
+        let res = aggregate_status_logic(&req);
+        assert_eq!(res.required_count, 1);
+        assert_eq!(res.completed_count, 1);
+        assert_eq!(res.all_clear, true);
+        assert_eq!(res.status_message, "1/1 goals satisfied.");
+        assert_eq!(res.template_id, Some("MAJESTY_CAKE_CELEBRATION".to_string()));
+    }
+
+    #[test]
+    fn test_many_required_partial_completion() {
+        // 5 required goals, 3 completed — 3/5 state, no cake.
+        let make = |slug: &str, req: bool, done: bool| GoalStatus {
+            slug: slug.to_string(),
+            is_required_today: req,
+            is_completed: done,
+        };
+        let req = AggregateRequest {
+            goals: vec![
+                make("g1", true, true),
+                make("g2", true, true),
+                make("g3", true, true),
+                make("g4", true, false),
+                make("g5", true, false),
+            ],
+        };
+        let res = aggregate_status_logic(&req);
+        assert_eq!(res.required_count, 5);
+        assert_eq!(res.completed_count, 3);
+        assert_eq!(res.all_clear, false);
+        assert_eq!(res.status_message, "3/5 goals satisfied.");
+        assert_eq!(res.template_id, None);
+    }
 }
