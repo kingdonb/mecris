@@ -200,7 +200,7 @@ async fn handle_sync_service(req: Request) -> anyhow::Result<impl IntoResponse> 
         }
         let db_url = variables::get("db_url").map_err(|e| anyhow::anyhow!("db_url fetch failed: {:?}", e))?;
         let default_user_id = "c0a81a4b-115a-4eb6-bc2c-40908c58bf64";
-        match run_clozemaster_scraper(&db_url, default_user_id).await {
+        return match run_clozemaster_scraper(&db_url, default_user_id).await {
             Ok(_) => {
                 let resp = StatusResponse { status: "success".to_string(), message: "Cloud sync complete (Autonomous)".to_string() };
                 Ok(Response::builder().status(200).header("content-type", "application/json").body(serde_json::to_string(&resp).unwrap()).build())
@@ -209,7 +209,7 @@ async fn handle_sync_service(req: Request) -> anyhow::Result<impl IntoResponse> 
                 let resp = StatusResponse { status: "error".to_string(), message: format!("Cloud sync failed: {:?}", e) };
                 Ok(Response::builder().status(500).header("content-type", "application/json").body(serde_json::to_string(&resp).unwrap()).build())
             }
-        }
+        };
     } else if path == "/internal/twilio-webhook" {
         if req.method() != &spin_sdk::http::Method::Post {
             return Ok(Response::builder().status(405).body("Method Not Allowed").build());
