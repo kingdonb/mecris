@@ -1363,3 +1363,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: Nothing — single focused verification task, fully completed.
 
 **Next**: Await kingdonb merge of PR #182. If no merge, consider new Python coverage work (mcp_server.py handler functions or additional Rust features).
+
+## 🏛️ 2026-04-15 (5th run) — mcp_server.py handler unit tests (14 tests)
+
+**Planned**: yebyen/mecris#192 — Write unit tests for four untested mcp_server.py handler functions: `_record_governor_spend` (bucket routing), `get_budget_status` (auth guard + delegation), `get_weather_report` (wrapper), `record_usage_session` (happy + error).
+
+**Done**: Oriented — PR #182 still open on kingdonb, no tagged issues, yebyen 14 ahead, Python baseline 423. Created plan yebyen/mecris#192. Wrote 14 tests in `tests/test_mcp_server_handlers.py`: `_record_governor_spend` (5 tests: gemini/groq/helix/anthropic_api routing + exception swallow), `get_budget_status` (2 tests: auth guard returns error + delegates to usage_tracker), `get_weather_report` (2 tests: combined dict + not-appropriate), `record_usage_session` (3 tests: happy path + auth error + exception), `record_claude_code_usage` (2 tests: happy path + exception). Committed at `a566629`. Dispatched pr-test (run 24470904515) — baseline confirmed at 423 Python ✅, 91 Rust ✅, Android ✅. New tests not yet counted (push happens at bot workflow end).
+
+**Skipped**: Full pr-test count verification for `a566629` — push constraint means new tests not on GitHub until bot workflow ends. Count verification deferred to next session.
+
+**Next**: Dispatch pr-test for PR #182 after `a566629` lands, confirm Python count rises to ≥437. Await kingdonb merge of PR #182.

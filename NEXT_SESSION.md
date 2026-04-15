@@ -1,18 +1,19 @@
-# Next Session: Await kingdonb merge of PR #182; consider new Python test coverage work
+# Next Session: Verify new handler tests (≥437 Python) via pr-test; await kingdonb merge of PR #182
 
 ## Current Status (2026-04-15)
-- **PR #182 open on kingdonb/mecris** (yebyen:main → kingdonb:main): Twilio webhook Phase 2 + satellite crate tests + gauge type + CredentialsManager tests + update_pump_multiplier tests + HealthChecker tests + BeeminderClient.add_datapoint tests. Awaiting kingdonb review/merge.
-- **pr-test verified green at HEAD `3efb119` (PR #182)**: 423 Python ✅, 91 Rust ✅, Android ✅. Run: https://github.com/yebyen/mecris/actions/runs/24465449369
-- **yebyen/mecris is 14 commits ahead of kingdonb/mecris**: all in PR #182.
-- **Python baseline confirmed at 423**: 7 BeeminderClient.add_datapoint tests (`267db48`) confirmed counted by CI. All service methods now have at least one test file.
+- **PR #182 open on kingdonb/mecris** (yebyen:main → kingdonb:main): Twilio webhook Phase 2 + satellite crate tests + gauge type + CredentialsManager tests + update_pump_multiplier tests + HealthChecker tests + BeeminderClient.add_datapoint tests + mcp_server handler tests. Awaiting kingdonb review/merge.
+- **pr-test confirmed green at HEAD `e8130a7` (PR #182 baseline)**: 423 Python ✅, 91 Rust ✅, Android ✅. Run: https://github.com/yebyen/mecris/actions/runs/24470904515
+- **yebyen/mecris is 15 commits ahead of kingdonb/mecris**: all in PR #182 plus new commit `a566629`.
+- **New commit `a566629`** — 14 unit tests for mcp_server.py handler functions: `_record_governor_spend` (5 tests: gemini/groq/helix/anthropic_api routing + exception swallow), `get_budget_status` (2 tests: auth guard + delegation), `get_weather_report` (2 tests: combined dict + not-appropriate), `record_usage_session` (3 tests: happy + auth error + exception), `record_claude_code_usage` (2 tests: happy + exception). Expected Python count: 423 + 14 = **437**.
 - **Satellite crate tests (147 total)**: In code but NOT yet in CI — requires workflow PAT fix (yebyen/mecris#142).
 
 ## Verified This Session
-- [x] **pr-test green at HEAD `3efb119`**: 423 Python (4 skipped), 91 Rust, Android BUILD SUCCESSFUL — confirmed 2026-04-15 run ID 24465449369.
-- [x] **Python count 416→423 confirmed (+7)**: BeeminderClient.add_datapoint tests (`267db48`) counted by CI — new baseline is 423.
+- [x] **pr-test green at baseline `e8130a7`**: 423 Python (4 skipped), 91 Rust, Android BUILD SUCCESSFUL — confirmed run ID 24470904515.
+- [x] **14 new mcp_server handler tests committed** at `a566629` — covers `_record_governor_spend`, `get_budget_status`, `get_weather_report`, `record_usage_session`, `record_claude_code_usage`.
 
 ## Pending Verification (Next Session)
-- [ ] **Confirm PR #182 merged by kingdonb**: check kingdonb/mecris main for commits `db9c8fa`, `df23970`, `933819e`, `11fb50c`, `3615c62`, `d3e51dc`, `267db48`.
+- [ ] **Dispatch pr-test for PR #182 to verify Python count ≥ 437**: `a566629` is now on GitHub after bot workflow push. Run pr-test and confirm new baseline.
+- [ ] **Confirm PR #182 merged by kingdonb**: check kingdonb/mecris main for commits `db9c8fa`, `df23970`, `933819e`, `11fb50c`, `3615c62`, `d3e51dc`, `267db48`, `a566629`.
 - [ ] **Run 004_user_location.sql against live Neon**: `psql $NEON_DB_URL -f scripts/migrations/004_user_location.sql` — adds `location_lat`, `location_lon` columns to live `users` table. Requires kingdonb.
 - [ ] **Twilio webhook Phase 2 live E2E**: requires Twilio Spin variables in Fermyon Cloud (`twilio_account_sid`, `twilio_auth_token_encrypted`, `twilio_from_number`) — set by kingdonb.
 - [ ] **Multi-Tenancy — Android UI Gaps**: Add "log out" button for PocketID auth. Add UI for users to provide phone number, grant/revoke SMS auth, set personal location (lat/lon) for weather heuristics, and select their **Preferred Health Source** (e.g., Google Fit) to prevent double-counting. Tracked in kingdonb/mecris#168.
@@ -27,7 +28,7 @@
 - [ ] **Android app has_goal UI**: Confirm Android app picks up `has_goal=false` flag and visually dims untracked languages. Requires live app test.
 - [ ] **Majesty Cake Android integration**: `/aggregate-status` backend complete; Android app needs to consume it (kingdonb/mecris#170).
 - [ ] **003_multi_tenancy.sql live run**: Run `psql $NEON_DB_URL -f scripts/migrations/003_multi_tenancy.sql` against live Neon.
-- [ ] **Next feature work**: All service methods now have at least one test file (Python baseline 423). Consider: Python coverage gaps in mcp_server.py handler functions, additional Rust features, or Android integration work.
+- [ ] **Next feature work**: Python handler test coverage (423→437 confirmed next session). After that: consider mcp_server HTTP handler paths, additional Rust features, or Android integration work.
 
 ## Infrastructure Notes
 - Spin Cron trigger is **DISABLED** in `spin.toml` — do not re-enable.
@@ -76,4 +77,5 @@
 - **MCP "Master Mode" security reality**: MCP server has full DB read/write via direct Neon connection. Auth is permissive (reads UUID from local file). Any agent with execution rights on host has full DB access. Documented in `docs/DATA_ARCHITECTURE_AND_PRIVACY.md`.
 - **kingdonb/mecris#180 already fixed**: ORDER BY and Health Connect deduplication were resolved in commits `a48244d`/`404fdec` (both in kingdonb:main and yebyen:main). Issue still open on kingdonb/mecris — bot cannot close it.
 - **goal-type-rs gauge support**: `"gauge"` goal type added in `df23970`. Gauge goals allow any absolute value (up or down). Delta = `intended_push_value - current_value`. Always safe to push.
-- **Python test count baseline**: 423 passed, 4 skipped as of pr-test run 24465449369 (2026-04-15).
+- **Python test count baseline**: 423 passed, 4 skipped as of pr-test run 24470904515 (2026-04-15). Expected after `a566629` lands: **437 passed**.
+- **mcp_server handler test patterns** (`test_mcp_server_handlers.py`): Use `sys.modules.pop("mcp_server", None)` + `_make_mcp_importable()` per test. Patch `mcp_server._budget_governor` for `_record_governor_spend`, `mcp_server.resolve_target_user` for auth guard tests, `mcp_server.weather_service` for weather report tests, `mcp_server.record_usage` for usage session tests.
