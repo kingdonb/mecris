@@ -1,20 +1,19 @@
-# Next Session: Verify CredentialsManager tests pass in pr-test; await kingdonb merge of PR #182
+# Next Session: Await kingdonb merge of PR #182; consider next feature work
 
-## Current Status (2026-04-14)
-- **PR #182 open on kingdonb/mecris** (yebyen:main → kingdonb:main): Twilio webhook Phase 2 + satellite crate tests + gauge type. Awaiting kingdonb review/merge.
-- **pr-test re-verified green at HEAD `41be973`**: 91 Rust (sync-service) ✅, 381 Python ✅, Android ✅. Run: https://github.com/yebyen/mecris/actions/runs/24420818218
-- **yebyen/mecris is 6 commits ahead of kingdonb/mecris**: 5 in PR #182 + `933819e` (CredentialsManager tests).
+## Current Status (2026-04-15)
+- **PR #182 open on kingdonb/mecris** (yebyen:main → kingdonb:main): Twilio webhook Phase 2 + satellite crate tests + gauge type + CredentialsManager tests. Awaiting kingdonb review/merge.
+- **pr-test verified green at HEAD `11fb50c`**: 91 Rust (sync-service) ✅, 399 Python ✅ (4 skipped), Android ✅. Run: https://github.com/yebyen/mecris/actions/runs/24429115400
+- **yebyen/mecris is 6 commits ahead of kingdonb/mecris**: all in PR #182.
 - **Satellite crate tests (147 total)**: In code but NOT yet in CI — requires workflow PAT fix (yebyen/mecris#142).
-- **CredentialsManager tests added** (`933819e`): 14 tests in `tests/test_credentials_manager.py` — not yet validated by pr-test.
+- **CredentialsManager tests confirmed counted**: 399 Python (was 381 before last session's 14 new tests + 4 pre-existing tests from kingdonb's `9bdf4e7`).
 
 ## Verified This Session
-- [x] **pr-test green at HEAD `41be973`**: 91 Rust, 381 Python (4 skipped), Android BUILD SUCCESSFUL — confirmed 2026-04-14 run ID 24420818218.
+- [x] **pr-test green at HEAD `11fb50c`**: 91 Rust, 399 Python (4 skipped), Android BUILD SUCCESSFUL — confirmed 2026-04-15 run ID 24429115400.
+- [x] **CredentialsManager tests (14) counted by CI**: Python count rose 381 → 399 (+18 total, including 14 from `933819e` and 4 from kingdonb's `9bdf4e7`).
 - [x] **PR #182 still open**: kingdonb has not yet merged as of this session.
-- [x] **CredentialsManager unit tests committed** at `933819e`: 14 tests covering `_is_uuid`, `resolve_familiar_id`, `resolve_user_id` (all branches). Syntax-verified locally.
 
 ## Pending Verification (Next Session)
-- [ ] **Dispatch pr-test on PR #182** after `933819e` lands on GitHub — confirm Python count rises from 381 → ≥395 (14 new CredentialsManager tests) and all Rust/Android still pass.
-- [ ] **Confirm PR #182 merged by kingdonb**: check kingdonb/mecris main for commit `db9c8fa`.
+- [ ] **Confirm PR #182 merged by kingdonb**: check kingdonb/mecris main for commits `db9c8fa`, `df23970`, `933819e`, `11fb50c`.
 - [ ] **Run 004_user_location.sql against live Neon**: `psql $NEON_DB_URL -f scripts/migrations/004_user_location.sql` — adds `location_lat`, `location_lon` columns to live `users` table. Requires kingdonb.
 - [ ] **Twilio webhook Phase 2 live E2E**: requires Twilio Spin variables in Fermyon Cloud (`twilio_account_sid`, `twilio_auth_token_encrypted`, `twilio_from_number`) — set by kingdonb.
 - [ ] **Multi-Tenancy — Android UI Gaps**: Add "log out" button for PocketID auth. Add UI for users to provide phone number, grant/revoke SMS auth, set personal location (lat/lon) for weather heuristics, and select their **Preferred Health Source** (e.g., Google Fit) to prevent double-counting. Tracked in kingdonb/mecris#168.
@@ -29,6 +28,7 @@
 - [ ] **Android app has_goal UI**: Confirm Android app picks up `has_goal=false` flag and visually dims untracked languages. Requires live app test.
 - [ ] **Majesty Cake Android integration**: `/aggregate-status` backend complete; Android app needs to consume it (kingdonb/mecris#170).
 - [ ] **003_multi_tenancy.sql live run**: Run `psql $NEON_DB_URL -f scripts/migrations/003_multi_tenancy.sql` against live Neon.
+- [ ] **Next feature work**: With PR #182 verified green, consider what new feature or test coverage to add next. Options: Python coverage gaps, additional Rust features, or Android integration work.
 
 ## Infrastructure Notes
 - Spin Cron trigger is **DISABLED** in `spin.toml` — do not re-enable.
@@ -75,3 +75,4 @@
 - **MCP "Master Mode" security reality**: MCP server has full DB read/write via direct Neon connection. Auth is permissive (reads UUID from local file). Any agent with execution rights on host has full DB access. Documented in `docs/DATA_ARCHITECTURE_AND_PRIVACY.md`.
 - **kingdonb/mecris#180 already fixed**: ORDER BY and Health Connect deduplication were resolved in commits `a48244d`/`404fdec` (both in kingdonb:main and yebyen:main). Issue still open on kingdonb/mecris — bot cannot close it.
 - **goal-type-rs gauge support**: `"gauge"` goal type added in `df23970`. Gauge goals allow any absolute value (up or down). Delta = `intended_push_value - current_value`. Always safe to push.
+- **Python test count baseline**: 399 passed, 4 skipped as of pr-test run 24429115400 (2026-04-15). Previous baseline was 381 (before CredentialsManager tests in `933819e` + 4 tests from kingdonb's `9bdf4e7`).

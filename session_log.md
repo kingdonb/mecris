@@ -1313,3 +1313,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: pr-test dispatch — `933819e` not yet on GitHub until bot workflow ends. Will validate next session.
 
 **Next**: Dispatch pr-test on kingdonb/mecris#182 after `933819e` lands, confirm Python test count rises to ≥395. Await kingdonb merge of PR #182.
+
+## 2026-04-15 — pr-test validation of PR #182 at HEAD 11fb50c (CredentialsManager tests confirmed)
+
+**Planned**: yebyen/mecris#185 — Dispatch pr-test on kingdonb/mecris#182 to validate 14 new CredentialsManager unit tests (`933819e`) now live on GitHub; confirm Python count rises 381 → ≥395, Rust 91, Android ✅.
+
+**Done**: Oriented — PR #182 still open, HEAD `11fb50c` on GitHub, no tagged issues. Created plan yebyen/mecris#185. Dispatched pr-test (run ID 24429115400); completed success: 91 Rust ✅, 399 Python ✅ (4 skipped; +18 from last session's CredentialsManager tests + kingdonb's prior additions), Android BUILD SUCCESSFUL ✅. Posted validation comment on yebyen/mecris#185. All criteria met.
+
+**Skipped**: No code written this session — validation-only run.
+
+**Next**: Await kingdonb review/merge of PR #182. Once merged, identify next feature or test coverage target. Satellite CI expansion remains blocked on yebyen/mecris#142 (workflow PAT scope).
