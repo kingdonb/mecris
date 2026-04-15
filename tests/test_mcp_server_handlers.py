@@ -1,15 +1,20 @@
 """
-Tests for mcp_server.py handler functions — yebyen/mecris#192.
+Tests for mcp_server.py handler functions — yebyen/mecris#192, #193.
 
 Covers:
 - _record_governor_spend: bucket routing (gemini/groq/helix/anthropic_api) + exception swallow
 - get_budget_status: auth guard returns error dict when resolve_target_user is None
 - get_budget_status: delegates to usage_tracker.get_budget_status when authenticated
 - get_weather_report: returns combined weather + is_appropriate + recommendation
+- get_weather_full_report: passthrough to weather_service.get_weather()
 - record_usage_session: happy path records usage and governor spend
 - record_usage_session: error path returns error dict when record_usage raises
 - record_claude_code_usage: happy path returns recorded=True with estimated_cost
 - record_claude_code_usage: error path returns error dict
+- get_recent_usage: auth guard + delegates to usage_tracker.get_recent_sessions
+- add_goal: auth guard + delegates to usage_tracker.add_goal
+- update_budget: auth guard + delegates to usage_tracker.update_budget
+- complete_goal: auth guard + delegates to usage_tracker.complete_goal
 """
 
 import sys
@@ -272,3 +277,169 @@ def test_record_claude_code_usage_error_path():
             result = record_claude_code_usage(input_tokens=100, output_tokens=50)
 
     assert "error" in result
+
+
+# ---------------------------------------------------------------------------
+# get_recent_usage — auth guard + delegation
+# ---------------------------------------------------------------------------
+
+def test_get_recent_usage_returns_auth_error_when_unauthenticated():
+    """Returns list with error dict when resolve_target_user returns None."""
+    sys.modules.pop("mcp_server", None)
+
+    env_patch, db_patch = _make_mcp_importable()
+    with env_patch, db_patch:
+        with patch("mcp_server.resolve_target_user", return_value=None):
+            from mcp_server import get_recent_usage
+            result = get_recent_usage(user_id="unknown")
+
+    assert isinstance(result, list)
+    assert "error" in result[0]
+    assert "Authentication" in result[0]["error"]
+
+
+def test_get_recent_usage_delegates_to_usage_tracker():
+    """Delegates to usage_tracker.get_recent_sessions when authenticated."""
+    sys.modules.pop("mcp_server", None)
+
+    expected = [{"session_id": 1, "tokens": 500}, {"session_id": 2, "tokens": 300}]
+
+    env_patch, db_patch = _make_mcp_importable()
+    with env_patch, db_patch:
+        with patch("mcp_server.resolve_target_user", return_value="test-user"), \
+             patch("mcp_server.usage_tracker") as mock_tracker:
+            mock_tracker.get_recent_sessions.return_value = expected
+            from mcp_server import get_recent_usage
+            result = get_recent_usage(limit=5, user_id="test-user")
+
+    assert result == expected
+    mock_tracker.get_recent_sessions.assert_called_once_with(5, "test-user")
+
+
+# ---------------------------------------------------------------------------
+# get_weather_full_report — simple weather_service passthrough
+# ---------------------------------------------------------------------------
+
+def test_get_weather_full_report_returns_weather_dict():
+    """Returns the full weather dict from weather_service.get_weather()."""
+    sys.modules.pop("mcp_server", None)
+
+    fake_weather = {"temp": 72, "condition": "Clear", "humidity": 55, "wind_speed": 8}
+
+    env_patch, db_patch = _make_mcp_importable()
+    with env_patch, db_patch:
+        with patch("mcp_server.weather_service") as mock_ws:
+            mock_ws.get_weather.return_value = fake_weather
+            from mcp_server import get_weather_full_report
+            result = get_weather_full_report()
+
+    assert result == fake_weather
+    mock_ws.get_weather.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# add_goal — auth guard + delegation
+# ---------------------------------------------------------------------------
+
+def test_add_goal_returns_auth_error_when_unauthenticated():
+    """Returns error dict when resolve_target_user returns None."""
+    sys.modules.pop("mcp_server", None)
+
+    env_patch, db_patch = _make_mcp_importable()
+    with env_patch, db_patch:
+        with patch("mcp_server.resolve_target_user", return_value=None):
+            from mcp_server import add_goal
+            result = add_goal(title="Walk dogs", user_id="unknown")
+
+    assert "error" in result
+    assert "Authentication" in result["error"]
+
+
+def test_add_goal_delegates_to_usage_tracker():
+    """Delegates to usage_tracker.add_goal when authenticated."""
+    sys.modules.pop("mcp_server", None)
+
+    expected = {"goal_id": 42, "title": "Walk dogs", "created": True}
+
+    env_patch, db_patch = _make_mcp_importable()
+    with env_patch, db_patch:
+        with patch("mcp_server.resolve_target_user", return_value="test-user"), \
+             patch("mcp_server.usage_tracker") as mock_tracker:
+            mock_tracker.add_goal.return_value = expected
+            from mcp_server import add_goal
+            result = add_goal(title="Walk dogs", priority="high", user_id="test-user")
+
+    assert result == expected
+    mock_tracker.add_goal.assert_called_once_with("Walk dogs", "", "high", None, "test-user")
+
+
+# ---------------------------------------------------------------------------
+# update_budget — auth guard + delegation
+# ---------------------------------------------------------------------------
+
+def test_update_budget_returns_auth_error_when_unauthenticated():
+    """Returns error dict when resolve_target_user returns None."""
+    sys.modules.pop("mcp_server", None)
+
+    env_patch, db_patch = _make_mcp_importable()
+    with env_patch, db_patch:
+        with patch("mcp_server.resolve_target_user", return_value=None):
+            from mcp_server import update_budget
+            result = update_budget(remaining_budget=5.0, user_id="unknown")
+
+    assert "error" in result
+    assert "Authentication" in result["error"]
+
+
+def test_update_budget_delegates_to_usage_tracker():
+    """Delegates to usage_tracker.update_budget when authenticated."""
+    sys.modules.pop("mcp_server", None)
+
+    expected = {"updated": True, "remaining_budget": 5.0}
+
+    env_patch, db_patch = _make_mcp_importable()
+    with env_patch, db_patch:
+        with patch("mcp_server.resolve_target_user", return_value="test-user"), \
+             patch("mcp_server.usage_tracker") as mock_tracker:
+            mock_tracker.update_budget.return_value = expected
+            from mcp_server import update_budget
+            result = update_budget(remaining_budget=5.0, total_budget=20.0, user_id="test-user")
+
+    assert result == expected
+    mock_tracker.update_budget.assert_called_once_with(5.0, 20.0, None, "test-user")
+
+
+# ---------------------------------------------------------------------------
+# complete_goal — auth guard + delegation
+# ---------------------------------------------------------------------------
+
+def test_complete_goal_returns_auth_error_when_unauthenticated():
+    """Returns error dict when resolve_target_user returns None."""
+    sys.modules.pop("mcp_server", None)
+
+    env_patch, db_patch = _make_mcp_importable()
+    with env_patch, db_patch:
+        with patch("mcp_server.resolve_target_user", return_value=None):
+            from mcp_server import complete_goal
+            result = complete_goal(goal_id=7, user_id="unknown")
+
+    assert "error" in result
+    assert "Authentication" in result["error"]
+
+
+def test_complete_goal_delegates_to_usage_tracker():
+    """Delegates to usage_tracker.complete_goal when authenticated."""
+    sys.modules.pop("mcp_server", None)
+
+    expected = {"completed": True, "goal_id": 7}
+
+    env_patch, db_patch = _make_mcp_importable()
+    with env_patch, db_patch:
+        with patch("mcp_server.resolve_target_user", return_value="test-user"), \
+             patch("mcp_server.usage_tracker") as mock_tracker:
+            mock_tracker.complete_goal.return_value = expected
+            from mcp_server import complete_goal
+            result = complete_goal(goal_id=7, user_id="test-user")
+
+    assert result == expected
+    mock_tracker.complete_goal.assert_called_once_with(7, "test-user")
