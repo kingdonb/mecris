@@ -1418,3 +1418,10 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: Verifying the E2E fix via pr-test — push must land on GitHub first (next-session constraint).
 
 **Next**: Open new PR yebyen:main → kingdonb:main with `ed33d27`. Dispatch pr-test to confirm 0 failed, ≥461 passed (expected: 461 passed, 5 skipped).
+
+## 2026-04-16 — PR #186 opened; pr-test 461 passed, 0 failed
+
+**Planned**: Open PR from yebyen:main → kingdonb:main with Akamai E2E skip fix (`ed33d27`), dispatch pr-test, confirm 0 failures (plan: yebyen/mecris#197).
+**Done**: PR kingdonb/mecris#186 opened. pr-test run 24509446714 completed — Python 461 passed, 5 skipped, 0 failed ✅. Android ✅. Rust 91 ✅. Down from 1 failed before fix.
+**Skipped**: Nothing — plan executed in full.
+**Next**: Confirm kingdonb merges #186; sync yebyen:main from upstream after merge.

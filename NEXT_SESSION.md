@@ -1,23 +1,21 @@
-# Next Session: Open new PR + pr-test to confirm clean suite (0 failed, ≥461 passed)
+# Next Session: Review and merge kingdonb/mecris#186 (Akamai E2E skip fix)
 
 ## Current Status (2026-04-16)
-- **PR #184 merged into kingdonb/mecris** at `dbdf626` — includes all commits through `2477c09` (VirtualBudgetManager 15 tests).
-- **yebyen/mecris and kingdonb/mecris are in sync** (0 ahead, 0 behind).
-- **pr-test run 24492032488**: Python **461 passed** ✅, Rust **91** ✅, Android ✅ — but **1 failure**: `test_akamai_failover_sync_side_effect` (E2E test against live Akamai that checks local postgres for side-effects — always wrong in CI).
-- **Fix committed at `ed33d27`**: Added `localhost`/`127.0.0.1` check in `get_last_updated()` → test now skips in CI instead of failing. Not yet pushed.
-- **yebyen/mecris#195 closed** (VirtualBudgetManager 15 tests — 461 confirmed).
+- **kingdonb/mecris#186 is open**: PR from yebyen:main containing `ed33d27` (E2E skip fix) + archive commit.
+- **pr-test run 24509446714**: Python **461 passed, 5 skipped, 0 failed** ✅ — the Akamai E2E test now skips in CI instead of failing.
+- **yebyen/mecris and kingdonb/mecris**: yebyen:main is 2 commits ahead (unmerged PR); once kingdonb merges, will be in sync.
+- **Rust 91 tests pass**: Confirmed in same run.
 
 ## Verified This Session
-- [x] **PR #184 merged by kingdonb**: Confirmed merged at `2026-04-16T02:33:58Z`, commit `dbdf626`.
-- [x] **yebyen/mecris in sync with kingdonb/mecris**: `git rev-list` shows 0 ahead, 0 behind.
-- [x] **Python 461 confirmed**: pr-test run 24492032488 — `461 passed, 4 skipped` (plus 1 E2E failure unrelated to VirtualBudgetManager).
-- [x] **Rust 91 tests pass**: Confirmed in same run.
-- [x] **VirtualBudgetManager 15 tests all passing**: Confirmed (461 = 446 + 15).
-- [x] **Akamai E2E test root-caused**: `test_akamai_failover_sync_side_effect` hits live Akamai (writes to Neon) but queries local postgres (no ARABIC row) → always fails in CI. Pre-existing design issue.
+- [x] **PR #186 opened**: `fix(test): skip Akamai E2E test when NEON_DB_URL is local postgres`
+- [x] **pr-test run 24509446714**: 461 passed, 5 skipped, **0 failed** — down from 1 failed before fix.
+- [x] **Android tests**: ✅ passed.
+- [x] **Rust 91 tests**: ✅ passed.
+- [x] **Akamai E2E skip fix validated**: `test_akamai_failover_sync_side_effect` now counted as skipped, not failed.
 
 ## Pending Verification (Next Session)
-- [ ] **Open new PR from yebyen:main → kingdonb:main** with `ed33d27` (E2E skip fix). Push lands automatically via workflow after this session.
-- [ ] **Dispatch pr-test for the new PR**: Confirm Python ≥461 passed, **0 failed** (was 1 failed before fix). Expected: 461 passed, 5 skipped.
+- [ ] **kingdonb merges #186**: Confirm kingdonb/mecris#186 is merged into main.
+- [ ] **Sync yebyen/mecris after merge**: Once #186 is merged, sync yebyen:main from kingdonb:main (0 ahead, 0 behind).
 - [ ] **Confirm Akamai cron jobs firing**: Check Akamai logs for `trigger-reminders`, `failover-sync-edt`, `failover-sync-est` executions.
 - [ ] **Akamai E2E Logic Test**: Manually POST to `/internal/failover-sync` on Akamai endpoint (use live Neon NEON_DB_URL to verify side effects).
 - [ ] **Security Hardening (Akamai)**: Unauthenticated `/internal/*` endpoints need API key or IP whitelist.
@@ -44,7 +42,7 @@
 - **Test isolation pattern**: Tests that import `mcp_server` must use `sys.modules.pop("mcp_server", None)` + `patch.dict(os.environ, ...)` + `patch("psycopg2.connect")` before importing.
 - **mcp_server handler test patterns** (`test_mcp_server_handlers.py`): Patch `mcp_server.resolve_target_user` for auth guard tests; patch `mcp_server.usage_tracker` for delegation tests; patch `mcp_server.weather_service` for weather tests.
 - **VirtualBudgetManager test pattern**: Patch `virtual_budget_manager.credentials_manager.resolve_user_id` + omit `NEON_DB_URL` → no DB needed for pure/no-DB tests.
-- **Python test count baseline**: 461 passed (4 skipped) confirmed in pr-test run 24492032488. After `ed33d27` fix, expect **461 passed, 5 skipped** (E2E test now skips in CI).
+- **Python test count baseline**: 461 passed (5 skipped) confirmed in pr-test run 24509446714. Akamai E2E test now permanently skipped in CI.
 - **schema.sql budget_tracking schema**: columns are `budget_period_start TEXT NOT NULL`, `budget_period_end TEXT NOT NULL`, `total_budget DOUBLE PRECISION NOT NULL`, `remaining_budget DOUBLE PRECISION NOT NULL`, `user_id UNIQUE REFERENCES users(pocket_id_sub)`.
 - **Upstream sync pattern**: `git fetch https://github.com/kingdonb/mecris.git main && git merge FETCH_HEAD --no-edit`.
 - **Groq-Beeminder sync**: kingdonb's `9bdf4e7` added automated @TARE reset logic and DB-backed identity resolution. Unit tests for Groq-Beeminder sync in `test_groq_beeminder_sync.py`.
