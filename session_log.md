@@ -1398,3 +1398,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: Nothing — single focused verification task, fully completed.
 
 **Next**: Await kingdonb review/merge of PR #184. If merged, yebyen/mecris will be in sync. Consider Akamai E2E verification or security hardening of `/internal/*` endpoints as next coding task.
+
+## 2026-04-16 🏛️ — VirtualBudgetManager unit tests (15) — yebyen/mecris#195
+
+**Planned**: Add `tests/test_virtual_budget_manager.py` covering pure `calculate_cost` math and no-DB early-return paths; raise Python baseline from 446 to ≥455.
+
+**Done**: 15 tests written and committed at `10b427a` — exceeded target (446+15=461). Covers `Provider` enum (2), `calculate_cost` for known models and fallbacks (7), `can_afford`/`get_budget_status`/`get_usage_summary`/`reset_daily_budget` no-DB paths (4), `record_usage` no-afford + emergency_override paths (2). Patch pattern: `virtual_budget_manager.credentials_manager.resolve_user_id` + omit `NEON_DB_URL`.
+
+**Skipped**: pr-test dispatch — push must land on GitHub before test run can be triggered (next session constraint).
+
+**Next**: Dispatch pr-test for PR #184 to confirm Python ≥461 ✅, then await kingdonb merge.

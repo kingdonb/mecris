@@ -1,20 +1,19 @@
-# Next Session: PR #184 (kingdonb/mecris) awaiting kingdonb review/merge
+# Next Session: Dispatch pr-test after 10b427a push; confirm Python ≥461
 
-## Current Status (2026-04-15)
-- **PR #184 open on kingdonb/mecris** (yebyen:main → kingdonb:main): Contains Rust fix (`f5a4b09`), 9 Python handler tests (`f568c15`), archive commit (`993c4b3`). Awaiting kingdonb review/merge.
-- **pr-test run 24480880265**: Python **446 ✅**, Rust **91 ✅**, Android ✅ — all green. Validation complete.
-- **yebyen/mecris is 3 commits ahead of kingdonb/mecris**: `f5a4b09`, `f568c15`, `993c4b3` pending in PR #184.
+## Current Status (2026-04-16)
+- **PR #184 still open on kingdonb/mecris** (yebyen:main → kingdonb:main): Now 5 commits ahead. Awaiting kingdonb review/merge.
+- **15 new VirtualBudgetManager tests** committed at `10b427a` — `tests/test_virtual_budget_manager.py`. Expected Python baseline: **461** (446 + 15).
+- **pr-test not yet dispatched**: push must land on GitHub before dispatch. Next session dispatches pr-test.
 - **Satellite crate tests (147 total)**: In code but NOT yet in CI — requires workflow PAT fix (yebyen/mecris#142).
 - **Akamai Functions (Trial)**: `sync-service` deployed. Cron jobs: `trigger-reminders` (2h), `failover-sync-edt` (04:05 UTC), `failover-sync-est` (05:05 UTC).
 
 ## Verified This Session
-- [x] **PR #182 merged by kingdonb**: Confirmed merged at `1aabc8f5` (2026-04-15T20:12:10Z).
-- [x] **PR #184 created**: kingdonb/mecris#184 (yebyen:main → kingdonb:main) — 3 commits ahead.
-- [x] **pr-test run 24480880265**: Python **446 passed, 4 skipped** ✅ — 9 new tests confirmed counted.
-- [x] **Rust fix verified in CI**: 91 Rust tests pass ✅ (`f5a4b09` resolves compile error from `be513c92`).
+- [x] **PR #184 still open**: Confirmed open as of 2026-04-16T00:00Z — kingdonb/mecris at `94f2c54`.
+- [x] **15 VirtualBudgetManager tests written and committed**: `10b427a` — closes yebyen/mecris#195 (partial, pending pr-test).
 
 ## Pending Verification (Next Session)
-- [ ] **Confirm PR #184 merged by kingdonb**: Check kingdonb/mecris main for commits through `993c4b3`.
+- [ ] **Dispatch pr-test for PR #184**: Run `/mecris-pr-test 184` after push lands — confirm Python ≥461 (446+15), Rust 91 ✅.
+- [ ] **Confirm PR #184 merged by kingdonb**: Check kingdonb/mecris main for commits through `10b427a`.
 - [ ] **Confirm Akamai cron jobs firing**: Check Akamai logs for `trigger-reminders`, `failover-sync-edt`, `failover-sync-est` executions.
 - [ ] **Akamai E2E Logic Test**: Manually POST to `/internal/failover-sync` on Akamai endpoint.
 - [ ] **Security Hardening (Akamai)**: Unauthenticated `/internal/*` endpoints need API key or IP whitelist.
@@ -40,7 +39,8 @@
 - **Rust compile fix pattern**: All branches in `handle_sync_service` that return a value must use explicit `return`. Bare `match` without `return` causes type error (expected `()`, found `Result<Response, _>`).
 - **Test isolation pattern**: Tests that import `mcp_server` must use `sys.modules.pop("mcp_server", None)` + `patch.dict(os.environ, ...)` + `patch("psycopg2.connect")` before importing.
 - **mcp_server handler test patterns** (`test_mcp_server_handlers.py`): Patch `mcp_server.resolve_target_user` for auth guard tests; patch `mcp_server.usage_tracker` for delegation tests; patch `mcp_server.weather_service` for weather tests.
-- **Python test count baseline**: 446 passed (4 skipped) as of pr-test run 24480880265. New baseline: **446**.
+- **VirtualBudgetManager test pattern**: Patch `virtual_budget_manager.credentials_manager.resolve_user_id` + omit `NEON_DB_URL` → no DB needed for pure/no-DB tests.
+- **Python test count baseline**: 446 passed (4 skipped) as of pr-test run 24480880265. New commit adds 15 more; expected: **461**.
 - **schema.sql budget_tracking schema**: columns are `budget_period_start TEXT NOT NULL`, `budget_period_end TEXT NOT NULL`, `total_budget DOUBLE PRECISION NOT NULL`, `remaining_budget DOUBLE PRECISION NOT NULL`, `user_id UNIQUE REFERENCES users(pocket_id_sub)`.
 - **Upstream sync pattern**: `git fetch https://github.com/kingdonb/mecris.git main && git merge FETCH_HEAD --no-edit`.
 - **Groq-Beeminder sync**: kingdonb's `9bdf4e7` added automated @TARE reset logic and DB-backed identity resolution. Unit tests for Groq-Beeminder sync in `test_groq_beeminder_sync.py`.
