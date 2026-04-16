@@ -1445,3 +1445,33 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: pr-test dispatch — push constraint (must wait for CI to push `4d6e9d6` to GitHub). Security-only PR — deemed unnecessary since PR #186 already covers the additions cleanly.
 
 **Next**: Dispatch pr-test for kingdonb/mecris#186 (expect 461 Python + 99 Rust). Run `005_autonomous_sync_consent.sql` against live Neon to activate consent flag in prod.
+
+## 2026-04-16 🏛️ — Android pulse: triggerReminders added to WalkHeuristicsWorker — yebyen/mecris#200
+
+**Planned**: yebyen/mecris#200 — Add `triggerReminders()` to `SyncServiceApi.kt` and call it in `WalkHeuristicsWorker` when `mcp_server_active == false`; add 2 CooperativeWorkerTest cases; refs kingdonb/mecris#168.
+
+**Done**: Oriented — PR #186 merged, yebyen==kingdonb (0/0), no tagged issues, #168 task unimplemented. Created plan yebyen/mecris#200. Red (`a26b53b`): added `worker triggers reminders when MCP is dark` + `worker DOES NOT trigger reminders when MCP is active` to CooperativeWorkerTest. Green (`cc3336e`): added `@POST("internal/trigger-reminders") suspend fun triggerReminders()` to SyncServiceApi (no auth header — key guard backwards-compat); updated WalkHeuristicsWorker to call triggerReminders() after triggerCloudSync() when dark (failures caught + logged, not thrown).
+
+**Skipped**: pr-test dispatch — push constraint (commits land on GitHub after workflow ends). Opening PR to kingdonb — deferred to next session.
+
+**Next**: Open PR yebyen:main → kingdonb:main carrying triggerReminders; dispatch pr-test to confirm 461 Python + 99 Rust + Android tests (including 2 new CooperativeWorkerTest) pass.
+
+## 2026-04-16 🏛️ — PR opened kingdonb/mecris#187 (triggerReminders) + pr-test ✅ — yebyen/mecris#201
+
+**Planned**: yebyen/mecris#201 — Open PR yebyen:main → kingdonb:main carrying triggerReminders feature (3 commits); dispatch pr-test; expect 461 Python + 99 Rust + Android including 2 new CooperativeWorkerTest cases.
+
+**Done**: Oriented — yebyen 3 commits ahead of kingdonb (a26b53b red, cc3336e green, d8386af archive). Opened kingdonb/mecris#187 `feat(android): triggerReminders pulse when MCP is dark` via `gh pr create` with GITHUB_CLASSIC_PAT (GITHUB_TOKEN can't write to kingdonb/mecris). Dispatched pr-test run 24531480498. All three suites passed: Python 461 (5 skipped), Android BUILD SUCCESSFUL (24 tasks, CooperativeWorkerTest ✅), Rust 99 passed 0 failed.
+
+**Skipped**: Nothing — plan fully executed.
+
+**Next**: Check if kingdonb merged PR #187; sync yebyen if so. Configure internal_api_key in Fermyon Cloud + run 005_autonomous_sync_consent.sql against Neon (human actions required).
+
+## 2026-04-16 🏛️ — Profile Settings screen + #180 investigation — yebyen/mecris#203
+
+**Planned**: yebyen/mecris#202 (closed immediately) — Fix non-deterministic Rust DB query `ORDER BY`; discovered already fixed in both repos. yebyen/mecris#203 — Android Profile Settings screen to make `preferred_health_source` settable.
+
+**Done**: Oriented — PR #187 still open (kingdonb/mecris main unchanged). Investigated kingdonb/mecris#180: Rust SQL `ORDER BY start_time ASC` already present at lib.rs line 1242; Android `preferred_health_source` source-filter already coded in HealthConnectManager.kt line 158 but was dead code (no UI). Created ProfilePreferencesManager.kt (get/set for preferred_health_source, phone_number, beeminder_user via mecris_app_prefs SharedPrefs). Added 8-test ProfilePreferencesManagerTest (MockK pattern). Added ProfileSettingsScreen composable + Person icon nav toggle to MecrisDashboard. Three commits: 4cdabbb (red), 9c905e0 (green), 3e24f83 (feat).
+
+**Skipped**: pr-test dispatch — push constraint. Can't comment on kingdonb/mecris#180 (token scope). Can't `gh pr edit` #187 (CLASSIC_PAT lacks read:org). PR #187 will auto-include all 6 yebyen:main commits on push.
+
+**Next**: Dispatch pr-test for kingdonb/mecris#187 after push — expect Python 461, Rust 99, Android BUILD_SUCCESSFUL + 8 new ProfilePreferencesManagerTest + 2 CooperativeWorkerTest.

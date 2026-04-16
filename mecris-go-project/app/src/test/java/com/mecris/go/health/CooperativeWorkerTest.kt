@@ -81,4 +81,47 @@ class CooperativeWorkerTest {
         coVerify(exactly = 0) { syncApi.triggerCloudSync(any()) }
         }
 
+        @Test
+        fun `worker triggers reminders when MCP is dark`() = runBlocking {
+        // GIVEN: MCP is reported as NOT active
+        coEvery { syncApi.sendHeartbeat(any(), any()) } returns retrofit2.Response.success(
+            HeartbeatResponseDto("ok", mcp_server_active = false)
+        )
+        coEvery { syncApi.triggerCloudSync(any()) } returns retrofit2.Response.success(
+            SyncResponse("ok", "cloud sync triggered")
+        )
+        coEvery { syncApi.triggerReminders() } returns retrofit2.Response.success(
+            SyncResponse("ok", "reminders triggered")
+        )
+        coEvery { syncApi.getLanguages(any()) } returns retrofit2.Response.success(
+            com.mecris.go.sync.LanguagesResponseDto(emptyList())
+        )
+
+        val worker = WalkHeuristicsWorker(context, workerParams, pocketIdAuth, syncApi)
+
+        worker.doWork()
+
+        // VERIFY: Both cloud sync AND reminders were triggered
+        coVerify(exactly = 1) { syncApi.triggerCloudSync(any()) }
+        coVerify(exactly = 1) { syncApi.triggerReminders() }
+        }
+
+        @Test
+        fun `worker DOES NOT trigger reminders when MCP is active`() = runBlocking {
+        // GIVEN: MCP is reported as active
+        coEvery { syncApi.sendHeartbeat(any(), any()) } returns retrofit2.Response.success(
+            HeartbeatResponseDto("ok", mcp_server_active = true)
+        )
+        coEvery { syncApi.getLanguages(any()) } returns retrofit2.Response.success(
+            com.mecris.go.sync.LanguagesResponseDto(emptyList())
+        )
+
+        val worker = WalkHeuristicsWorker(context, workerParams, pocketIdAuth, syncApi)
+
+        worker.doWork()
+
+        // VERIFY: Reminders were NOT triggered
+        coVerify(exactly = 0) { syncApi.triggerReminders() }
+        }
+
 }

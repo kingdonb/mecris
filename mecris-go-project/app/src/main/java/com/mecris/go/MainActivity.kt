@@ -22,8 +22,12 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.foundation.text.KeyboardOptions
+import com.mecris.go.profile.ProfilePreferencesManager
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -261,6 +265,7 @@ fun MecrisDashboard(
     
     // UI State
     var showSystemHealth by remember { mutableStateOf(false) }
+    var showProfileSettings by remember { mutableStateOf(false) }
     
     // Lifecycle listener to refresh on resume (with 30s debounce to prevent loops)
     val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
@@ -288,7 +293,10 @@ fun MecrisDashboard(
     var collectGpsRoutes by remember { mutableStateOf(true) }
 
     // Navigation: Handle system back press
-    BackHandler(enabled = showSystemHealth) {
+    BackHandler(enabled = showProfileSettings) {
+        showProfileSettings = false
+    }
+    BackHandler(enabled = showSystemHealth && !showProfileSettings) {
         showSystemHealth = false
     }
 
@@ -489,7 +497,16 @@ fun MecrisDashboard(
             TopAppBar(
                 title = { Text("MECRIS NEURAL LINK", letterSpacing = 2.sp, fontWeight = FontWeight.Black) },
                 actions = {
-                    IconButton(onClick = { showSystemHealth = !showSystemHealth }) {
+                    IconButton(onClick = {
+                        showProfileSettings = !showProfileSettings
+                        if (showProfileSettings) showSystemHealth = false
+                    }) {
+                        Icon(Icons.Default.Person, contentDescription = "Profile Settings")
+                    }
+                    IconButton(onClick = {
+                        showSystemHealth = !showSystemHealth
+                        if (showSystemHealth) showProfileSettings = false
+                    }) {
                         Icon(if (showSystemHealth) Icons.Default.Info else Icons.Default.Settings, contentDescription = "System Health")
                     }
                     IconButton(onClick = { forceSync() }, enabled = !isLoading) {
@@ -510,7 +527,9 @@ fun MecrisDashboard(
                 .verticalScroll(rememberScrollState())
                 .padding(16.dp)
         ) {
-            if (showSystemHealth) {
+            if (showProfileSettings) {
+                ProfileSettingsScreen(context = context)
+            } else if (showSystemHealth) {
                 SystemHealthScreen(
                     auth = auth,
                     authState = authState,
@@ -1523,9 +1542,82 @@ fun GoalStatusIcon(label: String, met: Boolean) {
         Box(modifier = Modifier.padding(4.dp), contentAlignment = Alignment.Center) {
             Text(
                 text = label, 
-                fontSize = 14.sp, 
+                fontSize = 14.sp,
                 modifier = Modifier.alpha(if (met) 1f else 0.4f)
             )
         }
+    }
+}
+
+@Composable
+fun ProfileSettingsScreen(context: android.content.Context) {
+    val manager = remember { ProfilePreferencesManager(context) }
+
+    var preferredSource by remember { mutableStateOf(manager.getPreferredHealthSource() ?: "") }
+    var phoneNumber by remember { mutableStateOf(manager.getPhoneNumber() ?: "") }
+    var beeminderUser by remember { mutableStateOf(manager.getBeeminderUser() ?: "") }
+    var saveStatus by remember { mutableStateOf("") }
+
+    Text(
+        text = "PROFILE SETTINGS",
+        style = MaterialTheme.typography.titleMedium,
+        color = Color.White,
+        fontWeight = FontWeight.Bold
+    )
+    Spacer(modifier = Modifier.height(16.dp))
+
+    Text("Health Connect Source Filter", color = Color.Gray, style = MaterialTheme.typography.labelMedium)
+    Text(
+        "Package name of your preferred step source (e.g. com.google.android.apps.fitness). Leave blank to use Health Connect's default deduplication.",
+        color = Color.Gray,
+        style = MaterialTheme.typography.bodySmall
+    )
+    Spacer(modifier = Modifier.height(4.dp))
+    OutlinedTextField(
+        value = preferredSource,
+        onValueChange = { preferredSource = it },
+        label = { Text("Preferred Health Source") },
+        placeholder = { Text("com.google.android.apps.fitness") },
+        modifier = Modifier.fillMaxWidth(),
+        singleLine = true
+    )
+
+    Spacer(modifier = Modifier.height(16.dp))
+    Text("Phone Number (E.164 format)", color = Color.Gray, style = MaterialTheme.typography.labelMedium)
+    OutlinedTextField(
+        value = phoneNumber,
+        onValueChange = { phoneNumber = it },
+        label = { Text("Phone Number") },
+        placeholder = { Text("+15551234567") },
+        modifier = Modifier.fillMaxWidth(),
+        singleLine = true,
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone)
+    )
+
+    Spacer(modifier = Modifier.height(16.dp))
+    Text("Beeminder Username", color = Color.Gray, style = MaterialTheme.typography.labelMedium)
+    OutlinedTextField(
+        value = beeminderUser,
+        onValueChange = { beeminderUser = it },
+        label = { Text("Beeminder User") },
+        modifier = Modifier.fillMaxWidth(),
+        singleLine = true
+    )
+
+    Spacer(modifier = Modifier.height(24.dp))
+    Button(
+        onClick = {
+            manager.setPreferredHealthSource(preferredSource)
+            manager.setPhoneNumber(phoneNumber)
+            manager.setBeeminderUser(beeminderUser)
+            saveStatus = "Saved"
+        },
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Text("SAVE")
+    }
+    if (saveStatus.isNotEmpty()) {
+        Spacer(modifier = Modifier.height(8.dp))
+        Text(saveStatus, color = Color(0xFF00C853))
     }
 }

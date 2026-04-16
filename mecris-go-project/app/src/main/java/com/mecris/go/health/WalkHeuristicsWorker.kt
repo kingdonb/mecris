@@ -58,10 +58,18 @@ class WalkHeuristicsWorker @JvmOverloads constructor(
                     // Cooperative Cloud Sync: If MCP is dark and we haven't triggered in 2 hours
                     val twoHoursAgo = Instant.now().minusSeconds(7200).toEpochMilli()
                     if (body?.mcp_server_active == false && lastCloudSyncTrigger < twoHoursAgo) {
-                        Log.w("WalkHeuristicsWorker", "MCP Server is DARK. Triggering Autonomous Cloud Sync.")
+                        Log.w("WalkHeuristicsWorker", "MCP Server is DARK. Triggering Autonomous Cloud Sync + Reminders.")
                         val syncResponse = syncApi.triggerCloudSync("Bearer $token")
                         if (!syncResponse.isSuccessful) {
                             throw retrofit2.HttpException(syncResponse)
+                        }
+                        try {
+                            val remindersResponse = syncApi.triggerReminders()
+                            if (!remindersResponse.isSuccessful) {
+                                Log.w("WalkHeuristicsWorker", "Reminders trigger returned: ${remindersResponse.code()}")
+                            }
+                        } catch (e: Exception) {
+                            Log.e("WalkHeuristicsWorker", "Reminders trigger failed: ${e.message}")
                         }
                         prefs.edit().putLong("last_cloud_sync_trigger", Instant.now().toEpochMilli()).apply()
                     }
