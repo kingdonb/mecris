@@ -15,6 +15,8 @@ def get_last_updated(language):
     db_url = os.getenv("NEON_DB_URL")
     if not db_url:
         pytest.skip("NEON_DB_URL not set")
+    if "localhost" in db_url or "127.0.0.1" in db_url:
+        pytest.skip("NEON_DB_URL is local postgres — live E2E test skipped in CI")
     
     conn = psycopg2.connect(db_url)
     try:
