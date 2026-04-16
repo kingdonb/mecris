@@ -1475,3 +1475,24 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: pr-test dispatch — push constraint. Can't comment on kingdonb/mecris#180 (token scope). Can't `gh pr edit` #187 (CLASSIC_PAT lacks read:org). PR #187 will auto-include all 6 yebyen:main commits on push.
 
 **Next**: Dispatch pr-test for kingdonb/mecris#187 after push — expect Python 461, Rust 99, Android BUILD_SUCCESSFUL + 8 new ProfilePreferencesManagerTest + 2 CooperativeWorkerTest.
+
+## 2026-04-16 🏛️ — Cloud Sync Triggers: Debouncing, Consent, and Security Hardening
+
+**Planned**: Investigate why `spin aka cron` triggers weren't showing invocations or performing work; design a test plan for Akamai Functions validation; implement security hardening for `/internal/*` endpoints.
+
+**Done**: 
+- **Cron Diagnosis & Fix**: Root-caused three issues preventing crons from working:
+  1. `spin aka cron` uses `GET`, but our Rust endpoints were strictly `POST`. Updated `/internal/trigger-reminders` and `/internal/failover-sync` to allow both.
+  2. The `004_user_location.sql` migration had not been run on the live Neon DB, causing the `trigger-reminders` endpoint to crash when looking for `location_lat`. Applied the migration.
+  3. The Twilio auth token in the Spin environment was plaintext, causing a decryption crash. Used `EncryptionService` to generate the correct ciphertext and redeployed.
+- **Architectural Shift ("The Cheap Settlement")**: Instead of relying solely on an API key for cron endpoints, we implemented a **delegated-agent pattern**:
+  - **Consent**: Added `autonomous_sync_enabled` boolean to the `users` table. The `/internal/*` routes now only process users who have explicitly opted in.
+  - **Debouncing**: Added `last_autonomous_sync` timestamp to the `users` table. Implemented a 5-minute cooldown check (`mins_since < 5`) in Rust to protect Neon Compute Units (CUs) from DoS attacks.
+  - **Migration**: Created and applied `005_autonomous_sync_consent.sql` to live Neon DB.
+- **Security Hardening**: Merged `yebyen:main` which included an `X-Internal-Api-Key` header check (Defense 1) and combined it with our Consent + Debouncing logic (Defense 2). Both defenses now coexist.
+- **Groq Integration Decision**: Realized Groq API usage cannot be fetched via API key (requires interactive OAuth login). Therefore, Groq sync cannot be ported to a background Rust cron job. The current Python MCP manual approach (`record_groq_reading`) remains the correct architecture.
+- **Android Integration**: Merged `mecris-bot`'s work on the Profile Settings screen (#203), which makes `preferred_health_source` settable from the UI.
+
+**Skipped**: Porting Groq sync to Rust (infeasible due to Groq auth limitations).
+
+**Next**: Prepare for a "grill-me" session focusing on the Android app's core features, specifically investigating the "moussaka in the morning" notification issue (likely related to Majesty Cake or Review Pump notifications) and writing a spec for any necessary fixes.

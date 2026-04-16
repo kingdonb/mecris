@@ -1,35 +1,31 @@
-# Next Session: Dispatch pr-test for kingdonb/mecris#187 after push (now includes Profile Settings)
+# Next Session: Android App Feature Review & "Grill-Me" Session (Moussaka issue)
 
 ## Current Status (2026-04-16)
-- **PR #187 open on kingdonb/mecris**: `feat(android): triggerReminders pulse when MCP is dark` — yebyen:main → kingdonb:main. Awaiting kingdonb review/merge.
-- **6 new commits on yebyen:main since PR opened**: 3 from last session (triggerReminders) + 3 new (ProfilePreferencesManager + ProfileSettingsScreen). All 6 will be in the PR after push.
-- **kingdonb/mecris main** still at `56dc719` — no new upstream commits.
-- **yebyen:main is 6 commits ahead of kingdonb:main**: a26b53b (red), cc3336e (green), d8386af (archive-prev), 4cdabbb (red ProfilePrefs), 9c905e0 (green ProfilePrefs), 3e24f83 (feat ProfileSettings).
-- **pr-test NOT YET dispatched for new commits**: last successful pr-test (run 24531480498) only covered triggerReminders, not ProfilePreferencesManager. New dispatch needed after push.
+- **Akamai Cloud Sync Resolved**: The `spin aka cron` triggers are fully functional. Found and fixed HTTP method mismatch (allowing GET for cron), applied missing `004_user_location.sql` migration to live Neon, and successfully encrypted the Twilio auth token.
+- **Architectural Update**: Implemented the "Cheap Settlement" (Delegated-Agent pattern). The `/internal/*` routes are guarded by a global `internal_api_key` (currently unset for backwards compatibility) AND a mandatory per-user DB consent flag (`autonomous_sync_enabled`). DoS risks are mitigated via a 5-minute debounce check (`last_autonomous_sync`).
+- **Groq Integration**: Due to Groq API limitations (interactive OAuth required for usage data), the background cron integration for the odometer is infeasible. The Python MCP tool (`record_groq_reading`) remains the architectural standard.
+- **PR #187 open on kingdonb/mecris**: Includes the Android Profile Settings screen (which fixes #180 by making `preferred_health_source` settable) and `triggerReminders`. Awaiting kingdonb review/merge.
+- **Test Baseline**: Python: 461 passed (5 skipped). Rust: 99 passed. Android: BUILD SUCCESSFUL (including 8 new `ProfilePreferencesManagerTest` cases).
 
 ## Verified This Session
-- [x] **kingdonb/mecris#180 Rust SQL ORDER BY**: already present in both repos at line 1242 of lib.rs — `ORDER BY start_time ASC`. Bug is fixed.
-- [x] **HealthConnectManager preferred_health_source**: already reads from SharedPreferences (line 158). The fix was dead code — no UI to set the value.
-- [x] **ProfilePreferencesManager.kt**: `mecris-go-project/app/src/main/java/com/mecris/go/profile/ProfilePreferencesManager.kt` — get/set for `preferred_health_source`, `phone_number`, `beeminder_user` from `mecris_app_prefs`.
-- [x] **ProfilePreferencesManagerTest**: 8 unit tests (MockK pattern), committed `4cdabbb`.
-- [x] **ProfileSettingsScreen composable**: OutlinedTextField for each pref, Save button, wired to Person icon in top bar, committed `3e24f83`.
-- [x] **Plan issues closed**: yebyen/mecris#202 (already-fixed Rust ORDER BY), yebyen/mecris#203 commented with progress.
+- [x] **Cron Configuration**: The cron schedule triggers endpoints using `GET` requests, which are now correctly handled by the Rust `sync-service`.
+- [x] **Live Neon Schema**: The `users` table now contains `location_lat`, `location_lon`, `autonomous_sync_enabled`, and `last_autonomous_sync`.
+- [x] **Cron Security**: The `/internal/failover-sync` and `/internal/trigger-reminders` routes check for both the `X-Internal-Api-Key` and the user's `autonomous_sync_enabled` flag.
+- [x] **Akamai Deployment Success**: The `sync-service` successfully executes the Clozemaster web scraping loop when triggered via the cron endpoint.
 
 ## Pending Verification (Next Session)
-- [ ] **Dispatch pr-test for kingdonb/mecris#187** after workflow pushes yebyen:main. Expected: Python 461 passed (5 skipped), Rust 99 passed, Android BUILD SUCCESSFUL including 8 new `ProfilePreferencesManagerTest` cases + 2 CooperativeWorkerTest cases.
+- [ ] **Android App Spec & "Grill-Me" Session**: Prepare a spec for the Android app core features. Investigate the "moussaka in the morning" notification issue to determine if there are logic flaws in the Majesty Cake or Review Pump notifications.
+- [ ] **Configure internal_api_key in Fermyon Cloud**: Set `internal_api_key = "<secret>"` in runtime-config; update Akamai cron `curl` calls with `X-Internal-Api-Key: <secret>`. (Needs human with Fermyon access.)
+- [ ] **Dispatch pr-test for kingdonb/mecris#187** after workflow pushes yebyen:main. Expected: Python 461 passed (5 skipped), Rust 99 passed, Android BUILD SUCCESSFUL.
 - [ ] **kingdonb/mecris#187 merged?** Check if kingdonb has merged. If yes: sync yebyen with `git fetch https://github.com/kingdonb/mecris.git main && git merge FETCH_HEAD --no-edit`.
-- [ ] **Configure internal_api_key in Fermyon Cloud**: Set `internal_api_key = "<secret>"` in runtime-config; update Akamai cron `curl` calls with `X-Internal-Api-Key: <secret>`. This activates the guard. (Needs human with Fermyon access.)
-- [ ] **Run 005_autonomous_sync_consent.sql against live Neon**: `psql $NEON_DB_URL -f scripts/migrations/005_autonomous_sync_consent.sql`. (Needs human with NEON_DB_URL.)
-- [ ] **Confirm Akamai cron jobs firing**: Check Akamai logs for `trigger-reminders`, `failover-sync-edt`, `failover-sync-est` executions.
 - [ ] **Twilio webhook Phase 2 live E2E**: Requires Twilio variables in Fermyon Cloud.
 - [ ] **Multi-Tenancy — Android UI Gaps**: Add "log out" button, location/timezone settings. Tracked in kingdonb/mecris#168.
 - [ ] **Rust test gap (workflow fix)**: Apply fix from yebyen/mecris#142. Needs `workflow` PAT scope — must be applied by kingdonb.
-- [ ] **Multiplier Sync Validation**: Verify Android Review Pump lever updates `pump_multiplier` in Neon.
 
 ## Infrastructure Notes
 - **Akamai Functions (Trial)**: Persistent cron triggers for reminders and failover syncing.
-  - `/internal/failover-sync` (POST): Now uses `handle_failover_sync_post()` — per-user consent flag + `last_autonomous_sync` tracking. Guarded by `internal_api_key` Spin variable (backwards compat: no key = allow all).
-  - `/internal/trigger-reminders` (POST): Sends reminders only to users with `autonomous_sync_enabled = true`. Guarded by same key. Android now also calls this as best-effort pulse when MCP is dark.
+  - `/internal/failover-sync` (GET/POST): Now uses `handle_failover_sync_post()` — per-user consent flag + `last_autonomous_sync` tracking. Guarded by `internal_api_key` Spin variable (backwards compat: no key = allow all).
+  - `/internal/trigger-reminders` (GET/POST): Sends reminders only to users with `autonomous_sync_enabled = true`. Guarded by same key. Android now also calls this as best-effort pulse when MCP is dark.
 - **triggerReminders design**: `SyncServiceApi.triggerReminders()` sends no auth header — Rust endpoint is gated by `X-Internal-Api-Key` only; with key unset (current), all callers are allowed. When key is set in Fermyon Cloud, only Akamai cron will have the key; Android pulse will gracefully fail with 401 (caught + logged).
 - **ProfilePreferencesManager**: Reads/writes `mecris_app_prefs` SharedPreferences. Keys: `preferred_health_source`, `phone_number`, `beeminder_user`. Same SharedPreferences name as `HealthConnectManager` so both see the same value.
 - **preferred_health_source flow**: User sets it in ProfileSettingsScreen → SharedPreferences → HealthConnectManager reads it on next `fetchRecentWalkData()` → AggregateRequest with `dataOriginFilter` set to that package name.
@@ -52,6 +48,5 @@
 - **schema.sql budget_tracking schema**: columns are `budget_period_start TEXT NOT NULL`, `budget_period_end TEXT NOT NULL`, `total_budget DOUBLE PRECISION NOT NULL`, `remaining_budget DOUBLE PRECISION NOT NULL`, `user_id UNIQUE REFERENCES users(pocket_id_sub)`.
 - **Upstream sync pattern**: `git fetch https://github.com/kingdonb/mecris.git main && git merge FETCH_HEAD --no-edit`.
 - **Groq-Beeminder sync**: kingdonb's `9bdf4e7` added automated @TARE reset logic and DB-backed identity resolution. Unit tests for Groq-Beeminder sync in `test_groq_beeminder_sync.py`.
-- **Akamai E2E test skip pattern**: `test_cron_validation.py::test_akamai_failover_sync_side_effect` skips when `NEON_DB_URL` contains `localhost` or `127.0.0.1`. Fix committed at `ed33d27`.
 - **internal_api_key Spin variable**: Optional variable — set to activate `/internal/*` endpoint key guard. Header: `X-Internal-Api-Key`. Empty = open (backwards compat).
 - **autonomous_sync_enabled**: DB flag per user (`users` table). Controls which users get processed by `/internal/trigger-reminders` and `/internal/failover-sync`. Default `false` — user must opt in.
