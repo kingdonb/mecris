@@ -1455,3 +1455,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: pr-test dispatch — push constraint (commits land on GitHub after workflow ends). Opening PR to kingdonb — deferred to next session.
 
 **Next**: Open PR yebyen:main → kingdonb:main carrying triggerReminders; dispatch pr-test to confirm 461 Python + 99 Rust + Android tests (including 2 new CooperativeWorkerTest) pass.
+
+## 2026-04-16 🏛️ — PR opened kingdonb/mecris#187 (triggerReminders) + pr-test ✅ — yebyen/mecris#201
+
+**Planned**: yebyen/mecris#201 — Open PR yebyen:main → kingdonb:main carrying triggerReminders feature (3 commits); dispatch pr-test; expect 461 Python + 99 Rust + Android including 2 new CooperativeWorkerTest cases.
+
+**Done**: Oriented — yebyen 3 commits ahead of kingdonb (a26b53b red, cc3336e green, d8386af archive). Opened kingdonb/mecris#187 `feat(android): triggerReminders pulse when MCP is dark` via `gh pr create` with GITHUB_CLASSIC_PAT (GITHUB_TOKEN can't write to kingdonb/mecris). Dispatched pr-test run 24531480498. All three suites passed: Python 461 (5 skipped), Android BUILD SUCCESSFUL (24 tasks, CooperativeWorkerTest ✅), Rust 99 passed 0 failed.
+
+**Skipped**: Nothing — plan fully executed.
+
+**Next**: Check if kingdonb merged PR #187; sync yebyen if so. Configure internal_api_key in Fermyon Cloud + run 005_autonomous_sync_consent.sql against Neon (human actions required).

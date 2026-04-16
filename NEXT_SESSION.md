@@ -1,29 +1,25 @@
-# Next Session: Dispatch pr-test for yebyen:main (triggerReminders + all prior changes)
+# Next Session: Await merge of kingdonb/mecris#187 (triggerReminders), then sync yebyen
 
 ## Current Status (2026-04-16)
-- **yebyen:main == kingdonb:main**: PR #186 merged 2026-04-16T17:19:05Z. yebyen is 2 commits ahead (red `a26b53b` + green `cc3336e` for #200).
-- **triggerReminders implemented**: `SyncServiceApi.triggerReminders()` added (`@POST("internal/trigger-reminders")`); `WalkHeuristicsWorker` calls it alongside `triggerCloudSync()` when `mcp_server_active == false`.
-- **CooperativeWorkerTest**: 2 new tests added — `worker triggers reminders when MCP is dark` + `worker DOES NOT trigger reminders when MCP is active`.
-- **Rust 99 tests**: unchanged from prior session.
-- **Python 461 tests (5 skipped)**: baseline from pr-test run 24509446714, unchanged this session.
+- **PR #187 open on kingdonb/mecris**: `feat(android): triggerReminders pulse when MCP is dark` — yebyen:main → kingdonb:main. Awaiting kingdonb review/merge.
+- **pr-test run 24531480498**: ✅ success — Python 461 passed (5 skipped), Android BUILD SUCCESSFUL (24 tasks, all CooperativeWorkerTest pass), Rust 99 passed.
+- **yebyen:main is 3 commits ahead of kingdonb:main**: a26b53b (red), cc3336e (green), d8386af (archive). PR #187 carries all three.
+- **Rust test count**: 99 (95 + 4 `is_autonomous_sync_allowed` tests). Android unit tests include 2 new CooperativeWorkerTest cases.
 
 ## Verified This Session
-- [x] **PR #186 merged into kingdonb:main** (`2026-04-16T17:19:05Z`).
-- [x] **yebyen == kingdonb** after PR merge (0/0 divergence at session start).
-- [x] **triggerReminders red+green committed**: `a26b53b` (red), `cc3336e` (green).
-- [x] **yebyen/mecris#200 complete**: Plan issue closed.
+- [x] **PR #187 opened**: kingdonb/mecris#187 `feat(android): triggerReminders pulse when MCP is dark`.
+- [x] **pr-test passed**: run 24531480498 — Python ✅, Android ✅, Rust ✅.
+- [x] **2 new CooperativeWorkerTest cases** confirmed passing in Android test suite.
+- [x] **Plan yebyen/mecris#201 complete**: closed.
 
 ## Pending Verification (Next Session)
-- [ ] **Dispatch pr-test for yebyen:main**: Run `/mecris-pr-test` for any open PR or verify Android unit tests pass. Expect: 461 Python + 99 Rust + Android tests including 2 new CooperativeWorkerTest cases.
-- [ ] **Open PR yebyen:main → kingdonb:main**: Carry forward triggerReminders (a26b53b + cc3336e) as a new PR against kingdonb:main.
-- [ ] **Configure internal_api_key in Fermyon Cloud**: Set `internal_api_key = "<secret>"` in runtime-config; update Akamai cron `curl` calls with `X-Internal-Api-Key: <secret>`. This activates the guard.
-- [ ] **Sync yebyen after next kingdonb merge**: `git fetch https://github.com/kingdonb/mecris.git main && git merge FETCH_HEAD --no-edit`.
+- [ ] **kingdonb/mecris#187 merged?** Check if kingdonb has merged. If yes: sync yebyen with `git fetch https://github.com/kingdonb/mecris.git main && git merge FETCH_HEAD --no-edit`.
+- [ ] **Configure internal_api_key in Fermyon Cloud**: Set `internal_api_key = "<secret>"` in runtime-config; update Akamai cron `curl` calls with `X-Internal-Api-Key: <secret>`. This activates the guard. (Needs human with Fermyon access.)
+- [ ] **Run 005_autonomous_sync_consent.sql against live Neon**: `psql $NEON_DB_URL -f scripts/migrations/005_autonomous_sync_consent.sql`. Adds `autonomous_sync_enabled` and `last_autonomous_sync` columns to `users` table. (Needs human with NEON_DB_URL.)
 - [ ] **Confirm Akamai cron jobs firing**: Check Akamai logs for `trigger-reminders`, `failover-sync-edt`, `failover-sync-est` executions.
-- [ ] **Run 004_user_location.sql against live Neon**: `psql $NEON_DB_URL -f scripts/migrations/004_user_location.sql`.
-- [ ] **Run 005_autonomous_sync_consent.sql against live Neon**: `psql $NEON_DB_URL -f scripts/migrations/005_autonomous_sync_consent.sql`. Adds `autonomous_sync_enabled` and `last_autonomous_sync` columns to `users` table.
 - [ ] **Twilio webhook Phase 2 live E2E**: Requires Twilio variables in Fermyon Cloud.
 - [ ] **Multi-Tenancy — Android UI Gaps**: Add "log out" button, phone/location settings, preferred health source. Tracked in kingdonb/mecris#168.
-- [ ] **Rust test gap (workflow fix)**: Apply fix from yebyen/mecris#142. Needs `workflow` PAT.
+- [ ] **Rust test gap (workflow fix)**: Apply fix from yebyen/mecris#142. Needs `workflow` PAT scope — must be applied by kingdonb.
 - [ ] **Multiplier Sync Validation**: Verify Android Review Pump lever updates `pump_multiplier` in Neon.
 
 ## Infrastructure Notes
@@ -37,7 +33,7 @@
 - `MECRIS_MODE=standalone` bypasses JWKS for local dev; `MECRIS_MODE=cloud` enforces RSA verification.
 - `MASTER_ENCRYPTION_KEY` must be a 64-char hex string (32-byte AES-256 key).
 - **Classic PAT scope**: `GITHUB_CLASSIC_PAT` has `repo` scope ONLY — no `workflow` scope.
-- **Fine-grained PAT**: `GITHUB_TOKEN` scoped to yebyen/mecris only.
+- **Fine-grained PAT**: `GITHUB_TOKEN` scoped to yebyen/mecris only. Cannot create PRs on kingdonb/mecris — use `gh pr create` with `GITHUB_CLASSIC_PAT`.
 - **NEXT_SESSION.md merge conflict is permanently fixed**: `.gitattributes merge=union` on yebyen/mecris:main.
 - **Python venv not present in bot runner**: Validate Python tests via pr-test workflow only.
 - **pr-test.yml push constraint**: Dispatch pr-test ONLY after commits land on GitHub (next session after push).
@@ -46,7 +42,7 @@
 - **Test isolation pattern**: Tests that import `mcp_server` must use `sys.modules.pop("mcp_server", None)` + `patch.dict(os.environ, ...)` + `patch("psycopg2.connect")` before importing.
 - **mcp_server handler test patterns** (`test_mcp_server_handlers.py`): Patch `mcp_server.resolve_target_user` for auth guard tests; patch `mcp_server.usage_tracker` for delegation tests; patch `mcp_server.weather_service` for weather tests.
 - **VirtualBudgetManager test pattern**: Patch `virtual_budget_manager.credentials_manager.resolve_user_id` + omit `NEON_DB_URL` → no DB needed for pure/no-DB tests.
-- **Python test count baseline**: 461 passed (5 skipped) confirmed in pr-test run 24509446714. Akamai E2E test now permanently skipped in CI.
+- **Python test count baseline**: 461 passed (5 skipped) confirmed in pr-test run 24531480498. Akamai E2E test now permanently skipped in CI.
 - **schema.sql budget_tracking schema**: columns are `budget_period_start TEXT NOT NULL`, `budget_period_end TEXT NOT NULL`, `total_budget DOUBLE PRECISION NOT NULL`, `remaining_budget DOUBLE PRECISION NOT NULL`, `user_id UNIQUE REFERENCES users(pocket_id_sub)`.
 - **Upstream sync pattern**: `git fetch https://github.com/kingdonb/mecris.git main && git merge FETCH_HEAD --no-edit`.
 - **Groq-Beeminder sync**: kingdonb's `9bdf4e7` added automated @TARE reset logic and DB-backed identity resolution. Unit tests for Groq-Beeminder sync in `test_groq_beeminder_sync.py`.
