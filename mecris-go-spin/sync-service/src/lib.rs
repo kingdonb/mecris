@@ -1641,6 +1641,29 @@ fn phones_match(a: &str, b: &str) -> bool {
 mod tests {
     use super::*;
 
+    // --- is_autonomous_sync_allowed ---
+
+    #[test]
+    fn test_autonomous_sync_not_allowed_when_disabled() {
+        assert!(!is_autonomous_sync_allowed(false, None));
+    }
+
+    #[test]
+    fn test_autonomous_sync_allowed_when_enabled_and_no_prior_sync() {
+        assert!(is_autonomous_sync_allowed(true, None));
+    }
+
+    #[test]
+    fn test_autonomous_sync_not_allowed_when_debounced_under_5_mins() {
+        assert!(!is_autonomous_sync_allowed(true, Some(4)));
+    }
+
+    #[test]
+    fn test_autonomous_sync_allowed_when_debounced_5_mins_or_more() {
+        assert!(is_autonomous_sync_allowed(true, Some(5)));
+        assert!(is_autonomous_sync_allowed(true, Some(60)));
+    }
+
     // --- should_delegate ---
 
     #[test]
