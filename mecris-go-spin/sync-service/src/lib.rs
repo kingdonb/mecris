@@ -208,18 +208,7 @@ async fn handle_sync_service(req: Request) -> anyhow::Result<impl IntoResponse> 
         if !internal_api_key_ok(&configured_key, provided_key) {
             return Ok(Response::builder().status(401).body("Unauthorized").build());
         }
-        let db_url = variables::get("db_url").map_err(|e| anyhow::anyhow!("db_url fetch failed: {:?}", e))?;
-        let default_user_id = "c0a81a4b-115a-4eb6-bc2c-40908c58bf64";
-        return match run_clozemaster_scraper(&db_url, default_user_id).await {
-            Ok(_) => {
-                let resp = StatusResponse { status: "success".to_string(), message: "Cloud sync complete (Autonomous)".to_string() };
-                Ok(Response::builder().status(200).header("content-type", "application/json").body(serde_json::to_string(&resp).unwrap()).build())
-            }
-            Err(e) => {
-                let resp = StatusResponse { status: "error".to_string(), message: format!("Cloud sync failed: {:?}", e) };
-                Ok(Response::builder().status(500).header("content-type", "application/json").body(serde_json::to_string(&resp).unwrap()).build())
-            }
-        };
+        return handle_failover_sync_post(req).await;
     } else if path == "/internal/twilio-webhook" {
         if req.method() != &spin_sdk::http::Method::Post {
             return Ok(Response::builder().status(405).body("Method Not Allowed").build());
@@ -1222,7 +1211,8 @@ async fn handle_trigger_reminders_post(_req: Request) -> anyhow::Result<Response
     // Include per-user location columns; COALESCE to empty string so absent values parse as None.
     let query = "SELECT pocket_id_sub, phone_number_encrypted, COALESCE(timezone, 'UTC'), \
                  COALESCE(location_lat::TEXT, ''), COALESCE(location_lon::TEXT, '') \
-                 FROM users WHERE phone_number_encrypted IS NOT NULL AND phone_number_encrypted != ''";
+                 FROM users WHERE phone_number_encrypted IS NOT NULL AND phone_number_encrypted != '' \
+                 AND autonomous_sync_enabled = true";
     let row_set = connection.query(query, &[])?;
 
     let now_utc = chrono::Utc::now();
@@ -1329,6 +1319,44 @@ async fn handle_trigger_reminders_post(_req: Request) -> anyhow::Result<Response
         .header("content-type", "application/json")
         .body(serde_json::to_string(&resp).unwrap())
         .build())
+}
+
+async fn handle_failover_sync_post(_req: Request) -> anyhow::Result<Response> {
+    let db_url = variables::get("db_url").map_err(|e| anyhow::anyhow!("db_url fetch failed: {:?}", e))?;
+    let connection = Connection::open(&db_url)?;
+
+    let query = "SELECT pocket_id_sub, EXTRACT(EPOCH FROM CURRENT_TIMESTAMP - COALESCE(last_autonomous_sync, '1970-01-01'::TIMESTAMPTZ))/60 AS mins_since \
+                 FROM users WHERE autonomous_sync_enabled = true";
+    let row_set = connection.query(query, &[])?;
+    
+    let mut success_count = 0;
+    for row in &row_set.rows {
+        let user_id = match &row[0] { DbValue::Str(s) => s.clone(), _ => continue };
+        let mins_since = match &row[1] { 
+            DbValue::Floating64(f) => Some(*f as u64),
+            _ => None 
+        };
+
+        if !is_autonomous_sync_allowed(true, mins_since) {
+            continue;
+        }
+
+        match run_clozemaster_scraper(&db_url, &user_id).await {
+            Ok(_) => {
+                let _ = connection.execute(
+                    "UPDATE users SET last_autonomous_sync = CURRENT_TIMESTAMP WHERE pocket_id_sub = $1",
+                    &[ParameterValue::Str(user_id)]
+                );
+                success_count += 1;
+            }
+            Err(e) => {
+                eprintln!("Autonomous sync failed for user {}: {:?}", user_id, e);
+            }
+        }
+    }
+    
+    let resp = StatusResponse { status: "success".to_string(), message: format!("Cloud sync processed for {} users", success_count) };
+    Ok(Response::builder().status(200).header("content-type", "application/json").body(serde_json::to_string(&resp).unwrap()).build())
 }
 
 // --- Phase 3: Reminder heuristics (pure, unit-testable) ---
