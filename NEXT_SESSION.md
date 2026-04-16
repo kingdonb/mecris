@@ -1,24 +1,25 @@
-# Next Session: Review and merge kingdonb/mecris#186 (Akamai E2E skip fix)
+# Next Session: Review and merge kingdonb/mecris#186, then configure internal_api_key in Fermyon Cloud
 
 ## Current Status (2026-04-16)
-- **kingdonb/mecris#186 is open**: PR from yebyen:main containing `ed33d27` (E2E skip fix) + archive commit.
-- **pr-test run 24509446714**: Python **461 passed, 5 skipped, 0 failed** ✅ — the Akamai E2E test now skips in CI instead of failing.
-- **yebyen/mecris and kingdonb/mecris**: yebyen:main is 2 commits ahead (unmerged PR); once kingdonb merges, will be in sync.
-- **Rust 91 tests pass**: Confirmed in same run.
+- **kingdonb/mecris#186 is open**: PR from yebyen:main containing `ed33d27` (E2E skip fix) + archive commits. Awaiting kingdonb merge.
+- **pr-test run 24509446714**: Python **461 passed, 5 skipped, 0 failed** ✅ (confirmed last session).
+- **Rust security hardening committed at `16e8cb7`**: `internal_api_key_ok` helper added; `/internal/failover-sync` and `/internal/trigger-reminders` now guarded. **Rust total: 95 tests pass**.
+- **yebyen/mecris 4 commits ahead of kingdonb/mecris**: The 3 commits from PR #186 + the new security commit `16e8cb7` are not yet in kingdonb:main.
+- **API key guard is backwards-compatible**: Until `internal_api_key` is set in Fermyon Cloud runtime-config, both endpoints remain open (unchanged behavior).
 
 ## Verified This Session
-- [x] **PR #186 opened**: `fix(test): skip Akamai E2E test when NEON_DB_URL is local postgres`
-- [x] **pr-test run 24509446714**: 461 passed, 5 skipped, **0 failed** — down from 1 failed before fix.
-- [x] **Android tests**: ✅ passed.
-- [x] **Rust 91 tests**: ✅ passed.
-- [x] **Akamai E2E skip fix validated**: `test_akamai_failover_sync_side_effect` now counted as skipped, not failed.
+- [x] **Security hardening committed**: `feat(security): add optional API key guard to /internal/* endpoints` — `16e8cb7`.
+- [x] **Rust 95 tests pass**: Up from 91 — 4 new tests for `internal_api_key_ok` all green.
+- [x] **yebyen/mecris#198 closed**: Plan issue closed complete.
+- [x] **Backwards compatibility confirmed**: If `internal_api_key` Spin variable is empty/unset, endpoints allow all callers (no change to existing Akamai cron behavior).
 
 ## Pending Verification (Next Session)
-- [ ] **kingdonb merges #186**: Confirm kingdonb/mecris#186 is merged into main.
-- [ ] **Sync yebyen/mecris after merge**: Once #186 is merged, sync yebyen:main from kingdonb:main (0 ahead, 0 behind).
+- [ ] **kingdonb merges #186**: Confirm kingdonb/mecris#186 is merged into main (includes E2E skip fix + prior archive commits).
+- [ ] **Open new PR for security commit**: After #186 merges, open PR from yebyen:main → kingdonb:main with `16e8cb7` (security hardening). Then dispatch pr-test to confirm 461 Python + 95 Rust pass.
+- [ ] **Configure internal_api_key in Fermyon Cloud**: Set `internal_api_key = "<secret>"` in runtime-config or Fermyon Cloud secrets, then update Akamai cron `curl` calls to pass `X-Internal-Api-Key: <secret>`. This activates the guard.
+- [ ] **Sync yebyen/mecris after kingdonb merges**: `git fetch https://github.com/kingdonb/mecris.git main && git merge FETCH_HEAD --no-edit` (only after merge to avoid losing ahead commits).
 - [ ] **Confirm Akamai cron jobs firing**: Check Akamai logs for `trigger-reminders`, `failover-sync-edt`, `failover-sync-est` executions.
 - [ ] **Akamai E2E Logic Test**: Manually POST to `/internal/failover-sync` on Akamai endpoint (use live Neon NEON_DB_URL to verify side effects).
-- [ ] **Security Hardening (Akamai)**: Unauthenticated `/internal/*` endpoints need API key or IP whitelist.
 - [ ] **Run 004_user_location.sql against live Neon**: `psql $NEON_DB_URL -f scripts/migrations/004_user_location.sql`.
 - [ ] **Twilio webhook Phase 2 live E2E**: Requires Twilio variables in Fermyon Cloud.
 - [ ] **Multi-Tenancy — Android UI Gaps**: Add "log out" button, phone/location settings, preferred health source. Tracked in kingdonb/mecris#168.
@@ -27,8 +28,8 @@
 
 ## Infrastructure Notes
 - **Akamai Functions (Trial)**: Persistent cron triggers for reminders and failover syncing.
-  - `/internal/failover-sync` (POST): Unauthenticated sync for cron (Rust compile fix in `f5a4b09`).
-  - `/internal/trigger-reminders` (POST): Unauthenticated reminder evaluation for cron.
+  - `/internal/failover-sync` (POST): Cron sync trigger — now guarded by `internal_api_key` Spin variable (backwards compat: no key = allow all).
+  - `/internal/trigger-reminders` (POST): Reminder evaluation for cron — same guard.
 - Spin Cron trigger is **DISABLED** in `spin.toml` — do not re-enable.
 - `MECRIS_MODE=standalone` bypasses JWKS for local dev; `MECRIS_MODE=cloud` enforces RSA verification.
 - `MASTER_ENCRYPTION_KEY` must be a 64-char hex string (32-byte AES-256 key).
@@ -37,7 +38,7 @@
 - **NEXT_SESSION.md merge conflict is permanently fixed**: `.gitattributes merge=union` on yebyen/mecris:main.
 - **Python venv not present in bot runner**: Validate Python tests via pr-test workflow only.
 - **pr-test.yml push constraint**: Dispatch pr-test ONLY after commits land on GitHub (next session after push).
-- **Rust satellite crates**: 91 tests in sync-service, 28 in boris-fiona-walker, others not in CI yet.
+- **Rust satellite crates**: 95 tests in sync-service (up from 91), 28 in boris-fiona-walker, others not in CI yet.
 - **Rust compile fix pattern**: All branches in `handle_sync_service` that return a value must use explicit `return`. Bare `match` without `return` causes type error (expected `()`, found `Result<Response, _>`).
 - **Test isolation pattern**: Tests that import `mcp_server` must use `sys.modules.pop("mcp_server", None)` + `patch.dict(os.environ, ...)` + `patch("psycopg2.connect")` before importing.
 - **mcp_server handler test patterns** (`test_mcp_server_handlers.py`): Patch `mcp_server.resolve_target_user` for auth guard tests; patch `mcp_server.usage_tracker` for delegation tests; patch `mcp_server.weather_service` for weather tests.
@@ -47,3 +48,4 @@
 - **Upstream sync pattern**: `git fetch https://github.com/kingdonb/mecris.git main && git merge FETCH_HEAD --no-edit`.
 - **Groq-Beeminder sync**: kingdonb's `9bdf4e7` added automated @TARE reset logic and DB-backed identity resolution. Unit tests for Groq-Beeminder sync in `test_groq_beeminder_sync.py`.
 - **Akamai E2E test skip pattern**: `test_cron_validation.py::test_akamai_failover_sync_side_effect` skips when `NEON_DB_URL` contains `localhost` or `127.0.0.1`. Fix committed at `ed33d27`.
+- **internal_api_key Spin variable**: New optional variable — set to activate `/internal/*` endpoint key guard. Header: `X-Internal-Api-Key`. Empty = open (backwards compat).

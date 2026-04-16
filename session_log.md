@@ -1425,3 +1425,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Done**: PR kingdonb/mecris#186 opened. pr-test run 24509446714 completed — Python 461 passed, 5 skipped, 0 failed ✅. Android ✅. Rust 91 ✅. Down from 1 failed before fix.
 **Skipped**: Nothing — plan executed in full.
 **Next**: Confirm kingdonb merges #186; sync yebyen:main from upstream after merge.
+
+## 2026-04-16 🏛️ — Security hardening: API key guard for /internal/* endpoints — yebyen/mecris#198
+
+**Planned**: yebyen/mecris#198 — Add `X-Internal-Api-Key` header check to `/internal/failover-sync` and `/internal/trigger-reminders`; unit tests cover 401-rejection and 200-pass paths; Rust total ≥95.
+
+**Done**: Oriented — kingdonb/mecris#186 still open, yebyen 3 commits ahead, no tagged issues. Created plan yebyen/mecris#198. Added `internal_api_key_ok(configured_key, req_header)` pure helper to `mecris-go-spin/sync-service/src/lib.rs`. Guarded both `/internal/failover-sync` (updated comment) and `/internal/trigger-reminders` in the router. 4 new unit tests (no-key-configured, correct-key, wrong-key, missing-header). **Rust: 95 tests pass, 0 failed** (up from 91). Committed at `16e8cb7`. Closed yebyen/mecris#198.
+
+**Skipped**: pr-test dispatch — `16e8cb7` lands on GitHub after bot workflow ends; confirm 95 Rust + 461 Python next session. Setting `internal_api_key` in Fermyon Cloud — requires manual operator step (out of bot scope).
+
+**Next**: Open PR yebyen:main → kingdonb:main with `16e8cb7`; dispatch pr-test to confirm 95 Rust ✅ + 461 Python ✅. Then configure `internal_api_key` in Fermyon Cloud + Akamai cron headers to activate the guard.
