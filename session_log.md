@@ -1445,3 +1445,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: pr-test dispatch — push constraint (must wait for CI to push `4d6e9d6` to GitHub). Security-only PR — deemed unnecessary since PR #186 already covers the additions cleanly.
 
 **Next**: Dispatch pr-test for kingdonb/mecris#186 (expect 461 Python + 99 Rust). Run `005_autonomous_sync_consent.sql` against live Neon to activate consent flag in prod.
+
+## 2026-04-16 🏛️ — Android pulse: triggerReminders added to WalkHeuristicsWorker — yebyen/mecris#200
+
+**Planned**: yebyen/mecris#200 — Add `triggerReminders()` to `SyncServiceApi.kt` and call it in `WalkHeuristicsWorker` when `mcp_server_active == false`; add 2 CooperativeWorkerTest cases; refs kingdonb/mecris#168.
+
+**Done**: Oriented — PR #186 merged, yebyen==kingdonb (0/0), no tagged issues, #168 task unimplemented. Created plan yebyen/mecris#200. Red (`a26b53b`): added `worker triggers reminders when MCP is dark` + `worker DOES NOT trigger reminders when MCP is active` to CooperativeWorkerTest. Green (`cc3336e`): added `@POST("internal/trigger-reminders") suspend fun triggerReminders()` to SyncServiceApi (no auth header — key guard backwards-compat); updated WalkHeuristicsWorker to call triggerReminders() after triggerCloudSync() when dark (failures caught + logged, not thrown).
+
+**Skipped**: pr-test dispatch — push constraint (commits land on GitHub after workflow ends). Opening PR to kingdonb — deferred to next session.
+
+**Next**: Open PR yebyen:main → kingdonb:main carrying triggerReminders; dispatch pr-test to confirm 461 Python + 99 Rust + Android tests (including 2 new CooperativeWorkerTest) pass.

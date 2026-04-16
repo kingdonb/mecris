@@ -1,23 +1,23 @@
-# Next Session: Dispatch pr-test for kingdonb/mecris#186 (now includes consent flag merge)
+# Next Session: Dispatch pr-test for yebyen:main (triggerReminders + all prior changes)
 
 ## Current Status (2026-04-16)
-- **kingdonb/mecris#186 is still open**: PR from yebyen:main → kingdonb:main; awaiting kingdonb merge.
-- **yebyen:main merged upstream**: `4d6e9d6` integrates kingdonb/mecris #185 (autonomous consent flag, 5 commits). Divergence resolved.
-- **yebyen 6 commits ahead of kingdonb:main, 0 behind** ✅ (clean sync)
-- **Rust test count: 99** (was 95; consent flag merge added 4 tests for `is_autonomous_sync_allowed`).
-- **PR #186 net diff against kingdonb:main is clean**: Shows only yebyen additions — E2E skip guard + API key guard + `internal_api_key_ok` tests.
+- **yebyen:main == kingdonb:main**: PR #186 merged 2026-04-16T17:19:05Z. yebyen is 2 commits ahead (red `a26b53b` + green `cc3336e` for #200).
+- **triggerReminders implemented**: `SyncServiceApi.triggerReminders()` added (`@POST("internal/trigger-reminders")`); `WalkHeuristicsWorker` calls it alongside `triggerCloudSync()` when `mcp_server_active == false`.
+- **CooperativeWorkerTest**: 2 new tests added — `worker triggers reminders when MCP is dark` + `worker DOES NOT trigger reminders when MCP is active`.
+- **Rust 99 tests**: unchanged from prior session.
+- **Python 461 tests (5 skipped)**: baseline from pr-test run 24509446714, unchanged this session.
 
 ## Verified This Session
-- [x] **Upstream sync complete**: Merged kingdonb/mecris main (PR #185, 5 commits) into yebyen:main via `4d6e9d6`.
-- [x] **Merge conflict resolved**: `lib.rs` conflict resolved keeping BOTH API key guard (`16e8cb7`) AND per-user consent flag logic (#185).
-- [x] **Rust 99 tests**: 95 previous + 4 new `is_autonomous_sync_allowed` tests from consent flag merge.
-- [x] **yebyen/mecris#199 complete**: Plan issue closed.
+- [x] **PR #186 merged into kingdonb:main** (`2026-04-16T17:19:05Z`).
+- [x] **yebyen == kingdonb** after PR merge (0/0 divergence at session start).
+- [x] **triggerReminders red+green committed**: `a26b53b` (red), `cc3336e` (green).
+- [x] **yebyen/mecris#200 complete**: Plan issue closed.
 
 ## Pending Verification (Next Session)
-- [ ] **Dispatch pr-test for PR #186**: Run `/mecris-pr-test 186` after CI pushes `4d6e9d6` to GitHub. Expect: 461 Python + 99 Rust pass.
-- [ ] **kingdonb merges #186**: Confirm kingdonb/mecris#186 merged into main (includes E2E skip fix + API key guard + consent flag merge).
+- [ ] **Dispatch pr-test for yebyen:main**: Run `/mecris-pr-test` for any open PR or verify Android unit tests pass. Expect: 461 Python + 99 Rust + Android tests including 2 new CooperativeWorkerTest cases.
+- [ ] **Open PR yebyen:main → kingdonb:main**: Carry forward triggerReminders (a26b53b + cc3336e) as a new PR against kingdonb:main.
 - [ ] **Configure internal_api_key in Fermyon Cloud**: Set `internal_api_key = "<secret>"` in runtime-config; update Akamai cron `curl` calls with `X-Internal-Api-Key: <secret>`. This activates the guard.
-- [ ] **Sync yebyen after #186 merges**: `git fetch https://github.com/kingdonb/mecris.git main && git merge FETCH_HEAD --no-edit` (only after #186 is merged upstream).
+- [ ] **Sync yebyen after next kingdonb merge**: `git fetch https://github.com/kingdonb/mecris.git main && git merge FETCH_HEAD --no-edit`.
 - [ ] **Confirm Akamai cron jobs firing**: Check Akamai logs for `trigger-reminders`, `failover-sync-edt`, `failover-sync-est` executions.
 - [ ] **Run 004_user_location.sql against live Neon**: `psql $NEON_DB_URL -f scripts/migrations/004_user_location.sql`.
 - [ ] **Run 005_autonomous_sync_consent.sql against live Neon**: `psql $NEON_DB_URL -f scripts/migrations/005_autonomous_sync_consent.sql`. Adds `autonomous_sync_enabled` and `last_autonomous_sync` columns to `users` table.
@@ -29,7 +29,8 @@
 ## Infrastructure Notes
 - **Akamai Functions (Trial)**: Persistent cron triggers for reminders and failover syncing.
   - `/internal/failover-sync` (POST): Now uses `handle_failover_sync_post()` — per-user consent flag + `last_autonomous_sync` tracking. Guarded by `internal_api_key` Spin variable (backwards compat: no key = allow all).
-  - `/internal/trigger-reminders` (POST): Sends reminders only to users with `autonomous_sync_enabled = true`. Guarded by same key.
+  - `/internal/trigger-reminders` (POST): Sends reminders only to users with `autonomous_sync_enabled = true`. Guarded by same key. Android now also calls this as best-effort pulse when MCP is dark.
+- **triggerReminders design**: `SyncServiceApi.triggerReminders()` sends no auth header — Rust endpoint is gated by `X-Internal-Api-Key` only; with key unset (current), all callers are allowed. When key is set in Fermyon Cloud, only Akamai cron will have the key; Android pulse will gracefully fail with 401 (caught + logged).
 - **New migration**: `005_autonomous_sync_consent.sql` — adds `autonomous_sync_enabled BOOLEAN DEFAULT false` and `last_autonomous_sync TIMESTAMPTZ` to `users` table. Must run before live consent flag is effective.
 - **Rust 99 tests**: 95 original + 4 new `is_autonomous_sync_allowed` tests. `internal_api_key_ok` tests also present (5 tests).
 - Spin Cron trigger is **DISABLED** in `spin.toml` — do not re-enable.
