@@ -1408,3 +1408,30 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: pr-test dispatch — push must land on GitHub before test run can be triggered (next session constraint).
 
 **Next**: Dispatch pr-test for PR #184 to confirm Python ≥461 ✅, then await kingdonb merge.
+
+## 2026-04-16 🏛️ — pr-test PR #184: 461 Python ✅, E2E fix committed — yebyen/mecris#196
+
+**Planned**: yebyen/mecris#196 — Dispatch pr-test for kingdonb/mecris#184 and verify Python ≥461.
+
+**Done**: Confirmed PR #184 merged at `dbdf626`. Dispatched pr-test (run 24492032488) — Python **461 passed** ✅ (446+15 VirtualBudgetManager), Rust **91** ✅, Android ✅. Discovered pre-existing E2E test failure: `test_akamai_failover_sync_side_effect` queries local postgres for Akamai side-effect that was written to live Neon — always fails in CI. Fixed in `ed33d27` by adding localhost skip guard in `get_last_updated()`. Closed yebyen/mecris#195.
+
+**Skipped**: Verifying the E2E fix via pr-test — push must land on GitHub first (next-session constraint).
+
+**Next**: Open new PR yebyen:main → kingdonb:main with `ed33d27`. Dispatch pr-test to confirm 0 failed, ≥461 passed (expected: 461 passed, 5 skipped).
+
+## 2026-04-16 — PR #186 opened; pr-test 461 passed, 0 failed
+
+**Planned**: Open PR from yebyen:main → kingdonb:main with Akamai E2E skip fix (`ed33d27`), dispatch pr-test, confirm 0 failures (plan: yebyen/mecris#197).
+**Done**: PR kingdonb/mecris#186 opened. pr-test run 24509446714 completed — Python 461 passed, 5 skipped, 0 failed ✅. Android ✅. Rust 91 ✅. Down from 1 failed before fix.
+**Skipped**: Nothing — plan executed in full.
+**Next**: Confirm kingdonb merges #186; sync yebyen:main from upstream after merge.
+
+## 2026-04-16 🏛️ — Security hardening: API key guard for /internal/* endpoints — yebyen/mecris#198
+
+**Planned**: yebyen/mecris#198 — Add `X-Internal-Api-Key` header check to `/internal/failover-sync` and `/internal/trigger-reminders`; unit tests cover 401-rejection and 200-pass paths; Rust total ≥95.
+
+**Done**: Oriented — kingdonb/mecris#186 still open, yebyen 3 commits ahead, no tagged issues. Created plan yebyen/mecris#198. Added `internal_api_key_ok(configured_key, req_header)` pure helper to `mecris-go-spin/sync-service/src/lib.rs`. Guarded both `/internal/failover-sync` (updated comment) and `/internal/trigger-reminders` in the router. 4 new unit tests (no-key-configured, correct-key, wrong-key, missing-header). **Rust: 95 tests pass, 0 failed** (up from 91). Committed at `16e8cb7`. Closed yebyen/mecris#198.
+
+**Skipped**: pr-test dispatch — `16e8cb7` lands on GitHub after bot workflow ends; confirm 95 Rust + 461 Python next session. Setting `internal_api_key` in Fermyon Cloud — requires manual operator step (out of bot scope).
+
+**Next**: Open PR yebyen:main → kingdonb:main with `16e8cb7`; dispatch pr-test to confirm 95 Rust ✅ + 461 Python ✅. Then configure `internal_api_key` in Fermyon Cloud + Akamai cron headers to activate the guard.

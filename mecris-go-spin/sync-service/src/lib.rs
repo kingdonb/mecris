@@ -192,11 +192,21 @@ async fn handle_sync_service(req: Request) -> anyhow::Result<impl IntoResponse> 
         if req.method() != &spin_sdk::http::Method::Post {
             return Ok(Response::builder().status(405).body("Method Not Allowed").build());
         }
+        let configured_key = variables::get("internal_api_key").unwrap_or_default();
+        let provided_key = req.header("x-internal-api-key").and_then(|v| v.as_str());
+        if !internal_api_key_ok(&configured_key, provided_key) {
+            return Ok(Response::builder().status(401).body("Unauthorized").build());
+        }
         return handle_trigger_reminders_post(req).await;
     } else if path == "/internal/failover-sync" {
-        // This is the unauthenticated sync trigger for use with cron.
+        // Cron sync trigger — optional API key guard (set `internal_api_key` Spin variable to enforce).
         if req.method() != &spin_sdk::http::Method::Post {
             return Ok(Response::builder().status(405).body("Method Not Allowed").build());
+        }
+        let configured_key = variables::get("internal_api_key").unwrap_or_default();
+        let provided_key = req.header("x-internal-api-key").and_then(|v| v.as_str());
+        if !internal_api_key_ok(&configured_key, provided_key) {
+            return Ok(Response::builder().status(401).body("Unauthorized").build());
         }
         return handle_failover_sync_post(req).await;
     } else if path == "/internal/twilio-webhook" {
@@ -1674,6 +1684,19 @@ fn phones_match(a: &str, b: &str) -> bool {
     !a.is_empty() && !b.is_empty() && normalize_phone(a) == normalize_phone(b)
 }
 
+/// Returns true if the request is authorized to call an `/internal/*` endpoint.
+///
+/// If `configured_key` is empty (the `internal_api_key` Spin variable is unset), all requests
+/// are allowed — backwards compatible for deployments without a key configured.
+/// If `configured_key` is non-empty, the caller must supply a matching `X-Internal-Api-Key`
+/// header value; any mismatch or absent header is rejected.
+fn internal_api_key_ok(configured_key: &str, req_header: Option<&str>) -> bool {
+    if configured_key.is_empty() {
+        return true;
+    }
+    req_header.map_or(false, |v| v == configured_key)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2281,5 +2304,29 @@ mod tests {
     #[test]
     fn test_phones_match_both_empty_is_false() {
         assert!(!phones_match("", ""));
+    }
+
+    // --- internal_api_key_ok ---
+
+    #[test]
+    fn test_internal_api_key_no_key_configured_allows_all() {
+        // If no key is configured (empty string), any caller is allowed — backwards compatible.
+        assert!(internal_api_key_ok("", None));
+        assert!(internal_api_key_ok("", Some("anything")));
+    }
+
+    #[test]
+    fn test_internal_api_key_correct_key_allows() {
+        assert!(internal_api_key_ok("supersecret", Some("supersecret")));
+    }
+
+    #[test]
+    fn test_internal_api_key_wrong_key_blocks() {
+        assert!(!internal_api_key_ok("supersecret", Some("wrongkey")));
+    }
+
+    #[test]
+    fn test_internal_api_key_missing_header_blocks() {
+        assert!(!internal_api_key_ok("supersecret", None));
     }
 }

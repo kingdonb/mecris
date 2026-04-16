@@ -60,6 +60,7 @@ twilio_from_number = "{{ twilio_from_number }}"
 openweather_api_key = "{{ openweather_api_key }}"
 openweather_lat = "{{ openweather_lat }}"
 openweather_lon = "{{ openweather_lon }}"
+cron_secret = "{{ cron_secret }}"
 [component.sync-service.build]
 command = "cargo build --target wasm32-wasip1 --release"
 watch = ["src/**/*.rs", "Cargo.toml"]
