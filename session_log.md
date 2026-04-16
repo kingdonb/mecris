@@ -1435,3 +1435,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: pr-test dispatch — `16e8cb7` lands on GitHub after bot workflow ends; confirm 95 Rust + 461 Python next session. Setting `internal_api_key` in Fermyon Cloud — requires manual operator step (out of bot scope).
 
 **Next**: Open PR yebyen:main → kingdonb:main with `16e8cb7`; dispatch pr-test to confirm 95 Rust ✅ + 461 Python ✅. Then configure `internal_api_key` in Fermyon Cloud + Akamai cron headers to activate the guard.
+
+## 2026-04-16 🏛️ — Upstream sync: merged kingdonb #185 consent flag into yebyen:main — yebyen/mecris#199
+
+**Planned**: yebyen/mecris#199 — Merge 5 commits from kingdonb/mecris (PR #185 autonomous consent flag) into yebyen:main, resolving divergence; then open security hardening PR for `16e8cb7`.
+
+**Done**: Oriented — found 5-commit bilateral divergence: kingdonb merged #185 (consent flag) while our PR #186 remained open on stale base. Ran `git merge FETCH_HEAD --no-edit`; resolved conflict in `lib.rs` by keeping BOTH features (API key guard from our `16e8cb7` + `handle_failover_sync_post()` with per-user consent flag from kingdonb #185). Also gained `is_autonomous_sync_allowed()`, 4 new unit tests, and `005_autonomous_sync_consent.sql`. Rust test count: 95 → 99. Committed merge as `4d6e9d6`. yebyen:main now 6 ahead / 0 behind kingdonb:main.
+
+**Skipped**: pr-test dispatch — push constraint (must wait for CI to push `4d6e9d6` to GitHub). Security-only PR — deemed unnecessary since PR #186 already covers the additions cleanly.
+
+**Next**: Dispatch pr-test for kingdonb/mecris#186 (expect 461 Python + 99 Rust). Run `005_autonomous_sync_consent.sql` against live Neon to activate consent flag in prod.
