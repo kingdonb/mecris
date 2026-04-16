@@ -1422,6 +1422,15 @@ fn is_rate_limit_ok(minutes_since_last: Option<u64>) -> bool {
     }
 }
 
+/// Returns true if autonomous sync is enabled and debounce time (5 mins) has passed.
+fn is_autonomous_sync_allowed(enabled: bool, minutes_since_last: Option<u64>) -> bool {
+    if !enabled { return false; }
+    match minutes_since_last {
+        None => true,
+        Some(m) => m >= 5,
+    }
+}
+
 /// Combined heuristic: returns true only when all three conditions are satisfied.
 /// - Local hour is within the active reminder window (8 AM–8 PM)
 /// - Step count is below the 2000-step threshold
