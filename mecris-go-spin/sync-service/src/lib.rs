@@ -189,7 +189,7 @@ async fn handle_sync_service(req: Request) -> anyhow::Result<impl IntoResponse> 
         }
         return handle_aggregate_status_get(req).await;
     } else if path == "/internal/trigger-reminders" {
-        if req.method() != &spin_sdk::http::Method::Post {
+        if req.method() != &spin_sdk::http::Method::Post && req.method() != &spin_sdk::http::Method::Get {
             return Ok(Response::builder().status(405).body("Method Not Allowed").build());
         }
         let configured_key = variables::get("internal_api_key").unwrap_or_default();
@@ -200,7 +200,7 @@ async fn handle_sync_service(req: Request) -> anyhow::Result<impl IntoResponse> 
         return handle_trigger_reminders_post(req).await;
     } else if path == "/internal/failover-sync" {
         // Cron sync trigger — optional API key guard (set `internal_api_key` Spin variable to enforce).
-        if req.method() != &spin_sdk::http::Method::Post {
+        if req.method() != &spin_sdk::http::Method::Post && req.method() != &spin_sdk::http::Method::Get {
             return Ok(Response::builder().status(405).body("Method Not Allowed").build());
         }
         let configured_key = variables::get("internal_api_key").unwrap_or_default();
