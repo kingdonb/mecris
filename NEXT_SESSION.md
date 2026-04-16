@@ -1,24 +1,28 @@
-# Next Session: Await merge of kingdonb/mecris#187 (triggerReminders), then sync yebyen
+# Next Session: Dispatch pr-test for kingdonb/mecris#187 after push (now includes Profile Settings)
 
 ## Current Status (2026-04-16)
 - **PR #187 open on kingdonb/mecris**: `feat(android): triggerReminders pulse when MCP is dark` — yebyen:main → kingdonb:main. Awaiting kingdonb review/merge.
-- **pr-test run 24531480498**: ✅ success — Python 461 passed (5 skipped), Android BUILD SUCCESSFUL (24 tasks, all CooperativeWorkerTest pass), Rust 99 passed.
-- **yebyen:main is 3 commits ahead of kingdonb:main**: a26b53b (red), cc3336e (green), d8386af (archive). PR #187 carries all three.
-- **Rust test count**: 99 (95 + 4 `is_autonomous_sync_allowed` tests). Android unit tests include 2 new CooperativeWorkerTest cases.
+- **6 new commits on yebyen:main since PR opened**: 3 from last session (triggerReminders) + 3 new (ProfilePreferencesManager + ProfileSettingsScreen). All 6 will be in the PR after push.
+- **kingdonb/mecris main** still at `56dc719` — no new upstream commits.
+- **yebyen:main is 6 commits ahead of kingdonb:main**: a26b53b (red), cc3336e (green), d8386af (archive-prev), 4cdabbb (red ProfilePrefs), 9c905e0 (green ProfilePrefs), 3e24f83 (feat ProfileSettings).
+- **pr-test NOT YET dispatched for new commits**: last successful pr-test (run 24531480498) only covered triggerReminders, not ProfilePreferencesManager. New dispatch needed after push.
 
 ## Verified This Session
-- [x] **PR #187 opened**: kingdonb/mecris#187 `feat(android): triggerReminders pulse when MCP is dark`.
-- [x] **pr-test passed**: run 24531480498 — Python ✅, Android ✅, Rust ✅.
-- [x] **2 new CooperativeWorkerTest cases** confirmed passing in Android test suite.
-- [x] **Plan yebyen/mecris#201 complete**: closed.
+- [x] **kingdonb/mecris#180 Rust SQL ORDER BY**: already present in both repos at line 1242 of lib.rs — `ORDER BY start_time ASC`. Bug is fixed.
+- [x] **HealthConnectManager preferred_health_source**: already reads from SharedPreferences (line 158). The fix was dead code — no UI to set the value.
+- [x] **ProfilePreferencesManager.kt**: `mecris-go-project/app/src/main/java/com/mecris/go/profile/ProfilePreferencesManager.kt` — get/set for `preferred_health_source`, `phone_number`, `beeminder_user` from `mecris_app_prefs`.
+- [x] **ProfilePreferencesManagerTest**: 8 unit tests (MockK pattern), committed `4cdabbb`.
+- [x] **ProfileSettingsScreen composable**: OutlinedTextField for each pref, Save button, wired to Person icon in top bar, committed `3e24f83`.
+- [x] **Plan issues closed**: yebyen/mecris#202 (already-fixed Rust ORDER BY), yebyen/mecris#203 commented with progress.
 
 ## Pending Verification (Next Session)
+- [ ] **Dispatch pr-test for kingdonb/mecris#187** after workflow pushes yebyen:main. Expected: Python 461 passed (5 skipped), Rust 99 passed, Android BUILD SUCCESSFUL including 8 new `ProfilePreferencesManagerTest` cases + 2 CooperativeWorkerTest cases.
 - [ ] **kingdonb/mecris#187 merged?** Check if kingdonb has merged. If yes: sync yebyen with `git fetch https://github.com/kingdonb/mecris.git main && git merge FETCH_HEAD --no-edit`.
 - [ ] **Configure internal_api_key in Fermyon Cloud**: Set `internal_api_key = "<secret>"` in runtime-config; update Akamai cron `curl` calls with `X-Internal-Api-Key: <secret>`. This activates the guard. (Needs human with Fermyon access.)
-- [ ] **Run 005_autonomous_sync_consent.sql against live Neon**: `psql $NEON_DB_URL -f scripts/migrations/005_autonomous_sync_consent.sql`. Adds `autonomous_sync_enabled` and `last_autonomous_sync` columns to `users` table. (Needs human with NEON_DB_URL.)
+- [ ] **Run 005_autonomous_sync_consent.sql against live Neon**: `psql $NEON_DB_URL -f scripts/migrations/005_autonomous_sync_consent.sql`. (Needs human with NEON_DB_URL.)
 - [ ] **Confirm Akamai cron jobs firing**: Check Akamai logs for `trigger-reminders`, `failover-sync-edt`, `failover-sync-est` executions.
 - [ ] **Twilio webhook Phase 2 live E2E**: Requires Twilio variables in Fermyon Cloud.
-- [ ] **Multi-Tenancy — Android UI Gaps**: Add "log out" button, phone/location settings, preferred health source. Tracked in kingdonb/mecris#168.
+- [ ] **Multi-Tenancy — Android UI Gaps**: Add "log out" button, location/timezone settings. Tracked in kingdonb/mecris#168.
 - [ ] **Rust test gap (workflow fix)**: Apply fix from yebyen/mecris#142. Needs `workflow` PAT scope — must be applied by kingdonb.
 - [ ] **Multiplier Sync Validation**: Verify Android Review Pump lever updates `pump_multiplier` in Neon.
 
@@ -27,12 +31,14 @@
   - `/internal/failover-sync` (POST): Now uses `handle_failover_sync_post()` — per-user consent flag + `last_autonomous_sync` tracking. Guarded by `internal_api_key` Spin variable (backwards compat: no key = allow all).
   - `/internal/trigger-reminders` (POST): Sends reminders only to users with `autonomous_sync_enabled = true`. Guarded by same key. Android now also calls this as best-effort pulse when MCP is dark.
 - **triggerReminders design**: `SyncServiceApi.triggerReminders()` sends no auth header — Rust endpoint is gated by `X-Internal-Api-Key` only; with key unset (current), all callers are allowed. When key is set in Fermyon Cloud, only Akamai cron will have the key; Android pulse will gracefully fail with 401 (caught + logged).
+- **ProfilePreferencesManager**: Reads/writes `mecris_app_prefs` SharedPreferences. Keys: `preferred_health_source`, `phone_number`, `beeminder_user`. Same SharedPreferences name as `HealthConnectManager` so both see the same value.
+- **preferred_health_source flow**: User sets it in ProfileSettingsScreen → SharedPreferences → HealthConnectManager reads it on next `fetchRecentWalkData()` → AggregateRequest with `dataOriginFilter` set to that package name.
 - **New migration**: `005_autonomous_sync_consent.sql` — adds `autonomous_sync_enabled BOOLEAN DEFAULT false` and `last_autonomous_sync TIMESTAMPTZ` to `users` table. Must run before live consent flag is effective.
 - **Rust 99 tests**: 95 original + 4 new `is_autonomous_sync_allowed` tests. `internal_api_key_ok` tests also present (5 tests).
 - Spin Cron trigger is **DISABLED** in `spin.toml` — do not re-enable.
 - `MECRIS_MODE=standalone` bypasses JWKS for local dev; `MECRIS_MODE=cloud` enforces RSA verification.
 - `MASTER_ENCRYPTION_KEY` must be a 64-char hex string (32-byte AES-256 key).
-- **Classic PAT scope**: `GITHUB_CLASSIC_PAT` has `repo` scope ONLY — no `workflow` scope.
+- **Classic PAT scope**: `GITHUB_CLASSIC_PAT` has `repo` scope ONLY — no `workflow` scope, no `read:org` (can't use `gh pr edit`).
 - **Fine-grained PAT**: `GITHUB_TOKEN` scoped to yebyen/mecris only. Cannot create PRs on kingdonb/mecris — use `gh pr create` with `GITHUB_CLASSIC_PAT`.
 - **NEXT_SESSION.md merge conflict is permanently fixed**: `.gitattributes merge=union` on yebyen/mecris:main.
 - **Python venv not present in bot runner**: Validate Python tests via pr-test workflow only.

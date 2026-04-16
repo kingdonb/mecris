@@ -1465,3 +1465,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: Nothing — plan fully executed.
 
 **Next**: Check if kingdonb merged PR #187; sync yebyen if so. Configure internal_api_key in Fermyon Cloud + run 005_autonomous_sync_consent.sql against Neon (human actions required).
+
+## 2026-04-16 🏛️ — Profile Settings screen + #180 investigation — yebyen/mecris#203
+
+**Planned**: yebyen/mecris#202 (closed immediately) — Fix non-deterministic Rust DB query `ORDER BY`; discovered already fixed in both repos. yebyen/mecris#203 — Android Profile Settings screen to make `preferred_health_source` settable.
+
+**Done**: Oriented — PR #187 still open (kingdonb/mecris main unchanged). Investigated kingdonb/mecris#180: Rust SQL `ORDER BY start_time ASC` already present at lib.rs line 1242; Android `preferred_health_source` source-filter already coded in HealthConnectManager.kt line 158 but was dead code (no UI). Created ProfilePreferencesManager.kt (get/set for preferred_health_source, phone_number, beeminder_user via mecris_app_prefs SharedPrefs). Added 8-test ProfilePreferencesManagerTest (MockK pattern). Added ProfileSettingsScreen composable + Person icon nav toggle to MecrisDashboard. Three commits: 4cdabbb (red), 9c905e0 (green), 3e24f83 (feat).
+
+**Skipped**: pr-test dispatch — push constraint. Can't comment on kingdonb/mecris#180 (token scope). Can't `gh pr edit` #187 (CLASSIC_PAT lacks read:org). PR #187 will auto-include all 6 yebyen:main commits on push.
+
+**Next**: Dispatch pr-test for kingdonb/mecris#187 after push — expect Python 461, Rust 99, Android BUILD_SUCCESSFUL + 8 new ProfilePreferencesManagerTest + 2 CooperativeWorkerTest.
