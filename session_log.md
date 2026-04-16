@@ -1373,3 +1373,38 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: Full pr-test count verification for `a566629` — push constraint means new tests not on GitHub until bot workflow ends. Count verification deferred to next session.
 
 **Next**: Dispatch pr-test for PR #182 after `a566629` lands, confirm Python count rises to ≥437. Await kingdonb merge of PR #182.
+
+## 2026-04-15 🏛️ — Verify 437 Python baseline, fix Rust compile error, add 9 more handler tests
+
+**Planned**: Dispatch pr-test for PR #182 to confirm 437 Python; add more Python test coverage (plan: yebyen/mecris#193).
+
+**Done**: 
+- pr-test dispatched (run 24475982299): **Python 437 ✅, Android ✅, Rust ❌**. Python baseline confirmed.
+- Rust compile error root-caused: kingdonb's `be513c92` added `/internal/failover-sync` route with bare `match` (missing `return`). Type error: expected `()`, found `Result<Response, _>`.
+- Synced local to `94f2c54` (kingdonb had pushed 3 commits to yebyen:main directly).
+- Fix committed at `f5a4b09`: added `return` before `match` in failover-sync branch. 91 Rust tests pass locally.
+- 9 new Python tests committed at `f568c15`: `get_recent_usage` (2), `get_weather_full_report` (1), `add_goal` (2), `update_budget` (2), `complete_goal` (2). All follow auth-guard + delegation pattern. Expected count: 446.
+
+**Skipped**: pr-test re-run to confirm Rust fix and 446 Python — push constraint (fixes land on GitHub after bot workflow ends). Next session must run pr-test.
+
+**Next**: Dispatch pr-test for PR #182 / yebyen:main HEAD; confirm Rust ✅ and Python ≥446. Then await kingdonb merge of PR #182.
+
+## 2026-04-15 🏛️ — Verify Rust fix + 446 Python baseline via pr-test (#184)
+
+**Planned**: yebyen/mecris#194 — Create PR yebyen:main → kingdonb:main (3 commits ahead), dispatch pr-test, confirm Rust 91 ✅ and Python 446 ✅.
+
+**Done**: Oriented — confirmed PR #182 merged at `1aabc8f5`; yebyen 3 commits ahead of kingdonb. Created plan yebyen/mecris#194. Opened PR kingdonb/mecris#184 (Rust fix `f5a4b09` + 9 Python tests `f568c15` + archive `993c4b3`). Dispatched pr-test (run 24480880265) — Python **446 ✅**, Rust **91 ✅**, Android ✅. All validation criteria met.
+
+**Skipped**: Nothing — single focused verification task, fully completed.
+
+**Next**: Await kingdonb review/merge of PR #184. If merged, yebyen/mecris will be in sync. Consider Akamai E2E verification or security hardening of `/internal/*` endpoints as next coding task.
+
+## 2026-04-16 🏛️ — VirtualBudgetManager unit tests (15) — yebyen/mecris#195
+
+**Planned**: Add `tests/test_virtual_budget_manager.py` covering pure `calculate_cost` math and no-DB early-return paths; raise Python baseline from 446 to ≥455.
+
+**Done**: 15 tests written and committed at `10b427a` — exceeded target (446+15=461). Covers `Provider` enum (2), `calculate_cost` for known models and fallbacks (7), `can_afford`/`get_budget_status`/`get_usage_summary`/`reset_daily_budget` no-DB paths (4), `record_usage` no-afford + emergency_override paths (2). Patch pattern: `virtual_budget_manager.credentials_manager.resolve_user_id` + omit `NEON_DB_URL`.
+
+**Skipped**: pr-test dispatch — push must land on GitHub before test run can be triggered (next session constraint).
+
+**Next**: Dispatch pr-test for PR #184 to confirm Python ≥461 ✅, then await kingdonb merge.
