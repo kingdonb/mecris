@@ -1408,3 +1408,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: pr-test dispatch — push must land on GitHub before test run can be triggered (next session constraint).
 
 **Next**: Dispatch pr-test for PR #184 to confirm Python ≥461 ✅, then await kingdonb merge.
+
+## 2026-04-16 🏛️ — pr-test PR #184: 461 Python ✅, E2E fix committed — yebyen/mecris#196
+
+**Planned**: yebyen/mecris#196 — Dispatch pr-test for kingdonb/mecris#184 and verify Python ≥461.
+
+**Done**: Confirmed PR #184 merged at `dbdf626`. Dispatched pr-test (run 24492032488) — Python **461 passed** ✅ (446+15 VirtualBudgetManager), Rust **91** ✅, Android ✅. Discovered pre-existing E2E test failure: `test_akamai_failover_sync_side_effect` queries local postgres for Akamai side-effect that was written to live Neon — always fails in CI. Fixed in `ed33d27` by adding localhost skip guard in `get_last_updated()`. Closed yebyen/mecris#195.
+
+**Skipped**: Verifying the E2E fix via pr-test — push must land on GitHub first (next-session constraint).
+
+**Next**: Open new PR yebyen:main → kingdonb:main with `ed33d27`. Dispatch pr-test to confirm 0 failed, ≥461 passed (expected: 461 passed, 5 skipped).
