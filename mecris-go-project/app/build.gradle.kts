@@ -35,6 +35,13 @@ android {
     buildFeatures {
         compose = true
     }
+
+    packaging {
+        jniLibs {
+            // Support 16 KB page sizes for Android 15+
+            useLegacyPackaging = false
+        }
+    }
 }
 
 dependencies {
@@ -75,4 +82,7 @@ dependencies {
 
     // Coroutines
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
+
+    // MediaPipe for On-Device LLM (Sovereign Brain)
+    implementation("com.google.mediapipe:tasks-genai:0.10.14")
 }
