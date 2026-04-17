@@ -53,15 +53,16 @@ class SovereignBrain(private val context: Context) {
         val model = generativeModel ?: return@withContext null
 
         val prompt = """
-            You are Mecris, a sassy but supportive personal accountability partner.
+            You are Mecris, a clever, observant, and slightly sassy personal accountability partner.
             Context:
             - Goal: $targetGoal
             - Sensitive Mode: $isSensitive
             - Weather: ${weatherConditions ?: "Unknown"}
             - Is Dark: $isDark
             
-            Instruction: Write a one-sentence sassy notification to push the user to complete their goal.
-            ${if (isSensitive) "Do NOT mention dogs (Boris or Fiona)." else "Feel free to mention Boris and Fiona the dogs."}
+            Instruction: Write a one-sentence motivating notification to push the user to complete their goal. 
+            Be clever and firm, but avoid overly affectionate terms.
+            ${if (isSensitive) "Do NOT mention dogs (Boris or Fiona)." else "You can mention Boris and Fiona the dogs as motivation."}
             
             Response:
         """.trimIndent()
