@@ -41,7 +41,9 @@ class DelayedNagWorker(
                     val status = statusResponse.body()
                     if (status != null) {
                         // 2. PIVOT: Decide what to nag about based on fresh data
-                        val result = evaluateNagHierarchy(status, token)
+                        val healthManager = HealthConnectManager(applicationContext)
+                        val summary = if (healthManager.hasForegroundPermissions()) healthManager.fetchRecentWalkData() else null
+                        val result = evaluateNagHierarchy(status, token, summary)
                         if (result != null) {
                             val (title, message, prefKey, packageName, llmMessage) = result
                             
@@ -66,7 +68,10 @@ class DelayedNagWorker(
                 if (healthManager.hasForegroundPermissions()) {
                     val summary = healthManager.fetchRecentWalkData()
                     if (summary.totalSteps < 2000) {
-                        nagManager.showNag("BORIS & FIONA 🐕", "Time for a walk? Your steps are low today.", "com.google.android.apps.fitness")
+                        val hasPartialWalk = summary.walkingSessionsCount > 0 || summary.totalDistanceMeters > 0.0
+                        val fallbackTitle = if (hasPartialWalk) "MAJESTY CAKE 🍰" else "BORIS & FIONA \uD83D\uDC15"
+                        val fallbackMsg = if (hasPartialWalk) "You logged a walk, but the Majesty Cake requires 2000 steps! Go get that cake. 🍰" else "Time for a walk? Your steps are low today."
+                        nagManager.showNag(fallbackTitle, fallbackMsg, "com.google.android.apps.fitness")
                     }
                 }
             }
@@ -79,7 +84,8 @@ class DelayedNagWorker(
 
     private suspend fun evaluateNagHierarchy(
         status: com.mecris.go.sync.AggregateStatusResponseDto,
-        token: String
+        token: String,
+        walkSummary: WalkDataSummary?
     ): NagResult? {
         val now = Instant.now()
         val localDateTime = java.time.LocalDateTime.now()
@@ -105,22 +111,27 @@ class DelayedNagWorker(
             )
         }
 
-        // 2. WALK (Priority 2: Physical Wellbeing)
+        // 2. WALK / MAJESTY CAKE (Priority 2: Physical Wellbeing)
         if (!status.components.walk && localHour >= 8) {
+            val hasPartialWalk = walkSummary != null && (walkSummary.walkingSessionsCount > 0 || walkSummary.totalDistanceMeters > 0.0) && walkSummary.totalSteps < 2000
+            val goalName = if (hasPartialWalk) "MAJESTY CAKE" else "WALK"
+            val fallbackTitle = if (hasPartialWalk) "MAJESTY CAKE 🍰" else "PHYSICAL GOAL"
+            val fallbackMsgSensitive = if (hasPartialWalk) "You logged a walk, but the Majesty Cake requires 2000 steps! Go get that cake. 🍰" else "Time for a walk? Your physical goal is waiting. 🚶"
+            val fallbackMsgNormal = if (hasPartialWalk) "You logged a walk, but the Majesty Cake requires 2000 steps! Go get that cake. 🍰" else "Boris and Fiona are ready! 🐕 Time for a walk."
+            
             val weather = fetchWeatherOracle()
             if (weather != null) {
                 if (!weather.is_dark && weather.is_walk_appropriate) {
-                    val llmNag = brain.generateNarrativeDirective("WALK", isSensitive, weather.conditions, weather.is_dark)
-                    val msg = if (isSensitive) "Time for a walk? Your physical goal is waiting. 🚶" 
-                              else "Boris and Fiona are ready! 🐕 Time for a walk."
-                    return NagResult("PHYSICAL GOAL", msg, "last_walk_nag_timestamp", "com.google.android.apps.fitness", llmNag)
+                    val llmNag = brain.generateNarrativeDirective(goalName, isSensitive, weather.conditions, weather.is_dark)
+                    val msg = if (isSensitive) fallbackMsgSensitive else fallbackMsgNormal
+                    return NagResult(fallbackTitle, msg, "last_walk_nag_timestamp", "com.google.android.apps.fitness", llmNag)
                 }
                 if (weather.is_dark) {
-                    Log.d("DelayedNagWorker", "It is dark. Giving up on walk, checking next priority.")
+                    Log.d("DelayedNagWorker", "It is dark. Giving up on walk/cake, checking next priority.")
                 }
             } else {
                 if (localHour < 18) {
-                    return NagResult("BORIS & FIONA 🐕", "Time for a walk?", "last_walk_nag_timestamp", "com.google.android.apps.fitness")
+                    return NagResult(fallbackTitle, if (isSensitive) fallbackMsgSensitive else fallbackMsgNormal, "last_walk_nag_timestamp", "com.google.android.apps.fitness")
                 }
             }
         }

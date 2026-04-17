@@ -1595,3 +1595,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: Modifying the Android or Cloud worker cooldowns to share state. Currently, they operate on independent 4-hour cooldowns.
 
 **Next**: Gather feedback on the AICore stability and ensure Beeminder distance tracking remains accurate with the new delta logic.
+
+## 2026-04-17 🍰 — Majesty Cake Awareness & Backlog Management
+
+**Planned**: Create a backlog issue for the Android vs Cloud 'Ghost Nag' cooldown misalignment. Distinguish between 'No steps taken' and 'Walk logged but under 2000 steps' in the Android notification logic.
+
+**Done**:
+- **Backlog Tracked**: Created Issue #191 (Synchronize Android and Cloud Notification Cooldowns) to address the 'Ghost Nags' caused by independent 4-hour trackers.
+- **Majesty Cake Logic**: Updated `DelayedNagWorker` to recognize a 'partial walk' (`walkingSessionsCount > 0` or `totalDistanceMeters > 0.0`). If a walk was formally logged but falls short of the 2000-step Majesty Cake requirement, the app suppresses the standard 'Time for a walk' message and explicitly pivots the target to 'MAJESTY CAKE', providing a custom fallback prompt ('Go get that cake. 🍰'). This passes the appropriate context to the LLM (or fallback) so it acknowledges the effort rather than acting blind to it.
+
+**Next**: Gather ongoing feedback on the LLM notification flavor now that it possesses deeper situational awareness.
