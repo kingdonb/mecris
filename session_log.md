@@ -1531,3 +1531,23 @@ This document summarizes the collaborative debugging session to establish a func
 - All code pushed to `origin/main` and `yebyen/main`.
 
 **Next**: Monitor the fuzzy notification triggers in the wild. Consider expanding the Sovereign Lab with more diagnostic tools or specialized narrative "moods."
+
+## 2026-04-17 🏛️ (2nd run) — Fix SovereignBrain LLM fallback text (moussaka-in-morning root cause)
+
+**Planned**: yebyen/mecris#205 — Fix `SovereignBrain.generateWithContext()` fallback text to be goal-specific, so Arabic nags get an Arabic fallback and Greek nags get the moussaka fallback.
+
+**Done**: Oriented — yebyen/mecris in sync with kingdonb/mecris (0/0), #204 (log out) and kingdonb/mecris#168 (Phase 4) both closed. Root cause of "moussaka in the morning" identified: `SovereignBrain.kt:72` used Greek-themed fallback text for ALL goals when Gemini Nano inference fails. TDG cycle: (1) red: `SovereignBrainFallbackTest` (4 cases — Arabic/Walk/unknown must not contain moussaka, Greek must contain it, commit `ee2126e`); (2) green: `companion object { fun goalSpecificFallback(targetGoal) }` with `when` expression per goal, line 81 updated to call it (commit `59c1bc5`). Secondary bug noted: `DelayedNagWorker.kt:135` message always says "cards come first" even when Arabic is cleared — harmless, logged for future session.
+
+**Skipped**: PR to kingdonb/mecris — blocked by push constraint (workflow pushes at session end). CI validation via pr-test deferred to next session.
+
+**Next**: After workflow pushes: open PR to kingdonb/mecris for SovereignBrain fix + log out button, then dispatch pr-test. Validate `SovereignBrainFallbackTest` (4 cases) passes in CI.
+
+## 2026-04-17 — Open PR #189, run pr-test, fix ProfilePreferencesManager apply() regression
+
+**Planned**: Open PR yebyen:main → kingdonb:main for SovereignBrain fallback fix + log out button; dispatch pr-test and validate all tests pass (yebyen/mecris#206).
+
+**Done**: PR kingdonb/mecris#189 opened. pr-test run #24564190870 completed — Python ✅ (461 passed, 5 skipped), Rust ✅ (102 passed), Android ❌ (5 failed). Root cause found: `5946d4e` changed `Editor.apply()` → `Editor.commit()` in ProfilePreferencesManager.kt breaking 4 pre-existing tests. Fixed in commit `57acd70` (green: restore apply(), explicit editor variable avoids Kotlin naming collision). Fix is local; workflow will push at session end.
+
+**Skipped**: pr-test re-validation of the Android fix — fix not pushed until session end, so re-run deferred to next session.
+
+**Next**: Dispatch pr-test against kingdonb/mecris#189 after workflow pushes 57acd70. Expected: Python 461, Rust 102, Android 24/0 failed (including SovereignBrainFallbackTest 4 cases).
