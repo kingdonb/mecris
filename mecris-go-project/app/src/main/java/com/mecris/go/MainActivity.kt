@@ -1662,7 +1662,8 @@ fun ProfileSettingsScreen(
                 value = phoneNumber,
                 onValueChange = { 
                     phoneNumber = it
-                    isPhoneVerified = false // Reset verified status if number changed
+                    isPhoneVerified = false 
+                    manager.setPhoneNumber(it) // AUTO-SAVE
                 },
                 label = { Text("Phone Number (E.164)") },
                 placeholder = { Text("+15551234567") },
@@ -1762,7 +1763,10 @@ fun ProfileSettingsScreen(
         Spacer(modifier = Modifier.height(8.dp))
         OutlinedTextField(
             value = beeminderUser,
-            onValueChange = { beeminderUser = it },
+            onValueChange = { 
+                beeminderUser = it 
+                manager.setBeeminderUser(it) // AUTO-SAVE
+            },
             label = { Text("Beeminder Username") },
             modifier = Modifier.fillMaxWidth(),
             singleLine = true
@@ -1773,14 +1777,20 @@ fun ProfileSettingsScreen(
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp)) {
             OutlinedTextField(
                 value = latitude,
-                onValueChange = { latitude = it },
+                onValueChange = { 
+                    latitude = it 
+                    manager.setLatitude(it) // AUTO-SAVE
+                },
                 label = { Text("Lat") },
                 modifier = Modifier.weight(1f),
                 singleLine = true
             )
             OutlinedTextField(
                 value = longitude,
-                onValueChange = { longitude = it },
+                onValueChange = { 
+                    longitude = it 
+                    manager.setLongitude(it) // AUTO-SAVE
+                },
                 label = { Text("Lon") },
                 modifier = Modifier.weight(1f),
                 singleLine = true
