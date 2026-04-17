@@ -1,4 +1,4 @@
-.PHONY: test test-python test-rust test-all
+.PHONY: test test-python test-rust test-all deploy-fermyon deploy-akamai deploy-all
 
 test: test-python test-rust
 	@echo "✅ All tests complete"
@@ -14,3 +14,14 @@ test-rust:
 	cd mecris-go-spin/sync-service && cargo test
 
 test-all: test
+
+deploy-fermyon:
+	@echo "☁️ Deploying to Fermyon Cloud..."
+	cd mecris-go-spin/sync-service && spin deploy
+
+deploy-akamai:
+	@echo "☁️ Deploying to Akamai Functions..."
+	cd mecris-go-spin/sync-service && spin aka deploy --build --no-confirm
+
+deploy-all: deploy-fermyon deploy-akamai
+	@echo "✅ Deployment to both clouds complete"
