@@ -24,6 +24,7 @@ openweather_api_key = { required = false, default = "" }
 openweather_lat = { required = false, default = "" }
 openweather_lon = { required = false, default = "" }
 internal_api_key = { required = false, default = "" }
+twilio_whatsapp_template_sid = { required = false, default = "" }
 
 [[trigger.http]]
 route = "/internal/review-pump-status"
@@ -62,6 +63,7 @@ openweather_api_key = "{{ openweather_api_key }}"
 openweather_lat = "{{ openweather_lat }}"
 openweather_lon = "{{ openweather_lon }}"
 internal_api_key = "{{ internal_api_key }}"
+twilio_whatsapp_template_sid = "{{ twilio_whatsapp_template_sid }}"
 [component.sync-service.build]
 command = "cargo build --target wasm32-wasip1 --release"
 watch = ["src/**/*.rs", "Cargo.toml"]

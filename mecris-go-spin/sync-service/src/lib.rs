@@ -1164,8 +1164,19 @@ async fn send_walk_reminder(
     account_sid: &str,
     auth_token: &str,
     from_number: &str,
+    content_sid: Option<&str>,
+    content_variables: Option<&str>,
 ) -> anyhow::Result<()> {
-    let (url, body, auth) = build_sms_request_parts(account_sid, auth_token, from_number, phone, message);
+    let (url, mut body, auth) = build_sms_request_parts(account_sid, auth_token, from_number, phone, message);
+    
+    // If a template SID is provided, append it to the body along with variables.
+    if let Some(sid) = content_sid {
+        body = format!("{}&ContentSid={}", body, urlencoding::encode(sid));
+        if let Some(vars) = content_variables {
+            body = format!("{}&ContentVariables={}", body, urlencoding::encode(vars));
+        }
+    }
+
     let req = Request::post(url, body)
         .header("content-type", "application/x-www-form-urlencoded")
         .header("Authorization", auth)
@@ -1326,7 +1337,28 @@ async fn handle_trigger_reminders_post(_req: Request) -> anyhow::Result<Response
         match decrypt_token(&phone_enc).await {
             Ok(phone) => {
                 let message = "Time for a walk with Boris and Fiona! 🐕 Check your daily goal.";
-                match send_walk_reminder(&phone, message, &account_sid, &auth_token, &from_number).await {
+                let template_sid = variables::get("twilio_whatsapp_template_sid").ok();
+                
+                // Map to mecris_status_v2: {{1}} is currently {{2}}. {{3}} is {{4}}. Review {{5}}.
+                let content_vars = template_sid.as_ref().map(|_| {
+                    serde_json::json!({
+                        "1": "Physical",
+                        "2": "PENDING",
+                        "3": "Steps",
+                        "4": "low",
+                        "5": "Daily"
+                    }).to_string()
+                });
+
+                match send_walk_reminder(
+                    &phone, 
+                    message, 
+                    &account_sid, 
+                    &auth_token, 
+                    &from_number,
+                    template_sid.as_deref(),
+                    content_vars.as_deref()
+                ).await {
                     Ok(_) => {
                         println!("Reminder sent to user {}", user_id);
                         let _ = connection.execute(
@@ -1452,7 +1484,28 @@ async fn handle_request_phone_verification_post(req: Request) -> anyhow::Result<
     let auth_token = decrypt_token(&auth_token_enc).await?;
 
     let message = format!("Mecris: Your verification code is {}. Enter this in settings to confirm your phone number.", code);
-    match send_walk_reminder(&verify_req.phone_number, &message, &account_sid, &auth_token, &from_number).await {
+    let template_sid = variables::get("twilio_whatsapp_template_sid").ok();
+
+    // Map to mecris_status_v2: {{1}} is currently {{2}}. {{3}} is {{4}}. Review {{5}}.
+    let content_vars = template_sid.as_ref().map(|_| {
+        serde_json::json!({
+            "1": "Identity",
+            "2": "PENDING",
+            "3": "Code",
+            "4": code,
+            "5": "Account"
+        }).to_string()
+    });
+
+    match send_walk_reminder(
+        &verify_req.phone_number, 
+        &message, 
+        &account_sid, 
+        &auth_token, 
+        &from_number,
+        template_sid.as_deref(),
+        content_vars.as_deref()
+    ).await {
         Ok(_) => {
             let resp = StatusResponse { status: "success".to_string(), message: "Verification code sent".to_string() };
             Ok(Response::builder().status(200).header("content-type", "application/json").body(serde_json::to_string(&resp).unwrap()).build())
