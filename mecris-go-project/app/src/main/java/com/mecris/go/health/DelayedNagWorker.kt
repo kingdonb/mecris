@@ -129,10 +129,10 @@ class DelayedNagWorker(
         if (!status.components.greek) {
             val isMoussakaHour = localHour >= 17 && (localHour < 22 || (localHour == 22 && localDateTime.minute <= 30))
             val arabicCleared = status.components.arabic
-            
+
             if (isMoussakaHour && (arabicCleared || localHour >= 20)) {
                 val llmNag = brain.generateNarrativeDirective("GREEK", isSensitive, null)
-                val msg = "The moussaka is waiting, but the cards come first. Spend a moment in Mykonos. 🇬🇷"
+                val msg = greekNagMessage(arabicCleared, isArabicHour = localHour < 20)
                 return NagResult("GREEK ISLAND TIME 🏝️", msg, "last_greek_nag_timestamp", "com.clozemaster.v2", llmNag)
             }
         }
@@ -150,10 +150,20 @@ class DelayedNagWorker(
     }
 
     data class NagResult(
-        val title: String, 
-        val message: String, 
-        val prefKey: String, 
+        val title: String,
+        val message: String,
+        val prefKey: String,
         val packageName: String? = null,
         val llmMessage: String? = null
     )
+
+    companion object {
+        fun greekNagMessage(arabicCleared: Boolean, isArabicHour: Boolean = true): String {
+            return if (arabicCleared || !isArabicHour) {
+                "The moussaka is waiting! Spend a moment in Mykonos. 🇬🇷"
+            } else {
+                "The moussaka is waiting, but the cards come first. Spend a moment in Mykonos. 🇬🇷"
+            }
+        }
+    }
 }
