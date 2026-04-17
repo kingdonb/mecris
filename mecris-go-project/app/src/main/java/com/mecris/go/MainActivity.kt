@@ -25,6 +25,7 @@ import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.foundation.text.KeyboardOptions
 import com.mecris.go.profile.ProfilePreferencesManager
@@ -515,7 +516,7 @@ fun MecrisDashboard(
                         }
                     }) {
                         Icon(
-                            imageVector = Icons.Default.Face, // Using Face as a Brain-ish proxy for now
+                            imageVector = Icons.Default.Star, 
                             contentDescription = "Sovereign Lab",
                             tint = if (showSovereignLab) Color(0xFF00E5FF) else Color.White
                         )
@@ -1763,7 +1764,7 @@ fun SovereignLabScreen(
             modifier = Modifier.fillMaxWidth()
         ) {
             Column(modifier = Modifier.padding(12.dp)) {
-                Text("Steps: ${walkData?.step_count ?: 0} / 2000", color = Color.White)
+                Text("Steps: ${walkData?.totalSteps ?: 0} / 2000", color = Color.White)
                 Text("Arabic: ${if (aggregateStatus?.components?.arabic == true) "✅ DONE" else "❌ DEBT"}", color = Color.White)
                 Text("Greek: ${if (aggregateStatus?.components?.greek == true) "✅ DONE" else "❌ DEBT"}", color = Color.White)
                 Text("Vacation Mode: ${aggregateStatus?.vacation_mode_until ?: "None"}", color = Color.White)

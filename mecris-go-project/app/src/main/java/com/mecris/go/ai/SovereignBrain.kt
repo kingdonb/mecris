@@ -29,7 +29,7 @@ class SovereignBrain(private val context: Context) {
         }
 
         val options = LlmInference.LlmInferenceOptions.builder()
-            .setModelAssetPath(MODEL_PATH)
+            .setModelPath(MODEL_PATH)
             .setMaxTokens(512)
             .setTopK(40)
             .setTemperature(0.7f)
