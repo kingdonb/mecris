@@ -1541,7 +1541,7 @@ async fn handle_confirm_phone_verification_post(req: Request) -> anyhow::Result<
     let connection = Connection::open(&db_url)?;
 
     // 1. Fetch verification record
-    let query = "SELECT code_hash, expires_at::TEXT, attempts FROM phone_verifications WHERE user_id = $1";
+    let query = "SELECT code_hash, EXTRACT(EPOCH FROM expires_at) as expires_at_epoch, attempts FROM phone_verifications WHERE user_id = $1";
     let rs = connection.query(query, &[ParameterValue::Str(user_id.clone())])?;
     if rs.rows.is_empty() {
         let resp = StatusResponse { status: "error".to_string(), message: "No verification request found".to_string() };
@@ -1549,7 +1549,11 @@ async fn handle_confirm_phone_verification_post(req: Request) -> anyhow::Result<
     }
 
     let stored_hash = match &rs.rows[0][0] { DbValue::Str(s) => s.clone(), _ => "".to_string() };
-    let expires_at_str = match &rs.rows[0][1] { DbValue::Str(s) => s.clone(), _ => "".to_string() };
+    let expires_at_epoch = match &rs.rows[0][1] { 
+        DbValue::Floating64(f) => *f as i64,
+        DbValue::Int64(i) => *i,
+        _ => 0 
+    };
     let attempts = match &rs.rows[0][2] { DbValue::Int32(i) => *i, _ => 0 };
 
     if attempts >= 5 {
@@ -1557,8 +1561,7 @@ async fn handle_confirm_phone_verification_post(req: Request) -> anyhow::Result<
     }
 
     // 2. Check expiry
-    let expires_at = chrono::DateTime::parse_from_rfc3339(&expires_at_str)?;
-    if chrono::Utc::now() > expires_at.with_timezone(&chrono::Utc) {
+    if chrono::Utc::now().timestamp() > expires_at_epoch {
         return Ok(Response::builder().status(410).body("Code expired").build());
     }
 
