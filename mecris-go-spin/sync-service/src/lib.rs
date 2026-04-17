@@ -1525,7 +1525,17 @@ async fn handle_confirm_phone_verification_post(req: Request) -> anyhow::Result<
     };
 
     let body = req.body();
-    let confirm_req: VerificationConfirmRequest = serde_json::from_slice(body)?;
+    let body_str = std::str::from_utf8(body).unwrap_or("");
+    println!("Phone Verification: Confirm for user {} - Body: {}", user_id, body_str);
+    
+    let confirm_req: VerificationConfirmRequest = match serde_json::from_slice(body) {
+        Ok(r) => r,
+        Err(e) => {
+            println!("Phone Verification: JSON Parse FAILED: {}", e);
+            let resp = StatusResponse { status: "error".to_string(), message: format!("Invalid JSON: {}", e) };
+            return Ok(Response::builder().status(400).header("content-type", "application/json").body(serde_json::to_string(&resp).unwrap()).build());
+        }
+    };
 
     let db_url = variables::get("db_url")?;
     let connection = Connection::open(&db_url)?;
