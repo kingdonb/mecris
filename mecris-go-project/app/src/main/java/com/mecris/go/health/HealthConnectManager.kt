@@ -142,7 +142,7 @@ class HealthConnectManager(private val context: Context) {
         val startOfToday = localDateTime.toLocalDate().atStartOfDay(ZoneId.of("America/New_York")).toInstant()
         val queryStart = startOfToday
         val timeRangeFilter = TimeRangeFilter.between(queryStart, now)
-        val fallbackStart = now.truncatedTo(ChronoUnit.HOURS)
+        val fallbackStart = startOfToday
 
         val aggregateRequest = AggregateRequest(
             metrics = setOf(StepsRecord.COUNT_TOTAL, DistanceRecord.DISTANCE_TOTAL),

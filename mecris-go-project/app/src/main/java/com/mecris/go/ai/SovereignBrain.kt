@@ -30,7 +30,7 @@ class SovereignBrain(private val context: Context) {
         return try {
             // Using the Kotlin DSL for GenerationConfig as per experimental SDK docs
             val config = generationConfig {
-                context = this@SovereignBrain.context
+                context = this@SovereignBrain.context.applicationContext
                 temperature = 0.7f
                 topK = 40
                 maxOutputTokens = 512
