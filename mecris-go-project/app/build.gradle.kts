@@ -69,6 +69,9 @@ dependencies {
     // Health Connect
     implementation("androidx.health.connect:connect-client:1.1.0-alpha12")
 
+    // Location
+    implementation("com.google.android.gms:play-services-location:21.3.0")
+
     // WorkManager
     implementation("androidx.work:work-runtime-ktx:2.9.0")
 

@@ -43,6 +43,8 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.activity.compose.rememberLauncherForActivityResult
+import com.google.android.gms.location.LocationServices
 import androidx.health.connect.client.HealthConnectClient
 import androidx.health.connect.client.PermissionController
 import androidx.health.connect.client.contracts.ExerciseRouteRequestContract
@@ -1594,6 +1596,7 @@ fun GoalStatusIcon(label: String, met: Boolean) {
 fun ProfileSettingsScreen(context: android.content.Context, onLogOut: () -> Unit) {
     val manager = remember { ProfilePreferencesManager(context) }
     val scope = rememberCoroutineScope()
+    val fusedLocationClient = remember { LocationServices.getFusedLocationProviderClient(context) }
 
     var preferredSource by remember { mutableStateOf(manager.getPreferredHealthSource() ?: "") }
     var phoneNumber by remember { mutableStateOf(manager.getPhoneNumber() ?: "") }
@@ -1603,6 +1606,28 @@ fun ProfileSettingsScreen(context: android.content.Context, onLogOut: () -> Unit
     var vacationUntil by remember { mutableStateOf(manager.getVacationModeUntil() ?: "") }
     var autoSync by remember { mutableStateOf(manager.isAutonomousSyncEnabled()) }
     var saveStatus by remember { mutableStateOf("") }
+
+    val locationPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            try {
+                fusedLocationClient.lastLocation.addOnSuccessListener { location ->
+                    if (location != null) {
+                        latitude = location.latitude.toString()
+                        longitude = location.longitude.toString()
+                        saveStatus = "Fetched from GPS"
+                    } else {
+                        saveStatus = "Location not available"
+                    }
+                }
+            } catch (e: SecurityException) {
+                saveStatus = "Permission denied"
+            }
+        } else {
+            saveStatus = "Location permission required"
+        }
+    }
 
     Column {
         Text(
@@ -1649,12 +1674,25 @@ fun ProfileSettingsScreen(context: android.content.Context, onLogOut: () -> Unit
                 singleLine = true
             )
         }
-        if (latitude.isNotEmpty() && longitude.isNotEmpty()) {
-            TextButton(onClick = {
-                val intent = Intent(Intent.ACTION_VIEW, Uri.parse("geo:$latitude,$longitude?q=$latitude,$longitude(Oracle+Location)"))
-                context.startActivity(intent)
-            }) {
-                Text("VIEW ON MAPS 🗺️", color = Color(0xFF42A5F5))
+        
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp)) {
+            TextButton(
+                onClick = { locationPermissionLauncher.launch(android.Manifest.permission.ACCESS_COARSE_LOCATION) },
+                modifier = Modifier.weight(1f)
+            ) {
+                Text("SET FROM GPS 📍", color = Color(0xFF00E5FF))
+            }
+
+            if (latitude.isNotEmpty() && longitude.isNotEmpty()) {
+                TextButton(
+                    onClick = {
+                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse("geo:$latitude,$longitude?q=$latitude,$longitude(Oracle+Location)"))
+                        context.startActivity(intent)
+                    },
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text("VIEW ON MAPS 🗺️", color = Color(0xFF42A5F5))
+                }
             }
         }
 
