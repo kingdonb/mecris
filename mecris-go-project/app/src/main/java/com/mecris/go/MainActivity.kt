@@ -1747,6 +1747,21 @@ fun SovereignLabScreen(
     var isThinking by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
 
+    val requestedLat = manager.getLatitude()?.toDoubleOrNull() ?: 40.7128
+    val requestedLon = manager.getLongitude()?.toDoubleOrNull() ?: -74.0060
+
+    LaunchedEffect(Unit) {
+        scope.launch {
+            try {
+                val resp = syncApi.getWeatherHeuristic(requestedLat, requestedLon)
+                if (resp.isSuccessful) weatherData = resp.body()
+                else error = "Auto-Weather FAILED: ${resp.code()}"
+            } catch (e: Exception) {
+                error = e.message
+            }
+        }
+    }
+
     Column {
         Text(
             text = "SOVEREIGN BRAIN LAB 🧪",
@@ -1779,10 +1794,8 @@ fun SovereignLabScreen(
             Spacer(modifier = Modifier.weight(1f))
             TextButton(onClick = {
                 scope.launch {
-                    val lat = manager.getLatitude()?.toDoubleOrNull() ?: 40.7128
-                    val lon = manager.getLongitude()?.toDoubleOrNull() ?: -74.0060
                     try {
-                        val resp = syncApi.getWeatherHeuristic(lat, lon)
+                        val resp = syncApi.getWeatherHeuristic(requestedLat, requestedLon)
                         if (resp.isSuccessful) weatherData = resp.body()
                         else error = "Weather FAILED: ${resp.code()}"
                     } catch (e: Exception) {
@@ -1803,8 +1816,22 @@ fun SovereignLabScreen(
                     Text("Temp: ${weatherData!!.temperature}°C", color = Color.White)
                     Text("Dark: ${weatherData!!.is_dark}", color = Color.White)
                     Text("Safe to Walk: ${weatherData!!.is_walk_appropriate}", color = Color.White)
+                    
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text("REQUESTED LOCATION", style = MaterialTheme.typography.labelSmall, color = Color.Gray)
+                    Text("Lat: $requestedLat, Lon: $requestedLon", color = Color.Gray, style = MaterialTheme.typography.bodySmall)
+
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text("DIAGNOSTICS (UTC)", style = MaterialTheme.typography.labelSmall, color = Color.Gray)
+                    Text("Now: ${java.time.Instant.ofEpochSecond(weatherData!!.now_epoch)}", color = Color.Gray, style = MaterialTheme.typography.bodySmall)
+                    Text("Data: ${java.time.Instant.ofEpochSecond(weatherData!!.data_ts)}", color = Color.Gray, style = MaterialTheme.typography.bodySmall)
+                    Text("Rise: ${java.time.Instant.ofEpochSecond(weatherData!!.sunrise)}", color = Color.Gray, style = MaterialTheme.typography.bodySmall)
+                    Text("Set: ${java.time.Instant.ofEpochSecond(weatherData!!.sunset)}", color = Color.Gray, style = MaterialTheme.typography.bodySmall)
                 } else {
-                    Text("No weather data loaded.", color = Color.DarkGray)
+                    Text("No weather data loaded. REFETCH required for full LLM context.", color = Color(0xFFFFB74D), style = MaterialTheme.typography.bodySmall)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text("REQUESTED LOCATION", style = MaterialTheme.typography.labelSmall, color = Color.Gray)
+                    Text("Lat: $requestedLat, Lon: $requestedLon", color = Color.Gray, style = MaterialTheme.typography.bodySmall)
                 }
             }
         }

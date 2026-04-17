@@ -8,6 +8,7 @@ import com.mecris.go.auth.PocketIdAuth
 import com.mecris.go.sync.SyncServiceApi
 import com.mecris.go.sync.NagNotificationManager
 import com.mecris.go.sync.ReviewPumpCalculator
+import com.mecris.go.profile.ProfilePreferencesManager
 import com.mecris.go.ai.SovereignBrain
 import java.time.Instant
 import java.time.OffsetDateTime
@@ -22,6 +23,7 @@ class DelayedNagWorker(
     private val spinBaseUrl = "https://mecris-sync-v2-r0r86pso.fermyon.app/"
     private val syncApi = SyncServiceApi.create(spinBaseUrl)
     private val prefs = applicationContext.getSharedPreferences("mecris_worker_state", Context.MODE_PRIVATE)
+    private val profileManager = ProfilePreferencesManager(applicationContext)
     private val brain = SovereignBrain(applicationContext)
 
     override suspend fun doWork(): Result {
@@ -139,8 +141,10 @@ class DelayedNagWorker(
     }
 
     private suspend fun fetchWeatherOracle(): com.mecris.go.sync.WeatherHeuristicResponseDto? {
+        val lat = profileManager.getLatitude()?.toDoubleOrNull() ?: 40.7128
+        val lon = profileManager.getLongitude()?.toDoubleOrNull() ?: -74.0060
         return try {
-            val resp = syncApi.getWeatherHeuristic(40.7128, -74.0060)
+            val resp = syncApi.getWeatherHeuristic(lat, lon)
             if (resp.isSuccessful) resp.body() else null
         } catch (e: Exception) { null }
     }

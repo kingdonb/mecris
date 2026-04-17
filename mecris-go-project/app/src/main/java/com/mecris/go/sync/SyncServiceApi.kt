@@ -162,5 +162,7 @@ data class WeatherHeuristicResponseDto(
     val temperature: Double,
     val sunrise: Long,
     val sunset: Long,
-    val is_dark: Boolean
+    val is_dark: Boolean,
+    val now_epoch: Long,
+    val data_ts: Long
 )

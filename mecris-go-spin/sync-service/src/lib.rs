@@ -1385,6 +1385,7 @@ struct OpenWeatherResponse {
     weather: Vec<OpenWeatherCondition>,
     main: OpenWeatherMain,
     sys: OpenWeatherSys,
+    dt: u64, // Time of data calculation, unix, UTC
 }
 
 #[derive(Deserialize, Debug)]
@@ -1413,6 +1414,8 @@ struct WeatherHeuristicResponse {
     sunrise: u64,
     sunset: u64,
     is_dark: bool,
+    now_epoch: u64,
+    data_ts: u64,
 }
 
 /// Returns true if the OpenWeather "main" condition category is suitable for an outdoor walk.
@@ -1438,7 +1441,9 @@ async fn fetch_weather_full(lat: f64, lon: f64, api_key: &str) -> anyhow::Result
 }
 
 async fn handle_weather_heuristic_get(req: Request) -> anyhow::Result<Response> {
-    let query_str = req.query();
+    let query_str = req.query().trim_start_matches('?');
+    println!("Weather Heuristic RAW QUERY: {}", query_str);
+    
     let params: HashMap<String, String> = query_str.split('&').filter_map(|s| {
         let mut parts = s.splitn(2, '=');
         Some((parts.next()?.to_string(), parts.next()?.to_string()))
@@ -1446,6 +1451,7 @@ async fn handle_weather_heuristic_get(req: Request) -> anyhow::Result<Response> 
 
     let lat: f64 = params.get("lat").and_then(|s| s.parse().ok()).unwrap_or(0.0);
     let lon: f64 = params.get("lon").and_then(|s| s.parse().ok()).unwrap_or(0.0);
+    println!("Weather Heuristic PARSED: lat={}, lon={}", lat, lon);
 
     let api_key = match variables::get("openweather_api_key") {
         Ok(k) if !k.is_empty() => k,
@@ -1459,6 +1465,7 @@ async fn handle_weather_heuristic_get(req: Request) -> anyhow::Result<Response> 
             let is_walk_appropriate = is_weather_ok_for_walk(weather_main);
             
             let now_epoch = chrono::Utc::now().timestamp() as u64;
+            // Use current server time (now_epoch) for the darkness calculation
             let is_dark = is_it_dark(now_epoch, w.sys.sunrise, w.sys.sunset);
 
             let resp = WeatherHeuristicResponse {
@@ -1469,6 +1476,8 @@ async fn handle_weather_heuristic_get(req: Request) -> anyhow::Result<Response> 
                 sunrise: w.sys.sunrise,
                 sunset: w.sys.sunset,
                 is_dark,
+                now_epoch,
+                data_ts: w.dt,
             };
 
             Ok(Response::builder()
@@ -1486,9 +1495,9 @@ async fn handle_weather_heuristic_get(req: Request) -> anyhow::Result<Response> 
     }
 }
 
-/// Returns true if the current time is before sunrise or after sunset.
-fn is_it_dark(now_epoch: u64, sunrise: u64, sunset: u64) -> bool {
-    now_epoch < sunrise || now_epoch > sunset
+/// Returns true if the reference time is before sunrise or after sunset.
+fn is_it_dark(ref_ts: u64, sunrise: u64, sunset: u64) -> bool {
+    ref_ts < sunrise || ref_ts > sunset
 }
 
 /// Resolves the effective (lat, lon) for an OpenWeather call given optional per-user and
