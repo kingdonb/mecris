@@ -1571,3 +1571,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: Nothing — all pending items from NEXT_SESSION.md completed this session.
 
 **Next**: PR #190 awaits kingdonb review/merge. No bot action needed unless a review is requested or a new bug is identified. Remaining blockers (Fermyon Cloud internal_api_key, Twilio Phase 2, Rust CI workflow fix) all require human action.
+
+## 2026-04-17 🏛️ — Fix greekNagMessage Arabic time window bug (yebyen/mecris#208, complete)
+
+**Planned**: Update `greekNagMessage()` to add `isArabicHour: Boolean` param — after 20:00 with `arabicCleared=false`, Greek nag should not say "cards come first" since Arabic window is closed.
+
+**Done**: Orient → plan issue yebyen/mecris#208 created. TDG: red `62edaaa` (new test asserting `greekNagMessage(arabicCleared=false, isArabicHour=false)` returns moussaka-only message) + green `89507b1` (added `isArabicHour: Boolean = true` param with default for backwards compat; callsite passes `localHour < 20`). Dispatched pr-test on kingdonb/mecris#190 (run 24579777635) — conclusion: success. Closed #208 with evidence. Archived.
+
+**Skipped**: Nothing — all planned steps completed.
+
+**Next**: PR #190 awaits kingdonb review/merge (now covers both `greekNagMessage` fixes). Investigate Android test count (26 vs expected 27 after new test added) in next pr-test run. Pre-existing failures: Python `phone_verified` column + Android `PocketIdAuthTest` — both unrelated to this work.
