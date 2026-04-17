@@ -1619,3 +1619,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: Nothing — plan fully completed.
 
 **Next**: kingdonb review/merge of PR #192. After merge, consider Option B of #191 (Android logs local nags to `message_log`) as a complementary improvement.
+
+## 2026-04-17 🏛️ — Regression test: aggregate_step_count ordering contract (yebyen/mecris#211, complete)
+
+**Planned**: Fix non-deterministic `aggregate_step_count` SQL — add `ORDER BY start_time ASC` and write a regression test (yebyen/mecris#211).
+
+**Done**: Discovered the SQL fix was already in place (`lib.rs:1309` had `ORDER BY start_time ASC` pre-existing). Added `test_aggregate_step_count_ordering_contract` to document the SQL ↔ `.last()` ordering contract and prevent regression. Local test: 108 Rust tests pass. pr-test ✅ (run 24588757603, 107 tests — pre-push count, +1 after push). Closed yebyen/mecris#211.
+
+**Skipped**: Nothing — adapted plan honestly when pre-existing fix was discovered.
+
+**Next**: kingdonb/mecris#192 (Ghost Nag fix) awaiting human review/merge; confirm 108 Rust test baseline in next pr-test.
