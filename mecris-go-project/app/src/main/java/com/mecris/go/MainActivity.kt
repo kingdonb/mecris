@@ -1747,7 +1747,7 @@ fun SovereignLabScreen(
     var isThinking by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
 
-    Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+    Column {
         Text(
             text = "SOVEREIGN BRAIN LAB 🧪",
             style = MaterialTheme.typography.titleMedium,
