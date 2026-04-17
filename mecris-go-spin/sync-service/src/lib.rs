@@ -2656,6 +2656,38 @@ mod tests {
         assert!(!phones_match("", ""));
     }
 
+    // --- android_client_is_active ---
+
+    #[test]
+    fn test_android_active_no_heartbeat_returns_false() {
+        // No heartbeat recorded → cloud may send
+        assert!(!android_client_is_active(None));
+    }
+
+    #[test]
+    fn test_android_active_fresh_heartbeat_blocks_cloud() {
+        // Android heartbeat 30 minutes ago → suppress cloud nag
+        assert!(android_client_is_active(Some(30)));
+    }
+
+    #[test]
+    fn test_android_active_exactly_239_minutes_blocks_cloud() {
+        // 239 minutes → still within 4-hour window → active
+        assert!(android_client_is_active(Some(239)));
+    }
+
+    #[test]
+    fn test_android_active_exactly_240_minutes_allows_cloud() {
+        // 240 minutes = exactly 4 hours → threshold crossed → cloud may send
+        assert!(!android_client_is_active(Some(240)));
+    }
+
+    #[test]
+    fn test_android_active_very_stale_allows_cloud() {
+        // 480 minutes = 8 hours → well past threshold → cloud may send
+        assert!(!android_client_is_active(Some(480)));
+    }
+
     // --- internal_api_key_ok ---
 
     #[test]
