@@ -65,6 +65,8 @@ import com.mecris.go.sync.WalkDataSummaryDto
 import com.mecris.go.sync.PersistenceManager
 import com.mecris.go.sync.DashboardCache
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.delay
 import java.time.Instant
 import retrofit2.HttpException
 import com.google.gson.Gson
@@ -1686,22 +1688,34 @@ fun ProfileSettingsScreen(
                         Log.i("ProfileSettings", "Requesting verification for $phoneNumber")
                         isVerifying = true
                         try {
-                            val token = auth.getAccessTokenSuspend()
-                            if (token != null) {
-                                val resp = syncApi.requestPhoneVerification("Bearer $token", com.mecris.go.sync.PhoneVerificationRequestDto(phoneNumber))
-                                if (resp.isSuccessful) {
-                                    showVerificationDialog = true
-                                    saveStatus = "Verification code sent"
+                            val result = withTimeoutOrNull(15000) {
+                                val token = auth.getAccessTokenSuspend()
+                                if (token != null) {
+                                    Log.i("ProfileSettings", "Token obtained, sending request")
+                                    syncApi.requestPhoneVerification(
+                                        "Bearer $token", 
+                                        com.mecris.go.sync.PhoneVerificationRequestDto(phoneNumber.trim())
+                                    )
                                 } else {
-                                    saveStatus = "Request failed: ${resp.code()}"
+                                    Log.e("ProfileSettings", "Token retrieval failed")
+                                    null
                                 }
+                            }
+
+                            if (result == null) {
+                                Log.e("ProfileSettings", "Verification request TIMEOUT or Token Error")
+                                saveStatus = "Timeout / Auth error"
+                            } else if (result.isSuccessful) {
+                                Log.i("ProfileSettings", "Verification request SUCCESS")
+                                showVerificationDialog = true
+                                saveStatus = "Verification code sent"
                             } else {
-                                Log.e("ProfileSettings", "No token found for verification")
-                                saveStatus = "Login required"
+                                Log.w("ProfileSettings", "Verification request FAILED: ${result.code()} - ${result.errorBody()?.string()}")
+                                saveStatus = "Request failed: ${result.code()}"
                             }
                         } catch (e: Exception) {
-                            Log.e("ProfileSettings", "Verification request failed: ${e.message}")
-                            saveStatus = e.message ?: "Error"
+                            Log.e("ProfileSettings", "Verification request error: ${e.message}")
+                            saveStatus = e.message ?: "Network error"
                         } finally {
                             isVerifying = false
                         }
@@ -1733,28 +1747,44 @@ fun ProfileSettingsScreen(
                 confirmButton = {
                     Button(onClick = {
                         scope.launch {
-                            Log.i("ProfileSettings", "Confirming verification code")
+                            Log.i("ProfileSettings", "Confirming verification code: $verificationCode")
+                            isVerifying = true
                             try {
-                                val token = auth.getAccessTokenSuspend()
-                                if (token != null) {
-                                    val resp = syncApi.confirmPhoneVerification("Bearer $token", com.mecris.go.sync.PhoneVerificationConfirmRequestDto(verificationCode))
-                                    if (resp.isSuccessful) {
-                                        isPhoneVerified = true
-                                        showVerificationDialog = false
-                                        saveStatus = "Verified!"
+                                val result = withTimeoutOrNull(15000) {
+                                    val token = auth.getAccessTokenSuspend()
+                                    if (token != null) {
+                                        Log.i("ProfileSettings", "Token obtained, sending confirmation request")
+                                        syncApi.confirmPhoneVerification(
+                                            "Bearer $token", 
+                                            com.mecris.go.sync.PhoneVerificationConfirmRequestDto(verificationCode.trim())
+                                        )
                                     } else {
-                                        saveStatus = "Invalid code"
+                                        Log.e("ProfileSettings", "Token retrieval failed")
+                                        null
                                     }
+                                }
+
+                                if (result == null) {
+                                    Log.e("ProfileSettings", "Confirmation TIMEOUT or Token Error")
+                                    saveStatus = "Timeout / Auth error"
+                                } else if (result.isSuccessful) {
+                                    Log.i("ProfileSettings", "Verification SUCCESS")
+                                    isPhoneVerified = true
+                                    showVerificationDialog = false
+                                    saveStatus = "Verified!"
                                 } else {
-                                    saveStatus = "Login required"
+                                    Log.w("ProfileSettings", "Verification FAILED: ${result.code()} - ${result.errorBody()?.string()}")
+                                    saveStatus = "Invalid code (${result.code()})"
                                 }
                             } catch (e: Exception) {
-                                Log.e("ProfileSettings", "Verification confirmation failed: ${e.message}")
-                                saveStatus = e.message ?: "Error"
+                                Log.e("ProfileSettings", "Verification confirmation error: ${e.message}")
+                                saveStatus = e.message ?: "Network error"
+                            } finally {
+                                isVerifying = false
                             }
                         }
-                    }) {
-                        Text("CONFIRM")
+                    }, enabled = !isVerifying) {
+                        Text(if (isVerifying) "..." else "CONFIRM")
                     }
                 },
                 dismissButton = {
