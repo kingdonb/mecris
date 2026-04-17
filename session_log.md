@@ -1605,3 +1605,17 @@ This document summarizes the collaborative debugging session to establish a func
 - **Majesty Cake Logic**: Updated `DelayedNagWorker` to recognize a 'partial walk' (`walkingSessionsCount > 0` or `totalDistanceMeters > 0.0`). If a walk was formally logged but falls short of the 2000-step Majesty Cake requirement, the app suppresses the standard 'Time for a walk' message and explicitly pivots the target to 'MAJESTY CAKE', providing a custom fallback prompt ('Go get that cake. 🍰'). This passes the appropriate context to the LLM (or fallback) so it acknowledges the effort rather than acting blind to it.
 
 **Next**: Gather ongoing feedback on the LLM notification flavor now that it possesses deeper situational awareness.
+
+## 2026-04-17 🏛️ — Ghost Nag fix: Cloud cron defers to Android heartbeat (yebyen/mecris#209, complete)
+
+**Planned**: Add `android_client_is_active` guard to Cloud reminder dispatch path in sync-service — check `scheduler_election` for fresh Android heartbeat before firing WhatsApp notification. Resolves Ghost Nag double-fire from kingdonb/mecris#191.
+
+**Done**:
+- **Red** `0f335e3`: 5 failing tests for `android_client_is_active(heartbeat_age_minutes: Option<u64>) -> bool`
+- **Green** `7a26619`: Implemented function + integrated DB query into `handle_trigger_reminders_post` — if Android heartbeat < 240 min old, Cloud stands down
+- **PR #192 opened**: kingdonb/mecris#192 — pr-test ✅ (run 24584600085), 107 Rust tests passed
+- **Plan issue closed**: yebyen/mecris#209 ✅
+
+**Skipped**: Nothing — plan fully completed.
+
+**Next**: kingdonb review/merge of PR #192. After merge, consider Option B of #191 (Android logs local nags to `message_log`) as a complementary improvement.
