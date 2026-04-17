@@ -1581,3 +1581,17 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: Nothing — all planned steps completed.
 
 **Next**: PR #190 awaits kingdonb review/merge (now covers both `greekNagMessage` fixes). Investigate Android test count (26 vs expected 27 after new test added) in next pr-test run. Pre-existing failures: Python `phone_verified` column + Android `PocketIdAuthTest` — both unrelated to this work.
+
+## 2026-04-17 🏛️ — Bug Hunt: Walk Deltas, AICore Leaks, and Ghost Nags
+
+**Planned**: Investigate user reports of multiple walk reminders firing simultaneously, duplicated distance datapoints sent to Beeminder, and `ServiceConnectionLeaked` errors related to AICore. Additionally, update the active budget period to end May 27th.
+
+**Done**:
+- **AICore Memory Leak Fixed**: In `SovereignBrain.kt`, changed the context passed to the `GenerativeModel` configuration from the `Activity` context (`this@SovereignBrain.context`) to the `ApplicationContext` (`this@SovereignBrain.context.applicationContext`). This ensures the background AICore service binding doesn't leak when the activity is destroyed.
+- **Walk Delta Duplication Fixed**: Discovered that `HealthConnectManager` was using `now.truncatedTo(ChronoUnit.HOURS)` as the `startTime` for steps-only inferred walks. This caused the start time to change every hour, preventing the Rust backend from matching the previous record. Changed `fallbackStart` to `startOfToday` so the start time remains consistent for the entire day, allowing `delta_meters` to calculate correctly and prevent Beeminder spam.
+- **Fuzzy Nag De-duplication**: Confirmed that `ExistingWorkPolicy.REPLACE` is in place in `WalkHeuristicsWorker`, which correctly cancels previous pending delayed nags if a new one is scheduled, preventing back-to-back spam. The reported double-reminders were likely a mix of the new cloud cron firing (every 2 hours) and the local Android worker firing independently. 
+- **Budget Update**: Manually updated the `budget_tracking` table in the live Neon DB to set `budget_period_end` to '2026-05-27'. The remaining balance is confirmed at 0.91.
+
+**Skipped**: Modifying the Android or Cloud worker cooldowns to share state. Currently, they operate on independent 4-hour cooldowns.
+
+**Next**: Gather feedback on the AICore stability and ensure Beeminder distance tracking remains accurate with the new delta logic.
