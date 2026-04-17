@@ -132,7 +132,7 @@ class DelayedNagWorker(
 
             if (isMoussakaHour && (arabicCleared || localHour >= 20)) {
                 val llmNag = brain.generateNarrativeDirective("GREEK", isSensitive, null)
-                val msg = greekNagMessage(arabicCleared)
+                val msg = greekNagMessage(arabicCleared, isArabicHour = localHour < 20)
                 return NagResult("GREEK ISLAND TIME 🏝️", msg, "last_greek_nag_timestamp", "com.clozemaster.v2", llmNag)
             }
         }
@@ -158,8 +158,8 @@ class DelayedNagWorker(
     )
 
     companion object {
-        fun greekNagMessage(arabicCleared: Boolean): String {
-            return if (arabicCleared) {
+        fun greekNagMessage(arabicCleared: Boolean, isArabicHour: Boolean = true): String {
+            return if (arabicCleared || !isArabicHour) {
                 "The moussaka is waiting! Spend a moment in Mykonos. 🇬🇷"
             } else {
                 "The moussaka is waiting, but the cards come first. Spend a moment in Mykonos. 🇬🇷"
