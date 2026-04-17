@@ -2,41 +2,37 @@ package com.mecris.go.ai
 
 import android.content.Context
 import android.util.Log
-import com.google.mediapipe.tasks.genai.llminference.LlmInference
+import com.google.ai.edge.aicore.GenerativeModel
+import com.google.ai.edge.aicore.generationConfig
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import java.io.File
 
 /**
  * SovereignBrain: Local LLM inference engine for intelligent accountability.
- * Uses MediaPipe LLM Inference API to run Gemma-2b on-device.
+ * Uses Google AI Edge SDK to tap into on-device Gemini Nano via AICore.
  */
 class SovereignBrain(private val context: Context) {
 
-    private var llmInference: LlmInference? = null
+    private var generativeModel: GenerativeModel? = null
 
-    companion object {
-        private const val MODEL_PATH = "/data/local/tmp/gemma-2b-it-cpu-int4.bin"
-    }
+    private fun setupLlm(): Boolean {
+        if (generativeModel != null) return true
 
-    private fun setupLlm() {
-        if (llmInference != null) return
+        return try {
+            // Using the Kotlin DSL for GenerationConfig as per experimental SDK docs
+            val config = generationConfig {
+                context = this@SovereignBrain.context
+                temperature = 0.7f
+                topK = 40
+                maxOutputTokens = 512
+            }
 
-        val modelFile = File(MODEL_PATH)
-        if (!modelFile.exists()) {
-            Log.w("SovereignBrain", "LLM Model not found at $MODEL_PATH.")
-            return
+            generativeModel = GenerativeModel(generationConfig = config)
+            true
+        } catch (e: Exception) {
+            Log.e("SovereignBrain", "AICore initialization failed: ${e.message}")
+            false
         }
-
-        val options = LlmInference.LlmInferenceOptions.builder()
-            .setModelPath(MODEL_PATH)
-            .setMaxTokens(512)
-            .setTopK(40)
-            .setTemperature(0.7f)
-            .setRandomSeed(101)
-            .build()
-
-        llmInference = LlmInference.createFromOptions(context, options)
     }
 
     /**
@@ -53,8 +49,8 @@ class SovereignBrain(private val context: Context) {
         weatherConditions: String?,
         isDark: Boolean = false
     ): NarrativeResult? = withContext(Dispatchers.Default) {
-        setupLlm()
-        val llm = llmInference ?: return@withContext null
+        if (!setupLlm()) return@withContext null
+        val model = generativeModel ?: return@withContext null
 
         val prompt = """
             You are Mecris, a sassy but supportive personal accountability partner.
@@ -71,8 +67,9 @@ class SovereignBrain(private val context: Context) {
         """.trimIndent()
 
         try {
-            val response = llm.generateResponse(prompt)
-            NarrativeResult(response.trim(), prompt)
+            val response = model.generateContent(prompt)
+            val nagText = response.text ?: "The moussaka is waiting. Do your cards."
+            NarrativeResult(nagText.trim(), prompt)
         } catch (e: Exception) {
             Log.e("SovereignBrain", "LLM Inference failed: ${e.message}")
             null

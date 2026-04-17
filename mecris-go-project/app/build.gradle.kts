@@ -9,7 +9,7 @@ android {
 
     defaultConfig {
         applicationId = "com.mecris.go"
-        minSdk = 26
+        minSdk = 31
         targetSdk = 35
         versionCode = 1
         versionName = "1.0"
@@ -83,6 +83,6 @@ dependencies {
     // Coroutines
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
 
-    // MediaPipe for On-Device LLM (Sovereign Brain)
-    implementation("com.google.mediapipe:tasks-genai:0.10.14")
+    // Google AI Edge SDK for AICore (On-Device Gemini Nano)
+    implementation("com.google.ai.edge.aicore:aicore:0.0.1-exp01")
 }
