@@ -17,7 +17,7 @@ test-all: test
 
 deploy-fermyon:
 	@echo "☁️ Deploying to Fermyon Cloud..."
-	cd mecris-go-spin/sync-service && spin deploy
+	cd mecris-go-spin/sync-service && spin cloud deploy
 
 deploy-akamai:
 	@echo "☁️ Deploying to Akamai Functions..."
