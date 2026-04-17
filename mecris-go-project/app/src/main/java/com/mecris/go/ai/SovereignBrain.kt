@@ -13,6 +13,15 @@ import kotlinx.coroutines.withContext
  */
 class SovereignBrain(private val context: Context) {
 
+    companion object {
+        fun goalSpecificFallback(targetGoal: String): String = when (targetGoal.uppercase()) {
+            "ARABIC" -> "Your Arabic cards won't review themselves. Time to do the work."
+            "WALK" -> "Time for a walk. Your physical goal is waiting."
+            "GREEK" -> "The moussaka is waiting. Do your cards."
+            else -> "Your goal is waiting. Time to make progress."
+        }
+    }
+
     private var generativeModel: GenerativeModel? = null
 
     private fun setupLlm(): Boolean {
@@ -69,7 +78,7 @@ class SovereignBrain(private val context: Context) {
 
         try {
             val response = model.generateContent(prompt)
-            val nagText = response.text ?: "The moussaka is waiting. Do your cards."
+            val nagText = response.text ?: goalSpecificFallback(targetGoal)
             NarrativeResult(nagText.trim(), prompt)
         } catch (e: Exception) {
             Log.e("SovereignBrain", "LLM Inference failed: ${e.message}")
