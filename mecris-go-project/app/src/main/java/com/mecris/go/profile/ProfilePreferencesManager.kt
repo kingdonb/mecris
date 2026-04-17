@@ -21,30 +21,27 @@ class ProfilePreferencesManager(private val context: Context) {
 
     fun setPreferredHealthSource(value: String) {
         val trimmed = value.trim()
-        prefs.edit().apply {
-            if (trimmed.isBlank()) remove(KEY_PREFERRED_HEALTH_SOURCE) else putString(KEY_PREFERRED_HEALTH_SOURCE, trimmed)
-            commit()
-        }
+        val editor = prefs.edit()
+        if (trimmed.isBlank()) editor.remove(KEY_PREFERRED_HEALTH_SOURCE) else editor.putString(KEY_PREFERRED_HEALTH_SOURCE, trimmed)
+        editor.apply()
     }
 
     fun getPhoneNumber(): String? = prefs.getString(KEY_PHONE_NUMBER, null)
 
     fun setPhoneNumber(value: String) {
         val trimmed = value.trim()
-        prefs.edit().apply {
-            if (trimmed.isBlank()) remove(KEY_PHONE_NUMBER) else putString(KEY_PHONE_NUMBER, trimmed)
-            commit()
-        }
+        val editor = prefs.edit()
+        if (trimmed.isBlank()) editor.remove(KEY_PHONE_NUMBER) else editor.putString(KEY_PHONE_NUMBER, trimmed)
+        editor.apply()
     }
 
     fun getBeeminderUser(): String? = prefs.getString(KEY_BEEMINDER_USER, null)
 
     fun setBeeminderUser(value: String) {
         val trimmed = value.trim()
-        prefs.edit().apply {
-            if (trimmed.isBlank()) remove(KEY_BEEMINDER_USER) else putString(KEY_BEEMINDER_USER, trimmed)
-            commit()
-        }
+        val editor = prefs.edit()
+        if (trimmed.isBlank()) editor.remove(KEY_BEEMINDER_USER) else editor.putString(KEY_BEEMINDER_USER, trimmed)
+        editor.apply()
     }
 
     fun getLatitude(): String? = prefs.getString(KEY_LATITUDE, null)
