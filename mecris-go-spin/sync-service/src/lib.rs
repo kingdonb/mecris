@@ -1572,16 +1572,7 @@ async fn handle_confirm_phone_verification_post(req: Request) -> anyhow::Result<
     let provided_hash = hex::encode(hasher.finalize());
 
     if provided_hash == stored_hash {
-        // 4. Success! Update users table and delete verification record
-        // We need to fetch the phone number from the verification record or somewhere.
-        // Actually, we should have stored the phone number in phone_verifications too.
-        // Let's modify the migration or the logic.
-        // For now, we'll assume the user already updated their phone number in the users table unverified.
-        // Or we add phone_number to phone_verifications.
-        
-        // Refined Logic: Verification record MUST contain the phone number it's verifying.
-        // I'll update the migration and the request handler.
-        
+        println!("Phone Verification: SUCCESS for user {}", user_id);
         connection.execute("UPDATE users SET phone_verified = true WHERE pocket_id_sub = $1", &[ParameterValue::Str(user_id.clone())])?;
         connection.execute("DELETE FROM phone_verifications WHERE user_id = $1", &[ParameterValue::Str(user_id)])?;
 
