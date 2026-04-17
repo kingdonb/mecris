@@ -35,24 +35,38 @@ class NagNotificationManager(private val context: Context) {
         }
     }
 
-    fun showNag(title: String, message: String) {
-        val intent = Intent(context, MainActivity::class.java).apply {
+    fun showNag(title: String, message: String, packageToLaunch: String? = null) {
+        val dashboardIntent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
         }
-        val pendingIntent = PendingIntent.getActivity(
-            context, 0, intent, 
+        val dashboardPendingIntent = PendingIntent.getActivity(
+            context, 0, dashboardIntent, 
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
 
         val builder = NotificationCompat.Builder(context, CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.ic_dialog_alert) // We can use a custom icon later
+            .setSmallIcon(android.R.drawable.ic_dialog_alert)
             .setContentTitle(title)
             .setContentText(message)
             .setPriority(NotificationCompat.PRIORITY_MAX)
             .setCategory(NotificationCompat.CATEGORY_ALARM)
             .setAutoCancel(true)
-            .setContentIntent(pendingIntent)
+            .setContentIntent(dashboardPendingIntent)
             .setStyle(NotificationCompat.BigTextStyle().bigText(message))
+
+        // Add Quick Action for the work itself
+        if (packageToLaunch != null) {
+            val launchIntent = context.packageManager.getLaunchIntentForPackage(packageToLaunch)
+            if (launchIntent != null) {
+                val launchPendingIntent = PendingIntent.getActivity(
+                    context, 1, launchIntent,
+                    PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+                )
+                val actionTitle = if (packageToLaunch.contains("clozemaster")) "DO CARDS" else "GO WALK"
+                builder.addAction(0, actionTitle, launchPendingIntent)
+                builder.addAction(0, "DASHBOARD", dashboardPendingIntent)
+            }
+        }
 
         val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         notificationManager.notify(NOTIFICATION_ID, builder.build())

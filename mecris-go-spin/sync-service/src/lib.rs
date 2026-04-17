@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 use spin_sdk::{
     http::{IntoResponse, Request, Response},
@@ -209,6 +210,11 @@ async fn handle_sync_service(req: Request) -> anyhow::Result<impl IntoResponse> 
             return Ok(Response::builder().status(401).body("Unauthorized").build());
         }
         return handle_failover_sync_post(req).await;
+    } else if path == "/internal/weather-heuristic" {
+        if req.method() != &spin_sdk::http::Method::Get {
+            return Ok(Response::builder().status(405).body("Method Not Allowed").build());
+        }
+        return handle_weather_heuristic_get(req).await;
     } else if path == "/internal/twilio-webhook" {
         if req.method() != &spin_sdk::http::Method::Post {
             return Ok(Response::builder().status(405).body("Method Not Allowed").build());
@@ -245,6 +251,15 @@ async fn handle_aggregate_status_get(req: Request) -> anyhow::Result<Response> {
     // 2. Check Language Stats
     let lang_query = "SELECT language_name, current_reviews, tomorrow_reviews, pump_multiplier::FLOAT8, daily_completions FROM language_stats WHERE user_id = $1";
     let lang_rs = connection.query(lang_query, &[ParameterValue::Str(user_id.clone())])?;
+
+    // 3. Fetch vacation_mode_until
+    let user_query = "SELECT vacation_mode_until::TEXT FROM users WHERE pocket_id_sub = $1";
+    let user_rs = connection.query(user_query, &[ParameterValue::Str(user_id.clone())])?;
+    let vacation_mode_until = if !user_rs.rows.is_empty() {
+        match &user_rs.rows[0][0] { DbValue::Str(s) => Some(s.clone()), _ => None }
+    } else {
+        None
+    };
 
     let mut goals_met = 0;
     let mut total_goals = 1; // Base goal: Walk
@@ -309,6 +324,7 @@ async fn handle_aggregate_status_get(req: Request) -> anyhow::Result<Response> {
         total_goals: i32,
         all_clear: bool,
         components: AggregateComponents,
+        vacation_mode_until: Option<String>,
     }
 
     let resp = AggregateResponse {
@@ -321,6 +337,7 @@ async fn handle_aggregate_status_get(req: Request) -> anyhow::Result<Response> {
             arabic: arabic_met,
             greek: greek_met,
         },
+        vacation_mode_until,
     };
 
     Ok(Response::builder()
@@ -1270,9 +1287,10 @@ async fn handle_trigger_reminders_post(_req: Request) -> anyhow::Result<Response
         // Graceful degradation: if no location or API key, proceed without weather check.
         if let Some(api_key) = &openweather_api_key {
             if let Some((lat, lon)) = resolve_lat_lon(user_lat_str, user_lon_str, global_lat_str.as_deref(), global_lon_str.as_deref()) {
-                match fetch_weather_main(lat, lon, api_key).await {
-                    Ok(weather_main) => {
-                        if !is_weather_ok_for_walk(&weather_main) {
+                match fetch_weather_full(lat, lon, api_key).await {
+                    Ok(w) => {
+                        let weather_main = w.weather.get(0).map(|c| c.main.as_str()).unwrap_or("");
+                        if !is_weather_ok_for_walk(weather_main) {
                             println!("Skipping reminder for user {} — weather unsuitable ({})", user_id, weather_main);
                             continue;
                         }
@@ -1361,15 +1379,40 @@ async fn handle_failover_sync_post(_req: Request) -> anyhow::Result<Response> {
 
 // --- Phase 3: Reminder heuristics (pure, unit-testable) ---
 
-/// OpenWeather Current Weather API response shape (only the fields we need).
+/// OpenWeather Current Weather API response shape.
 #[derive(Deserialize, Debug)]
 struct OpenWeatherResponse {
     weather: Vec<OpenWeatherCondition>,
+    main: OpenWeatherMain,
+    sys: OpenWeatherSys,
 }
 
 #[derive(Deserialize, Debug)]
 struct OpenWeatherCondition {
     main: String,
+    description: String,
+}
+
+#[derive(Deserialize, Debug)]
+struct OpenWeatherMain {
+    temp: f64,
+}
+
+#[derive(Deserialize, Debug)]
+struct OpenWeatherSys {
+    sunrise: u64,
+    sunset: u64,
+}
+
+#[derive(Serialize, Debug)]
+struct WeatherHeuristicResponse {
+    is_walk_appropriate: bool,
+    conditions: String,
+    description: String,
+    temperature: f64,
+    sunrise: u64,
+    sunset: u64,
+    is_dark: bool,
 }
 
 /// Returns true if the OpenWeather "main" condition category is suitable for an outdoor walk.
@@ -1380,11 +1423,8 @@ fn is_weather_ok_for_walk(weather_main: &str) -> bool {
     matches!(weather_main.trim(), "Clear" | "Clouds")
 }
 
-/// Calls the OpenWeather Current Weather API and returns the "main" weather condition string
-/// (e.g., "Clear", "Clouds", "Rain"). Requires Spin outbound HTTP permission.
-/// Caller must have added `https://api.openweathermap.org` to the `[component.trigger-reminders]`
-/// `allowed_outbound_hosts` list in spin.toml.
-async fn fetch_weather_main(lat: f64, lon: f64, api_key: &str) -> anyhow::Result<String> {
+/// Calls the OpenWeather Current Weather API and returns the full response.
+async fn fetch_weather_full(lat: f64, lon: f64, api_key: &str) -> anyhow::Result<OpenWeatherResponse> {
     let url = format!(
         "https://api.openweathermap.org/data/2.5/weather?lat={}&lon={}&appid={}&units=metric",
         lat, lon, api_key
@@ -1394,12 +1434,61 @@ async fn fetch_weather_main(lat: f64, lon: f64, api_key: &str) -> anyhow::Result
     let body = resp.body();
     let parsed: OpenWeatherResponse = serde_json::from_slice(body)
         .map_err(|e| anyhow::anyhow!("Failed to parse OpenWeather response: {}", e))?;
-    parsed
-        .weather
-        .into_iter()
-        .next()
-        .map(|c| c.main)
-        .ok_or_else(|| anyhow::anyhow!("OpenWeather response had empty weather array"))
+    Ok(parsed)
+}
+
+async fn handle_weather_heuristic_get(req: Request) -> anyhow::Result<Response> {
+    let query_str = req.query();
+    let params: HashMap<String, String> = query_str.split('&').filter_map(|s| {
+        let mut parts = s.splitn(2, '=');
+        Some((parts.next()?.to_string(), parts.next()?.to_string()))
+    }).collect();
+
+    let lat: f64 = params.get("lat").and_then(|s| s.parse().ok()).unwrap_or(0.0);
+    let lon: f64 = params.get("lon").and_then(|s| s.parse().ok()).unwrap_or(0.0);
+
+    let api_key = match variables::get("openweather_api_key") {
+        Ok(k) if !k.is_empty() => k,
+        _ => return Ok(Response::builder().status(500).body("openweather_api_key not configured").build()),
+    };
+
+    match fetch_weather_full(lat, lon, &api_key).await {
+        Ok(w) => {
+            let weather_main = w.weather.get(0).map(|c| c.main.as_str()).unwrap_or("");
+            let weather_desc = w.weather.get(0).map(|c| c.description.as_str()).unwrap_or("");
+            let is_walk_appropriate = is_weather_ok_for_walk(weather_main);
+            
+            let now_epoch = chrono::Utc::now().timestamp() as u64;
+            let is_dark = is_it_dark(now_epoch, w.sys.sunrise, w.sys.sunset);
+
+            let resp = WeatherHeuristicResponse {
+                is_walk_appropriate,
+                conditions: weather_main.to_string(),
+                description: weather_desc.to_string(),
+                temperature: w.main.temp,
+                sunrise: w.sys.sunrise,
+                sunset: w.sys.sunset,
+                is_dark,
+            };
+
+            Ok(Response::builder()
+                .status(200)
+                .header("content-type", "application/json")
+                .body(serde_json::to_string(&resp).unwrap())
+                .build())
+        }
+        Err(e) => {
+            Ok(Response::builder()
+                .status(500)
+                .body(format!("Failed to fetch weather: {}", e))
+                .build())
+        }
+    }
+}
+
+/// Returns true if the current time is before sunrise or after sunset.
+fn is_it_dark(now_epoch: u64, sunrise: u64, sunset: u64) -> bool {
+    now_epoch < sunrise || now_epoch > sunset
 }
 
 /// Resolves the effective (lat, lon) for an OpenWeather call given optional per-user and
@@ -1992,6 +2081,24 @@ mod tests {
     }
 
     // --- is_weather_ok_for_walk ---
+
+    #[test]
+    fn test_is_it_dark_daytime() {
+        // Sunrise 6am (21600), Sunset 6pm (64800), Now 12pm (43200)
+        assert!(!is_it_dark(43200, 21600, 64800));
+    }
+
+    #[test]
+    fn test_is_it_dark_before_sunrise() {
+        // Sunrise 6am (21600), Now 5am (18000)
+        assert!(is_it_dark(18000, 21600, 64800));
+    }
+
+    #[test]
+    fn test_is_it_dark_after_sunset() {
+        // Sunset 6pm (64800), Now 7pm (68400)
+        assert!(is_it_dark(68400, 21600, 64800));
+    }
 
     #[test]
     fn test_weather_ok_clear() {

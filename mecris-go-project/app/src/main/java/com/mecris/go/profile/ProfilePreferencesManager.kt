@@ -6,6 +6,10 @@ private const val PREFS_NAME = "mecris_app_prefs"
 private const val KEY_PREFERRED_HEALTH_SOURCE = "preferred_health_source"
 private const val KEY_PHONE_NUMBER = "phone_number"
 private const val KEY_BEEMINDER_USER = "beeminder_user"
+private const val KEY_LATITUDE = "location_lat"
+private const val KEY_LONGITUDE = "location_lon"
+private const val KEY_VACATION_MODE_UNTIL = "vacation_mode_until"
+private const val KEY_AUTONOMOUS_SYNC_ENABLED = "autonomous_sync_enabled"
 
 class ProfilePreferencesManager(private val context: Context) {
 
@@ -41,5 +45,29 @@ class ProfilePreferencesManager(private val context: Context) {
             if (trimmed.isBlank()) remove(KEY_BEEMINDER_USER) else putString(KEY_BEEMINDER_USER, trimmed)
             apply()
         }
+    }
+
+    fun getLatitude(): String? = prefs.getString(KEY_LATITUDE, null)
+    fun setLatitude(value: String) {
+        prefs.edit().putString(KEY_LATITUDE, value.trim()).apply()
+    }
+
+    fun getLongitude(): String? = prefs.getString(KEY_LONGITUDE, null)
+    fun setLongitude(value: String) {
+        prefs.edit().putString(KEY_LONGITUDE, value.trim()).apply()
+    }
+
+    fun getVacationModeUntil(): String? = prefs.getString(KEY_VACATION_MODE_UNTIL, null)
+    fun setVacationModeUntil(value: String?) {
+        prefs.edit().putString(KEY_VACATION_MODE_UNTIL, value?.trim()).apply()
+    }
+
+    fun isAutonomousSyncEnabled(): Boolean = prefs.getBoolean(KEY_AUTONOMOUS_SYNC_ENABLED, false)
+    fun setAutonomousSyncEnabled(value: Boolean) {
+        prefs.edit().putBoolean(KEY_AUTONOMOUS_SYNC_ENABLED, value).apply()
+    }
+
+    fun clearAll() {
+        prefs.edit().clear().apply()
     }
 }

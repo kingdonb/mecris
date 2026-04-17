@@ -3,7 +3,10 @@ package com.mecris.go.health
 import android.content.Context
 import android.util.Log
 import androidx.work.CoroutineWorker
+import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.WorkManager
 import androidx.work.WorkerParameters
+import androidx.work.workDataOf
 import com.mecris.go.auth.PocketIdAuth
 import com.mecris.go.sync.HeartbeatRequestDto
 import com.mecris.go.sync.SyncServiceApi
@@ -12,6 +15,7 @@ import com.mecris.go.sync.NagNotificationManager
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import java.util.concurrent.TimeUnit
 
 import kotlin.jvm.JvmOverloads
 
@@ -39,11 +43,10 @@ class WalkHeuristicsWorker @JvmOverloads constructor(
         
         Log.d("WalkHeuristicsWorker", "Executing background check for $today (Last steps: $lastStepCount)")
         
-        // 4. Proactive Token Refresh: runs before any network I/O so the token is refreshed while
-        //    on-network. Transient network errors no longer corrupt AuthState (see PocketIdAuth).
+        // 4. Proactive Token Refresh
         val token = pocketIdAuth.getAccessTokenSuspend()
 
-        // --- Heartbeat & Cooperation Phase (Agnostic of Health Permissions) ---
+        // --- Heartbeat & Cooperation Phase ---
         try {
             if (token != null) {
                 val hbResponse = syncApi.sendHeartbeat(
@@ -55,7 +58,6 @@ class WalkHeuristicsWorker @JvmOverloads constructor(
                     val body = hbResponse.body()
                     Log.i("WalkHeuristicsWorker", "Heartbeat SUCCESS. MCP Active: ${body?.mcp_server_active}")
 
-                    // Cooperative Cloud Sync: If MCP is dark and we haven't triggered in 2 hours
                     val twoHoursAgo = Instant.now().minusSeconds(7200).toEpochMilli()
                     if (body?.mcp_server_active == false && lastCloudSyncTrigger < twoHoursAgo) {
                         Log.w("WalkHeuristicsWorker", "MCP Server is DARK. Triggering Autonomous Cloud Sync + Reminders.")
@@ -81,77 +83,59 @@ class WalkHeuristicsWorker @JvmOverloads constructor(
             Log.e("WalkHeuristicsWorker", "Cooperative check failed: ${e.message}")
         }
 
-        // --- Arabic Pressure & Nag Phase ---
+        // --- Arabic Pressure & Nag Phase (The Fuzzy Scheduler) ---
         try {
             if (token != null) {
                 val langResponse = syncApi.getLanguages("Bearer $token")
                 
                 if (langResponse.isSuccessful) {
                     val languages = langResponse.body()?.languages ?: emptyList()
-                    
-                    // 1. Arabic: High Pressure (PRIORITY)
+                    val aggregateResponse = syncApi.getAggregateStatus("Bearer $token")
+                    val aggregate = aggregateResponse.body()
+
+                    // Check if any goal is in debt
                     val arabicStat = languages.find { it.name.equals("ARABIC", ignoreCase = true) }
-                    var isArabicBehind = false
+                    val greekStat = languages.find { it.name.equals("GREEK", ignoreCase = true) }
+                    
+                    var targetGoal: String? = null
                     
                     if (arabicStat != null && arabicStat.current > 0) {
-                        val multiplier = arabicStat.pump_multiplier ?: 1.0
-                        val targetFlowRate = com.mecris.go.sync.ReviewPumpCalculator.calculateTargetFlowRate(
-                            multiplier, arabicStat.current, arabicStat.tomorrow
+                        val target = com.mecris.go.sync.ReviewPumpCalculator.calculateTargetFlowRate(
+                            arabicStat.pump_multiplier ?: 1.0, arabicStat.current, arabicStat.tomorrow
                         )
-                        
-                        if (arabicStat.daily_completions < targetFlowRate) {
-                            isArabicBehind = true
-                            val lastNagTime = prefs.getLong("last_arabic_nag_timestamp", 0L)
-                            val fourHoursAgo = Instant.now().minusSeconds(14400).toEpochMilli()
-                            
-                            if (lastNagTime < fourHoursAgo) {
-                                Log.i("WalkHeuristicsWorker", "Triggering Arabic Pressure notification. Progress: ${arabicStat.daily_completions}/$targetFlowRate")
-                                val nagManager = NagNotificationManager(applicationContext)
-                                nagManager.showNag(
-                                    title = "ARABIC PRESSURE",
-                                    message = "Pace: ${arabicStat.daily_completions}/$targetFlowRate cards. Lever: ${multiplier}x. You are behind your neural goal. Clear the debt. 📈"
-                                )
-                                prefs.edit().putLong("last_arabic_nag_timestamp", Instant.now().toEpochMilli()).apply()
-                            }
-                        }
+                        if (arabicStat.daily_completions < target) targetGoal = "ARABIC"
+                    }
+                    
+                    if (targetGoal == null && aggregate?.components?.walk == false) {
+                        targetGoal = "WALK"
                     }
 
-                    // 2. Greek: Island Time (Only if Arabic is cleared)
-                    if (!isArabicBehind) {
-                        val greekStat = languages.find { it.name.equals("GREEK", ignoreCase = true) }
-                        if (greekStat != null && greekStat.current > 0) {
-                            val multiplier = greekStat.pump_multiplier ?: 1.0
-                            val targetFlowRate = com.mecris.go.sync.ReviewPumpCalculator.calculateTargetFlowRate(
-                                multiplier, greekStat.current, greekStat.tomorrow
-                            )
-                            
-                            if (greekStat.daily_completions < targetFlowRate) {
-                                val lastNagTime = prefs.getLong("last_greek_nag_timestamp", 0L)
-                                val fourHoursAgo = Instant.now().minusSeconds(14400).toEpochMilli()
-                                
-                                if (lastNagTime < fourHoursAgo) {
-                                    Log.i("WalkHeuristicsWorker", "Triggering Greek Island Time notification. Progress: ${greekStat.daily_completions}/$targetFlowRate")
-                                    val nagManager = NagNotificationManager(applicationContext)
-                                    nagManager.showNag(
-                                        title = "GREEK ISLAND TIME 🏝️",
-                                        message = "Pace: ${greekStat.daily_completions}/$targetFlowRate points. The moussaka is waiting, but the cards come first. Spend a moment in Mykonos. 🇬🇷"
-                                    )
-                                    prefs.edit().putLong("last_greek_nag_timestamp", Instant.now().toEpochMilli()).apply()
-                                }
-                            }
-                        }
-                    } else {
-                        Log.d("WalkHeuristicsWorker", "Arabic is behind. Suppressing Greek Island Time.")
+                    if (targetGoal == null && greekStat != null && greekStat.current > 0) {
+                        val target = com.mecris.go.sync.ReviewPumpCalculator.calculateTargetFlowRate(
+                            greekStat.pump_multiplier ?: 1.0, greekStat.current, greekStat.tomorrow
+                        )
+                        if (greekStat.daily_completions < target) targetGoal = "GREEK"
+                    }
+
+                    if (targetGoal != null) {
+                        val fuzzMinutes = (5..35).random().toLong()
+                        Log.i("WalkHeuristicsWorker", "Goal debt detected ($targetGoal). Scheduling fuzzy nag in $fuzzMinutes mins.")
+
+                        val delayedRequest = OneTimeWorkRequestBuilder<DelayedNagWorker>()
+                            .setInitialDelay(fuzzMinutes, TimeUnit.MINUTES)
+                            .setInputData(workDataOf("target_goal" to targetGoal))
+                            .build()
+
+                        WorkManager.getInstance(applicationContext).enqueue(delayedRequest)
                     }
                 }
             }
         } catch (e: Exception) {
-            Log.e("WalkHeuristicsWorker", "Nag check failed: ${e.message}")
+            Log.e("WalkHeuristicsWorker", "Nag scheduling failed: ${e.message}")
         }
 
         val healthManager = HealthConnectManager(applicationContext)
         
-        // 2. Permission Check
         if (!healthManager.hasForegroundPermissions() || !healthManager.hasBackgroundPermission()) {
             Log.w("WalkHeuristicsWorker", "Missing permissions, cannot check health data in background.")
             return Result.failure()
@@ -161,12 +145,10 @@ class WalkHeuristicsWorker @JvmOverloads constructor(
             val summary = healthManager.fetchRecentWalkData()
             Log.d("WalkHeuristicsWorker", "Health Data: Inferred=${summary.isWalkInferred}, Steps=${summary.totalSteps}")
             
-            // 3. Inertia Check: Only sync if status changed to 'inferred' or steps increased significantly
             val statusChanged = (lastSyncedDay != today && summary.isWalkInferred)
             val significantIncrease = (summary.totalSteps > lastStepCount + 500)
             
             if (statusChanged || significantIncrease) {
-                // 4. Reliable Token Retrieval
                 if (token != null) {
                     val dto = WalkDataSummaryDto(
                         start_time = summary.startTime.toString(),
@@ -179,12 +161,10 @@ class WalkHeuristicsWorker @JvmOverloads constructor(
                         timezone = ZoneId.of("America/New_York").id
                     )
 
-                    // 5. Awaitable Cloud Sync
                     val syncResponse = syncApi.uploadWalk("Bearer $token", dto)
                     if (syncResponse.isSuccessful) {
                         Log.i("WalkHeuristicsWorker", "Cloud Sync SUCCESS: ${syncResponse.body()?.message}")
                         
-                        // 6. Update Local State
                         prefs.edit()
                             .putString("last_synced_day", if (summary.isWalkInferred) today else lastSyncedDay)
                             .putLong("last_step_count", summary.totalSteps)

@@ -7,6 +7,7 @@ import retrofit2.http.Body
 import retrofit2.http.GET
 import retrofit2.http.Header
 import retrofit2.http.POST
+import retrofit2.http.Query
 import java.util.concurrent.TimeUnit
 
 interface SyncServiceApi {
@@ -55,6 +56,12 @@ interface SyncServiceApi {
     suspend fun getAggregateStatus(
         @Header("Authorization") authHeader: String
     ): retrofit2.Response<AggregateStatusResponseDto>
+
+    @GET("internal/weather-heuristic")
+    suspend fun getWeatherHeuristic(
+        @Query("lat") lat: Double,
+        @Query("lon") lon: Double
+    ): retrofit2.Response<WeatherHeuristicResponseDto>
 
     companion object {
         fun create(baseUrl: String): SyncServiceApi {
@@ -144,5 +151,16 @@ data class AggregateStatusResponseDto(
     val goals_met: Int,
     val total_goals: Int,
     val all_clear: Boolean,
-    val components: AggregateComponentsDto
+    val components: AggregateComponentsDto,
+    val vacation_mode_until: String? = null
+)
+
+data class WeatherHeuristicResponseDto(
+    val is_walk_appropriate: Boolean,
+    val conditions: String,
+    val description: String,
+    val temperature: Double,
+    val sunrise: Long,
+    val sunset: Long,
+    val is_dark: Boolean
 )

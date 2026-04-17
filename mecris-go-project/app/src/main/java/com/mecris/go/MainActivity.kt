@@ -1552,72 +1552,130 @@ fun GoalStatusIcon(label: String, met: Boolean) {
 @Composable
 fun ProfileSettingsScreen(context: android.content.Context) {
     val manager = remember { ProfilePreferencesManager(context) }
+    val scope = rememberCoroutineScope()
 
     var preferredSource by remember { mutableStateOf(manager.getPreferredHealthSource() ?: "") }
     var phoneNumber by remember { mutableStateOf(manager.getPhoneNumber() ?: "") }
     var beeminderUser by remember { mutableStateOf(manager.getBeeminderUser() ?: "") }
+    var latitude by remember { mutableStateOf(manager.getLatitude() ?: "") }
+    var longitude by remember { mutableStateOf(manager.getLongitude() ?: "") }
+    var vacationUntil by remember { mutableStateOf(manager.getVacationModeUntil() ?: "") }
+    var autoSync by remember { mutableStateOf(manager.isAutonomousSyncEnabled()) }
     var saveStatus by remember { mutableStateOf("") }
 
-    Text(
-        text = "PROFILE SETTINGS",
-        style = MaterialTheme.typography.titleMedium,
-        color = Color.White,
-        fontWeight = FontWeight.Bold
-    )
-    Spacer(modifier = Modifier.height(16.dp))
+    Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+        Text(
+            text = "PROFILE SETTINGS",
+            style = MaterialTheme.typography.titleMedium,
+            color = Color.White,
+            fontWeight = FontWeight.Bold
+        )
+        Spacer(modifier = Modifier.height(16.dp))
 
-    Text("Health Connect Source Filter", color = Color.Gray, style = MaterialTheme.typography.labelMedium)
-    Text(
-        "Package name of your preferred step source (e.g. com.google.android.apps.fitness). Leave blank to use Health Connect's default deduplication.",
-        color = Color.Gray,
-        style = MaterialTheme.typography.bodySmall
-    )
-    Spacer(modifier = Modifier.height(4.dp))
-    OutlinedTextField(
-        value = preferredSource,
-        onValueChange = { preferredSource = it },
-        label = { Text("Preferred Health Source") },
-        placeholder = { Text("com.google.android.apps.fitness") },
-        modifier = Modifier.fillMaxWidth(),
-        singleLine = true
-    )
-
-    Spacer(modifier = Modifier.height(16.dp))
-    Text("Phone Number (E.164 format)", color = Color.Gray, style = MaterialTheme.typography.labelMedium)
-    OutlinedTextField(
-        value = phoneNumber,
-        onValueChange = { phoneNumber = it },
-        label = { Text("Phone Number") },
-        placeholder = { Text("+15551234567") },
-        modifier = Modifier.fillMaxWidth(),
-        singleLine = true,
-        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone)
-    )
-
-    Spacer(modifier = Modifier.height(16.dp))
-    Text("Beeminder Username", color = Color.Gray, style = MaterialTheme.typography.labelMedium)
-    OutlinedTextField(
-        value = beeminderUser,
-        onValueChange = { beeminderUser = it },
-        label = { Text("Beeminder User") },
-        modifier = Modifier.fillMaxWidth(),
-        singleLine = true
-    )
-
-    Spacer(modifier = Modifier.height(24.dp))
-    Button(
-        onClick = {
-            manager.setPreferredHealthSource(preferredSource)
-            manager.setPhoneNumber(phoneNumber)
-            manager.setBeeminderUser(beeminderUser)
-            saveStatus = "Saved"
-        },
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Text("SAVE")
-    }
-    if (saveStatus.isNotEmpty()) {
+        Text("Sovereign Identity", color = Color.Gray, style = MaterialTheme.typography.labelSmall)
+        OutlinedTextField(
+            value = phoneNumber,
+            onValueChange = { phoneNumber = it },
+            label = { Text("Phone Number (E.164)") },
+            placeholder = { Text("+15551234567") },
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true
+        )
         Spacer(modifier = Modifier.height(8.dp))
-        Text(saveStatus, color = Color(0xFF00C853))
+        OutlinedTextField(
+            value = beeminderUser,
+            onValueChange = { beeminderUser = it },
+            label = { Text("Beeminder Username") },
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true
+        )
+
+        Spacer(modifier = Modifier.height(16.dp))
+        Text("Oracle Location (Solar/Weather)", color = Color.Gray, style = MaterialTheme.typography.labelSmall)
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp)) {
+            OutlinedTextField(
+                value = latitude,
+                onValueChange = { latitude = it },
+                label = { Text("Lat") },
+                modifier = Modifier.weight(1f),
+                singleLine = true
+            )
+            OutlinedTextField(
+                value = longitude,
+                onValueChange = { longitude = it },
+                label = { Text("Lon") },
+                modifier = Modifier.weight(1f),
+                singleLine = true
+            )
+        }
+        if (latitude.isNotEmpty() && longitude.isNotEmpty()) {
+            TextButton(onClick = {
+                val intent = Intent(Intent.ACTION_VIEW, Uri.parse("geo:$latitude,$longitude?q=$latitude,$longitude(Oracle+Location)"))
+                context.startActivity(intent)
+            }) {
+                Text("VIEW ON MAPS 🗺️", color = Color(0xFF42A5F5))
+            }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+        Text("Narrative Sensitivity", color = Color.Gray, style = MaterialTheme.typography.labelSmall)
+        OutlinedTextField(
+            value = vacationUntil,
+            onValueChange = { vacationUntil = it },
+            label = { Text("Vacation Mode Until (ISO)") },
+            placeholder = { Text("YYYY-MM-DD") },
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true
+        )
+        Text("Boarding mode: suppresses Boris/Fiona references.", style = MaterialTheme.typography.bodySmall, color = Color.Gray)
+
+        Spacer(modifier = Modifier.height(16.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            androidx.compose.material3.Switch(
+                checked = autoSync,
+                onCheckedChange = { autoSync = it }
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Column {
+                Text("Autonomous Sync Consent", color = Color.White)
+                Text("Allow cloud crons to sync on your behalf.", style = MaterialTheme.typography.bodySmall, color = Color.Gray)
+            }
+        }
+
+        Spacer(modifier = Modifier.height(24.dp))
+        Button(
+            onClick = {
+                manager.setPreferredHealthSource(preferredSource)
+                manager.setPhoneNumber(phoneNumber)
+                manager.setBeeminderUser(beeminderUser)
+                manager.setLatitude(latitude)
+                manager.setLongitude(longitude)
+                manager.setVacationModeUntil(vacationUntil)
+                manager.setAutonomousSyncEnabled(autoSync)
+                saveStatus = "Saved locally"
+            },
+            modifier = Modifier.fillMaxWidth(),
+            colors = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = Color(0xFF1B5E20))
+        ) {
+            Text("SAVE SETTINGS")
+        }
+        
+        Spacer(modifier = Modifier.height(8.dp))
+        OutlinedButton(
+            onClick = {
+                manager.clearAll()
+                PocketIdAuth(context).logout()
+                (context as? ComponentActivity)?.finish()
+            },
+            modifier = Modifier.fillMaxWidth(),
+            colors = androidx.compose.material3.ButtonDefaults.outlinedButtonColors(contentColor = Color.Red)
+        ) {
+            Text("LOGOUT & CLEAR CACHE")
+        }
+
+        if (saveStatus.isNotEmpty()) {
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(saveStatus, color = Color(0xFF00C853), modifier = Modifier.align(Alignment.CenterHorizontally))
+        }
     }
 }
