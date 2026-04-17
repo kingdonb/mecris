@@ -1667,7 +1667,7 @@ fun ProfileSettingsScreen(context: android.content.Context, onLogOut: () -> Unit
         OutlinedButton(
             onClick = {
                 manager.clearAll()
-                PocketIdAuth(context).logout()
+                PocketIdAuth(context).signOut()
                 (context as? ComponentActivity)?.finish()
             },
             modifier = Modifier.fillMaxWidth(),
