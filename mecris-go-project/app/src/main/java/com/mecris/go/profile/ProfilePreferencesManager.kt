@@ -23,7 +23,7 @@ class ProfilePreferencesManager(private val context: Context) {
         val trimmed = value.trim()
         prefs.edit().apply {
             if (trimmed.isBlank()) remove(KEY_PREFERRED_HEALTH_SOURCE) else putString(KEY_PREFERRED_HEALTH_SOURCE, trimmed)
-            apply()
+            commit()
         }
     }
 
@@ -33,7 +33,7 @@ class ProfilePreferencesManager(private val context: Context) {
         val trimmed = value.trim()
         prefs.edit().apply {
             if (trimmed.isBlank()) remove(KEY_PHONE_NUMBER) else putString(KEY_PHONE_NUMBER, trimmed)
-            apply()
+            commit()
         }
     }
 
@@ -43,31 +43,31 @@ class ProfilePreferencesManager(private val context: Context) {
         val trimmed = value.trim()
         prefs.edit().apply {
             if (trimmed.isBlank()) remove(KEY_BEEMINDER_USER) else putString(KEY_BEEMINDER_USER, trimmed)
-            apply()
+            commit()
         }
     }
 
     fun getLatitude(): String? = prefs.getString(KEY_LATITUDE, null)
     fun setLatitude(value: String) {
-        prefs.edit().putString(KEY_LATITUDE, value.trim()).apply()
+        prefs.edit().putString(KEY_LATITUDE, value.trim()).commit()
     }
 
     fun getLongitude(): String? = prefs.getString(KEY_LONGITUDE, null)
     fun setLongitude(value: String) {
-        prefs.edit().putString(KEY_LONGITUDE, value.trim()).apply()
+        prefs.edit().putString(KEY_LONGITUDE, value.trim()).commit()
     }
 
     fun getVacationModeUntil(): String? = prefs.getString(KEY_VACATION_MODE_UNTIL, null)
     fun setVacationModeUntil(value: String?) {
-        prefs.edit().putString(KEY_VACATION_MODE_UNTIL, value?.trim()).apply()
+        prefs.edit().putString(KEY_VACATION_MODE_UNTIL, value?.trim()).commit()
     }
 
     fun isAutonomousSyncEnabled(): Boolean = prefs.getBoolean(KEY_AUTONOMOUS_SYNC_ENABLED, false)
     fun setAutonomousSyncEnabled(value: Boolean) {
-        prefs.edit().putBoolean(KEY_AUTONOMOUS_SYNC_ENABLED, value).apply()
+        prefs.edit().putBoolean(KEY_AUTONOMOUS_SYNC_ENABLED, value).commit()
     }
 
     fun clearAll() {
-        prefs.edit().clear().apply()
+        prefs.edit().clear().commit()
     }
 }

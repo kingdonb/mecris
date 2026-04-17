@@ -22,6 +22,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
@@ -560,10 +561,16 @@ fun MecrisDashboard(
                 .padding(16.dp)
         ) {
             if (showProfileSettings) {
-                ProfileSettingsScreen(context = context, onLogOut = {
-                    auth.signOut()
-                    showProfileSettings = false
-                })
+                ProfileSettingsScreen(
+                    context = context,
+                    auth = auth,
+                    syncApi = syncApi,
+                    aggregateStatus = aggregateStatus,
+                    onLogOut = {
+                        auth.signOut()
+                        showProfileSettings = false
+                    }
+                )
             } else if (showSovereignLab) {
                 SovereignLabScreen(
                     context = context,
@@ -1593,7 +1600,13 @@ fun GoalStatusIcon(label: String, met: Boolean) {
 }
 
 @Composable
-fun ProfileSettingsScreen(context: android.content.Context, onLogOut: () -> Unit) {
+fun ProfileSettingsScreen(
+    context: android.content.Context, 
+    auth: PocketIdAuth,
+    syncApi: SyncServiceApi,
+    aggregateStatus: com.mecris.go.sync.AggregateStatusResponseDto?,
+    onLogOut: () -> Unit
+) {
     val manager = remember { ProfilePreferencesManager(context) }
     val scope = rememberCoroutineScope()
     val fusedLocationClient = remember { LocationServices.getFusedLocationProviderClient(context) }
@@ -1606,6 +1619,11 @@ fun ProfileSettingsScreen(context: android.content.Context, onLogOut: () -> Unit
     var vacationUntil by remember { mutableStateOf(manager.getVacationModeUntil() ?: "") }
     var autoSync by remember { mutableStateOf(manager.isAutonomousSyncEnabled()) }
     var saveStatus by remember { mutableStateOf("") }
+
+    var isPhoneVerified by remember { mutableStateOf(aggregateStatus?.phone_verified ?: false) }
+    var showVerificationDialog by remember { mutableStateOf(false) }
+    var verificationCode by remember { mutableStateOf("") }
+    var isVerifying by remember { mutableStateOf(false) }
 
     val locationPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -1639,14 +1657,108 @@ fun ProfileSettingsScreen(context: android.content.Context, onLogOut: () -> Unit
         Spacer(modifier = Modifier.height(16.dp))
 
         Text("Sovereign Identity", color = Color.Gray, style = MaterialTheme.typography.labelSmall)
-        OutlinedTextField(
-            value = phoneNumber,
-            onValueChange = { phoneNumber = it },
-            label = { Text("Phone Number (E.164)") },
-            placeholder = { Text("+15551234567") },
-            modifier = Modifier.fillMaxWidth(),
-            singleLine = true
-        )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            OutlinedTextField(
+                value = phoneNumber,
+                onValueChange = { 
+                    phoneNumber = it
+                    isPhoneVerified = false // Reset verified status if number changed
+                },
+                label = { Text("Phone Number (E.164)") },
+                placeholder = { Text("+15551234567") },
+                modifier = Modifier.weight(1f),
+                singleLine = true,
+                trailingIcon = {
+                    if (isPhoneVerified) {
+                        Icon(imageVector = Icons.Default.Check, contentDescription = "Verified", tint = Color.Green)
+                    }
+                }
+            )
+            if (!isPhoneVerified && phoneNumber.isNotEmpty()) {
+                TextButton(onClick = {
+                    scope.launch {
+                        Log.i("ProfileSettings", "Requesting verification for $phoneNumber")
+                        isVerifying = true
+                        try {
+                            val token = auth.getAccessTokenSuspend()
+                            if (token != null) {
+                                val resp = syncApi.requestPhoneVerification("Bearer $token", com.mecris.go.sync.PhoneVerificationRequestDto(phoneNumber))
+                                if (resp.isSuccessful) {
+                                    showVerificationDialog = true
+                                    saveStatus = "Verification code sent"
+                                } else {
+                                    saveStatus = "Request failed: ${resp.code()}"
+                                }
+                            } else {
+                                Log.e("ProfileSettings", "No token found for verification")
+                                saveStatus = "Login required"
+                            }
+                        } catch (e: Exception) {
+                            Log.e("ProfileSettings", "Verification request failed: ${e.message}")
+                            saveStatus = e.message ?: "Error"
+                        } finally {
+                            isVerifying = false
+                        }
+                    }
+                }, enabled = !isVerifying) {
+                    Text(if (isVerifying) "..." else "VERIFY", color = Color(0xFF00E5FF))
+                }
+            }
+        }
+        
+        if (showVerificationDialog) {
+            AlertDialog(
+                onDismissRequest = { showVerificationDialog = false },
+                title = { Text("Verify Phone Number") },
+                text = {
+                    Column {
+                        Text("Enter the 6-digit code sent to $phoneNumber", color = Color.LightGray)
+                        Spacer(modifier = Modifier.height(8.dp))
+                        OutlinedTextField(
+                            value = verificationCode,
+                            onValueChange = { if (it.length <= 6) verificationCode = it },
+                            label = { Text("6-Digit Code") },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                        )
+                    }
+                },
+                confirmButton = {
+                    Button(onClick = {
+                        scope.launch {
+                            Log.i("ProfileSettings", "Confirming verification code")
+                            try {
+                                val token = auth.getAccessTokenSuspend()
+                                if (token != null) {
+                                    val resp = syncApi.confirmPhoneVerification("Bearer $token", com.mecris.go.sync.PhoneVerificationConfirmRequestDto(verificationCode))
+                                    if (resp.isSuccessful) {
+                                        isPhoneVerified = true
+                                        showVerificationDialog = false
+                                        saveStatus = "Verified!"
+                                    } else {
+                                        saveStatus = "Invalid code"
+                                    }
+                                } else {
+                                    saveStatus = "Login required"
+                                }
+                            } catch (e: Exception) {
+                                Log.e("ProfileSettings", "Verification confirmation failed: ${e.message}")
+                                saveStatus = e.message ?: "Error"
+                            }
+                        }
+                    }) {
+                        Text("CONFIRM")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showVerificationDialog = false }) {
+                        Text("CANCEL")
+                    }
+                }
+            )
+        }
+        
         Spacer(modifier = Modifier.height(8.dp))
         OutlinedTextField(
             value = beeminderUser,

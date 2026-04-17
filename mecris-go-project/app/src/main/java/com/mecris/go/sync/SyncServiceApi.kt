@@ -63,6 +63,18 @@ interface SyncServiceApi {
         @Query("lon") lon: Double
     ): retrofit2.Response<WeatherHeuristicResponseDto>
 
+    @POST("internal/request-phone-verification")
+    suspend fun requestPhoneVerification(
+        @Header("Authorization") authHeader: String,
+        @Body request: PhoneVerificationRequestDto
+    ): retrofit2.Response<SyncResponse>
+
+    @POST("internal/confirm-phone-verification")
+    suspend fun confirmPhoneVerification(
+        @Header("Authorization") authHeader: String,
+        @Body request: PhoneVerificationConfirmRequestDto
+    ): retrofit2.Response<SyncResponse>
+
     companion object {
         fun create(baseUrl: String): SyncServiceApi {
             val client = OkHttpClient.Builder()
@@ -152,7 +164,8 @@ data class AggregateStatusResponseDto(
     val total_goals: Int,
     val all_clear: Boolean,
     val components: AggregateComponentsDto,
-    val vacation_mode_until: String? = null
+    val vacation_mode_until: String? = null,
+    val phone_verified: Boolean = false
 )
 
 data class WeatherHeuristicResponseDto(
@@ -166,3 +179,12 @@ data class WeatherHeuristicResponseDto(
     val now_epoch: Long,
     val data_ts: Long
 )
+
+data class PhoneVerificationRequestDto(
+    val phone_number: String
+)
+
+data class PhoneVerificationConfirmRequestDto(
+    val code: String
+)
+
