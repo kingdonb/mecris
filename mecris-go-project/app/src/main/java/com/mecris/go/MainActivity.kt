@@ -495,7 +495,16 @@ fun MecrisDashboard(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("MECRIS NEURAL LINK", letterSpacing = 2.sp, fontWeight = FontWeight.Black) },
+                title = { 
+                    Text(
+                        "MECRIS NEURAL LINK", 
+                        letterSpacing = 1.sp, 
+                        fontWeight = FontWeight.Black,
+                        maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                        style = MaterialTheme.typography.titleMedium
+                    ) 
+                },
                 actions = {
                     IconButton(onClick = {
                         showProfileSettings = !showProfileSettings
@@ -1566,7 +1575,7 @@ fun ProfileSettingsScreen(context: android.content.Context, onLogOut: () -> Unit
     var autoSync by remember { mutableStateOf(manager.isAutonomousSyncEnabled()) }
     var saveStatus by remember { mutableStateOf("") }
 
-    Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+    Column {
         Text(
             text = "PROFILE SETTINGS",
             style = MaterialTheme.typography.titleMedium,
