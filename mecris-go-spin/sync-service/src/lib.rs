@@ -1332,6 +1332,26 @@ async fn handle_trigger_reminders_post(_req: Request) -> anyhow::Result<Response
             continue;
         }
 
+        // Ghost Nag prevention (kingdonb/mecris#191): if Android client has heartbeated within
+        // the past 4 hours, it is handling local nags — Cloud stands down to avoid double-fire.
+        let android_heartbeat_minutes: Option<u64> = match connection.query(
+            "SELECT EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - heartbeat)) / 60 AS minutes_since \
+             FROM scheduler_election WHERE user_id = $1 AND role = 'android_client' \
+             ORDER BY heartbeat DESC LIMIT 1",
+            &[ParameterValue::Str(user_id.clone())],
+        ) {
+            Ok(rs) => rs.rows.first().and_then(|r| match &r[0] {
+                DbValue::Floating64(f) => Some(*f as u64),
+                DbValue::Str(s) => s.parse::<f64>().ok().map(|f| f as u64),
+                _ => None,
+            }),
+            Err(_) => None,
+        };
+        if android_client_is_active(android_heartbeat_minutes) {
+            println!("Ghost Nag guard: skipping cloud reminder for user {} — Android heartbeat {}min ago", user_id, android_heartbeat_minutes.unwrap_or(0));
+            continue;
+        }
+
         // Phase 3: Per-user weather check — suppress reminder if weather is bad at user's location.
         // Resolves per-user location first; falls back to global Spin vars if not set.
         // Graceful degradation: if no location or API key, proceed without weather check.
@@ -1799,6 +1819,16 @@ fn should_dispatch_reminder(local_hour: u32, step_count: u32, minutes_since_last
     is_within_reminder_window(local_hour)
         && is_below_step_threshold(step_count, 2000)
         && is_rate_limit_ok(minutes_since_last)
+}
+
+/// Returns true if the Android client has a fresh heartbeat within the past 4 hours.
+/// `heartbeat_age_minutes` is the age of the most recent `android_client` entry in
+/// `scheduler_election`, in minutes. If None (no record), returns false so Cloud can send.
+fn android_client_is_active(heartbeat_age_minutes: Option<u64>) -> bool {
+    match heartbeat_age_minutes {
+        Some(m) => m < 240,
+        None => false,
+    }
 }
 
 // --- Phase 3: I/O helper pure functions ---
