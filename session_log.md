@@ -1541,3 +1541,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: PR to kingdonb/mecris — blocked by push constraint (workflow pushes at session end). CI validation via pr-test deferred to next session.
 
 **Next**: After workflow pushes: open PR to kingdonb/mecris for SovereignBrain fix + log out button, then dispatch pr-test. Validate `SovereignBrainFallbackTest` (4 cases) passes in CI.
+
+## 2026-04-17 — Open PR #189, run pr-test, fix ProfilePreferencesManager apply() regression
+
+**Planned**: Open PR yebyen:main → kingdonb:main for SovereignBrain fallback fix + log out button; dispatch pr-test and validate all tests pass (yebyen/mecris#206).
+
+**Done**: PR kingdonb/mecris#189 opened. pr-test run #24564190870 completed — Python ✅ (461 passed, 5 skipped), Rust ✅ (102 passed), Android ❌ (5 failed). Root cause found: `5946d4e` changed `Editor.apply()` → `Editor.commit()` in ProfilePreferencesManager.kt breaking 4 pre-existing tests. Fixed in commit `57acd70` (green: restore apply(), explicit editor variable avoids Kotlin naming collision). Fix is local; workflow will push at session end.
+
+**Skipped**: pr-test re-validation of the Android fix — fix not pushed until session end, so re-run deferred to next session.
+
+**Next**: Dispatch pr-test against kingdonb/mecris#189 after workflow pushes 57acd70. Expected: Python 461, Rust 102, Android 24/0 failed (including SovereignBrainFallbackTest 4 cases).
