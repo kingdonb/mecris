@@ -137,7 +137,7 @@ class PocketIdAuth(private val context: Context) {
         }
     }
 
-    fun logout() {
+    fun signOut() {
         prefs.edit().clear().apply()
         internalAuthState = net.openid.appauth.AuthState()
         _authState.value = AuthState.Idle

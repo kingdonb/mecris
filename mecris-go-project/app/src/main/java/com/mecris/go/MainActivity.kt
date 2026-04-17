@@ -528,7 +528,10 @@ fun MecrisDashboard(
                 .padding(16.dp)
         ) {
             if (showProfileSettings) {
-                ProfileSettingsScreen(context = context)
+                ProfileSettingsScreen(context = context, onLogOut = {
+                    auth.signOut()
+                    showProfileSettings = false
+                })
             } else if (showSystemHealth) {
                 SystemHealthScreen(
                     auth = auth,
@@ -1550,7 +1553,7 @@ fun GoalStatusIcon(label: String, met: Boolean) {
 }
 
 @Composable
-fun ProfileSettingsScreen(context: android.content.Context) {
+fun ProfileSettingsScreen(context: android.content.Context, onLogOut: () -> Unit) {
     val manager = remember { ProfilePreferencesManager(context) }
     val scope = rememberCoroutineScope()
 
@@ -1677,5 +1680,14 @@ fun ProfileSettingsScreen(context: android.content.Context) {
             Spacer(modifier = Modifier.height(8.dp))
             Text(saveStatus, color = Color(0xFF00C853), modifier = Modifier.align(Alignment.CenterHorizontally))
         }
+    }
+
+    Spacer(modifier = Modifier.height(32.dp))
+    Button(
+        onClick = onLogOut,
+        modifier = Modifier.fillMaxWidth(),
+        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF6B0000))
+    ) {
+        Text("LOG OUT")
     }
 }

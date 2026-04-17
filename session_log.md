@@ -1496,3 +1496,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: Porting Groq sync to Rust (infeasible due to Groq auth limitations).
 
 **Next**: Prepare for a "grill-me" session focusing on the Android app's core features, specifically investigating the "moussaka in the morning" notification issue (likely related to Majesty Cake or Review Pump notifications) and writing a spec for any necessary fixes.
+
+## 2026-04-17 🏛️ — Log out button + PocketIdAuth.signOut() — yebyen/mecris#204
+
+**Planned**: yebyen/mecris#204 — Add log out button to Android ProfileSettingsScreen (last remaining gap in kingdonb/mecris#168 Phase 4).
+
+**Done**: Oriented — confirmed PR #187 merged (kingdonb/mecris now in sync with yebyen). No open needs-test/pr-review issues on kingdonb. Implemented TDG cycle: (1) red: `PocketIdAuthTest` unit test for `signOut()` using `mockkConstructor(AuthorizationService::class)`; (2) green: `PocketIdAuth.signOut()` method clears `auth_state_json` from SharedPreferences + resets auth flow to Idle; (3) `ProfileSettingsScreen` gains `onLogOut: () -> Unit` param + dark-red LOG OUT button; (4) call site in `MecrisDashboard` wires `auth.signOut()` + collapses profile panel. Two commits: 00fdaa4 (red), d8535e3 (green).
+
+**Skipped**: PR to kingdonb/mecris — blocked by push constraint (commits are local, workflow pushes at session end). Next session opens the PR and dispatches pr-test.
+
+**Next**: After workflow pushes: `GH_TOKEN="$GITHUB_CLASSIC_PAT" gh pr create --repo kingdonb/mecris --head yebyen:main --base main --title "feat(android): log out button in ProfileSettingsScreen"`, then dispatch pr-test. Watch for `mockkConstructor(AuthorizationService::class)` CI behavior — may need fallback if AppAuth constructor mocking fails.
