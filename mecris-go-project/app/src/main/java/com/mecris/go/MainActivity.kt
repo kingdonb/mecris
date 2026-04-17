@@ -266,6 +266,7 @@ fun MecrisDashboard(
     // UI State
     var showSystemHealth by remember { mutableStateOf(false) }
     var showProfileSettings by remember { mutableStateOf(false) }
+    var showSovereignLab by remember { mutableStateOf(false) }
     
     // Lifecycle listener to refresh on resume (with 30s debounce to prevent loops)
     val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
@@ -507,14 +508,33 @@ fun MecrisDashboard(
                 },
                 actions = {
                     IconButton(onClick = {
+                        showSovereignLab = !showSovereignLab
+                        if (showSovereignLab) {
+                            showProfileSettings = false
+                            showSystemHealth = false
+                        }
+                    }) {
+                        Icon(
+                            imageVector = Icons.Default.Face, // Using Face as a Brain-ish proxy for now
+                            contentDescription = "Sovereign Lab",
+                            tint = if (showSovereignLab) Color(0xFF00E5FF) else Color.White
+                        )
+                    }
+                    IconButton(onClick = {
                         showProfileSettings = !showProfileSettings
-                        if (showProfileSettings) showSystemHealth = false
+                        if (showProfileSettings) {
+                            showSystemHealth = false
+                            showSovereignLab = false
+                        }
                     }) {
                         Icon(Icons.Default.Person, contentDescription = "Profile Settings")
                     }
                     IconButton(onClick = {
                         showSystemHealth = !showSystemHealth
-                        if (showSystemHealth) showProfileSettings = false
+                        if (showSystemHealth) {
+                            showProfileSettings = false
+                            showSovereignLab = false
+                        }
                     }) {
                         Icon(if (showSystemHealth) Icons.Default.Info else Icons.Default.Settings, contentDescription = "System Health")
                     }
@@ -541,6 +561,14 @@ fun MecrisDashboard(
                     auth.signOut()
                     showProfileSettings = false
                 })
+            } else if (showSovereignLab) {
+                SovereignLabScreen(
+                    context = context,
+                    syncApi = syncApi,
+                    walkData = walkData,
+                    aggregateStatus = aggregateStatus,
+                    auth = auth
+                )
             } else if (showSystemHealth) {
                 SystemHealthScreen(
                     auth = auth,
@@ -1698,5 +1726,157 @@ fun ProfileSettingsScreen(context: android.content.Context, onLogOut: () -> Unit
         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF6B0000))
     ) {
         Text("LOG OUT")
+    }
+}
+
+@Composable
+fun SovereignLabScreen(
+    context: android.content.Context,
+    syncApi: SyncServiceApi,
+    walkData: WalkDataSummary?,
+    aggregateStatus: com.mecris.go.sync.AggregateStatusResponseDto?,
+    auth: PocketIdAuth
+) {
+    val scope = rememberCoroutineScope()
+    val manager = remember { ProfilePreferencesManager(context) }
+    val brain = remember { com.mecris.go.ai.SovereignBrain(context) }
+    
+    var weatherData by remember { mutableStateOf<com.mecris.go.sync.WeatherHeuristicResponseDto?>(null) }
+    var narrativeResult by remember { mutableStateOf<com.mecris.go.ai.SovereignBrain.NarrativeResult?>(null) }
+    var isThinking by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+
+    Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+        Text(
+            text = "SOVEREIGN BRAIN LAB 🧪",
+            style = MaterialTheme.typography.titleMedium,
+            color = Color.White,
+            fontWeight = FontWeight.Bold
+        )
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // 1. Current Stats Block
+        Text("RAW INPUT CONTEXT", style = MaterialTheme.typography.labelSmall, color = Color.Gray)
+        Spacer(modifier = Modifier.height(8.dp))
+        Card(
+            colors = CardDefaults.cardColors(containerColor = Color(0xFF1A1A1B)),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(modifier = Modifier.padding(12.dp)) {
+                Text("Steps: ${walkData?.step_count ?: 0} / 2000", color = Color.White)
+                Text("Arabic: ${if (aggregateStatus?.components?.arabic == true) "✅ DONE" else "❌ DEBT"}", color = Color.White)
+                Text("Greek: ${if (aggregateStatus?.components?.greek == true) "✅ DONE" else "❌ DEBT"}", color = Color.White)
+                Text("Vacation Mode: ${aggregateStatus?.vacation_mode_until ?: "None"}", color = Color.White)
+            }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // 2. Weather Oracle Block
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("WEATHER ORACLE", style = MaterialTheme.typography.labelSmall, color = Color.Gray)
+            Spacer(modifier = Modifier.weight(1f))
+            TextButton(onClick = {
+                scope.launch {
+                    val lat = manager.getLatitude()?.toDoubleOrNull() ?: 40.7128
+                    val lon = manager.getLongitude()?.toDoubleOrNull() ?: -74.0060
+                    try {
+                        val resp = syncApi.getWeatherHeuristic(lat, lon)
+                        if (resp.isSuccessful) weatherData = resp.body()
+                        else error = "Weather FAILED: ${resp.code()}"
+                    } catch (e: Exception) {
+                        error = e.message
+                    }
+                }
+            }) {
+                Text("REFETCH", color = Color(0xFF00E5FF))
+            }
+        }
+        Card(
+            colors = CardDefaults.cardColors(containerColor = Color(0xFF1A1A1B)),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(modifier = Modifier.padding(12.dp)) {
+                if (weatherData != null) {
+                    Text("Condition: ${weatherData!!.conditions} (${weatherData!!.description})", color = Color.White)
+                    Text("Temp: ${weatherData!!.temperature}°C", color = Color.White)
+                    Text("Dark: ${weatherData!!.is_dark}", color = Color.White)
+                    Text("Safe to Walk: ${weatherData!!.is_walk_appropriate}", color = Color.White)
+                } else {
+                    Text("No weather data loaded.", color = Color.DarkGray)
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(24.dp))
+
+        // 3. LLM Interaction Block
+        Text("LLM BRAIN (GEMMA-2B)", style = MaterialTheme.typography.labelSmall, color = Color.Gray)
+        Spacer(modifier = Modifier.height(8.dp))
+        Button(
+            onClick = {
+                scope.launch {
+                    isThinking = true
+                    error = null
+                    try {
+                        val isSensitive = aggregateStatus?.vacation_mode_until != null
+                        val target = if (aggregateStatus?.components?.arabic == false) "ARABIC" 
+                                     else if (aggregateStatus?.components?.walk == false) "WALK"
+                                     else "GREEK"
+                        
+                        narrativeResult = brain.generateWithContext(
+                            targetGoal = target,
+                            isSensitive = isSensitive,
+                            weatherConditions = weatherData?.conditions,
+                            isDark = weatherData?.is_dark ?: false
+                        )
+                        if (narrativeResult == null) error = "Model not found on device!"
+                    } catch (e: Exception) {
+                        error = e.message
+                    } finally {
+                        isThinking = false
+                    }
+                }
+            },
+            enabled = !isThinking,
+            modifier = Modifier.fillMaxWidth(),
+            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00E5FF), contentColor = Color.Black)
+        ) {
+            Text(if (isThinking) "THINKING..." else "EXECUTE INFERENCE")
+        }
+
+        if (error != null) {
+            Text(error!!, color = Color.Red, style = MaterialTheme.typography.bodySmall)
+        }
+
+        if (narrativeResult != null) {
+            Spacer(modifier = Modifier.height(16.dp))
+            Text("LLM OUTPUT", color = Color(0xFF00C853), style = MaterialTheme.typography.labelSmall)
+            Text(
+                text = narrativeResult!!.nag,
+                style = MaterialTheme.typography.bodyLarge,
+                color = Color.White,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(vertical = 8.dp)
+            )
+            
+            Spacer(modifier = Modifier.height(16.dp))
+            Text("RAW PROMPT SENT TO GEMMA", style = MaterialTheme.typography.labelSmall, color = Color.Gray)
+            Card(
+                colors = CardDefaults.cardColors(containerColor = Color.Black),
+                border = androidx.compose.foundation.BorderStroke(1.dp, Color.DarkGray),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(
+                    text = narrativeResult!!.prompt,
+                    color = Color(0xFF00C853),
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.padding(12.dp),
+                    fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
+                )
+            }
+        }
+        
+        Spacer(modifier = Modifier.height(32.dp))
     }
 }
