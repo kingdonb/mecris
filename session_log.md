@@ -1506,3 +1506,28 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: PR to kingdonb/mecris — blocked by push constraint (commits are local, workflow pushes at session end). Next session opens the PR and dispatches pr-test.
 
 **Next**: After workflow pushes: `GH_TOKEN="$GITHUB_CLASSIC_PAT" gh pr create --repo kingdonb/mecris --head yebyen:main --base main --title "feat(android): log out button in ProfileSettingsScreen"`, then dispatch pr-test. Watch for `mockkConstructor(AuthorizationService::class)` CI behavior — may need fallback if AppAuth constructor mocking fails.
+
+## 2026-04-16 🏛️ — Sovereign Neural Turn: Gemma Nano, AGP 9.1.1, and Moussaka Fix
+
+**Planned**: Resolve the "Moussaka in the Morning" notification bug and design a testable local LLM feature for the Android app.
+
+**Done**:
+- **Morning Moussaka Resolved**: Implemented strict windowing and window-awareness in `DelayedNagWorker`. Greek notifications are now restricted to 17:00–22:30.
+- **Sovereign Brain (Local LLM)**: 
+  - Integrated **Google AI Edge SDK** (`aicore:0.0.1-exp01`) to tap into on-device **Gemini Nano**.
+  - Created `SovereignBrain.kt` to manage local inference prompts and execution.
+  - Implemented the **Sovereign Brain Lab 🧪** UI (⭐️ icon) for manual testing and prompt transparency.
+  - Refined LLM prompts to dial down "sass" and eliminate overly affectionate terms ("darling"), settling on a "Clever/Observating Partner" persona.
+- **Infrastructure & Compatibility**:
+  - Bumped **AGP to 9.1.1** via the Upgrade Assistant.
+  - Resolved **16KB Page Alignment** warnings for Android 15 compatibility by setting `useLegacyPackaging = false`.
+  - Increased `minSdk` to 31 for AICore compatibility.
+  - Fixed multiple UI crashes related to nested scrolling in the Profile and Lab screens.
+- **Data Integrity**: Applied `006_vacation_mode.sql` migration to support narrative sensitivity in LLM prompts.
+
+**Verified**: 
+- Sovereign Lab successfully executes inference on-device using Gemini Nano.
+- Diagnostic screenshot committed to repo as evidence of neural life.
+- All code pushed to `origin/main` and `yebyen/main`.
+
+**Next**: Monitor the fuzzy notification triggers in the wild. Consider expanding the Sovereign Lab with more diagnostic tools or specialized narrative "moods."
