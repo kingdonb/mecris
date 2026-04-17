@@ -1551,3 +1551,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: pr-test re-validation of the Android fix — fix not pushed until session end, so re-run deferred to next session.
 
 **Next**: Dispatch pr-test against kingdonb/mecris#189 after workflow pushes 57acd70. Expected: Python 461, Rust 102, Android 24/0 failed (including SovereignBrainFallbackTest 4 cases).
+
+## 2026-04-17 🏛️ — Fix DelayedNagWorker misleading Greek nag when Arabic cleared (yebyen/mecris#207)
+
+**Planned**: Fix `DelayedNagWorker.kt` so "the cards come first" message is not shown when `arabicCleared = true`; TDG red→green cycle; pr-test passes.
+
+**Done**: Orient confirmed PR#189 already merged, both repos in sync at `bbfcd23`. Identified bug at line 135 — hardcoded message regardless of `arabicCleared` state. Extracted `greekNagMessage(arabicCleared: Boolean)` into companion object. Red test `14ab3ae` + green fix `eccb8ed` committed. Plan issue yebyen/mecris#207 created and commented.
+
+**Skipped**: PR creation and pr-test — commits not yet pushed to GitHub (push handled by workflow). "No commits between kingdonb:main and yebyen:main" confirmed via API.
+
+**Next**: After workflow pushes, open PR yebyen:main → kingdonb:main, dispatch pr-test. Expected: Python 461, Rust 102, Android 26 tests (including 2 new DelayedNagWorkerMessageTest cases). Close yebyen/mecris#207 on pass.
