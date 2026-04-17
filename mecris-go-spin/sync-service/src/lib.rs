@@ -2468,6 +2468,20 @@ mod tests {
         assert_eq!(aggregate_step_count(&["bad".to_string(), "800".to_string()]), 800);
     }
 
+    #[test]
+    fn test_aggregate_step_count_ordering_contract() {
+        // The SQL query feeding this function uses ORDER BY start_time ASC, so
+        // the last element in the slice is the most recently recorded step count.
+        // This test documents that contract and guards against removing ORDER BY.
+        // Regression test for kingdonb/mecris#180 (non-deterministic Rust DB query).
+        let sessions_asc_order = [
+            "500".to_string(),  // earliest session today
+            "1200".to_string(), // mid-day session
+            "3000".to_string(), // most recent session
+        ];
+        assert_eq!(aggregate_step_count(&sessions_asc_order), 3000);
+    }
+
     // --- local_hour_from_timezone ---
 
     #[test]
