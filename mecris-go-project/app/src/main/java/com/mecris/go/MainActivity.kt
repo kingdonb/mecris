@@ -253,6 +253,7 @@ fun MecrisDashboard(
     val scope = rememberCoroutineScope()
     val cache = remember { persistenceManager.loadDashboard() }
     val context = LocalContext.current
+    val manager = remember { ProfilePreferencesManager(context) }
     
     var walkData by remember { mutableStateOf<WalkDataSummary?>(cache?.walkData) }
     var budgetAmount by remember { mutableStateOf<Double?>(cache?.budgetAmount) }
@@ -563,6 +564,7 @@ fun MecrisDashboard(
             if (showProfileSettings) {
                 ProfileSettingsScreen(
                     context = context,
+                    manager = manager,
                     auth = auth,
                     syncApi = syncApi,
                     aggregateStatus = aggregateStatus,
@@ -574,6 +576,7 @@ fun MecrisDashboard(
             } else if (showSovereignLab) {
                 SovereignLabScreen(
                     context = context,
+                    manager = manager,
                     syncApi = syncApi,
                     walkData = walkData,
                     aggregateStatus = aggregateStatus,
@@ -1602,12 +1605,12 @@ fun GoalStatusIcon(label: String, met: Boolean) {
 @Composable
 fun ProfileSettingsScreen(
     context: android.content.Context, 
+    manager: ProfilePreferencesManager,
     auth: PocketIdAuth,
     syncApi: SyncServiceApi,
     aggregateStatus: com.mecris.go.sync.AggregateStatusResponseDto?,
     onLogOut: () -> Unit
 ) {
-    val manager = remember { ProfilePreferencesManager(context) }
     val scope = rememberCoroutineScope()
     val fusedLocationClient = remember { LocationServices.getFusedLocationProviderClient(context) }
 
@@ -1620,7 +1623,7 @@ fun ProfileSettingsScreen(
     var autoSync by remember { mutableStateOf(manager.isAutonomousSyncEnabled()) }
     var saveStatus by remember { mutableStateOf("") }
 
-    var isPhoneVerified by remember { mutableStateOf(aggregateStatus?.phone_verified ?: false) }
+    var isPhoneVerified by remember(aggregateStatus?.phone_verified) { mutableStateOf(aggregateStatus?.phone_verified ?: false) }
     var showVerificationDialog by remember { mutableStateOf(false) }
     var verificationCode by remember { mutableStateOf("") }
     var isVerifying by remember { mutableStateOf(false) }
@@ -1634,6 +1637,8 @@ fun ProfileSettingsScreen(
                     if (location != null) {
                         latitude = location.latitude.toString()
                         longitude = location.longitude.toString()
+                        manager.setLatitude(latitude)
+                        manager.setLongitude(longitude)
                         saveStatus = "Fetched from GPS"
                     } else {
                         saveStatus = "Location not available"
@@ -1893,13 +1898,13 @@ fun ProfileSettingsScreen(
 @Composable
 fun SovereignLabScreen(
     context: android.content.Context,
+    manager: ProfilePreferencesManager,
     syncApi: SyncServiceApi,
     walkData: WalkDataSummary?,
     aggregateStatus: com.mecris.go.sync.AggregateStatusResponseDto?,
     auth: PocketIdAuth
 ) {
     val scope = rememberCoroutineScope()
-    val manager = remember { ProfilePreferencesManager(context) }
     val brain = remember { com.mecris.go.ai.SovereignBrain(context) }
     
     var weatherData by remember { mutableStateOf<com.mecris.go.sync.WeatherHeuristicResponseDto?>(null) }
