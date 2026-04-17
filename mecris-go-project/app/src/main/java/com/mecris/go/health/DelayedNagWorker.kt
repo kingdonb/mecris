@@ -66,7 +66,7 @@ class DelayedNagWorker(
                 if (healthManager.hasForegroundPermissions()) {
                     val summary = healthManager.fetchRecentWalkData()
                     if (summary.totalSteps < 2000) {
-                        nagManager.showNag("BORIS & FIONA 🐕", "Time for a sovereign walk? Your steps are low.", "com.google.android.apps.fitness")
+                        nagManager.showNag("BORIS & FIONA 🐕", "Time for a walk? Your steps are low today.", "com.google.android.apps.fitness")
                     }
                 }
             }

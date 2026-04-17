@@ -1128,8 +1128,9 @@ async fn handle_walks_post(req: Request) -> anyhow::Result<Response> {
 
     if !token_rs.rows.is_empty() && delta_meters > 10.0 {
         let goal = match &token_rs.rows[0][0] { DbValue::Str(s) if !s.is_empty() => s.clone(), _ => "bike".to_string() };
-        let delta_miles = delta_meters / 1609.34;
-        let _ = push_to_beeminder(&user_id, &goal, delta_miles, "Synced via Spin (Delta)", &connection).await;
+        let total_miles = walk.distance_meters / 1609.34;
+        let rounded_miles = (total_miles * 1000.0).round() / 1000.0;
+        let _ = push_to_beeminder(&user_id, &goal, rounded_miles, "Synced via Spin (Cumulative)", &connection).await;
     }
 
     let resp = StatusResponse { status: "success".to_string(), message: "Walk ingested".to_string() };
