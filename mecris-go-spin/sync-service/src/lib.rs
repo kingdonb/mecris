@@ -1085,10 +1085,28 @@ async fn handle_walks_post(req: Request) -> anyhow::Result<Response> {
         &[ParameterValue::Str(user_id.clone())]
     );
 
+    let prev_distance_query = "SELECT distance_meters FROM walk_inferences WHERE user_id = $1 AND start_time = $2";
+    let prev_distance_rs = connection.query(prev_distance_query, &[
+        ParameterValue::Str(user_id.clone()),
+        ParameterValue::Str(walk.start_time.clone())
+    ])?;
+    
+    let previous_distance_str = if !prev_distance_rs.rows.is_empty() {
+        match &prev_distance_rs.rows[0][0] {
+            DbValue::Str(s) => s.clone(),
+            _ => "0".to_string()
+        }
+    } else {
+        "0".to_string()
+    };
+    
+    let previous_distance: f64 = previous_distance_str.parse().unwrap_or(0.0);
+    let delta_meters = walk.distance_meters - previous_distance;
+
     let query = r#"
         INSERT INTO walk_inferences (user_id, start_time, end_time, step_count, distance_meters, distance_source, confidence_score, gps_route_points, status)
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'logging')
-        ON CONFLICT (user_id, start_time) DO UPDATE SET end_time = EXCLUDED.end_time, step_count = EXCLUDED.step_count, status = 'logging'
+        ON CONFLICT (user_id, start_time) DO UPDATE SET end_time = EXCLUDED.end_time, step_count = EXCLUDED.step_count, distance_meters = EXCLUDED.distance_meters, status = 'logging'
     "#;
 
     connection.execute(query, &[
@@ -1102,16 +1120,16 @@ async fn handle_walks_post(req: Request) -> anyhow::Result<Response> {
         ParameterValue::Str(walk.gps_route_points.to_string()),
     ])?;
 
-    // Restore Beeminder Sync
+    // Restore Beeminder Sync with delta
     let token_rs = connection.query(
         "SELECT beeminder_goal FROM users WHERE pocket_id_sub = $1",
         &[ParameterValue::Str(user_id.clone())]
     )?;
 
-    if !token_rs.rows.is_empty() {
+    if !token_rs.rows.is_empty() && delta_meters > 10.0 {
         let goal = match &token_rs.rows[0][0] { DbValue::Str(s) if !s.is_empty() => s.clone(), _ => "bike".to_string() };
-        let miles = walk.distance_meters / 1609.34;
-        let _ = push_to_beeminder(&user_id, &goal, miles, "Synced via Spin", &connection).await;
+        let delta_miles = delta_meters / 1609.34;
+        let _ = push_to_beeminder(&user_id, &goal, delta_miles, "Synced via Spin (Delta)", &connection).await;
     }
 
     let resp = StatusResponse { status: "success".to_string(), message: "Walk ingested".to_string() };
@@ -1541,7 +1559,7 @@ async fn handle_confirm_phone_verification_post(req: Request) -> anyhow::Result<
     let connection = Connection::open(&db_url)?;
 
     // 1. Fetch verification record
-    let query = "SELECT code_hash, EXTRACT(EPOCH FROM expires_at) as expires_at_epoch, attempts FROM phone_verifications WHERE user_id = $1";
+    let query = "SELECT code_hash, CAST(EXTRACT(EPOCH FROM expires_at) AS BIGINT) as expires_at_epoch, attempts FROM phone_verifications WHERE user_id = $1";
     let rs = connection.query(query, &[ParameterValue::Str(user_id.clone())])?;
     if rs.rows.is_empty() {
         let resp = StatusResponse { status: "error".to_string(), message: "No verification request found".to_string() };
@@ -1550,9 +1568,12 @@ async fn handle_confirm_phone_verification_post(req: Request) -> anyhow::Result<
 
     let stored_hash = match &rs.rows[0][0] { DbValue::Str(s) => s.clone(), _ => "".to_string() };
     let expires_at_epoch = match &rs.rows[0][1] { 
-        DbValue::Floating64(f) => *f as i64,
         DbValue::Int64(i) => *i,
-        _ => 0 
+        DbValue::Floating64(f) => *f as i64,
+        _ => {
+            println!("Phone Verification: UNEXPECTED DB TYPE for epoch: {:?}", rs.rows[0][1]);
+            0
+        }
     };
     let attempts = match &rs.rows[0][2] { DbValue::Int32(i) => *i, _ => 0 };
 
@@ -1561,7 +1582,11 @@ async fn handle_confirm_phone_verification_post(req: Request) -> anyhow::Result<
     }
 
     // 2. Check expiry
-    if chrono::Utc::now().timestamp() > expires_at_epoch {
+    let now_epoch = chrono::Utc::now().timestamp();
+    println!("Phone Verification: Expiry Check - Now: {}, Expires: {}, Delta: {}", now_epoch, expires_at_epoch, expires_at_epoch - now_epoch);
+    
+    if now_epoch > expires_at_epoch {
+        println!("Phone Verification: CODE EXPIRED for user {}", user_id);
         return Ok(Response::builder().status(410).body("Code expired").build());
     }
 
@@ -1747,12 +1772,12 @@ fn is_below_step_threshold(step_count: u32, threshold: u32) -> bool {
 }
 
 /// Returns true if rate limiting allows another reminder to be sent.
-/// Rule: no more than 2 messages per hour → minimum 30 minutes between messages.
+/// Rule: no more than 1 message per 4 hours → minimum 240 minutes between messages.
 /// If no previous message exists (None), it is always safe to send.
 fn is_rate_limit_ok(minutes_since_last: Option<u64>) -> bool {
     match minutes_since_last {
         None => true,
-        Some(m) => m >= 30,
+        Some(m) => m >= 240,
     }
 }
 
@@ -2255,20 +2280,20 @@ mod tests {
 
     #[test]
     fn test_rate_limit_too_recent() {
-        // 29 minutes ago → too soon (minimum is 30)
-        assert!(!is_rate_limit_ok(Some(29)));
+        // 239 minutes ago → too soon (minimum is 240)
+        assert!(!is_rate_limit_ok(Some(239)));
     }
 
     #[test]
     fn test_rate_limit_exactly_at_boundary() {
-        // 30 minutes ago → exactly at limit, ok to send
-        assert!(is_rate_limit_ok(Some(30)));
+        // 240 minutes ago → exactly at limit, ok to send
+        assert!(is_rate_limit_ok(Some(240)));
     }
 
     #[test]
     fn test_rate_limit_long_gap() {
-        // 120 minutes ago → well past limit
-        assert!(is_rate_limit_ok(Some(120)));
+        // 300 minutes ago → well past limit
+        assert!(is_rate_limit_ok(Some(300)));
     }
 
     // --- should_dispatch_reminder ---

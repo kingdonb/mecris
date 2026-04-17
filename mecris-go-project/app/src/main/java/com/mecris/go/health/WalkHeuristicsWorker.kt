@@ -122,11 +122,15 @@ class WalkHeuristicsWorker @JvmOverloads constructor(
                         Log.i("WalkHeuristicsWorker", "Goal debt detected ($targetGoal). Scheduling fuzzy nag in $fuzzMinutes mins.")
 
                         val delayedRequest = OneTimeWorkRequestBuilder<DelayedNagWorker>()
-                            .setInitialDelay(fuzzMinutes, TimeUnit.MINUTES)
+                            .setInitialDelay(fuzzMinutes, java.util.concurrent.TimeUnit.MINUTES)
                             .setInputData(workDataOf("target_goal" to targetGoal))
                             .build()
 
-                        WorkManager.getInstance(applicationContext).enqueue(delayedRequest)
+                        WorkManager.getInstance(applicationContext).enqueueUniqueWork(
+                            "DelayedNagWork",
+                            androidx.work.ExistingWorkPolicy.REPLACE,
+                            delayedRequest
+                        )
                     }
                 }
             }
