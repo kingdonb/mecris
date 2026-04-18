@@ -17,11 +17,21 @@ test-all: test
 
 deploy-fermyon:
 	@echo "☁️ Deploying to Fermyon Cloud..."
-	cd mecris-go-spin/sync-service && spin cloud deploy --build
+	cd mecris-go-spin/sync-service && spin cloud deploy --build --variable cloud_provider=fermyon
 
 deploy-akamai:
 	@echo "☁️ Deploying to Akamai Functions..."
-	cd mecris-go-spin/sync-service && spin aka deploy --build --no-confirm
+	cd mecris-go-spin/sync-service && spin aka deploy --build --no-confirm \
+		--variable db_url=$${NEON_DB_URL} \
+		--variable neon_db_url=$${NEON_DB_URL} \
+		--variable master_encryption_key=$${MASTER_ENCRYPTION_KEY} \
+		--variable clozemaster_email=$${CLOZEMASTER_EMAIL} \
+		--variable clozemaster_password=$${CLOZEMASTER_PASSWORD} \
+		--variable twilio_account_sid=$${TWILIO_ACCOUNT_SID} \
+		--variable twilio_auth_token_encrypted=$${TWILIO_AUTH_TOKEN_ENCRYPTED} \
+		--variable twilio_from_number=$${TWILIO_FROM_NUMBER} \
+		--variable openweather_api_key=$${OPENWEATHER_API_KEY} \
+		--variable cloud_provider=akamai
 
 deploy-all: deploy-fermyon deploy-akamai
 	@echo "✅ Deployment to both clouds complete"
