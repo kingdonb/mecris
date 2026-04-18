@@ -41,3 +41,7 @@ deploy-akamai:
 
 deploy-all: deploy-fermyon deploy-akamai
 	@echo "✅ Deployment to both clouds complete"
+
+bump-version:
+	@if [ -z "$(VERSION)" ]; then echo "Usage: make bump-version VERSION=0.0.1-alpha.16 [VC=16]"; exit 1; fi
+	python3 scripts/bump_version.py $(VERSION) $(VC)
