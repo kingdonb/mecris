@@ -1605,3 +1605,42 @@ This document summarizes the collaborative debugging session to establish a func
 - **Majesty Cake Logic**: Updated `DelayedNagWorker` to recognize a 'partial walk' (`walkingSessionsCount > 0` or `totalDistanceMeters > 0.0`). If a walk was formally logged but falls short of the 2000-step Majesty Cake requirement, the app suppresses the standard 'Time for a walk' message and explicitly pivots the target to 'MAJESTY CAKE', providing a custom fallback prompt ('Go get that cake. 🍰'). This passes the appropriate context to the LLM (or fallback) so it acknowledges the effort rather than acting blind to it.
 
 **Next**: Gather ongoing feedback on the LLM notification flavor now that it possesses deeper situational awareness.
+
+## 2026-04-17 🏛️ — Ghost Nag fix: Cloud cron defers to Android heartbeat (yebyen/mecris#209, complete)
+
+**Planned**: Add `android_client_is_active` guard to Cloud reminder dispatch path in sync-service — check `scheduler_election` for fresh Android heartbeat before firing WhatsApp notification. Resolves Ghost Nag double-fire from kingdonb/mecris#191.
+
+**Done**:
+- **Red** `0f335e3`: 5 failing tests for `android_client_is_active(heartbeat_age_minutes: Option<u64>) -> bool`
+- **Green** `7a26619`: Implemented function + integrated DB query into `handle_trigger_reminders_post` — if Android heartbeat < 240 min old, Cloud stands down
+- **PR #192 opened**: kingdonb/mecris#192 — pr-test ✅ (run 24584600085), 107 Rust tests passed
+- **Plan issue closed**: yebyen/mecris#209 ✅
+
+**Skipped**: Nothing — plan fully completed.
+
+**Next**: kingdonb review/merge of PR #192. After merge, consider Option B of #191 (Android logs local nags to `message_log`) as a complementary improvement.
+
+## 2026-04-17 🏛️ — Regression test: aggregate_step_count ordering contract (yebyen/mecris#211, complete)
+
+**Planned**: Fix non-deterministic `aggregate_step_count` SQL — add `ORDER BY start_time ASC` and write a regression test (yebyen/mecris#211).
+
+**Done**: Discovered the SQL fix was already in place (`lib.rs:1309` had `ORDER BY start_time ASC` pre-existing). Added `test_aggregate_step_count_ordering_contract` to document the SQL ↔ `.last()` ordering contract and prevent regression. Local test: 108 Rust tests pass. pr-test ✅ (run 24588757603, 107 tests — pre-push count, +1 after push). Closed yebyen/mecris#211.
+
+**Skipped**: Nothing — adapted plan honestly when pre-existing fix was discovered.
+
+**Next**: kingdonb/mecris#192 (Ghost Nag fix) awaiting human review/merge; confirm 108 Rust test baseline in next pr-test.
+
+## 2026-04-18 🏛️ — Schema fix: phone_verified, phone_verifications, scheduler_election.user_id (yebyen/mecris#212, partial)
+
+**Planned**: Fix pre-existing Python test failure by adding phone_verified column and phone_verifications table to schema.sql, plus migration script (yebyen/mecris#212).
+
+**Done**:
+- **pr-test baselines confirmed**: run 24591839834 — Rust 108 ✅ (post-push, was 107), Android 27 tests ✅ (was shown as 26 previously). All pending NEXT_SESSION.md verifications resolved.
+- **Schema gaps identified**: `phone_verified`, `vacation_mode_until`, `phone_verifications` table, `scheduler_election.user_id` — all missing from `schema.sql` despite Rust code using them.
+- **Fix committed** (`4391848`): Updated `schema.sql` with all four gaps; created `scripts/migrate_v6_add_phone_verified.py`; added `pytestmark` E2E skip guard to `test_phone_verification_e2e.py` (test hits live Fermyon, not suitable for CI local postgres).
+- **PR #192 verified ready**: Posted confirmation comment on kingdonb/mecris#192 with 108 Rust baseline.
+- **internal_api_key already implemented**: Confirmed kingdonb/mecris#185 code-complete in Rust — just needs Fermyon Cloud deployment.
+
+**Skipped**: pr-test verification of schema fix — commit `4391848` is local only; pr-test ran against pre-push GitHub code and still showed 1 failed. Verification must happen next session after the bot push.
+
+**Next**: Run pr-test on PR #192 to confirm schema fix landed — expected 0 failed, 461 passed, 6 skipped (was 1 failed, 5 skipped).
