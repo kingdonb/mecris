@@ -26,6 +26,8 @@
     - **Visuals**: Restored the Green "STABLE" orb and added high-impact outlines/text-shadows for legibility.
     - **Majesty Cake**: Upgraded the System Momentum widget with a pulsing 🍰 and celebratory glow for "All Clear" states.
     - **Live Metrics**: Added live counts (🚶 0.04/1.0 MI) to the momentum icons.
+7.  **Subtle Majesty Cake Nags (Android)**:
+    - Softened the fallback "partial walk" nag message from an explicit command ("requires 2000 steps! Go get that cake") to a more subtle and generic encouragement ("You're on the path to the Majesty Cake! Keep the momentum going today. ✨"). This aligns with the spec's intent to avoid formulaic commands when other goals might also remain unsatisfied.
 
 ### 🎯 Outcomes
 - **Connected & Honest**: Android and Web platforms show matching, high-fidelity data.

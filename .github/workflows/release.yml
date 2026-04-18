@@ -1,0 +1,110 @@
+name: Release
+on:
+  push:
+    tags:
+      - 'v*'
+      - '0.*'
+
+permissions:
+  contents: read
+
+jobs:
+  build-android:
+    name: Build Android APK
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4.1.6
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4.2.1
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: gradle
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x mecris-go-project/gradlew
+
+      - name: Build with Gradle
+        working-directory: ./mecris-go-project
+        run: ./gradlew assembleRelease
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4.3.3
+        with:
+          name: mecris-go-release-apk
+          path: mecris-go-project/app/build/outputs/apk/release/*.apk
+          retention-days: 1
+
+  build-wasm:
+    name: Build WASM Components
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4.1.6
+
+      - name: Setup Rust
+        run: |
+          rustup update stable
+          rustup target add wasm32-wasip1
+
+      - name: Setup Spin
+        uses: fermyon/actions/spin/setup@v1.4.0
+
+      - name: Build sync-service suite
+        working-directory: ./mecris-go-spin/sync-service
+        run: spin build
+
+      - name: Build boris-fiona-walker
+        working-directory: ./boris-fiona-walker
+        run: spin build
+
+      - name: Prepare WASM Artifacts
+        run: |
+          mkdir -p wasm-artifacts
+          cp mecris-go-spin/sync-service/target/wasm32-wasip1/release/sync_service.wasm wasm-artifacts/sync_service.wasm || true
+          cp mecris-go-spin/arabic-skip-counter/arabic-skip-counter.wasm wasm-artifacts/arabic-skip-counter.wasm || true
+          cp mecris-go-spin/review-pump/target/wasm32-wasip1/release/review_pump.wasm wasm-artifacts/review_pump.wasm || true
+          cp boris-fiona-walker/target/wasm32-wasip1/release/boris_fiona_walker.wasm wasm-artifacts/boris_fiona_walker.wasm || true
+          tar -czvf wasm-components.tar.gz -C wasm-artifacts .
+
+      - name: Upload WASM Bundle
+        uses: actions/upload-artifact@v4.3.3
+        with:
+          name: wasm-components-bundle
+          path: wasm-components.tar.gz
+          retention-days: 1
+
+  publish-release:
+    name: Publish GitHub Release
+    needs: [build-android, build-wasm]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download APK
+        uses: actions/download-artifact@v4.1.7
+        with:
+          name: mecris-go-release-apk
+          path: release-artifacts/apk
+
+      - name: Download WASM Bundle
+        uses: actions/download-artifact@v4.1.7
+        with:
+          name: wasm-components-bundle
+          path: release-artifacts/wasm
+
+      - name: Prepare Release Assets
+        run: |
+          mkdir -p release-assets
+          cp release-artifacts/apk/*.apk release-assets/mecris-go-release-unsigned.apk || true
+          cp release-artifacts/wasm/wasm-components.tar.gz release-assets/ || true
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2.0.8
+        with:
+          files: release-assets/*
+          generate_release_notes: true
+          draft: false
+          prerelease: true
