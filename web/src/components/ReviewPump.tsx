@@ -57,14 +57,18 @@ const ReviewPump: React.FC<ReviewPumpProps> = ({ stat, onMultiplierChange, disab
   };
 
   const targetFlow = calculateTargetFlow(stat.pump_multiplier, stat.current, stat.tomorrow);
+  const remaining = stat.target_flow_rate;
 
   return (
-    <div className={`review-pump-card ${!stat.has_goal ? 'no-goal' : ''}`} style={{ borderColor: `${accentColor}4d` }}>
+    <div className={`review-pump-card ${!stat.has_goal ? 'no-goal' : ''} ${stat.goal_met ? 'goal-met' : ''}`} style={{ borderColor: `${accentColor}4d` }}>
       <div className="review-pump-header">
         <div className="review-pump-title-group">
-          <span className="review-pump-name" style={{ color: accentColor }}>{stat.name.toUpperCase()}</span>
-          {!stat.has_goal && <span className="no-goal-badge">NO GOAL</span>}
-          <div className="review-pump-debt">DEBT: {stat.current} CARDS</div>
+          <div className="pump-name-row">
+            <span className="review-pump-name" style={{ color: accentColor }}>{stat.name.toUpperCase()}</span>
+            {!stat.has_goal && <span className="no-goal-badge">NO GOAL</span>}
+            {stat.goal_met && <span className="goal-met-badge">GOAL MET</span>}
+          </div>
+          <div className="review-pump-debt">DEBT: {stat.current} {stat.name.toUpperCase() === 'ARABIC' ? 'CARDS' : 'PTS'}</div>
         </div>
         <div className="lever-badge" style={{ backgroundColor: `${accentColor}1a`, color: accentColor }}>
           {leverName(stat.pump_multiplier).toUpperCase()}
@@ -84,12 +88,13 @@ const ReviewPump: React.FC<ReviewPumpProps> = ({ stat, onMultiplierChange, disab
 
       <div className="pressure-gauge">
         <div className="gauge-background">
-            <div className="gauge-marker" style={{ left: `${Math.min(targetFlow / 10, 90)}%` }} />
+            <div className="gauge-marker" style={{ left: `${Math.min((targetFlow > 0 ? (stat.daily_completions / targetFlow) : 1) * 100, 100)}%` }} />
         </div>
         <div className="gauge-content">
           <div className="target-flow-group">
             <span className="gauge-label">TARGET FLOW</span>
             <span className="target-flow-value" style={{ color: accentColor }}>{targetFlow}</span>
+            {remaining > 0 && <span className="remaining-label">({remaining} REMAINING)</span>}
           </div>
           <div className="runway-group">
             <span className="gauge-label">RUNWAY</span>
