@@ -55,6 +55,9 @@ jobs:
       - name: Setup Spin
         uses: fermyon/actions/spin/setup@8849a6c41270af8e9f60f371982eddf33b8e35c9 # v1.x latest main
 
+      - name: Install py2wasm plugin
+        run: spin plugins install py2wasm --yes
+
       - name: Build sync-service suite
         working-directory: ./mecris-go-spin/sync-service
         run: spin build
