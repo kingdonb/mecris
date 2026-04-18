@@ -94,6 +94,7 @@ const Dashboard: React.FC<DashboardProps> = ({ userToken }) => {
   }, [baseUrl, userToken]);
 
   useEffect(() => {
+    console.log(`NEURAL LINK: Auth status - token ${userToken ? 'PRESENT' : 'MISSING'}`);
     const init = async () => {
       const url = await discoverBackend();
       refreshData(url);
@@ -132,7 +133,10 @@ const Dashboard: React.FC<DashboardProps> = ({ userToken }) => {
 
   if (loading) return <div className="loading-screen">SYNCING NEURAL LINK...</div>;
 
-  const momentum = data?.all_clear ? 1.0 : 0.6;
+  // Momentum logic: 0/3 is red (0.3), 1/3 or 2/3 is stable (0.6), 3/3 is Majesty (1.0)
+  const satisfiedCount = data?.satisfied_count || 0;
+  const totalCount = data?.total_count || 3;
+  const momentum = data?.all_clear ? 1.0 : (satisfiedCount / totalCount >= 0.5 ? 0.6 : 0.3);
 
   return (
     <div className="dashboard-root">
@@ -165,10 +169,10 @@ const Dashboard: React.FC<DashboardProps> = ({ userToken }) => {
         <section className="momentum-section">
           <div className="section-label">SYSTEM MOMENTUM</div>
           <div className="momentum-viz-wrapper">
-            <MomentumVisualizer momentum={momentum} />
+            <MomentumVisualizer momentum={momentum} isAllClear={data?.all_clear} />
             <div className="momentum-status">
               <span className={`status-label ${data?.all_clear ? 'all-clear' : ''}`}>
-                {data?.all_clear ? 'MAJESTY CAKE' : 'STABLE'}
+                {data?.all_clear ? 'MAJESTY CAKE' : (momentum < 0.5 ? 'CAVITATION' : 'STABLE')}
               </span>
               <span className="sessions-label">{data?.score} GOALS SATISFIED</span>
             </div>
@@ -183,8 +187,8 @@ const Dashboard: React.FC<DashboardProps> = ({ userToken }) => {
         </div>
 
         <section className="odometer-section">
-          <Odometer value={0} label="VIRTUAL BUDGET" symbol="$" digitColor="#FFD600" />
-          <Odometer value={0} label="TODAY'S DISTANCE" symbol="" suffix="MI" digitColor="#00E5FF" digits={4} />
+          <Odometer value={data?.budget_remaining || 0} label="VIRTUAL BUDGET" symbol="$" digitColor="#FFD600" />
+          <Odometer value={data?.today_distance_miles || 0} label="TODAY'S DISTANCE" symbol="" suffix="MI" digitColor="#00E5FF" digits={4} />
         </section>
 
         <section className="review-pump-section">

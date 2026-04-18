@@ -23,17 +23,37 @@ const ReviewPump: React.FC<ReviewPumpProps> = ({ stat, onMultiplierChange, disab
                      stat.name.toUpperCase() === 'GREEK' ? '#00E5FF' : '#FFFFFF';
 
   const leverName = (m: number) => {
-    if (m <= 1.0) return "Steady";
-    if (m <= 2.0) return "Laminar";
-    if (m <= 4.0) return "Turbulent";
-    if (m <= 7.0) return "The Blitz";
-    return "Canonical";
+    switch (Math.floor(m)) {
+      case 1: return "Maintenance";
+      case 2: return "Steady";
+      case 3: return "Brisk";
+      case 4: return "Aggressive";
+      case 5: return "High Pressure";
+      case 6: return "Very High";
+      case 7: return "The Blitz";
+      case 10: return "System Overdrive";
+      default: return "Custom";
+    }
+  };
+
+  const getClearanceDays = (m: number) => {
+    switch (Math.floor(m)) {
+      case 1: return null;
+      case 2: return 14;
+      case 3: return 10;
+      case 4: return 7;
+      case 5: return 5;
+      case 6: return 3;
+      case 7: return 2;
+      case 10: return 1;
+      default: return null;
+    }
   };
 
   const calculateTargetFlow = (m: number, current: number, tomorrow: number) => {
-    // Simplified version of the Android calculator logic
-    const base = Math.max(current / 30, tomorrow);
-    return Math.ceil(base * m);
+    const days = getClearanceDays(m);
+    if (days === null) return tomorrow;
+    return Math.ceil(tomorrow + (current / days));
   };
 
   const targetFlow = calculateTargetFlow(stat.pump_multiplier, stat.current, stat.tomorrow);

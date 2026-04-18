@@ -42,6 +42,8 @@ export interface AggregateStatusResponse {
     arabic: boolean;
     greek: boolean;
   };
+  budget_remaining?: number;
+  today_distance_miles?: number;
   phone_verified?: boolean;
   vacation_mode_until?: string | null;
   system_pulse?: SystemPulse;

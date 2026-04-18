@@ -83,18 +83,24 @@ app.add_middleware(
 )
 
 async def get_authorized_user(user_id: Optional[str] = Depends(get_current_user)):
-    """FastAPI Dependency: Only enforces token if not in standalone mode."""
+    """FastAPI Dependency: Enforces authentication and resolves target user ID."""
     mode = os.getenv("MECRIS_MODE", "standalone")
-    print(f"STRICT AUTH DEBUG: mode={mode} user_id={user_id}", file=sys.stderr)
     
+    # Cloud Cron Exception (Akamai/Fermyon): Special handling for unauthenticated triggers
+    # logic omitted here for brevity but handled in endpoint logic if needed
+    
+    if user_id:
+        return user_id
+
     if mode == "standalone":
-        # In standalone mode, we fallback to the local default user if no token is provided
-        return user_id or credentials_manager.resolve_user_id()
+        # In standalone/trusted mode, we allow fallback to the local default user
+        resolved_id = credentials_manager.resolve_user_id()
+        if resolved_id:
+            return resolved_id
     
-    if not user_id:
-        print("STRICT AUTH DEBUG: REJECTING 401", file=sys.stderr)
-        raise HTTPException(status_code=401, detail="Authentication Required")
-    return user_id
+    # In multi-tenant mode, or if no local user could be resolved: REJECT.
+    print(f"AUTH FAILURE: No valid user_id found (mode={mode})", file=sys.stderr)
+    raise HTTPException(status_code=401, detail="Authentication Required")
 
 @app.get("/health")
 async def health_check():
@@ -1127,6 +1133,63 @@ def get_budget_governor_status() -> Dict[str, Any]:
     """Returns per-bucket consumption, envelope status, and a routing recommendation."""
     return _budget_governor.get_status()
 
+def get_modality_status(role: str, mins: float) -> str:
+    """Determine healthy/degraded/offline status based on heartbeat age (minutes)."""
+    if role == "leader":
+        if mins < 2: return "healthy"
+        if mins < 5: return "degraded"
+        return "offline"
+    elif role == "android_client":
+        if mins < 20: return "healthy"
+        if mins < 60: return "degraded"
+        return "offline"
+    elif role == "akamai_functions":
+        if mins < 135: return "healthy"
+        if mins < 250: return "degraded"
+        return "offline"
+    elif role == "fermyon_cloud":
+        if mins < 5: return "healthy"
+        if mins < 15: return "degraded"
+        return "offline"
+    return "unknown"
+
+async def fetch_system_pulse(user_id: str) -> Dict[str, Any]:
+    """Fetch recent heartbeats from scheduler_election and return formatted pulse modalities."""
+    neon_url = os.getenv("NEON_DB_URL")
+    if not neon_url:
+        return {"modalities": []}
+
+    target_user_id = usage_tracker.resolve_user_id(user_id)
+
+    def _query():
+        import psycopg2
+        with psycopg2.connect(neon_url) as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    SELECT role, heartbeat, 
+                           EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - heartbeat)) / 60 AS minutes_since
+                    FROM scheduler_election
+                    WHERE user_id = %s OR user_id IS NULL
+                    ORDER BY heartbeat DESC
+                """, (target_user_id,))
+                return cur.fetchall()
+
+    try:
+        rows = await asyncio.to_thread(_query)
+        modalities = []
+        for role, heartbeat, mins_since in rows:
+            mins = float(mins_since or 9999)
+            modalities.append({
+                "role": role,
+                "status": get_modality_status(role, mins),
+                "last_seen": heartbeat.isoformat() if heartbeat else "never",
+                "minutes_since": int(mins)
+            })
+        return {"modalities": modalities}
+    except Exception as e:
+        logger.error(f"fetch_system_pulse failed: {e}")
+        return {"modalities": []}
+
 @mcp.tool(description="Get unified daily goal completion status for the Majesty Cake widget (kingdonb/mecris#170). Returns X/Y goals satisfied and all_clear flag.")
 async def get_daily_aggregate_status(user_id: str = None) -> Dict[str, Any]:
     """Returns aggregated daily goal completion: daily walk (>=2000 steps), Arabic review pump, Greek review pump."""
@@ -1167,6 +1230,20 @@ async def get_daily_aggregate_status(user_id: str = None) -> Dict[str, Any]:
         for lang_key, label in [("arabic", "Arabic Review Pump"), ("greek", "Greek Review Pump")]:
             goals.append({"name": f"{lang_key}_review", "label": label, "satisfied": False, "error": str(e)})
 
+    system_pulse = await fetch_system_pulse(target_user_id)
+
+    # Fetch budget and distance for odometers
+    budget_status = await asyncio.to_thread(usage_tracker.get_budget_status, target_user_id)
+    latest_walk = await asyncio.to_thread(neon_checker.get_latest_walk, target_user_id)
+    
+    today_distance_miles = 0.0
+    if latest_walk:
+        # Check if walk is from today
+        walk_start = latest_walk.get("start_time")
+        if isinstance(walk_start, datetime) and walk_start.date() == date.today():
+            meters = float(latest_walk.get("distance_meters") or 0)
+            today_distance_miles = meters * 0.000621371
+
     satisfied_count = sum(1 for g in goals if g["satisfied"])
     total_count = len(goals)
     return {
@@ -1179,7 +1256,10 @@ async def get_daily_aggregate_status(user_id: str = None) -> Dict[str, Any]:
             "walk": next((g["satisfied"] for g in goals if g["name"] == "daily_walk"), False),
             "arabic": next((g["satisfied"] for g in goals if g["name"] == "arabic_review"), False),
             "greek": next((g["satisfied"] for g in goals if g["name"] == "greek_review"), False)
-        }
+        },
+        "budget_remaining": budget_status.get("remaining_budget", 0),
+        "today_distance_miles": today_distance_miles,
+        "system_pulse": system_pulse
     }
 
 @mcp.tool(description="GDPR right-to-erasure: permanently delete all data for a user. Removes token_bank first (no CASCADE), then users row (CASCADE deletes walk_inferences, language_stats, goals, message_log, usage_sessions, autonomous_turns, budget_tracking).")
@@ -1258,21 +1338,37 @@ if __name__ == "__main__":
     import sys
     import asyncio
     import uvicorn
+    import threading
 
-    if len(sys.argv) > 1 and sys.argv[1] == "--stdio":
+    use_stdio = "--stdio" in sys.argv
+    use_http = "--http" in sys.argv
+
+    def run_http():
+        print("Starting Mecris API on http://localhost:8000", file=sys.stderr)
+        uvicorn.run(app, host="0.0.0.0", port=8000, log_level="error")
+
+    if use_http:
+        # Start HTTP server in a background thread
+        http_thread = threading.Thread(target=run_http, daemon=True)
+        http_thread.start()
+
+    if use_stdio:
         async def run_stdio():
             scheduler.start()
-            await mcp.run_stdio_async()
-            scheduler.shutdown()
+            try:
+                await mcp.run_stdio_async()
+            finally:
+                scheduler.shutdown()
             
         asyncio.run(run_stdio())
-    elif len(sys.argv) > 1 and sys.argv[1] == "--http":
-        print("Starting Mecris API on http://localhost:8000", file=sys.stderr)
+    elif use_http:
+        # If ONLY http was requested, we need to keep the main thread alive
         scheduler.start()
         try:
-            uvicorn.run(app, host="0.0.0.0", port=8000)
+            # Since uvicorn.run is blocking, we can just run it in the main thread here
+            run_http()
         finally:
             scheduler.shutdown()
     else:
-        # Default behavior: run MCP in standard mode
+        # Default fallback
         mcp.run()
