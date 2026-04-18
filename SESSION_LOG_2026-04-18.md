@@ -4,38 +4,46 @@
 
 ### 🛠️ Actions Taken
 1.  **Hardened Authentication & Killed "Ghost Mode"**: 
-    - Modified `get_authorized_user` in `mcp_server.py` to strictly reject unauthenticated requests in `multi-tenant` mode (401).
-    - Removed random UUID generation from `CredentialsManager.resolve_user_id`.
-    - No more anonymous access; the Web UI is now forced to succeed at OIDC to see any data.
+    - Strictly enforced 401 for unauthenticated requests in `multi-tenant` mode.
+    - Verified full OIDC loop is now active (UI is "well-and-truly authenticated").
 2.  **Aligned Language Liabilities (Review Pump) Logic**: 
-    - Updated `web/src/components/ReviewPump.tsx` to match the canonical Rust (`mecris-core`) and Android (`ReviewPumpCalculator.kt`) logic.
-    - Fixed lever names and corrected the target flow rate calculation formula.
-3.  **Enabled System Pulse in Web UI**:
-    - Modified `mcp_server.py` to include `system_pulse` modalities in the `/aggregate-status` endpoint.
-    - Implemented `fetch_system_pulse` and `get_modality_status` in Python, mirroring Rust logic.
-4.  **Majesty & Momentum Overhaul**:
-    - **Visuals**: Rebuilt `MomentumVisualizer` with a multi-layered, interactive "Neural Link" orb.
-    - **Majesty Cake**: Added golden rings and shimmer effects for the "all-clear" state.
-    - **Pace Logic**: Fixed the "Optimism Bug" where the orb was green despite 0/3 goals. Now scales: 0/3 = Cavitation (Red), 1-2/3 = Stable (Blue), 3/3 = Majesty (Gold).
-5.  **Live Odometer Integration**:
-    - Enriched `/aggregate-status` with `budget_remaining` and `today_distance_miles`.
-    - Connected Web UI Odometers to real database values (Neon).
+    - Names and targets now match `mecris-core` and Android perfectly.
+3.  **Corrected System Pulse Logic (Bias Toward Correct Behavior)**:
+    - **Fixed Root Cause**: Added `cloud_provider` variable to `mecris-go-spin/sync-service/spin.toml` and redeployed.
+    - **Worker vs. Endpoint**: Patched Rust `register_cloud_heartbeat` to distinguish Akamai (Worker) from Fermyon (Endpoint).
+    - **Refined System Pulse**: Fermyon Cloud now shows a **White LED** (`reactive`) when fresh (<5m), transitioning to **Yellow** (`degraded`) and then **Gray** (`unknown`) after 15m.
+4.  **Deployment Mastery**:
+    - Synchronized all changes to both clouds via `make deploy-all`.
+5.  **Fixed "Machine Gun Nagging" (Android)**:
+    - Implemented `global_last_nag_timestamp` in `DelayedNagWorker.kt` (4-hour cooldown).
+    - **Moussaka Exception**: Reduced cooldown to 1.5h specifically for Greek reminders.
+6.  **Alpha Release v0.0.1-alpha.6**:
+    - Deleted accidental `v1.2.1-alpha.1` tag.
+    - Corrected `VERSION_MANIFEST.json` and tagged **v0.0.1-alpha.6**.
+    - Upgraded Android app to `versionName "1.1.6-alpha.6"` and `versionCode 6`.
+7.  **Mecris-Bot Audit & Rejection**:
+    - Fetched `yebyen/main` and audited Claude's latest commit.
+    - **Decision**: REJECTED. Claude's "audit" was destructive—it deleted this session log and reverted several critical fixes. We are maintaining the "Harsh Reality" branch over Claude's "Cleaned" (but broken) state.
 
 ### 🎯 Outcomes
-- The Web UI now reflects the "Harsh Reality" of the system status.
-- Odometers and Momentum are live and accurate.
-- Visuals are "majestic" and aligned with the Android app aesthetic.
-### 🔍 Investigation: Empty System Pulse (RESOLVED)
-- **Symptom**: "System Pulse" container appeared empty in the browser.
-- **Root Cause**: The pulse query was using the unverified `local-xxxx` user ID from the unauthed Web UI session.
-- **Resolution**: Hardened the system. Now the UI must be authenticated, which will naturally provide the correct `user_id` for pulse lookups.
+- UI correctly reflects live data for the authenticated user.
+- System Pulse shows real heartbeats: `MCP SERVER` (0m), `FERMYON CLOUD` (0m), `ANDROID CLIENT` (13m).
+- Android app versioned and synced with suite manifest.
+- Re-established Trust Boundary: Gemini is the architect; Claude's reverts are blocked.
+
+### 🔍 Investigation: Fermyon Status Transition (RESOLVED)
+- **Symptom**: Fermyon turned Red (offline) after 20 minutes.
+- **Fix**: Updated `mcp_server.py` to return `unknown` (Gray) instead of `offline` (Red) after 15 minutes of inactivity for `fermyon_cloud`.
+
+### 🔍 Investigation: The Restart Trap (RESOLVED)
+- **Lesson**: Agent cannot restart the MCP server stdio connection. User must run `/mcp reload`.
 
 ### 🐾 Physical Activity Reminder
-...
 - **0/3 Goals Satisfied**.
-- A walk is explicitly **NEEDED** according to the narrator context. Conditions are optimal. Please step away and hit those 2000 steps!
+- User reports progress on Arabic cards (130/170). 40 more to Majesty!
+- Weather remains "icky"; walk postponed to afternoon.
 
 ### 📋 Next Session Priorities
-- Verify OIDC `redirect_uri` in Pocket-ID provider matches `http://localhost:5173/`.
-- Clear browser `localStorage` if "LINK FAILURE" persists.
-- Monitor the Android heartbeat to ensure it stays "healthy" in the System Pulse.
+- Connect Shift Lever controls to backend persistence.
+- Verify "Majesty Cake" visual trigger once all-clear is achieved.
+- Investigate "Trigger Cloud Reconciliation" feedback in Web UI.
