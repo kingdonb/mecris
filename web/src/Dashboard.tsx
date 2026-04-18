@@ -86,7 +86,7 @@ const Dashboard: React.FC<DashboardProps> = ({ userToken }) => {
       const langData = await langResp.json();
 
       setData(aggData);
-      setLanguages(langData.languages);
+      setLanguages(langData.languages || []);
       setError(null);
     } catch (e: any) {
       setError(e.message);
@@ -178,7 +178,7 @@ const Dashboard: React.FC<DashboardProps> = ({ userToken }) => {
         <section className="pulse-matrix">
             <div className="section-label">SYSTEM PULSE</div>
             <div className="pulse-grid">
-                {data?.system_pulse?.modalities.map(m => (
+                {data?.system_pulse?.modalities?.map(m => (
                     <div key={m.role} className="pulse-item">
                         <span className={`status-led ${m.status}`} />
                         <span className="modality-name">{m.role}</span>
