@@ -15,6 +15,17 @@ export interface LanguagesResponse {
   languages: LanguageStat[];
 }
 
+export interface ModalityStatus {
+  role: string;
+  status: 'healthy' | 'degraded' | 'offline' | 'unknown';
+  last_seen: string;
+  minutes_since: number;
+}
+
+export interface SystemPulse {
+  modalities: ModalityStatus[];
+}
+
 export interface AggregateStatusResponse {
   goals: Array<{
     name: string;
@@ -33,6 +44,7 @@ export interface AggregateStatusResponse {
   };
   phone_verified?: boolean;
   vacation_mode_until?: string | null;
+  system_pulse?: SystemPulse;
 }
 
 export interface BudgetResponse {

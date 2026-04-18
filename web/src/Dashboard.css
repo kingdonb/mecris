@@ -3,13 +3,10 @@
   color: white;
   min-height: 100vh;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-  display: flex;
-  flex-direction: column;
 }
 
 .dashboard-header {
   background-color: black;
-  color: #00E5FF;
   padding: 12px 16px;
   display: flex;
   justify-content: space-between;
@@ -17,19 +14,38 @@
   position: sticky;
   top: 0;
   z-index: 100;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.5);
+  border-bottom: 1px solid #333;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
 }
 
 .dashboard-header h1 {
   margin: 0;
-  font-size: 1.2rem;
+  font-size: 1.1rem;
   font-weight: 900;
   letter-spacing: 1px;
+  color: #00E5FF;
 }
+
+.provider-badge {
+  font-size: 10px;
+  font-weight: bold;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: #333;
+}
+
+.provider-badge.home { color: #00E5FF; border: 1px solid #00E5FF33; }
+.provider-badge.akamai { color: #FFD600; border: 1px solid #FFD60033; }
+.provider-badge.fermyon { color: #00C853; border: 1px solid #00C85333; }
 
 .header-actions {
   display: flex;
-  gap: 8px;
+  gap: 12px;
 }
 
 .icon-btn {
@@ -37,44 +53,85 @@
   border: none;
   font-size: 1.2rem;
   cursor: pointer;
-  padding: 4px;
   color: white;
 }
 
 .dashboard-content {
   padding: 16px;
-  max-width: 600px;
+  max-width: 500px;
   margin: 0 auto;
-  width: 100%;
-  box-sizing: border-box;
 }
 
 .section-label {
   font-size: 10px;
   color: #888;
-  margin-bottom: 8px;
-  letter-spacing: 1px;
+  margin-bottom: 12px;
+  letter-spacing: 1.5px;
   font-weight: bold;
+  text-transform: uppercase;
+}
+
+.pulse-matrix {
+  margin-bottom: 24px;
+  background: #1E1E1E;
+  padding: 12px;
+  border-radius: 8px;
+}
+
+.pulse-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.pulse-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.status-led {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  box-shadow: 0 0 5px rgba(0,0,0,0.5);
+}
+
+.status-led.healthy { background-color: #00C853; box-shadow: 0 0 8px #00C853; }
+.status-led.degraded { background-color: #FFD600; box-shadow: 0 0 8px #FFD600; }
+.status-led.offline { background-color: #FF1744; box-shadow: 0 0 8px #FF1744; }
+
+.modality-name {
+  font-size: 10px;
+  font-weight: bold;
+  color: #ccc;
+}
+
+.last-seen {
+  font-size: 9px;
+  color: #666;
+  margin-left: auto;
 }
 
 .momentum-section {
   display: flex;
   flex-direction: column;
-  margin-bottom: 24px;
+  align-items: center;
+  margin-bottom: 32px;
 }
 
 .momentum-viz-wrapper {
   position: relative;
+  width: 200px;
   height: 200px;
   display: flex;
-  flex-direction: column;
   align-items: center;
   justify-content: center;
 }
 
 .momentum-status {
   position: absolute;
-  bottom: 8px;
+  bottom: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -83,45 +140,47 @@
 .status-label {
   font-weight: 900;
   color: #00C853;
-  letter-spacing: 2px;
-  font-size: 1.1rem;
+  font-size: 1.2rem;
+  letter-spacing: 1px;
+}
+
+.status-label.all-clear {
+  color: #FFD600;
+  text-shadow: 0 0 10px rgba(255, 214, 0, 0.5);
 }
 
 .sessions-label {
   font-size: 10px;
-  color: #00E5FF;
-  font-weight: bold;
-}
-
-.sync-info {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 24px;
-}
-
-.cloud-badge {
-  background: rgba(0, 200, 83, 0.2);
-  color: #00C853;
-  padding: 2px 6px;
-  border-radius: 4px;
-  font-size: 10px;
-  font-weight: 900;
-}
-
-.sync-text {
-  font-size: 10px;
   color: #888;
 }
 
-.text-sync-btn {
-  background: transparent;
-  border: none;
-  color: #00E5FF;
-  font-size: 10px;
-  font-weight: bold;
-  cursor: pointer;
+.manual-trigger-zone {
+    margin-bottom: 32px;
+    text-align: center;
+}
+
+.trigger-btn {
+    background: transparent;
+    border: 1px solid #333;
+    color: #888;
+    padding: 10px 20px;
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: bold;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.trigger-btn:hover {
+    border-color: #00E5FF;
+    color: #00E5FF;
+    background: #00E5FF11;
+}
+
+.trigger-hint {
+    font-size: 9px;
+    color: #555;
+    margin-top: 8px;
 }
 
 .odometer-section {
@@ -131,12 +190,14 @@
   margin-bottom: 32px;
 }
 
-.review-pump-section {
-  display: flex;
-  flex-direction: column;
-}
-
-.review-pump-list {
-  display: flex;
-  flex-direction: column;
+.error-banner {
+  background: #FF174422;
+  color: #FF1744;
+  padding: 8px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: bold;
+  margin-bottom: 16px;
+  text-align: center;
+  border: 1px solid #FF174444;
 }
