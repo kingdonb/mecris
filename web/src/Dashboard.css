@@ -143,17 +143,65 @@
   font-weight: 900;
   color: #00C853;
   font-size: 1.2rem;
-  letter-spacing: 1px;
-  text-shadow: 0 0 10px rgba(0, 0, 0, 0.9), 
-               0 0 5px rgba(0, 0, 0, 0.9),
-               1px 1px 2px rgba(0, 0, 0, 1);
+  letter-spacing: 2px;
+  text-shadow: 
+    -1px -1px 0 #000,  
+     1px -1px 0 #000,
+    -1px  1px 0 #000,
+     1px  1px 0 #000,
+     0 0 10px rgba(0, 0, 0, 0.9),
+     0 0 20px rgba(0, 0, 0, 0.5);
   z-index: 2;
+  margin-top: 4px;
 }
 
 .status-label.all-clear {
   color: #FFD600;
+  font-size: 1rem;
   text-shadow: 0 0 15px rgba(255, 214, 0, 0.6),
                0 0 5px rgba(0, 0, 0, 0.9);
+}
+
+.accountability-header {
+    font-size: 10px;
+    color: #666;
+    letter-spacing: 1px;
+    font-weight: bold;
+}
+
+.majesty-cake-container {
+    position: relative;
+    width: 60px;
+    height: 60px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 8px 0;
+}
+
+.majesty-cake-icon {
+    font-size: 40px;
+    z-index: 3;
+    animation: cake-hop 2s infinite ease-in-out;
+}
+
+.majesty-cake-glow {
+    position: absolute;
+    width: 40px;
+    height: 40px;
+    background: radial-gradient(circle, rgba(255, 214, 0, 0.4) 0%, transparent 70%);
+    border-radius: 50%;
+    animation: glow-pulse 2s infinite ease-in-out;
+}
+
+@keyframes cake-hop {
+    0%, 100% { transform: translateY(0) scale(1); }
+    50% { transform: translateY(-5px) scale(1.1); }
+}
+
+@keyframes glow-pulse {
+    0%, 100% { transform: scale(1); opacity: 0.3; }
+    50% { transform: scale(1.5); opacity: 0.6; }
 }
 
 .sessions-label {
@@ -162,6 +210,10 @@
   text-shadow: 1px 1px 2px rgba(0, 0, 0, 1);
   font-weight: bold;
   z-index: 2;
+}
+
+.sessions-label.bold {
+    font-weight: 900;
 }
 
 .goal-icons {

@@ -167,25 +167,34 @@ async def upload_walk(walk_data: Dict[str, Any], user_id: str = Depends(get_auth
 
 @app.get("/languages")
 async def get_languages(user_id: str = Depends(get_authorized_user)):
-    stats = await asyncio.to_thread(neon_checker.get_language_stats, user_id)
-    # Convert to format Android app expects
+    # Use the unified velocity calculator to get enriched stats (absolute_target, target_flow_rate, goal_met)
+    stats_dict = await get_language_velocity_stats(user_id)
+    
     lang_list = []
-    for name, data in stats.items():
-        has_goal = bool(data.get("beeminder_slug"))
+    for name, data in stats_dict.items():
+        # Mirror Android/Spec: Hide inactive languages that don't have an active Beeminder goal
+        # (exception for Arabic which is always prioritized)
+        has_goal = bool(data.get("beeminder_slug")) or name.lower() == "arabic"
+        
+        # If lever is 'No Goal (Unplanned)' and it's not arabic, skip it to reduce noise
+        if not has_goal and data.get("lever_name") == "No Goal (Unplanned)":
+            continue
+
         lang_list.append({
             "name": name,
-            "current": data.get("current", 0),
-            "tomorrow": data.get("tomorrow", 0),
-            "next_7_days": data.get("next_7_days", 0),
-            "daily_rate": data.get("daily_rate", 0.0),
+            "current": data.get("debt_remaining", 0),
+            "tomorrow": data.get("tomorrow_liability", 0), # note: get_status dict keys might vary
+            "next_7_days": data.get("next_7_days", 0), # this might be missing from pump status, need to fetch from base stats
+            "daily_rate": 0.0, # deprecated
             "safebuf": data.get("safebuf", 0),
-            "derail_risk": data.get("derail_risk", "UNKNOWN"),
-            "pump_multiplier": data.get("pump_multiplier", 1.0),
-            "has_goal": has_goal
+            "derail_risk": "STABLE",
+            "pump_multiplier": data.get("multiplier", 1.0),
+            "has_goal": has_goal,
+            "daily_completions": data.get("current_flow_rate", 0),
+            "target_flow_rate": data.get("target_flow_rate", 0),
+            "absolute_target": data.get("absolute_target", 0),
+            "goal_met": data.get("goal_met", False)
         })
-
-    # Sort: Beeminder-tracked languages first, then untracked (closes kingdonb/mecris#121)
-    lang_list.sort(key=lambda x: (not x["has_goal"], x["name"]))
 
     return {"languages": lang_list}
 
@@ -973,8 +982,11 @@ async def get_language_velocity_stats(user_id: str = None) -> Dict[str, Any]:
             pump = ReviewPump(multiplier=multiplier)
             pump_status = pump.get_status(current_debt, tomorrow_liability, daily_done, unit=unit)
             
-            # Surface safebuf (lead time) from DB
+            # Surface additional fields from DB for the endpoint
             pump_status["safebuf"] = stats.get("safebuf", 0)
+            pump_status["beeminder_slug"] = stats.get("beeminder_slug")
+            pump_status["tomorrow_liability"] = tomorrow_liability
+            pump_status["next_7_days"] = stats.get("next_7_days", 0)
             
             # Unit/Goal Classification:
             # - Arabic: Has a "Reviewstack" goal (explicitly tracked/synced)
