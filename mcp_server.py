@@ -183,8 +183,8 @@ async def get_languages(user_id: str = Depends(get_authorized_user)):
         lang_list.append({
             "name": name,
             "current": data.get("debt_remaining", 0),
-            "tomorrow": data.get("tomorrow_liability", 0), # note: get_status dict keys might vary
-            "next_7_days": data.get("next_7_days", 0), # this might be missing from pump status, need to fetch from base stats
+            "tomorrow": data.get("tomorrow_liability", 0),
+            "next_7_days": data.get("next_7_days", 0),
             "daily_rate": 0.0, # deprecated
             "safebuf": data.get("safebuf", 0),
             "derail_risk": "STABLE",

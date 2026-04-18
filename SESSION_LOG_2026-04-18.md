@@ -19,21 +19,26 @@
     - Implemented `global_last_nag_timestamp` in `DelayedNagWorker.kt` (4-hour cooldown).
     - **Moussaka Exception**: Reduced cooldown to 1.5h specifically for Greek reminders.
     - **Fixed Sovereign Fallback**: Discovered the fallback path was bypassing cooldowns. Applied `global_last_nag_timestamp` check to ensure even fallback nags are rate-limited.
-6.  **Alpha Release v0.0.1-alpha.6**:
-    - Tagged and pushed **v0.0.1-alpha.6**.
+6.  **Alpha Release v0.0.1-alpha.7**:
+    - Tagged and pushed **v0.0.1-alpha.7**.
+    - Corrected versioning leap from previous session.
     - Upgraded Android app version to `1.1.6-alpha.6`.
 7.  **Mecris-Bot Audit & Merge**:
     - Merged `yebyen/main` into `main`. The merge was clean and primarily incorporated `NEXT_SESSION.md` and `session_log.md` updates from the bot.
 8.  **Enhanced Web UI & Transparency**:
+    - **Majesty Cake**: Upgraded the System Momentum widget to show a pulsing 🍰 and celebratory glow when all goals are met.
+    - **Expressive Dashboard**: Added goal icons (🚶, 🇦, 🇬) to match Android.
+    - **Data Consistency**: Fixed "PROGRESS: /" bug by ensuring `absolute_target` and `target_flow_rate` flow correctly through the `/languages` endpoint.
+    - **Filtering**: Mirrored Android logic to hide inactive languages (those without a Beeminder goal).
     - **Visuals**: Restored Green as the "STABLE" color and added impact outlines to momentum labels for better legibility.
-    - **Transparency**: Updated `ReviewPump` to show absolute progress (`Completions / Target`) to demystify the "Brutal Heuristic."
-    - **Fixed Local Sync**: Python scraper now persists results to Neon `language_stats`.
+    - **Fixed Local Sync**: Python scraper now persists results to Neon `language_stats` so Web UI reflects manual syncs immediately.
 
 ### 🎯 Outcomes
 - UI reflects live data for the authenticated user with high fidelity.
 - Numbers match across Android and Web thanks to aligned heuristics and shared DB persistence.
 - System Pulse provides accurate, differentiated health signals.
 - Android reminders are now globally rate-limited, including fallback paths.
+- Re-established Trust Boundary: Gemini is the architect; Claude's destructive reverts blocked.
 
 ### 🔍 Investigation: Numbers Mismatch (RESOLVED)
 - **Finding**: Python scraper was not updating Neon; Arabic divisor was mismatched (12 vs 16).
@@ -43,9 +48,9 @@
 - **Lesson**: Agent cannot restart the MCP server stdio connection. User must run `/mcp reload`.
 
 ### 🐾 Physical Activity Reminder
-- **0/3 Goals Satisfied**.
-- User reports progress on Arabic cards (170/170 met, but target recalculated to 169-ish due to divisor).
-- **Walk Goal**: Explain that 0.04 MI is significantly below the 1.0 MI (2000 step) threshold required for goal satisfaction.
+- **1/3 Goals Satisfied** (Arabic goal met!).
+- User reached 170 Arabic cards.
+- **Walk Goal**: 0.04 MI is significantly below the 1.0 MI (2000 step) threshold required for goal satisfaction.
 - Weather remains "icky"; walk postponed to afternoon.
 
 ### 📋 Next Session Priorities
