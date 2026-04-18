@@ -159,7 +159,7 @@ const Dashboard: React.FC<DashboardProps> = ({ userToken }) => {
                 {data?.system_pulse?.modalities.map(m => (
                     <div key={m.role} className="pulse-item">
                         <span className={`status-led ${m.status}`} />
-                        <span className="modality-name">{m.role.replace('_', ' ').toUpperCase()}</span>
+                        <span className="modality-name">{m.role}</span>
                         <span className="last-seen">{m.minutes_since}m</span>
                     </div>
                 ))}

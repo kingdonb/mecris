@@ -1179,8 +1179,14 @@ async def fetch_system_pulse(user_id: str) -> Dict[str, Any]:
         modalities = []
         for role, heartbeat, mins_since in rows:
             mins = float(mins_since or 9999)
+            
+            # Map machine names to human-friendly display names (Neural Link aesthetic)
+            display_role = role.replace('_', ' ').upper()
+            if role == "leader": display_role = "MCP SERVER"
+            elif role == "unknown_cloud": display_role = "FERMYON CLOUD"
+
             modalities.append({
-                "role": role,
+                "role": display_role,
                 "status": get_modality_status(role, mins),
                 "last_seen": heartbeat.isoformat() if heartbeat else "never",
                 "minutes_since": int(mins)
