@@ -1,14 +1,15 @@
-# Next Session: v0.0.1-beta.1 released — Beta baseline established
+# Next Session: Awaiting human-driven PRs — attic audit complete
 
-## Current Status (2026-04-18, post-beta, plan yebyen/mecris#219)
+## Current Status (2026-04-18, post-audit, plan yebyen/mecris#220)
 - **yebyen/mecris is fully synced with kingdonb/mecris**: HEAD is `90a569e`. No divergence.
-- **Beta milestone achieved**: Suite promoted to `v0.0.1-beta.1` with Version Code reset to 1.
+- **Beta milestone in place**: Suite is `v0.0.1-beta.1`. All bot-actionable pending items from last session are resolved.
 - **No open PRs on kingdonb/mecris**: Nothing to test. Wait for human-driven PRs.
 - **One open issue on yebyen**: yebyen/mecris#142 (Rust CI fix) needs `workflow` PAT scope — must be applied by kingdonb. Out of bot scope.
 
-## Verified This Session (2026-04-18, plan yebyen/mecris#219)
-- [x] **NEXT_SESSION.md updated**: New baseline `90a569e`, pending items scoped, Beta context recorded
-- [x] **Upstream sync confirmed**: yebyen/mecris HEAD = kingdonb/mecris HEAD = `90a569e`
+## Verified This Session (2026-04-18, plan yebyen/mecris#220)
+- [x] **Attic audit complete**: All docs in `attic/` reviewed. No untracked GitHub issues found. All items fully processed or superseded.
+- [x] **session_log.md confirmed current**: 1726 lines through 2026-04-18, no dangling action items.
+- [x] **NEXT_SESSION.md updated**: New baseline `90a569e`, pending items scoped, Beta context recorded (from yebyen/mecris#219)
 
 ## Version Baseline (v0.0.1-beta.1)
 - **Android**: 1.1.6-beta.1 (Version Code reset to 1)
@@ -30,7 +31,6 @@
 
 ### 🤖 Bot-actionable (can be resolved in future sessions)
 - [ ] **Confirm Python test baseline via pr-test**: Estimated ~464 passed (unchanged). Verify on next PR test run when a PR is available.
-- [ ] **Audit session_log.md and attic/**: Check for unprocessed planning docs; extract any unfinished tasks to GitHub issues before moving to attic.
 
 ## New Features Landed in v0.0.1-beta.1
 
