@@ -26,16 +26,21 @@
 8.  **Release Automation**:
     - Created `scripts/bump_version.py` and `make bump-version` to automate version synchronization across `VERSION_MANIFEST.json`, Android `build.gradle.kts`, and Spin `spin.toml` files.
     - Tagged and pushed **v0.0.1-alpha.16** using the new automation.
+9.  **Web App Recovery & Resiliency**:
+    - **Fixed Runtime Crash**: Resolved a "white screen of death" in `Dashboard.tsx` by adding optional chaining to `system_pulse` modalities; ensured app survives even if backend health data is missing.
+    - **Hardened Type Safety**: Fixed `ReviewPump.tsx` build errors (type-only imports and unused variables) to satisfy strict TypeScript/Vite requirements.
+    - **Restored "Neural Link" Aesthetic**: Corrected a formatting glitch that merged modality labels; preserved Chesterton's Fence for system pulse indicators.
+    - **Verified Pipeline**: Confirmed `npm run build` and `npm test` pass with 100% success rate.
 
 ### 🎯 Outcomes
 - **Beta Ready**: The infrastructure for automated beta/stable releases is now fully functional.
 - **Synchronized**: Web and Android platforms show matching, high-fidelity data.
 - **Resilient**: Global parity achieved across Akamai, Fermyon, and Local MCP.
-- **Efficient**: Repetitive versioning tasks are now automated, saving tokens and human effort.
+- **Stable UI**: The web application is now resilient to partial backend failures and transient network desync.
 
-### 🔍 Investigation: Numbers Mismatch (RESOLVED)
-- **Finding**: Mismatched response keys and permissive thresholds caused 0/3 vs 2/3 desync.
-- **Fix**: Aligned keys and enforced strict 1.0 MI threshold.
+### 🔍 Investigation: Web UI Crash (RESOLVED)
+- **Problem**: `Dashboard.tsx` attempted to map over null `system_pulse` during initial hydration.
+- **Fix**: Optional chaining and robust default state for `languages`.
 
 ### 🔍 Investigation: CI Network Failures (RESOLVED)
 - **Fix**: Aggressive caching of Gradle/Rust artifacts in `.github/workflows/release.yml`.
