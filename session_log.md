@@ -1692,3 +1692,20 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: Cannot verify exact test count without running pr-test (no open PRs). Count is a code-count estimate.
 
 **Next**: No open PRs on kingdonb/mecris. Next session should orient fresh, verify new baseline via pr-test on next PR, and look for new work. Rust/Android counts unchanged.
+
+## 2026-04-18 🏛️ — Upstream sync: 21 commits absorbed from kingdonb/mecris, NEXT_SESSION.md baseline updated (yebyen/mecris#217, complete)
+
+**Planned**: Fetch and merge kingdonb/mecris main into yebyen/mecris, auditing new commits and updating NEXT_SESSION.md.
+
+**Done**:
+- Orient confirmed yebyen/mecris was 21 commits behind kingdonb/mecris (common ancestor: f0c62ff — our own HEAD; kingdonb had merged yebyen/main and continued building)
+- Fast-forward merge succeeded cleanly: `f0c62ff..65f24a0`, 20 files changed, +700/-139 lines
+- Audited all 21 commits: neural-link expressiveness, Moussaka Exception, global nag cooldown, Arabic 16pts/card heuristic, cloud_provider Spin var, Fermyon heartbeats re-enabled, get_modality_status(), test alignment
+- Key facts extracted to NEXT_SESSION.md: cloud_provider Spin var, Moussaka Exception (1.5h Greek cooldown), global_last_nag_timestamp, Arabic Majesty Cake 170/170 🍰
+- Python test count unchanged (~464 — test modifications were behavior fixes, not additions)
+- NEXT_SESSION.md updated with new HEAD baseline (`65f24a0`) and all infrastructure notes
+- Plan issue yebyen/mecris#217 closed ✅
+
+**Skipped**: No pr-test triggered — no open PRs. Test baseline remains estimated at ~464 until next PR run.
+
+**Next**: No open PRs on kingdonb/mecris. Next session should orient fresh and await human-driven PRs. Pending: cloud_provider + internal_api_key Fermyon Cloud config (needs human), migrate_v6 on production Neon (needs human), Rust CI fix (needs workflow PAT from kingdonb).
