@@ -146,94 +146,135 @@ async fn extract_user_id(auth_header: Option<&spin_sdk::http::HeaderValue>) -> O
     None
 }
 
+fn add_cors(resp: Response) -> Response {
+    let mut builder = Response::builder();
+    builder.status(*resp.status());
+    
+    for (name, value) in resp.headers() {
+        if let Ok(v_str) = std::str::from_utf8(value.as_ref()) {
+            builder.header(name, v_str);
+        }
+    }
+    
+    builder.header("access-control-allow-origin", "*");
+    builder.body(resp.into_body()).build()
+}
+
 #[http_component]
-async fn handle_sync_service(req: Request) -> anyhow::Result<impl IntoResponse> {
+async fn handle_sync_service(req: Request) -> anyhow::Result<Response> {
     let path = req.path();
     let method = req.method().to_string();
     println!("REQUEST: {} {}", method, path);
     
-    if path == "/walks" {
+    // Handle CORS preflight
+    if req.method() == &spin_sdk::http::Method::Options {
+        return Ok(Response::builder()
+            .status(204)
+            .header("access-control-allow-origin", "*")
+            .header("access-control-allow-methods", "GET, POST, OPTIONS")
+            .header("access-control-allow-headers", "authorization, content-type, x-internal-api-key")
+            .build());
+    }
+
+    let response = if path == "/walks" {
         if req.method() != &spin_sdk::http::Method::Post {
-            return Ok(Response::builder().status(405).body("Method Not Allowed").build());
+            Response::builder().status(405).body("Method Not Allowed").build()
+        } else {
+            handle_walks_post(req).await?
         }
-        return handle_walks_post(req).await;
     } else if path == "/budget" {
         if req.method() != &spin_sdk::http::Method::Get {
-            return Ok(Response::builder().status(405).body("Method Not Allowed").build());
+            Response::builder().status(405).body("Method Not Allowed").build()
+        } else {
+            handle_budget_get(req).await?
         }
-        return handle_budget_get(req).await;
     } else if path == "/languages" {
         if req.method() != &spin_sdk::http::Method::Get {
-            return Ok(Response::builder().status(405).body("Method Not Allowed").build());
+            Response::builder().status(405).body("Method Not Allowed").build()
+        } else {
+            handle_languages_get(req).await?
         }
-        return handle_languages_get(req).await;
     } else if path == "/languages/multiplier" {
         if req.method() != &spin_sdk::http::Method::Post {
-            return Ok(Response::builder().status(405).body("Method Not Allowed").build());
+            Response::builder().status(405).body("Method Not Allowed").build()
+        } else {
+            handle_multiplier_post(req).await?
         }
-        return handle_multiplier_post(req).await;
     } else if path == "/health" {
-        return handle_health_get(req).await;
+        handle_health_get(req).await?
     } else if path == "/heartbeat" {
         if req.method() != &spin_sdk::http::Method::Post {
-            return Ok(Response::builder().status(405).body("Method Not Allowed").build());
+            Response::builder().status(405).body("Method Not Allowed").build()
+        } else {
+            handle_heartbeat_post(req).await?
         }
-        return handle_heartbeat_post(req).await;
     } else if path == "/internal/cloud-sync" {
         if req.method() != &spin_sdk::http::Method::Post {
-            return Ok(Response::builder().status(405).body("Method Not Allowed").build());
+            Response::builder().status(405).body("Method Not Allowed").build()
+        } else {
+            handle_cloud_sync(req).await?
         }
-        return handle_cloud_sync(req).await;
     } else if path == "/aggregate-status" {
         if req.method() != &spin_sdk::http::Method::Get {
-            return Ok(Response::builder().status(405).body("Method Not Allowed").build());
+            Response::builder().status(405).body("Method Not Allowed").build()
+        } else {
+            handle_aggregate_status_get(req).await?
         }
-        return handle_aggregate_status_get(req).await;
     } else if path == "/internal/trigger-reminders" {
         if req.method() != &spin_sdk::http::Method::Post && req.method() != &spin_sdk::http::Method::Get {
-            return Ok(Response::builder().status(405).body("Method Not Allowed").build());
+            Response::builder().status(405).body("Method Not Allowed").build()
+        } else {
+            let configured_key = variables::get("internal_api_key").unwrap_or_default();
+            let provided_key = req.header("x-internal-api-key").and_then(|v| v.as_str());
+            if !internal_api_key_ok(&configured_key, provided_key) {
+                Response::builder().status(401).body("Unauthorized").build()
+            } else {
+                handle_trigger_reminders_post(req).await?
+            }
         }
-        let configured_key = variables::get("internal_api_key").unwrap_or_default();
-        let provided_key = req.header("x-internal-api-key").and_then(|v| v.as_str());
-        if !internal_api_key_ok(&configured_key, provided_key) {
-            return Ok(Response::builder().status(401).body("Unauthorized").build());
-        }
-        return handle_trigger_reminders_post(req).await;
     } else if path == "/internal/failover-sync" {
         // Cron sync trigger — optional API key guard (set `internal_api_key` Spin variable to enforce).
         if req.method() != &spin_sdk::http::Method::Post && req.method() != &spin_sdk::http::Method::Get {
-            return Ok(Response::builder().status(405).body("Method Not Allowed").build());
+            Response::builder().status(405).body("Method Not Allowed").build()
+        } else {
+            let configured_key = variables::get("internal_api_key").unwrap_or_default();
+            let provided_key = req.header("x-internal-api-key").and_then(|v| v.as_str());
+            if !internal_api_key_ok(&configured_key, provided_key) {
+                Response::builder().status(401).body("Unauthorized").build()
+            } else {
+                handle_failover_sync_post(req).await?
+            }
         }
-        let configured_key = variables::get("internal_api_key").unwrap_or_default();
-        let provided_key = req.header("x-internal-api-key").and_then(|v| v.as_str());
-        if !internal_api_key_ok(&configured_key, provided_key) {
-            return Ok(Response::builder().status(401).body("Unauthorized").build());
-        }
-        return handle_failover_sync_post(req).await;
     } else if path == "/internal/weather-heuristic" {
         if req.method() != &spin_sdk::http::Method::Get {
-            return Ok(Response::builder().status(405).body("Method Not Allowed").build());
+            Response::builder().status(405).body("Method Not Allowed").build()
+        } else {
+            handle_weather_heuristic_get(req).await?
         }
-        return handle_weather_heuristic_get(req).await;
     } else if path == "/internal/request-phone-verification" {
         if req.method() != &spin_sdk::http::Method::Post {
-            return Ok(Response::builder().status(405).body("Method Not Allowed").build());
+            Response::builder().status(405).body("Method Not Allowed").build()
+        } else {
+            handle_request_phone_verification_post(req).await?
         }
-        return handle_request_phone_verification_post(req).await;
     } else if path == "/internal/confirm-phone-verification" {
         if req.method() != &spin_sdk::http::Method::Post {
-            return Ok(Response::builder().status(405).body("Method Not Allowed").build());
+            Response::builder().status(405).body("Method Not Allowed").build()
+        } else {
+            handle_confirm_phone_verification_post(req).await?
         }
-        return handle_confirm_phone_verification_post(req).await;
     } else if path == "/internal/twilio-webhook" {
         if req.method() != &spin_sdk::http::Method::Post {
-            return Ok(Response::builder().status(405).body("Method Not Allowed").build());
+            Response::builder().status(405).body("Method Not Allowed").build()
+        } else {
+            handle_twilio_webhook_post(req).await?
         }
-        return handle_twilio_webhook_post(req).await;
-    }
+    } else {
+        Response::builder().status(404).body("Not Found").build()
+    };
 
-    Ok(Response::builder().status(404).body("Not Found").build())
-    }
+    Ok(add_cors(response))
+}
 async fn handle_aggregate_status_get(req: Request) -> anyhow::Result<Response> {
     let auth_header = req.header("authorization");
     let user_id = match extract_user_id(auth_header).await {
