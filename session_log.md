@@ -1629,3 +1629,18 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: Nothing — adapted plan honestly when pre-existing fix was discovered.
 
 **Next**: kingdonb/mecris#192 (Ghost Nag fix) awaiting human review/merge; confirm 108 Rust test baseline in next pr-test.
+
+## 2026-04-18 🏛️ — Schema fix: phone_verified, phone_verifications, scheduler_election.user_id (yebyen/mecris#212, partial)
+
+**Planned**: Fix pre-existing Python test failure by adding phone_verified column and phone_verifications table to schema.sql, plus migration script (yebyen/mecris#212).
+
+**Done**:
+- **pr-test baselines confirmed**: run 24591839834 — Rust 108 ✅ (post-push, was 107), Android 27 tests ✅ (was shown as 26 previously). All pending NEXT_SESSION.md verifications resolved.
+- **Schema gaps identified**: `phone_verified`, `vacation_mode_until`, `phone_verifications` table, `scheduler_election.user_id` — all missing from `schema.sql` despite Rust code using them.
+- **Fix committed** (`4391848`): Updated `schema.sql` with all four gaps; created `scripts/migrate_v6_add_phone_verified.py`; added `pytestmark` E2E skip guard to `test_phone_verification_e2e.py` (test hits live Fermyon, not suitable for CI local postgres).
+- **PR #192 verified ready**: Posted confirmation comment on kingdonb/mecris#192 with 108 Rust baseline.
+- **internal_api_key already implemented**: Confirmed kingdonb/mecris#185 code-complete in Rust — just needs Fermyon Cloud deployment.
+
+**Skipped**: pr-test verification of schema fix — commit `4391848` is local only; pr-test ran against pre-push GitHub code and still showed 1 failed. Verification must happen next session after the bot push.
+
+**Next**: Run pr-test on PR #192 to confirm schema fix landed — expected 0 failed, 461 passed, 6 skipped (was 1 failed, 5 skipped).
