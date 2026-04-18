@@ -1,15 +1,6 @@
 import React from 'react';
 import './ReviewPump.css';
-
-interface LanguageStat {
-  name: string;
-  current: number;
-  tomorrow: number;
-  next_7_days: number;
-  pump_multiplier: number;
-  safebuf: number;
-  has_goal: boolean;
-}
+import { LanguageStat } from '../types/mecris';
 
 interface ReviewPumpProps {
   stat: LanguageStat;
