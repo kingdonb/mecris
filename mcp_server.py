@@ -13,6 +13,7 @@ from typing import List, Dict, Any, Optional
 from dotenv import load_dotenv
 from mcp.server.fastmcp import FastMCP
 from fastapi import FastAPI, Depends, HTTPException, Security
+from fastapi.middleware.cors import CORSMiddleware
 from services.auth_service import get_current_user, is_standalone_mode
 
 from obsidian_client import ObsidianMCPClient
@@ -71,6 +72,15 @@ mcp = FastMCP("mecris")
 
 # Create FastAPI app for HTTP endpoints
 app = FastAPI(title="Mecris API")
+
+# Add CORS middleware for Web UI development
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 async def get_authorized_user(user_id: Optional[str] = Depends(get_current_user)):
     """FastAPI Dependency: Only enforces token if not in standalone mode."""
