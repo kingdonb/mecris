@@ -1257,7 +1257,7 @@ async fn handle_walks_post(req: Request) -> anyhow::Result<Response> {
         &[ParameterValue::Str(user_id.clone())]
     )?;
 
-    if !token_rs.rows.is_empty() && delta_meters > 10.0 {
+    if !token_rs.rows.is_empty() && delta_meters > 200.0 {
         let goal = match &token_rs.rows[0][0] { DbValue::Str(s) if !s.is_empty() => s.clone(), _ => "bike".to_string() };
         let total_miles = walk.distance_meters / 1609.34;
         let rounded_miles = (total_miles * 1000.0).round() / 1000.0;
