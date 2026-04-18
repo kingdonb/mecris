@@ -146,7 +146,7 @@ class TestResolveUserId:
             result = cm.resolve_user_id()
         assert result == "env-user-id"
 
-    def test_standalone_mode_generates_local_id(self, tmp_path):
+    def test_standalone_mode_no_id_returns_none(self, tmp_path):
         cm = _make_cm(tmp_path)
         env = {"MECRIS_MODE": "standalone"}
         # Remove DEFAULT_USER_ID if present
@@ -154,11 +154,7 @@ class TestResolveUserId:
         env_no_default["MECRIS_MODE"] = "standalone"
         with patch.dict(os.environ, env_no_default, clear=True):
             result = cm.resolve_user_id()
-        assert result is not None
-        assert result.startswith("local-")
-        # Verify it was saved to the credentials file
-        saved = json.loads(cm.credentials_file.read_text())
-        assert saved["user_id"] == result
+        assert result is None
 
     def test_cloud_mode_no_id_returns_none(self, tmp_path):
         cm = _make_cm(tmp_path)
