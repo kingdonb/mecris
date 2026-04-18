@@ -1148,9 +1148,9 @@ def get_modality_status(role: str, mins: float) -> str:
         if mins < 250: return "degraded"
         return "offline"
     elif role == "fermyon_cloud":
-        if mins < 5: return "healthy"
+        if mins < 5: return "reactive"
         if mins < 15: return "degraded"
-        return "offline"
+        return "unknown"
     elif role == "unknown_cloud":
         # Handle cases where provider variable is missing but cloud is active
         if mins < 135: return "healthy"
@@ -1183,8 +1183,8 @@ async def fetch_system_pulse(user_id: str) -> Dict[str, Any]:
         rows = await asyncio.to_thread(_query)
         modalities = []
         for role, heartbeat, mins_since in rows:
-            # Skip reactive endpoints that don't have a background worker/pulse
-            if role == "fermyon_cloud" or role == "unknown_cloud":
+            # Skip only unknown ghosts
+            if role == "unknown_cloud":
                 continue
 
             mins = float(mins_since or 9999)
@@ -1192,6 +1192,7 @@ async def fetch_system_pulse(user_id: str) -> Dict[str, Any]:
             # Map machine names to human-friendly display names (Neural Link aesthetic)
             if role == "leader": display_role = "MCP SERVER"
             elif role == "akamai_functions": display_role = "AKAMAI FUNCTIONS"
+            elif role == "fermyon_cloud": display_role = "FERMYON CLOUD"
             elif role == "android_client": display_role = "ANDROID CLIENT"
             else: display_role = role.replace('_', ' ').upper()
 

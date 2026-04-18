@@ -100,6 +100,7 @@
 .status-led.healthy { background-color: #00C853; box-shadow: 0 0 8px #00C853; }
 .status-led.degraded { background-color: #FFD600; box-shadow: 0 0 8px #FFD600; }
 .status-led.offline { background-color: #FF1744; box-shadow: 0 0 8px #FF1744; }
+.status-led.reactive { background-color: #FFFFFF; box-shadow: 0 0 8px #FFFFFF; }
 .status-led.unknown { background-color: #555; box-shadow: 0 0 8px #555; }
 
 .modality-name {
