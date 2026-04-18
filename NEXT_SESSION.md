@@ -1,17 +1,16 @@
-# Next Session: yebyen/mecris is synced with upstream; no open PRs — explore new work or await kingdonb
+# Next Session: yebyen/mecris synced with upstream — no open PRs, await new work or human-driven PRs
 
 ## Current Status (2026-04-18)
-- **yebyen/mecris is fully synced with kingdonb/mecris**: HEAD is `394e809` (kingdonb merge commit). No divergence remains.
-- **PR #192 is merged**: kingdonb merged at 02:08 UTC. Ghost Nag prevention + schema fix (phone_verified, phone_verifications, scheduler_election.user_id) are now on kingdonb/mecris main.
-- **Schema fix pr-test verification is complete**: PR #192 merged by kingdonb — the fix landed. No further pr-test action needed for schema fix.
+- **yebyen/mecris is fully synced with kingdonb/mecris**: HEAD is `9139179` (merge commit incorporating upstream `394e809`). `git log HEAD..upstream/main` returns empty.
+- **Divergence resolved**: Previous session had a 2-commit divergence between yebyen (`05bf13a` talktype + `a1ee59a` archive) and upstream (`366083a` talktype + `394e809` merge). Resolved via `git merge upstream/main --no-edit` — ort strategy, no conflicts.
 - **No open PRs on kingdonb/mecris**: Nothing to test. Next session should look for new work or wait for human-driven PRs.
-- **talktype tool updated**: kingdonb committed a change to `tools/talktype/talktype` (`366083a`) — now synced to fork.
+- **One open issue on yebyen**: yebyen/mecris#142 (Rust CI fix) needs `workflow` PAT scope — must be applied by kingdonb. Out of bot scope.
 
 ## Verified This Session
-- [x] **PR #192 merged**: Ghost Nag fix + schema fix both landed on kingdonb/mecris main at 02:08 UTC.
-- [x] **yebyen/mecris synced from upstream**: Fast-forward merge, HEAD now `394e809`. `git log --oneline HEAD..upstream/main` returns empty.
-- [x] **talktype update picked up**: `tools/talktype/talktype` is current with upstream.
-- [x] **Schema fix pr-test verification**: Considered done via merge — PR #192 was accepted by kingdonb, implying test review passed.
+- [x] **Upstream sync complete**: `git merge upstream/main --no-edit` succeeded, HEAD is `9139179`.
+- [x] **Validation criterion met**: `git log --oneline HEAD..upstream/main` returns empty.
+- [x] **No conflicts**: ort merge strategy, clean exit, zero conflicts.
+- [x] **Plan issue yebyen/mecris#214 closed** ✅
 
 ## Pending Verification (Next Session)
 - [ ] **Run pr-test on next PR**: When a new PR is opened on kingdonb/mecris, dispatch pr-test to confirm baseline is clean: expected 0 failed, 461 passed, 6 skipped, 108 Rust, 27 Android.

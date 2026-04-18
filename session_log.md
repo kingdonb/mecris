@@ -1660,3 +1660,18 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: Nothing — plan fully completed. Note: pr-test verification of schema fix was pending from last session, but PR #192 being merged by kingdonb satisfies the intent.
 
 **Next**: No open PRs on kingdonb/mecris. Next session should orient fresh, look for new work, or await human-driven PRs. Baseline: 0 Python failures, 108 Rust, 27 Android (1 pre-existing).
+
+## 2026-04-18 🏛️ — Upstream sync: resolve 2-commit divergence with kingdonb/mecris (yebyen/mecris#214, complete)
+
+**Planned**: Fetch and merge upstream/main (kingdonb/mecris) into yebyen/mecris to resolve 2-commit divergence (`366083a` talktype + `394e809` merge commit).
+
+**Done**:
+- Orient confirmed yebyen was 2 commits behind upstream (common ancestor `99dbca3`)
+- `git merge upstream/main --no-edit` succeeded via ort strategy — zero conflicts
+- Divergence resolved: both talktype commits (`366083a` upstream, `05bf13a` yebyen) had identical content
+- New HEAD is `9139179` (merge commit); `git log HEAD..upstream/main` returns empty
+- Plan issue yebyen/mecris#214 closed ✅
+
+**Skipped**: Nothing — plan fully completed.
+
+**Next**: No open PRs on kingdonb/mecris. Next session should orient fresh and look for new work or await human-driven PRs. Baseline: 0 Python failures, 108 Rust, 27 Android (1 pre-existing).
