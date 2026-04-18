@@ -47,15 +47,36 @@ class DelayedNagWorker(
                         if (result != null) {
                             val (title, message, prefKey, packageName, llmMessage) = result
                             
-                            // Check cooldown again (just in case)
-                            val lastNag = prefs.getLong(prefKey, 0L)
-                            val fourHoursAgo = Instant.now().minusSeconds(14400).toEpochMilli()
+                            // Check cooldowns: 
+                            // 1. Per-goal cooldown (prefKey)
+                            // 2. Global cooldown (prevent 'machine gun' nagging)
+                            val nowMs = Instant.now().toEpochMilli()
                             
-                            if (lastNag < fourHoursAgo) {
+                            // Default cooldown is 4 hours (14,400,000 ms)
+                            var cooldownMs = 14400000L
+                            
+                            // Moussaka Exception: If we are nagging about Greek, allow a tighter 1.5h window (5,400,000 ms)
+                            // This ensures that if Arabic and Walk are done, the Greek nag can fire sooner during 'Moussaka Hour'.
+                            if (prefKey == "last_greek_nag_timestamp") {
+                                cooldownMs = 5400000L 
+                                Log.i("DelayedNagWorker", "Moussaka Exception: Reducing cooldown to 1.5h for Greek nag")
+                            }
+
+                            val lastGoalNag = prefs.getLong(prefKey, 0L)
+                            val lastGlobalNag = prefs.getLong("global_last_nag_timestamp", 0L)
+                            
+                            if (lastGoalNag < (nowMs - cooldownMs) && lastGlobalNag < (nowMs - cooldownMs)) {
                                 val finalMessage = llmMessage ?: message
                                 Log.i("DelayedNagWorker", "Firing Nag: $title (LLM: ${llmMessage != null})")
                                 nagManager.showNag(title, finalMessage, packageName)
-                                prefs.edit().putLong(prefKey, Instant.now().toEpochMilli()).apply()
+                                
+                                // Update both timestamps
+                                prefs.edit()
+                                    .putLong(prefKey, nowMs)
+                                    .putLong("global_last_nag_timestamp", nowMs)
+                                    .apply()
+                            } else {
+                                Log.i("DelayedNagWorker", "Nag suppressed by cooldown ($prefKey: ${nowMs - lastGoalNag}ms age, Global: ${nowMs - lastGlobalNag}ms age, Target: ${cooldownMs}ms)")
                             }
                         } else {
                             Log.i("DelayedNagWorker", "All clear or suppressed. No nag needed.")
