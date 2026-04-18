@@ -1,19 +1,18 @@
-# Next Session: yebyen/mecris synced with upstream — no open PRs, await new work or human-driven PRs
+# Next Session: yebyen/mecris synced with upstream — await new PR or human-driven work
 
 ## Current Status (2026-04-18)
-- **yebyen/mecris is fully synced with kingdonb/mecris**: HEAD is `9139179` (merge commit incorporating upstream `394e809`). `git log HEAD..upstream/main` returns empty.
-- **Divergence resolved**: Previous session had a 2-commit divergence between yebyen (`05bf13a` talktype + `a1ee59a` archive) and upstream (`366083a` talktype + `394e809` merge). Resolved via `git merge upstream/main --no-edit` — ort strategy, no conflicts.
+- **yebyen/mecris is fully synced with kingdonb/mecris**: HEAD is `1395e8c`. No divergence.
 - **No open PRs on kingdonb/mecris**: Nothing to test. Next session should look for new work or wait for human-driven PRs.
 - **One open issue on yebyen**: yebyen/mecris#142 (Rust CI fix) needs `workflow` PAT scope — must be applied by kingdonb. Out of bot scope.
 
-## Verified This Session
-- [x] **Upstream sync complete**: `git merge upstream/main --no-edit` succeeded, HEAD is `9139179`.
-- [x] **Validation criterion met**: `git log --oneline HEAD..upstream/main` returns empty.
-- [x] **No conflicts**: ort merge strategy, clean exit, zero conflicts.
-- [x] **Plan issue yebyen/mecris#214 closed** ✅
+## Verified This Session (2026-04-18, plan yebyen/mecris#216)
+- [x] **Audit of new commits complete**: 10 commits since last session (web UI scaffold, CORS, JWKS, heartbeat, sync-service, type fixes)
+- [x] **New Python test baseline estimated**: 464 passed (was 461) — 3 new CORS tests in `tests/test_mcp_cors.py`
+- [x] **Vitest tests**: 3 new React component tests in `web/src/components/__tests__/rendering.test.tsx` (not in pytest count)
+- [x] **React web UI landed**: Full scaffold in `web/` — Dashboard, MomentumVisualizer, Odometer, ReviewPump components
 
 ## Pending Verification (Next Session)
-- [ ] **Run pr-test on next PR**: When a new PR is opened on kingdonb/mecris, dispatch pr-test to confirm baseline is clean: expected 0 failed, 461 passed, 6 skipped, 108 Rust, 27 Android.
+- [ ] **Confirm Python test baseline via pr-test**: Estimated 464 passed (was 461), 6 skipped, 0 failing. Verify on next PR test run.
 - [ ] **Run migrate_v6 on production Neon**: `NEON_DB_URL=<prod> python scripts/migrate_v6_add_phone_verified.py` — needs human with Fermyon/Neon access to apply phone_verified and phone_verifications to live DB.
 - [ ] **Android test count investigation**: `PocketIdAuthTest` pre-existing failure — `java.lang.ExceptionInInitializerError` at `PocketIdAuthTest.kt:35`. Out of bot scope (Android-side fix).
 - [ ] **kingdonb/mecris#191 full resolution**: PR #192 implements Option A (Cloud stands down). Option B (Android logs to message_log) still open — not bot scope.
@@ -21,6 +20,14 @@
 - [ ] **Twilio webhook Phase 2 live E2E**: Requires Twilio variables in Fermyon Cloud.
 - [ ] **Rust test gap (workflow fix)**: Apply fix from yebyen/mecris#142. Needs `workflow` PAT scope — must be applied by kingdonb.
 - [ ] **kingdonb/mecris#180 Part 1 (Android)**: Health Connect double-counting — Android-side source filtering fix. Out of bot scope.
+
+## New Features Landed 2026-04-18 (audit by yebyen/mecris#216)
+- **React web UI** (`web/`): Dashboard with budget display, MomentumVisualizer, Odometer, ReviewPump components
+- **CORS support**: `mcp_server.py` allows `http://localhost:5173`; sync-service also CORS-enabled for web UI
+- **Cloud heartbeats**: sync-service `system_pulse` API + heartbeat registration on health check
+- **JWKS dynamic fetch**: `Makefile` fetches JWKS from VPN-protected server during deployment
+- **`--http` flag**: `mcp_server.py` supports `--http` for local dev without HTTPS
+- **Akamai env vars**: `Makefile` deployment passes environment variables to Akamai functions
 
 ## Infrastructure Notes
 - **phone_verified column**: `ALTER TABLE users ADD COLUMN IF NOT EXISTS phone_verified BOOLEAN DEFAULT FALSE` — in schema.sql AND migrate_v6. Apply migrate_v6 to production Neon before the E2E test can run live.
@@ -40,7 +47,7 @@
 - **Classic PAT scope**: `GITHUB_CLASSIC_PAT` has `repo` scope ONLY — no `workflow` scope, no `read:org`.
 - **Fine-grained PAT**: `GITHUB_TOKEN` scoped to yebyen/mecris only. Cannot create PRs on kingdonb/mecris — use `GITHUB_CLASSIC_PAT`.
 - **Python venv not present in bot runner**: Validate Python tests via pr-test workflow only.
-- **Python test count baseline**: 461 passed (6 skipped), 0 failing. Rust: 108 passed. Android: 27 tests (1 pre-existing failure).
+- **Python test count baseline**: ~464 passed (6 skipped), 0 failing (estimated; was 461 before CORS tests). Rust: 108 passed. Android: 27 tests (1 pre-existing failure).
 - **Rust satellite crates**: 99+ tests in sync-service, 28 in boris-fiona-walker, others not in CI yet.
 - **autonomous_sync_enabled**: DB flag per user (`users` table). Controls which users get processed by `/internal/trigger-reminders`. Default `false`.
 - **NEXT_SESSION.md merge conflict is permanently fixed**: `.gitattributes merge=union` on yebyen/mecris:main.
