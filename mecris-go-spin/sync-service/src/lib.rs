@@ -10,7 +10,7 @@ use spin_cron_sdk::{cron_component, Metadata};
 
 #[cron_component]
 async fn handle_cron(_metadata: Metadata) -> anyhow::Result<()> {
-    let db_url = match variables::get("db_url") {
+    let db_url = match variables::get("db_url").or_else(|_| variables::get("neon_db_url")) {
         Ok(url) if !url.is_empty() => url,
         _ => return Ok(()),
     };
@@ -160,6 +160,30 @@ fn add_cors(resp: Response) -> Response {
     builder.body(resp.into_body()).build()
 }
 
+async fn register_cloud_heartbeat(connection: &Connection, user_id: &str) -> anyhow::Result<()> {
+    let provider = variables::get("cloud_provider").unwrap_or_else(|_| "unknown_cloud".to_string());
+    let role = match provider.as_str() {
+        "akamai" => "akamai_functions",
+        "fermyon" => "fermyon_cloud",
+        _ => "unknown_cloud",
+    };
+
+    println!("REGISTERING HEARTBEAT: user={} role={} provider={}", user_id, role, provider);
+
+    let query = "INSERT INTO scheduler_election (user_id, role, process_id, heartbeat) \
+                 VALUES ($1, $2, $3, CURRENT_TIMESTAMP) \
+                 ON CONFLICT (user_id, role) DO UPDATE SET \
+                 heartbeat = EXCLUDED.heartbeat, process_id = EXCLUDED.process_id";
+    
+    connection.execute(query, &[
+        ParameterValue::Str(user_id.to_string()),
+        ParameterValue::Str(role.to_string()),
+        ParameterValue::Str(provider.to_string()),
+    ])?;
+
+    Ok(())
+}
+
 #[http_component]
 async fn handle_sync_service(req: Request) -> anyhow::Result<Response> {
     let path = req.path();
@@ -275,6 +299,16 @@ async fn handle_sync_service(req: Request) -> anyhow::Result<Response> {
 
     Ok(add_cors(response))
 }
+fn get_modality_status_string(role: &str, mins: u64) -> &'static str {
+    match role {
+        "leader" => if mins < 2 { "healthy" } else if mins < 5 { "degraded" } else { "offline" },
+        "android_client" => if mins < 20 { "healthy" } else if mins < 60 { "degraded" } else { "offline" },
+        "akamai_functions" => if mins < 135 { "healthy" } else if mins < 250 { "degraded" } else { "offline" },
+        "fermyon_cloud" => if mins < 5 { "healthy" } else if mins < 15 { "degraded" } else { "offline" },
+        _ => "unknown",
+    }
+}
+
 async fn handle_aggregate_status_get(req: Request) -> anyhow::Result<Response> {
     let auth_header = req.header("authorization");
     let user_id = match extract_user_id(auth_header).await {
@@ -282,7 +316,10 @@ async fn handle_aggregate_status_get(req: Request) -> anyhow::Result<Response> {
         None => return Ok(Response::builder().status(401).body("Unauthorized").build()),
     };
 
-    let db_url = variables::get("db_url")?;
+    // Manual query param check to avoid 'url' crate dependency
+    let full = req.uri().contains("full=true");
+
+    let db_url = variables::get("db_url").or_else(|_| variables::get("neon_db_url"))?;
     let connection = Connection::open(&db_url)?;
 
     // 1. Check Walk Status (>= 2000 steps today US/Eastern)
@@ -364,6 +401,19 @@ async fn handle_aggregate_status_get(req: Request) -> anyhow::Result<Response> {
     }
 
     #[derive(Serialize)]
+    struct ModalityStatus {
+        role: String,
+        status: String, // healthy, degraded, offline
+        last_seen: String,
+        minutes_since: u64,
+    }
+
+    #[derive(Serialize)]
+    struct SystemPulse {
+        modalities: Vec<ModalityStatus>,
+    }
+
+    #[derive(Serialize)]
     struct AggregateComponents {
         walk: bool,
         arabic: bool,
@@ -379,6 +429,35 @@ async fn handle_aggregate_status_get(req: Request) -> anyhow::Result<Response> {
         components: AggregateComponents,
         vacation_mode_until: Option<String>,
         phone_verified: bool,
+        system_pulse: Option<SystemPulse>,
+    }
+
+    let mut system_pulse = None;
+    if full {
+        let pulse_query = "SELECT role, heartbeat::TEXT, EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - heartbeat)) / 60 AS minutes_since \
+                           FROM scheduler_election WHERE user_id = $1";
+        let pulse_rs = connection.query(pulse_query, &[ParameterValue::Str(user_id.clone())])?;
+        
+        let mut modalities = Vec::new();
+        for row in pulse_rs.rows {
+            let role = match &row[0] { DbValue::Str(s) => s.clone(), _ => continue };
+            let last_seen = match &row[1] { DbValue::Str(s) => s.clone(), _ => "never".to_string() };
+            let mins = match &row[2] { 
+                DbValue::Floating64(f) => *f as u64,
+                DbValue::Str(s) => s.parse::<f64>().ok().map(|f| f as u64).unwrap_or(9999),
+                _ => 9999 
+            };
+
+            let status = get_modality_status_string(&role, mins);
+
+            modalities.push(ModalityStatus {
+                role,
+                status: status.to_string(),
+                last_seen,
+                minutes_since: mins,
+            });
+        }
+        system_pulse = Some(SystemPulse { modalities });
     }
 
     let resp = AggregateResponse {
@@ -393,6 +472,7 @@ async fn handle_aggregate_status_get(req: Request) -> anyhow::Result<Response> {
         },
         vacation_mode_until,
         phone_verified,
+        system_pulse,
     };
 
     Ok(Response::builder()
@@ -433,8 +513,13 @@ async fn handle_cloud_sync(req: Request) -> anyhow::Result<Response> {
         None => return Ok(Response::builder().status(401).body("Unauthorized").build()),
     };
 
-    let db_url = variables::get("db_url").map_err(|e| anyhow::anyhow!("db_url fetch failed: {:?}", e))?;
+    let db_url = variables::get("db_url")
+        .or_else(|_| variables::get("neon_db_url"))
+        .map_err(|e| anyhow::anyhow!("db_url/neon_db_url fetch failed: {:?}", e))?;
     let connection = Connection::open(&db_url)?;
+
+    // Register heartbeat for this cloud instance
+    let _ = register_cloud_heartbeat(&connection, &user_id).await;
 
     // Check if delegation is enabled via Spin variable (default: false)
     let delegation_enabled = variables::get("delegation_enabled").unwrap_or_else(|_| "false".to_string()) == "true";
@@ -853,7 +938,7 @@ async fn handle_health_get(req: Request) -> anyhow::Result<Response> {
         None => return Ok(Response::builder().status(401).body("Unauthorized").build()),
     };
 
-    let db_url = variables::get("db_url")?;
+    let db_url = variables::get("db_url").or_else(|_| variables::get("neon_db_url"))?;
     let connection = Connection::open(&db_url)?;
     
     #[derive(Serialize)]
@@ -905,7 +990,7 @@ async fn handle_heartbeat_post(req: Request) -> anyhow::Result<Response> {
 
     println!("HEARTBEAT: user={} role={} pid={}", user_id, role, pid);
 
-    let db_url = variables::get("db_url")?;
+    let db_url = variables::get("db_url").or_else(|_| variables::get("neon_db_url"))?;
     let connection = Connection::open(&db_url)?;
     
     // Atomic leadership/heartbeat claim with user scoping
@@ -982,7 +1067,7 @@ async fn handle_multiplier_post(req: Request) -> anyhow::Result<Response> {
     let body_str = std::str::from_utf8(&body_bytes).map_err(|_| anyhow::anyhow!("Invalid UTF-8"))?;
     let req_data: MultiplierRequest = serde_json::from_str(body_str)?;
 
-    let db_url = variables::get("db_url")?;
+    let db_url = variables::get("db_url").or_else(|_| variables::get("neon_db_url"))?;
     let connection = Connection::open(&db_url)?;
 
     println!("Updating multiplier for user {}: {} -> {}", user_id, req_data.name, req_data.multiplier);
@@ -1011,7 +1096,7 @@ async fn handle_languages_get(req: Request) -> anyhow::Result<Response> {
         None => return Ok(Response::builder().status(401).body("Unauthorized").build()),
     };
 
-    let db_url = variables::get("db_url")?;
+    let db_url = variables::get("db_url").or_else(|_| variables::get("neon_db_url"))?;
     let connection = Connection::open(&db_url)?;
     
     let query = "SELECT language_name, current_reviews, tomorrow_reviews, next_7_days_reviews, daily_rate::FLOAT8, safebuf, derail_risk, pump_multiplier::FLOAT8, beeminder_slug, daily_completions FROM language_stats WHERE user_id = $1";
@@ -1083,7 +1168,7 @@ async fn handle_budget_get(req: Request) -> anyhow::Result<Response> {
         None => return Ok(Response::builder().status(401).body("Unauthorized").build()),
     };
 
-    let db_url = variables::get("db_url")?;
+    let db_url = variables::get("db_url").or_else(|_| variables::get("neon_db_url"))?;
     let connection = Connection::open(&db_url)?;
     
     let query = "SELECT remaining_budget FROM budget_tracking WHERE user_id = $1 LIMIT 1";
@@ -1118,7 +1203,7 @@ async fn handle_walks_post(req: Request) -> anyhow::Result<Response> {
     let body_bytes = req.body();
     let walk: WalkDataSummary = serde_json::from_slice(body_bytes)?;
 
-    let db_url = variables::get("db_url")?;
+    let db_url = variables::get("db_url").or_else(|_| variables::get("neon_db_url"))?;
     let connection = Connection::open(&db_url)?;
 
     let _ = connection.execute(
@@ -1313,7 +1398,7 @@ async fn handle_trigger_reminders_post(_req: Request) -> anyhow::Result<Response
         }
     };
 
-    let db_url = variables::get("db_url")?;
+    let db_url = variables::get("db_url").or_else(|_| variables::get("neon_db_url"))?;
     let connection = Connection::open(&db_url)?;
 
     // Include per-user location columns; COALESCE to empty string so absent values parse as None.
@@ -1337,6 +1422,9 @@ async fn handle_trigger_reminders_post(_req: Request) -> anyhow::Result<Response
 
     for row in &row_set.rows {
         let user_id = match &row[0] { DbValue::Str(s) => s.clone(), _ => continue };
+
+        // Register heartbeat for this cloud instance
+        let _ = register_cloud_heartbeat(&connection, &user_id).await;
         let phone_enc = match &row[1] { DbValue::Str(s) if !s.is_empty() => s.clone(), _ => continue };
         let timezone = match &row[2] { DbValue::Str(s) => s.clone(), _ => "UTC".to_string() };
         let user_lat_str = match &row[3] { DbValue::Str(s) if !s.is_empty() => Some(s.as_str()), _ => None };
@@ -1472,7 +1560,9 @@ async fn handle_trigger_reminders_post(_req: Request) -> anyhow::Result<Response
 }
 
 async fn handle_failover_sync_post(_req: Request) -> anyhow::Result<Response> {
-    let db_url = variables::get("db_url").map_err(|e| anyhow::anyhow!("db_url fetch failed: {:?}", e))?;
+    let db_url = variables::get("db_url")
+        .or_else(|_| variables::get("neon_db_url"))
+        .map_err(|e| anyhow::anyhow!("db_url/neon_db_url fetch failed: {:?}", e))?;
     let connection = Connection::open(&db_url)?;
 
     let query = "SELECT pocket_id_sub, EXTRACT(EPOCH FROM CURRENT_TIMESTAMP - COALESCE(last_autonomous_sync, '1970-01-01'::TIMESTAMPTZ))/60 AS mins_since \
@@ -1482,6 +1572,9 @@ async fn handle_failover_sync_post(_req: Request) -> anyhow::Result<Response> {
     let mut success_count = 0;
     for row in &row_set.rows {
         let user_id = match &row[0] { DbValue::Str(s) => s.clone(), _ => continue };
+
+        // Register heartbeat for this cloud instance
+        let _ = register_cloud_heartbeat(&connection, &user_id).await;
         let mins_since = match &row[1] { 
             DbValue::Floating64(f) => Some(*f as u64),
             _ => None 
@@ -1533,7 +1626,7 @@ async fn handle_request_phone_verification_post(req: Request) -> anyhow::Result<
     let verify_req: VerificationRequest = serde_json::from_slice(body)?;
     println!("Phone Verification: Request for user {} to {}", user_id, verify_req.phone_number);
     
-    let db_url = variables::get("db_url")?;
+    let db_url = variables::get("db_url").or_else(|_| variables::get("neon_db_url"))?;
     let connection = Connection::open(&db_url)?;
 
     // 1. Generate 6-digit code
@@ -1617,7 +1710,7 @@ async fn handle_confirm_phone_verification_post(req: Request) -> anyhow::Result<
         }
     };
 
-    let db_url = variables::get("db_url")?;
+    let db_url = variables::get("db_url").or_else(|_| variables::get("neon_db_url"))?;
     let connection = Connection::open(&db_url)?;
 
     // 1. Fetch verification record
@@ -2018,7 +2111,7 @@ async fn handle_twilio_webhook_post(req: Request) -> anyhow::Result<Response> {
 
     if is_affirmative_response(body_str) {
         if let Some(from_num) = extract_from_number(body_str) {
-            match variables::get("db_url") {
+            match variables::get("db_url").or_else(|_| variables::get("neon_db_url")) {
                 Ok(db_url) if !db_url.is_empty() => {
                     match Connection::open(&db_url) {
                         Ok(connection) => {
@@ -2795,5 +2888,63 @@ mod tests {
     #[test]
     fn test_internal_api_key_missing_header_blocks() {
         assert!(!internal_api_key_ok("supersecret", None));
+    }
+
+    // --- get_modality_status_string ---
+
+    #[test]
+    fn test_modality_status_leader() {
+        assert_eq!(get_modality_status_string("leader", 1), "healthy");
+        assert_eq!(get_modality_status_string("leader", 3), "degraded");
+        assert_eq!(get_modality_status_string("leader", 10), "offline");
+    }
+
+    #[test]
+    fn test_modality_status_android() {
+        assert_eq!(get_modality_status_string("android_client", 15), "healthy");
+        assert_eq!(get_modality_status_string("android_client", 45), "degraded");
+        assert_eq!(get_modality_status_string("android_client", 300), "offline");
+    }
+
+    #[test]
+    fn test_modality_status_akamai() {
+        assert_eq!(get_modality_status_string("akamai_functions", 120), "healthy");
+        assert_eq!(get_modality_status_string("akamai_functions", 200), "degraded");
+        assert_eq!(get_modality_status_string("akamai_functions", 300), "offline");
+    }
+
+    #[test]
+    fn test_modality_status_fermyon() {
+        assert_eq!(get_modality_status_string("fermyon_cloud", 2), "healthy");
+        assert_eq!(get_modality_status_string("fermyon_cloud", 10), "degraded");
+        assert_eq!(get_modality_status_string("fermyon_cloud", 20), "offline");
+    }
+
+    #[test]
+    fn test_modality_status_unknown() {
+        assert_eq!(get_modality_status_string("unknown_role", 1), "unknown");
+    }
+
+    // --- add_cors ---
+
+    #[test]
+    fn test_add_cors_preserves_status_and_headers() {
+        let resp = Response::builder()
+            .status(201)
+            .header("content-type", "application/json")
+            .body("{\"ok\":true}")
+            .build();
+        
+        let cors_resp = add_cors(resp);
+        
+        assert_eq!(*cors_resp.status(), 201);
+        
+        let headers: std::collections::HashMap<String, String> = cors_resp.headers()
+            .map(|(k, v)| (k.to_string(), std::str::from_utf8(v.as_ref()).unwrap().to_string()))
+            .collect();
+            
+        assert_eq!(headers.get("content-type").unwrap(), "application/json");
+        assert_eq!(headers.get("access-control-allow-origin").unwrap(), "*");
+        assert_eq!(std::str::from_utf8(cors_resp.body()).unwrap(), "{\"ok\":true}");
     }
 }
