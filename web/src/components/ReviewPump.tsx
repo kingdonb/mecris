@@ -1,6 +1,6 @@
 import React from 'react';
 import './ReviewPump.css';
-import { LanguageStat } from '../types/mecris';
+import type { LanguageStat } from '../types/mecris';
 
 interface ReviewPumpProps {
   stat: LanguageStat;
@@ -27,27 +27,6 @@ const ReviewPump: React.FC<ReviewPumpProps> = ({ stat, onMultiplierChange, disab
     }
   };
 
-  const getClearanceDays = (m: number) => {
-    switch (Math.floor(m)) {
-      case 1: return null;
-      case 2: return 14;
-      case 3: return 10;
-      case 4: return 7;
-      case 5: return 5;
-      case 6: return 3;
-      case 7: return 2;
-      case 10: return 1;
-      default: return null;
-    }
-  };
-
-  const calculateTargetFlow = (m: number, current: number, tomorrow: number) => {
-    const days = getClearanceDays(m);
-    if (days === null) return tomorrow;
-    return Math.ceil(tomorrow + (current / days));
-  };
-
-  const targetFlow = calculateTargetFlow(stat.pump_multiplier, stat.current, stat.tomorrow);
   const remaining = stat.target_flow_rate;
 
   return (
