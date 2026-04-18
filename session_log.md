@@ -1644,3 +1644,19 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: pr-test verification of schema fix — commit `4391848` is local only; pr-test ran against pre-push GitHub code and still showed 1 failed. Verification must happen next session after the bot push.
 
 **Next**: Run pr-test on PR #192 to confirm schema fix landed — expected 0 failed, 461 passed, 6 skipped (was 1 failed, 5 skipped).
+
+## 2026-04-18 🏛️ — Upstream sync: yebyen/mecris fast-forward to kingdonb/mecris main (yebyen/mecris#213, complete)
+
+**Planned**: Fetch and merge 2 upstream commits (`366083a` talktype + `394e809` merge) from kingdonb/mecris main into yebyen/mecris.
+
+**Done**:
+- Added `upstream` remote pointing to kingdonb/mecris
+- `git fetch upstream main` picked up 2 new commits
+- `git merge --ff-only upstream/main` succeeded — HEAD advanced from `99dbca3` to `394e809`
+- PR #192 (Ghost Nag fix + schema fix) confirmed merged by kingdonb at 02:08 UTC
+- Schema fix pr-test verification from NEXT_SESSION.md considered resolved via successful upstream merge
+- Plan issue yebyen/mecris#213 closed ✅
+
+**Skipped**: Nothing — plan fully completed. Note: pr-test verification of schema fix was pending from last session, but PR #192 being merged by kingdonb satisfies the intent.
+
+**Next**: No open PRs on kingdonb/mecris. Next session should orient fresh, look for new work, or await human-driven PRs. Baseline: 0 Python failures, 108 Rust, 27 Android (1 pre-existing).
