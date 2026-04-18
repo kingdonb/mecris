@@ -3,69 +3,59 @@
 > **Mission**: Transform Mecris from reactive MCP server to autonomous cognitive agent with rich contextual awareness
 
 ## 📊 Current Status
+- **Version**: v0.0.1-beta.1 (2026-04-18) ✅
 - **Budget**: $20.88 remaining (Expires 2026-04-14)
 - **Foundation**: Production-ready MCP server with Beeminder, Budget, and Twilio integrations ✅
-- **Progress**: Autonomous nagging implemented via MCP Scheduler and Android Heartbeat ✅ — *this is the core missing piece*
+- **Progress**: Autonomous nagging implemented via MCP Scheduler and Android Heartbeat ✅
 
 ---
 
 ## 🎯 Four Core Goals
 
 ### **GOAL 0: Alpha Hardening & SLSA Security (Target: v0.1.0)** 🛡️
-**Priority**: CRITICAL | **Timeline**: 1-2 weeks | **Budget Impact**: $0
+**Status**: DONE (Internal Alpha Baseline) ✅
 
-**Current Problem**: Mecris is transitioning from a single-user local prototype to a multi-tenant ecosystem. We need synchronized versioning across Android, Spin, and Python, alongside strict security controls, before letting additional users on board.
+**Current Problem**: Mecris is transitioning from a single-user local prototype to a multi-tenant ecosystem.
 
-**Solution**: The "Alpha Hardening" phase focuses on securing data isolation and creating a reproducible, SLSA-compliant build pipeline.
+**Solution**: The "Alpha Hardening" phase focuses on securing data isolation and creating a reproducible build pipeline.
 
 **Deliverables**:
-- [ ] **SLSA Build Level 1**: Automated GitHub Actions CI pipeline for Android APK, Spin Wasm, and Python packages, featuring `actions/attest-build-provenance` to generate `.intoto.jsonl` files.
-- [ ] **Strict Multi-Tenancy**: Audit all SQL queries to ensure `user_id` bounds. Ensure integrations (like Clozemaster) use *per-user* encrypted credentials stored in the DB, rather than global environment variables.
-- [ ] **Mandatory Encryption**: Remove all plaintext token fallbacks in the Rust and Python backends. The system must fail fast if `MASTER_ENCRYPTION_KEY` is not present.
-- [ ] **The Wipe Test**: Validate the end-to-end bootstrap flow for a completely fresh user.
-
-### **⚠️ Forward-Looking Statements: Path to v1.0.0 (Subject to Change)**
-*The following defines the long-term convergence of our security posture (SLSA) and feature development (Autonomy & RAG).*
-
-**Target v0.3.0 (Beta): The Autonomous Shift**
-*   **Feature Focus:** The Proactive "Wake-Up" Engine (Goal 1). Mecris begins running as a background daemon, using heuristics to send unprompted SMS/WhatsApp notifications when walking goals are at risk.
-*   **Security Focus:** **SLSA Build Level 2 (Hosted & Authenticated)**. We upgrade the CI pipeline to use short-lived OIDC tokens and Sigstore. This cryptographically proves that the build artifacts originated from our GitHub Actions runners and were not forged on a developer's local machine.
-
-**Target v0.5.0 (Release Candidate): Contextual Awareness**
-*   **Feature Focus:** Knowledge Base & RAG Integration (Goal 2). Mecris can now converse with your Obsidian vault and `/docs`. The Android app interface expands beyond a dashboard into a conversational AI client.
-*   **Security Focus:** **SLSA Build Level 3 (Hardened)**. Transition to isolated, ephemeral build environments using officially vetted builders (e.g., `slsa-github-generator`). This ensures the build process itself cannot be tampered with to inject malicious code into the artifacts or the `.intoto.jsonl` provenance files.
-
-**Target v1.0.0 (General Availability): The Hermetic System**
-*   **Feature Focus:** Complete contextual integration (Goal 3) and multi-user polish. Settings pages allow any user to bring their own API keys (encrypted on-device) to leverage the Mecris engine.
-*   **Security Focus:** **SLSA Build Level 4 (Hermetic & Reproducible)**. The highest level of software supply chain security. 
-    *   *Two-Person Reviews:* Enforced branch protection requiring multiple approvals for code changes.
-    *   *Hermeticity:* Builds run entirely offline. All Rust crates and Android Gradle dependencies are pre-fetched, hashed, and vendored. 
-    *   *Reproducibility:* Compiling the source code twice guarantees a byte-for-byte identical binary, proving absolute build integrity before any App Store submission.
+- [x] **Strict Multi-Tenancy**: Audit all SQL queries to ensure `user_id` bounds.
+- [x] **Mandatory Encryption**: Remove all plaintext token fallbacks. System fails fast if `MASTER_ENCRYPTION_KEY` is not present.
+- [x] **The Wipe Test**: Validate the end-to-end bootstrap flow.
+- [ ] **SLSA Build Level 1**: Automated GitHub Actions CI pipeline for Android APK, Spin Wasm, and Python packages.
 
 ---
 
 ### **GOAL 1: Autonomous Deployment & Nagging System** 🚨
 **Priority**: HIGHEST | **Timeline**: 2-3 weeks | **Budget Impact**: ~$2-3
+**Status**: IN PROGRESS (Beta 1) 🚧
 
 **Current Problem**: You're "doing very poorly" at daily walks despite having all the tracking infrastructure in place. Mecris has Twilio, it knows your goals, but it doesn't autonomously wake up to check on you.
 
-**The Ground Truth**: We will develop the **Mecris CLI (`mecris` command)** to serve as the authoritative interface for both humans and agents. This CLI will underpin the autonomous system, providing explicit handles for all system operations.
+**The Ground Truth**: We will develop the **Mecris CLI (`mecris` command)** to serve as the authoritative interface for both humans and agents. 
 
-**Agent Agenda**: Implement the **Autonomous Continuum** design (`docs/AGENT_AGENDA_DESIGN.md`) enabling headless "Ghost Sessions" via Gemini and Copilot CLIs.
-
-**Solution**: Deploy autonomous scheduler that:
-- Runs periodic health checks (cron-based or containerized scheduler)
-- Evaluates narrator context using heuristic functions
-- Spawns autonomous agents (Archivist, Auditor, Narrator) using a TTY-aware loopback.
-- Uses the `mecris` CLI handles for all internal state transitions and "private entrypoints".
+**Agent Agenda**: Implement the **Autonomous Continuum** design (`docs/AGENT_AGENDA_DESIGN.md`) enabling headless "Ghost Sessions".
 
 **Deliverables**:
-- [x] **The `mecris` CLI**: A Python-based CLI entry point with subcommands for `budget`, `goals`, `sync`, and `internal`.
+- [x] **The `mecris` CLI**: A Python-based CLI entry point.
+- [x] **Heuristic decision engine**: Nag Ladder implemented for notification triggers.
+- [x] **Ghost Archivist**: Presence-aware background sync (daemon ready).
 - [ ] **Headless Loopback**: Subprocess wrapper for `gemini --yolo` and `gh copilot`.
 - [ ] **Secret Manager Integration**: Hardened token injection for autonomous turns.
-- [x] Heuristic decision engine (Nag Ladder implemented) for notification triggers
-- [ ] Smart nagging algorithms (time-of-day, goal urgency, success patterns)
-- [ ] Web dashboard for check-in status (optional, lightweight)
+- [ ] **Smart nagging algorithms**: time-of-day, goal urgency, success patterns.
+- [x] **Web dashboard**: Neural Link visualization for check-in status.
+
+---
+
+**Target v0.0.1 (GA): The Stable Anchor**
+*   **Feature Focus:** Stable autonomous nagging and reliable multi-cloud sync.
+*   **Security Focus:** **SLSA Build Level 1**.
+
+**Target v0.3.0 (Beta): The Autonomous Shift**
+*   **Feature Focus:** The Proactive "Wake-Up" Engine (Goal 1). Mecris begins running as a background daemon.
+*   **Security Focus:** **SLSA Build Level 2**.
+
 
 **Infrastructure**: Build on existing FastAPI server + Twilio integration
 

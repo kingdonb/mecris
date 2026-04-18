@@ -2,7 +2,7 @@ spin_manifest_version = 2
 
 [application]
 name = "boris-fiona-walker"
-version = "0.0.1-alpha.16"
+version = "0.0.1-beta.1"
 authors = ["Kingdon Barrett <kingdon@urmanac.com>"]
 description = "WASM walk reminder system for Boris and Fiona"
 
