@@ -24,12 +24,16 @@
 7.  **Mecris-Bot Audit & Rejection**:
     - Fetched `yebyen/main` and audited Claude's latest commit.
     - **Decision**: REJECTED. Claude's "audit" was destructive—it deleted this session log and reverted several critical fixes. We are maintaining the "Harsh Reality" branch over Claude's "Cleaned" (but broken) state.
+8.  **Enhanced Web UI Feedback**:
+    - Added loading and status feedback to "Trigger Cloud Reconciliation" button.
+    - Button now disables and provides clear "SUCCESS" or "ERROR" messaging.
 
 ### 🎯 Outcomes
 - UI correctly reflects live data for the authenticated user.
 - System Pulse shows real heartbeats: `MCP SERVER` (0m), `FERMYON CLOUD` (0m), `ANDROID CLIENT` (13m).
 - Android app versioned and synced with suite manifest.
 - Re-established Trust Boundary: Gemini is the architect; Claude's reverts are blocked.
+- Manual cloud sync now has clear user feedback.
 
 ### 🔍 Investigation: Fermyon Status Transition (RESOLVED)
 - **Symptom**: Fermyon turned Red (offline) after 20 minutes.
@@ -46,4 +50,3 @@
 ### 📋 Next Session Priorities
 - Connect Shift Lever controls to backend persistence.
 - Verify "Majesty Cake" visual trigger once all-clear is achieved.
-- Investigate "Trigger Cloud Reconciliation" feedback in Web UI.
