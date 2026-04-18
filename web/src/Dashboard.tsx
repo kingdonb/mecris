@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import MomentumVisualizer from './components/MomentumVisualizer';
 import Odometer from './components/Odometer';
 import ReviewPump from './components/ReviewPump';
-import { AggregateStatusResponse, LanguageStat } from './types/mecris';
+import type { AggregateStatusResponse, LanguageStat } from './types/mecris';
 import './Dashboard.css';
 
 interface DashboardProps {
