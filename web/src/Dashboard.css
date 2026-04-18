@@ -156,6 +156,28 @@
   color: #888;
 }
 
+.goal-icons {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+  margin-bottom: 4px;
+}
+
+.goal-icon {
+  background: #1e1e1e;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  opacity: 0.3;
+  border: 1px solid transparent;
+}
+
+.goal-icon.met {
+  opacity: 1;
+  background: #004d40;
+  border: 1px solid #00c853;
+}
+
 .manual-trigger-zone {
     margin-bottom: 32px;
     text-align: center;

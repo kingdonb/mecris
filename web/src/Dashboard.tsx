@@ -102,7 +102,7 @@ const Dashboard: React.FC<DashboardProps> = ({ userToken }) => {
       refreshData(url);
     };
     init();
-    const interval = setInterval(() => refreshData(), 30000);
+    const interval = setInterval(() => refreshData(), 10000);
     return () => clearInterval(interval);
   }, [discoverBackend, refreshData]);
 
@@ -128,14 +128,22 @@ const Dashboard: React.FC<DashboardProps> = ({ userToken }) => {
     try {
       const headers: Record<string, string> = {};
       if (userToken) headers['Authorization'] = `Bearer ${userToken}`;
+      
+      console.log(`MANUAL SYNC: Triggering via ${baseUrl}...`);
       const response = await fetch(`${baseUrl}/internal/cloud-sync`, { method: 'POST', headers });
       
       if (response.ok) {
           setSyncMessage("CLOUD RECONCILIATION SUCCESSFUL");
-          setTimeout(() => setSyncMessage(null), 5000);
-          refreshData();
+          // Proactively refresh multiple times to catch the DB update
+          setTimeout(() => refreshData(), 2000);
+          setTimeout(() => refreshData(), 5000);
+          setTimeout(() => {
+              setSyncMessage(null);
+              refreshData();
+          }, 10000);
       } else {
-          setSyncMessage(`RECONCILIATION FAILED: ${response.status}`);
+          const errorData = await response.json().catch(() => ({}));
+          setSyncMessage(`RECONCILIATION FAILED: ${errorData.detail || response.status}`);
       }
     } catch (e: any) {
       console.error("Manual sync failed", e);
@@ -188,6 +196,11 @@ const Dashboard: React.FC<DashboardProps> = ({ userToken }) => {
               <span className={`status-label ${data?.all_clear ? 'all-clear' : ''}`}>
                 {data?.all_clear ? 'MAJESTY CAKE' : (momentum < 0.5 ? 'CAVITATION' : 'STABLE')}
               </span>
+              <div className="goal-icons">
+                  <span className={`goal-icon ${data?.components?.walk ? 'met' : ''}`} title="Daily Walk">🚶</span>
+                  <span className={`goal-icon ${data?.components?.arabic ? 'met' : ''}`} title="Arabic Review">🇦</span>
+                  <span className={`goal-icon ${data?.components?.greek ? 'met' : ''}`} title="Greek Review">🇬</span>
+              </div>
               <span className="sessions-label">{data?.score} GOALS SATISFIED</span>
             </div>
           </div>

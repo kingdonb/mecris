@@ -9,6 +9,8 @@ export interface LanguageStat {
   pump_multiplier: number;
   has_goal: boolean;
   daily_completions: number;
+  target_flow_rate: number;
+  goal_met: boolean;
 }
 
 export interface LanguagesResponse {
@@ -17,7 +19,7 @@ export interface LanguagesResponse {
 
 export interface ModalityStatus {
   role: string;
-  status: 'healthy' | 'degraded' | 'offline' | 'unknown';
+  status: 'healthy' | 'degraded' | 'offline' | 'unknown' | 'reactive';
   last_seen: string;
   minutes_since: number;
 }
