@@ -162,9 +162,15 @@ fn add_cors(resp: Response) -> Response {
 
 async fn register_cloud_heartbeat(connection: &Connection, user_id: &str) -> anyhow::Result<()> {
     let provider = variables::get("cloud_provider").unwrap_or_else(|_| "unknown_cloud".to_string());
+    
+    // Fermyon is a stateless, reactive endpoint with no background worker.
+    // We stop it from heartbeating to avoid the "Illusion of Presence" in the worker table.
+    if provider == "fermyon" {
+        return Ok(());
+    }
+
     let role = match provider.as_str() {
         "akamai" => "akamai_functions",
-        "fermyon" => "fermyon_cloud",
         _ => "unknown_cloud",
     };
 
