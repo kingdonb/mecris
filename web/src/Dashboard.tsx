@@ -209,9 +209,24 @@ const Dashboard: React.FC<DashboardProps> = ({ userToken }) => {
                     {momentum < 0.5 ? 'CAVITATION' : 'STABLE'}
                   </span>
                   <div className="goal-icons">
-                      <span className={`goal-icon ${data?.components?.walk ? 'met' : ''}`} title="Daily Walk">🚶</span>
-                      <span className={`goal-icon ${data?.components?.arabic ? 'met' : ''}`} title="Arabic Review">🇦</span>
-                      <span className={`goal-icon ${data?.components?.greek ? 'met' : ''}`} title="Greek Review">🇬</span>
+                      <div className={`goal-item ${data?.components?.walk ? 'met' : ''}`} title="Daily Walk">
+                          <span className="goal-icon">🚶</span>
+                          <span className="goal-count">{(data?.today_distance_miles || 0).toFixed(2)}/1.0 MI</span>
+                      </div>
+                      <div className={`goal-item ${data?.components?.arabic ? 'met' : ''}`} title="Arabic Review">
+                          <span className="goal-icon">🇦</span>
+                          <span className="goal-count">
+                              {data?.languages?.find(l => l.name.toUpperCase() === 'ARABIC')?.daily_completions || 0}/
+                              {data?.languages?.find(l => l.name.toUpperCase() === 'ARABIC')?.absolute_target || 0}
+                          </span>
+                      </div>
+                      <div className={`goal-item ${data?.components?.greek ? 'met' : ''}`} title="Greek Review">
+                          <span className="goal-icon">🇬</span>
+                          <span className="goal-count">
+                              {data?.languages?.find(l => l.name.toUpperCase() === 'GREEK')?.daily_completions || 0}/
+                              {data?.languages?.find(l => l.name.toUpperCase() === 'GREEK')?.absolute_target || 0}
+                          </span>
+                      </div>
                   </div>
                   <span className="sessions-label">{data?.score} GOALS SATISFIED</span>
                 </>

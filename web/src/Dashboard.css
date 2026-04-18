@@ -218,24 +218,45 @@
 
 .goal-icons {
   display: flex;
-  gap: 8px;
-  margin-top: 8px;
-  margin-bottom: 4px;
+  gap: 12px;
+  margin-top: 12px;
+  margin-bottom: 8px;
+}
+
+.goal-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  opacity: 0.4;
+}
+
+.goal-item.met {
+  opacity: 1;
 }
 
 .goal-icon {
   background: #1e1e1e;
-  padding: 4px 8px;
-  border-radius: 4px;
-  font-size: 12px;
-  opacity: 0.3;
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 14px;
   border: 1px solid transparent;
 }
 
-.goal-icon.met {
-  opacity: 1;
+.met .goal-icon {
   background: #004d40;
   border: 1px solid #00c853;
+}
+
+.goal-count {
+  font-size: 8px;
+  font-weight: bold;
+  color: #888;
+  font-family: monospace;
+}
+
+.met .goal-count {
+  color: #00c853;
 }
 
 .manual-trigger-zone {

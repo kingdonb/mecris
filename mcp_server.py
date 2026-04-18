@@ -1278,7 +1278,9 @@ async def get_daily_aggregate_status(user_id: str = None) -> Dict[str, Any]:
     return {
         "goals": goals,
         "satisfied_count": satisfied_count,
+        "goals_met": satisfied_count,
         "total_count": total_count,
+        "total_goals": total_count,
         "all_clear": satisfied_count == total_count,
         "score": f"{satisfied_count}/{total_count}",
         "components": {

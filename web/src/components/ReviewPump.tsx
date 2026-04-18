@@ -88,11 +88,11 @@ const ReviewPump: React.FC<ReviewPumpProps> = ({ stat, onMultiplierChange, disab
 
       <div className="pressure-gauge">
         <div className="gauge-background">
-            <div className="gauge-marker" style={{ left: `${Math.min((stat.absolute_target > 0 ? (stat.daily_completions / stat.absolute_target) : 1) * 100, 100)}%` }} />
+            <div className="gauge-marker" style={{ left: `${Math.min(((stat.absolute_target || 0) > 0 ? (stat.daily_completions / stat.absolute_target) : 1) * 100, 100)}%` }} />
         </div>
         <div className="gauge-content">
           <div className="target-flow-group">
-            <span className="gauge-label">PROGRESS: {stat.daily_completions} / {stat.absolute_target}</span>
+            <span className="gauge-label">PROGRESS: {stat.daily_completions} / {stat.absolute_target || 0}</span>
             <span className="target-flow-value" style={{ color: accentColor }}>{remaining}</span>
             {remaining > 0 ? <span className="remaining-label">REMAINING TODAY</span> : <span className="remaining-label success">GOAL SATISFIED</span>}
           </div>

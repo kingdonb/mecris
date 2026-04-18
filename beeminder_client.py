@@ -203,11 +203,12 @@ class BeeminderClient:
         result = await self._api_call(endpoint)
         return result if result else []
     
-    async def has_activity_today(self, goal_slug: str = "bike") -> bool:
+    async def has_activity_today(self, goal_slug: str = "bike", min_value: float = 0.0) -> bool:
         """Check if any datapoints were added today to the specified goal
         
         This is the core method for detecting daily activity without parallel tracking.
-        Returns True if any datapoint was created today (after midnight US/Eastern).
+        Returns True if any datapoint was created today (after midnight US/Eastern)
+        AND its value is at least min_value.
         """
         import zoneinfo
         eastern = zoneinfo.ZoneInfo("US/Eastern")
@@ -223,20 +224,23 @@ class BeeminderClient:
         for datapoint in datapoints:
             # Beeminder timestamps are Unix timestamps (seconds since epoch)
             dp_timestamp = datapoint.get("timestamp", 0)
+            dp_value = float(datapoint.get("value", 0.0))
             if dp_timestamp:
                 # Convert Unix timestamp to Eastern time for comparison
                 dp_dt_eastern = datetime.fromtimestamp(dp_timestamp, tz=zoneinfo.ZoneInfo("UTC")).astimezone(eastern)
-                if dp_dt_eastern.date() == today_date:
-                    logger.info(f"Activity detected for {goal_slug}: datapoint at {dp_dt_eastern}")
+                if dp_dt_eastern.date() == today_date and dp_value >= min_value:
+                    logger.info(f"Activity detected for {goal_slug}: datapoint {dp_value} at {dp_dt_eastern}")
                     return True
         
-        logger.info(f"No activity today for {goal_slug} (Local day: {today_date})")
+        logger.info(f"No activity today for {goal_slug} above threshold {min_value} (Local day: {today_date})")
         return False
     
     async def get_daily_activity_status(self, goal_slug: str = "bike") -> Dict[str, Any]:
         """Get comprehensive daily activity status for narrator context"""
         try:
-            has_activity = await self.has_activity_today(goal_slug)
+            # 1.0 threshold for walk (bike) goal
+            min_val = 1.0 if goal_slug == "bike" else 0.0
+            has_activity = await self.has_activity_today(goal_slug, min_value=min_val)
             return {
                 "goal_slug": goal_slug,
                 "has_activity_today": has_activity,
