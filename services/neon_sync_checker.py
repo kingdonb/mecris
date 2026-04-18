@@ -36,6 +36,49 @@ class NeonSyncChecker:
 
         return target_user_id
 
+    def get_notification_prefs(self, user_id: str) -> Dict[str, Any]:
+        """Fetch user notification preferences from the DB."""
+        if not self.db_url:
+            return {}
+
+        target_user_id = self.resolve_user_id(user_id)
+        try:
+            with psycopg2.connect(self.db_url) as conn:
+                with conn.cursor() as cur:
+                    cur.execute("SELECT notification_prefs FROM users WHERE pocket_id_sub = %s", (target_user_id,))
+                    row = cur.fetchone()
+                    if row and row[0]:
+                        # Postgres JSONB automatically converts to dict in psycopg2
+                        return row[0] if isinstance(row[0], dict) else json.loads(row[0])
+        except Exception as e:
+            logger.error(f"Failed to fetch notification prefs for {target_user_id}: {e}")
+
+        return {}
+
+    def update_notification_prefs(self, user_id: str, prefs: Dict[str, Any]) -> bool:
+        """Update user notification preferences in the DB."""
+        if not self.db_url:
+            return False
+
+        target_user_id = self.resolve_user_id(user_id)
+        try:
+            # Merge with existing prefs
+            current = self.get_notification_prefs(target_user_id)
+            current.update(prefs)
+            
+            with psycopg2.connect(self.db_url) as conn:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        UPDATE users 
+                        SET notification_prefs = %s 
+                        WHERE pocket_id_sub = %s
+                    """, (json.dumps(current), target_user_id))
+                    conn.commit()
+                    return True
+        except Exception as e:
+            logger.error(f"Failed to update notification prefs for {target_user_id}: {e}")
+            return False
+
     def has_walk_today(self, user_id: str = None, min_steps: int = 2000) -> bool:
         """
         Queries the Neon walk_inferences table for any walk starting today

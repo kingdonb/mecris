@@ -1,0 +1,36 @@
+{
+  "users": {
+    "15852378622": {
+      "phone_number": "+15852378622",
+      "opted_in": true,
+      "opt_in_date": "2026-04-09T15:34:53.862412",
+      "opt_in_method": "cli",
+      "message_types": [
+        "walk_reminder",
+        "budget_alert",
+        "beeminder_emergency"
+      ],
+      "preferences": {
+        "time_window_start": 14,
+        "time_window_end": 17,
+        "max_messages_per_day": 3,
+        "enabled_days": [
+          "monday",
+          "tuesday",
+          "wednesday",
+          "thursday",
+          "friday",
+          "saturday",
+          "sunday"
+        ],
+        "vacation_mode": false
+      },
+      "message_history": [],
+      "last_updated": "2026-04-09T15:34:53.862593"
+    }
+  },
+  "global_settings": {
+    "created": "2026-04-09T15:34:53.860702",
+    "version": "1.0"
+  }
+}

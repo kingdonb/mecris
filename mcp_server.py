@@ -417,20 +417,11 @@ async def get_narrator_context(user_id: str = None) -> Dict[str, Any]:
             if isinstance(latest_cloud_walk.get("start_time"), datetime):
                 latest_cloud_walk["start_time"] = latest_cloud_walk["start_time"].isoformat()
         
-        # Fetch user preferences for vacation_mode and time windows
-        target_phone = os.getenv('TWILIO_TO_NUMBER')
-        vacation_mode = False
-        time_window_start = 13
-        time_window_end = 17
-        
-        if target_phone:
-            from sms_consent_manager import consent_manager
-            user_prefs = await asyncio.to_thread(consent_manager.get_user_preferences, target_phone)
-            if user_prefs:
-                prefs = user_prefs.get("preferences", {})
-                vacation_mode = prefs.get("vacation_mode", False)
-                time_window_start = prefs.get("time_window_start", 13)
-                time_window_end = prefs.get("time_window_end", 17)
+        # Fetch user preferences for vacation_mode and time windows from Neon
+        user_prefs = await asyncio.to_thread(neon_checker.get_notification_prefs, target_user_id)
+        vacation_mode = user_prefs.get("vacation_mode", False)
+        time_window_start = user_prefs.get("time_window_start", 13)
+        time_window_end = user_prefs.get("time_window_end", 17)
 
         # Weather-aware logic
         weather = await asyncio.to_thread(weather_service.get_weather)
@@ -1078,15 +1069,14 @@ async def send_reminder_message(message_data: Dict[str, Any], user_id: str = Non
         from twilio_sender import send_whatsapp_template
         template_sid = message_data.get("template_sid")
         variables = message_data.get("variables", {})
-        success = send_whatsapp_template(template_sid, variables)
+        success = send_whatsapp_template(template_sid, variables, user_id=target_user_id)
         delivery_result = {
-            "sent": success, 
-            "method": "whatsapp_template", 
+            "sent": success,
+            "method": "whatsapp_template",
             "template_sid": template_sid
         }
     else:
-        delivery_result = smart_send_message(message)
-
+        delivery_result = smart_send_message(message, user_id=target_user_id)
     # Log to Neon, regardless of success or failure
     status_val = "sent" if delivery_result.get("sent") else "failed"
     error_val = None if delivery_result.get("sent") else "Failed to send (check twilio_sender logs)"
@@ -1311,6 +1301,34 @@ async def get_daily_aggregate_status(user_id: str = None) -> Dict[str, Any]:
         "languages": lang_stats_list,
         "system_pulse": system_pulse
     }
+
+@mcp.tool(description="Update user notification preferences (time windows, vacation mode, etc).")
+async def set_notification_prefs(
+    vacation_mode: Optional[bool] = None,
+    time_window_start: Optional[int] = None,
+    time_window_end: Optional[int] = None,
+    sms_opted_in: Optional[bool] = None,
+    user_id: str = None
+) -> Dict[str, Any]:
+    """Update user preferences stored in Neon notification_prefs JSONB."""
+    target_user_id = usage_tracker.resolve_user_id(user_id)
+    if not target_user_id:
+        return {"error": "Authentication Required"}
+
+    prefs = {}
+    if vacation_mode is not None: prefs["vacation_mode"] = vacation_mode
+    if time_window_start is not None: prefs["time_window_start"] = time_window_start
+    if time_window_end is not None: prefs["time_window_end"] = time_window_end
+    if sms_opted_in is not None: prefs["sms_opted_in"] = sms_opted_in
+
+    if not prefs:
+        return {"status": "error", "message": "No preferences provided to update"}
+
+    success = await asyncio.to_thread(neon_checker.update_notification_prefs, target_user_id, prefs)
+    if success:
+        return {"status": "success", "message": "Preferences updated", "updated_fields": list(prefs.keys())}
+    else:
+        return {"status": "error", "message": "Failed to update preferences in database"}
 
 @mcp.tool(description="GDPR right-to-erasure: permanently delete all data for a user. Removes token_bank first (no CASCADE), then users row (CASCADE deletes walk_inferences, language_stats, goals, message_log, usage_sessions, autonomous_turns, budget_tracking).")
 def delete_user_data(user_id: str = None) -> Dict[str, Any]:

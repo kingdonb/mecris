@@ -19,7 +19,7 @@ def send_sms(message: str, to_number: Optional[str] = None) -> bool:
     logger.error("SMS attempted but DISABLED: No A2P campaign active. SMS will fail and incur costs.")
     return False
 
-def send_whatsapp_template(content_sid: str, variables: Dict[str, str], to_number: Optional[str] = None) -> bool:
+def send_whatsapp_template(content_sid: str, variables: Dict[str, str], to_number: Optional[str] = None, user_id: Optional[str] = None) -> bool:
     """
     Send a WhatsApp Message Template (Required for starting conversations).
     
@@ -27,24 +27,41 @@ def send_whatsapp_template(content_sid: str, variables: Dict[str, str], to_numbe
         content_sid: The Twilio Content SID (starts with HXC...)
         variables: Dictionary of template variables {"1": "65", "2": "Arabic", "3": "Boris & Fiona"}
         to_number: Recipient number
+        user_id: User identifier to fetch number from DB
     """
     try:
         account_sid = os.getenv('TWILIO_ACCOUNT_SID')
         auth_token = os.getenv('TWILIO_AUTH_TOKEN')
         from_number = os.getenv('TWILIO_WHATSAPP_FROM')
-        to_number = to_number or os.getenv('TWILIO_TO_NUMBER')
         
-        if not all([account_sid, auth_token, from_number, to_number, content_sid]):
+        # 1. Resolve to_number from user_id if provided
+        final_to = to_number
+        if user_id and not final_to:
+            from usage_tracker import get_tracker
+            user_data = get_tracker().get_user_preferences(user_id)
+            enc_phone = user_data.get("phone_number_encrypted")
+            if enc_phone:
+                try:
+                    from services.encryption_service import EncryptionService
+                    encryption = EncryptionService()
+                    final_to = encryption.decrypt(enc_phone)
+                except Exception as e:
+                    logger.error(f"Failed to decrypt user phone for {user_id}: {e}")
+        
+        # 2. Fallback to env
+        final_to = final_to or os.getenv('TWILIO_TO_NUMBER')
+        
+        if not all([account_sid, auth_token, from_number, final_to, content_sid]):
             logger.error("Missing credentials or Content SID for WhatsApp Template")
             return False
 
-        if not to_number.startswith('whatsapp:'):
-            to_number = f'whatsapp:{to_number}'
+        if not final_to.startswith('whatsapp:'):
+            final_to = f'whatsapp:{final_to}'
 
         client = Client(account_sid, auth_token)
         message_obj = client.messages.create(
             from_=from_number,
-            to=to_number,
+            to=final_to,
             content_sid=content_sid,
             content_variables=json.dumps(variables)
         )
@@ -54,30 +71,46 @@ def send_whatsapp_template(content_sid: str, variables: Dict[str, str], to_numbe
         logger.error(f"Failed to send WhatsApp Template: {e}")
         return False
 
-def send_message(message: str, to_number: Optional[str] = None) -> bool:
+def send_message(message: str, to_number: Optional[str] = None, user_id: Optional[str] = None) -> bool:
     """Send a freeform WhatsApp message (only works within 24hr window)."""
     try:
         account_sid = os.getenv('TWILIO_ACCOUNT_SID')
         auth_token = os.getenv('TWILIO_AUTH_TOKEN')
         from_number = os.getenv('TWILIO_WHATSAPP_FROM', 'whatsapp:+14155238886')
-        to_number = to_number or os.getenv('TWILIO_TO_NUMBER')
         
-        if not all([account_sid, auth_token, to_number]):
+        # 1. Resolve to_number from user_id if provided
+        final_to = to_number
+        if user_id and not final_to:
+            from usage_tracker import get_tracker
+            user_data = get_tracker().get_user_preferences(user_id)
+            enc_phone = user_data.get("phone_number_encrypted")
+            if enc_phone:
+                try:
+                    from services.encryption_service import EncryptionService
+                    encryption = EncryptionService()
+                    final_to = encryption.decrypt(enc_phone)
+                except Exception as e:
+                    logger.error(f"Failed to decrypt user phone for {user_id}: {e}")
+        
+        # 2. Fallback to env
+        final_to = final_to or os.getenv('TWILIO_TO_NUMBER')
+        
+        if not all([account_sid, auth_token, final_to]):
             logger.error("Missing Twilio credentials")
             return False
         
-        if not to_number.startswith('whatsapp:'):
-            to_number = f'whatsapp:{to_number}'
+        if not final_to.startswith('whatsapp:'):
+            final_to = f'whatsapp:{final_to}'
         
         client = Client(account_sid, auth_token)
-        message_obj = client.messages.create(body=message, from_=from_number, to=to_number)
+        message_obj = client.messages.create(body=message, from_=from_number, to=final_to)
         logger.info(f"WhatsApp message sent: {message_obj.sid}")
         return True
     except Exception as e:
         logger.error(f"Failed to send WhatsApp message: {e}")
         return False
 
-def smart_send_message(message: str, to_number: Optional[str] = None) -> dict:
+def smart_send_message(message: str, to_number: Optional[str] = None, user_id: Optional[str] = None) -> dict:
     """Smart delivery with fallback: Template -> Freeform WhatsApp -> SMS -> Console."""
     delivery_method = os.getenv('REMINDER_DELIVERY_METHOD', 'console').lower()
     content_sid = os.getenv('TWILIO_WHATSAPP_TEMPLATE_SID')
@@ -97,14 +130,39 @@ def smart_send_message(message: str, to_number: Optional[str] = None) -> dict:
         except Exception as e:
             logger.warning(f"Failed to load approved template pool: {e}")
 
-    # Check vacation_mode to determine generic vs doggie labels
-    from sms_consent_manager import consent_manager
+    # Check vacation_mode and phone number from DB if user_id provided
+    from usage_tracker import get_tracker
+    tracker = get_tracker()
+    
+    # Defaults
     vacation_mode = False
     target_phone = to_number or os.getenv('TWILIO_TO_NUMBER')
-    if target_phone:
-        user_prefs = consent_manager.get_user_preferences(target_phone)
-        if user_prefs:
-            vacation_mode = user_prefs.get("preferences", {}).get("vacation_mode", False)
+    
+    if user_id:
+        user_data = tracker.get_user_preferences(user_id)
+        if user_data:
+            # If the phone is encrypted in DB, we need to decrypt it to send
+            enc_phone = user_data.get("phone_number_encrypted")
+            if enc_phone:
+                try:
+                    from services.encryption_service import EncryptionService
+                    encryption = EncryptionService()
+                    target_phone = encryption.decrypt(enc_phone)
+                except Exception as e:
+                    logger.error(f"Failed to decrypt user phone for {user_id}: {e}")
+            
+            # Fetch vacation mode from specific field or JSONB prefs
+            vacation_mode = user_data.get("notification_prefs", {}).get("vacation_mode", False)
+            if not vacation_mode and user_data.get("vacation_mode_until"):
+                # If until is in the future, we are in vacation mode
+                try:
+                    from datetime import datetime, timezone
+                    until = user_data["vacation_mode_until"]
+                    if isinstance(until, str):
+                        until = datetime.fromisoformat(until.replace('Z', '+00:00'))
+                    if until > datetime.now(until.tzinfo or timezone.utc):
+                        vacation_mode = True
+                except: pass
 
     result = {"sent": False, "method": None, "attempts": []}
     

@@ -18,7 +18,6 @@ project_root = script_dir.parent
 sys.path.insert(0, str(project_root))
 
 from dotenv import load_dotenv
-from sms_consent_manager import consent_manager
 from twilio_sender import smart_send_message
 import asyncio
 from beeminder_client import BeeminderClient
@@ -62,27 +61,34 @@ def run_base_reminder():
         
     # 2. Check Consent and Compliance Window
     logger.info(f"Checking consent for {target_phone}...")
-    
-    # If user not in DB, auto opt-in for testing purposes since it's personal
-    user_prefs = consent_manager.get_user_preferences(target_phone)
+
+    from usage_tracker import get_tracker
+    tracker = get_tracker()
+    user_prefs = tracker.get_user_preferences() # Default user
+
+    # If user not in DB, we can't really "auto-enroll" here anymore without a pocket_id
     if not user_prefs:
-        logger.info("User not found in consent DB. Auto-enrolling for personal alerts...")
-        user_prefs = consent_manager.opt_in_user(
-            phone_number=target_phone,
-            consent_method="system_init",
-            message_types=["walk_reminder", "budget_alert", "beeminder_emergency"]
-        )
-    
-    vacation_mode = user_prefs.get("preferences", {}).get("vacation_mode", False)
-    
-    compliance_check = consent_manager.can_send_message(target_phone, "walk_reminder")
-    
-    if not compliance_check.get("can_send"):
-        logger.info(f"Compliance check failed: {compliance_check.get('reason')}")
+        logger.error("User not found in Neon database. Please run OIDC bootstrap.")
         return
-        
-    # 3. Send hard-coded zero-token message matching the approved WhatsApp template exactly
-    # Template:
+
+    # Use notification_prefs from DB
+    prefs = user_prefs.get("notification_prefs", {})
+    vacation_mode = prefs.get("vacation_mode", False)
+
+    # Compliance check (ported from manager logic)
+    if not prefs.get("sms_opted_in", False):
+        logger.info("Compliance check failed: User not opted in for SMS")
+        return
+
+    current_hour = datetime.now().hour
+    start_hour = prefs.get("time_window_start", 14)
+    end_hour = prefs.get("time_window_end", 17)
+
+    if not (start_hour <= current_hour <= end_hour):
+        logger.info(f"Compliance check failed: Outside user's time window ({start_hour}-{end_hour})")
+        return
+
+    # 3. Send hard-coded zero-token message matching the approved WhatsApp template exactly    # Template:
     # Mecris System Alert: This is your daily activity update.
     # {{1}}: {{4}}.
     # {{2}}: {{5}}.

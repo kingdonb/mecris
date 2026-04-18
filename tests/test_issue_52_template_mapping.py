@@ -19,24 +19,24 @@ class TestIssue52TemplateMapping(unittest.TestCase):
         os.environ['TWILIO_TO_NUMBER'] = '+15555555555'
 
     @patch('twilio_sender.send_whatsapp_template')
-    @patch('sms_consent_manager.consent_manager.get_user_preferences')
+    @patch('usage_tracker.UsageTracker.get_user_preferences')
     def test_smart_send_message_mapping_normal(self, mock_get_prefs, mock_send_template):
         # Normal mode: vacation_mode = False
-        mock_get_prefs.return_value = {"preferences": {"vacation_mode": False}}
+        mock_get_prefs.return_value = {"notification_prefs": {"vacation_mode": False}}
         mock_send_template.return_value = True
-        
+
         message = "Mecris System Alert: This is your daily activity update.\nBoris & Fiona walk: Pending.\nClozemaster Arabic: Due today.\nCurrent local temperature: 65F.\nPlease log your activity to maintain your account standing."
-        smart_send_message(message)
-        
+        smart_send_message(message, user_id="test_user")
+
         # Verify the variables sent to Twilio
         args, kwargs = mock_send_template.call_args
         variables = args[1]
-        
+
         # REAL APPROVED TEMPLATE ORDER for mecris_daily_alert_v1:
         # {{1}}: {{4}}
         # {{2}}: {{5}}
         # Current local temperature: {{3}}F
-        
+
         self.assertEqual(variables["1"], "Boris & Fiona walk") # v1
         self.assertEqual(variables["4"], "Pending")            # v2
         self.assertEqual(variables["2"], "Clozemaster Arabic") # v3
@@ -44,15 +44,14 @@ class TestIssue52TemplateMapping(unittest.TestCase):
         self.assertEqual(variables["3"], "65")                 # v5
 
     @patch('twilio_sender.send_whatsapp_template')
-    @patch('sms_consent_manager.consent_manager.get_user_preferences')
+    @patch('usage_tracker.UsageTracker.get_user_preferences')
     def test_smart_send_message_mapping_vacation(self, mock_get_prefs, mock_send_template):
         # Vacation mode: vacation_mode = True
-        mock_get_prefs.return_value = {"preferences": {"vacation_mode": True}}
+        mock_get_prefs.return_value = {"notification_prefs": {"vacation_mode": True}}
         mock_send_template.return_value = True
-        
+
         message = "Mecris System Alert: This is your daily activity update.\nActivity log: Pending.\nDaily commitment: Review needed.\nCurrent local temperature: 65F.\nPlease log your activity to maintain your account standing."
-        smart_send_message(message)
-        
+        smart_send_message(message, user_id="test_user")        
         # Verify the variables sent to Twilio
         args, kwargs = mock_send_template.call_args
         variables = args[1]

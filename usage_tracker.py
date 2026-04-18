@@ -544,6 +544,29 @@ class UsageTracker:
 
         raise RuntimeError("UsageTracker: Neon connection not active. Cannot record autonomous turn.")
 
+    def get_user_preferences(self, user_id: str = None) -> Dict[str, Any]:
+        """Fetch user preferences including encrypted phone and notification settings."""
+        target_user_id = self.resolve_user_id(user_id)
+        if self.use_neon:
+            try:
+                import psycopg2
+                from psycopg2.extras import RealDictCursor
+                with psycopg2.connect(self.neon_url) as conn:
+                    with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                        cur.execute("""
+                            SELECT phone_number_encrypted, timezone, notification_prefs, vacation_mode_until
+                            FROM users WHERE pocket_id_sub = %s
+                        """, (target_user_id,))
+                        row = cur.fetchone()
+                        if row:
+                            res = dict(row)
+                            if res.get('notification_prefs') and isinstance(res['notification_prefs'], str):
+                                res['notification_prefs'] = json.loads(res['notification_prefs'])
+                            return res
+            except Exception as e:
+                logger.error(f"UsageTracker: Neon get_user_preferences failed: {e}")
+        return {}
+
     def get_usage_summary(self, days: int = 7, user_id: str = None) -> Dict:
         """Get usage summary for the last N days."""
         target_user_id = self.resolve_user_id(user_id)
