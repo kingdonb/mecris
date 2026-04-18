@@ -97,7 +97,7 @@ class DelayedNagWorker(
                         if (lastGlobalNag < fourHoursAgoMs) {
                             val hasPartialWalk = summary.walkingSessionsCount > 0 || summary.totalDistanceMeters > 0.0
                             val fallbackTitle = if (hasPartialWalk) "MAJESTY CAKE 🍰" else "BORIS & FIONA \uD83D\uDC15"
-                            val fallbackMsg = if (hasPartialWalk) "You logged a walk, but the Majesty Cake requires 2000 steps! Go get that cake. 🍰" else "Time for a walk? Your steps are low today."
+                            val fallbackMsg = if (hasPartialWalk) "You're on the path to the Majesty Cake! Keep the momentum going today. ✨" else "Time for a walk? Your steps are low today."
                             
                             Log.i("DelayedNagWorker", "Firing Sovereign Fallback Nag: $fallbackTitle")
                             nagManager.showNag(fallbackTitle, fallbackMsg, "com.google.android.apps.fitness")
@@ -152,8 +152,8 @@ class DelayedNagWorker(
             val hasPartialWalk = walkSummary != null && (walkSummary.walkingSessionsCount > 0 || walkSummary.totalDistanceMeters > 0.0) && walkSummary.totalSteps < 2000
             val goalName = if (hasPartialWalk) "MAJESTY CAKE" else "WALK"
             val fallbackTitle = if (hasPartialWalk) "MAJESTY CAKE 🍰" else "PHYSICAL GOAL"
-            val fallbackMsgSensitive = if (hasPartialWalk) "You logged a walk, but the Majesty Cake requires 2000 steps! Go get that cake. 🍰" else "Time for a walk? Your physical goal is waiting. 🚶"
-            val fallbackMsgNormal = if (hasPartialWalk) "You logged a walk, but the Majesty Cake requires 2000 steps! Go get that cake. 🍰" else "Boris and Fiona are ready! 🐕 Time for a walk."
+            val fallbackMsgSensitive = if (hasPartialWalk) "You're on the path to the Majesty Cake! Keep the momentum going today. ✨" else "Time for a walk? Your physical goal is waiting. 🚶"
+            val fallbackMsgNormal = if (hasPartialWalk) "You're on the path to the Majesty Cake! Keep the momentum going today. ✨" else "Boris and Fiona are ready! 🐕 Time for a walk."
             
             val weather = fetchWeatherOracle()
             if (weather != null) {
