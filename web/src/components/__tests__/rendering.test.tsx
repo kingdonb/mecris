@@ -3,12 +3,13 @@ import { describe, it, expect } from 'vitest'
 import MomentumVisualizer from '../MomentumVisualizer'
 import Odometer from '../Odometer'
 import ReviewPump from '../ReviewPump'
+import type { LanguageStat } from '../../types/mecris'
 
 describe('Component Rendering', () => {
   it('renders MomentumVisualizer without crashing', () => {
     render(<MomentumVisualizer momentum={0.8} />)
     // Basic existence check
-    const container = document.querySelector('.momentum-container')
+    const container = document.querySelector('.momentum-wrapper')
     expect(container).toBeInTheDocument()
   })
 
@@ -24,7 +25,7 @@ describe('Component Rendering', () => {
   })
 
   it('renders ReviewPump with language data', () => {
-    const stat = {
+    const stat: LanguageStat = {
       name: 'Arabic',
       current: 1762,
       tomorrow: 45,
@@ -34,11 +35,14 @@ describe('Component Rendering', () => {
       derail_risk: 'low',
       pump_multiplier: 2.0,
       has_goal: true,
-      daily_completions: 0
+      daily_completions: 0,
+      target_flow_rate: 170,
+      absolute_target: 170,
+      goal_met: false
     }
     render(<ReviewPump stat={stat} onMultiplierChange={() => {}} />)
     expect(screen.getByText('ARABIC')).toBeInTheDocument()
     expect(screen.getByText('DEBT: 1762 CARDS')).toBeInTheDocument()
-    expect(screen.getByText('LAMINAR')).toBeInTheDocument()
+    expect(screen.getByText('STEADY')).toBeInTheDocument()
   })
 })
