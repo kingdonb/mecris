@@ -144,16 +144,24 @@
   color: #00C853;
   font-size: 1.2rem;
   letter-spacing: 1px;
+  text-shadow: 0 0 10px rgba(0, 0, 0, 0.9), 
+               0 0 5px rgba(0, 0, 0, 0.9),
+               1px 1px 2px rgba(0, 0, 0, 1);
+  z-index: 2;
 }
 
 .status-label.all-clear {
   color: #FFD600;
-  text-shadow: 0 0 10px rgba(255, 214, 0, 0.5);
+  text-shadow: 0 0 15px rgba(255, 214, 0, 0.6),
+               0 0 5px rgba(0, 0, 0, 0.9);
 }
 
 .sessions-label {
   font-size: 10px;
-  color: #888;
+  color: #eee;
+  text-shadow: 1px 1px 2px rgba(0, 0, 0, 1);
+  font-weight: bold;
+  z-index: 2;
 }
 
 .goal-icons {

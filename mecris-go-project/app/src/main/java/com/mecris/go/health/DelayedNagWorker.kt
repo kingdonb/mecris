@@ -89,10 +89,25 @@ class DelayedNagWorker(
                 if (healthManager.hasForegroundPermissions()) {
                     val summary = healthManager.fetchRecentWalkData()
                     if (summary.totalSteps < 2000) {
-                        val hasPartialWalk = summary.walkingSessionsCount > 0 || summary.totalDistanceMeters > 0.0
-                        val fallbackTitle = if (hasPartialWalk) "MAJESTY CAKE 🍰" else "BORIS & FIONA \uD83D\uDC15"
-                        val fallbackMsg = if (hasPartialWalk) "You logged a walk, but the Majesty Cake requires 2000 steps! Go get that cake. 🍰" else "Time for a walk? Your steps are low today."
-                        nagManager.showNag(fallbackTitle, fallbackMsg, "com.google.android.apps.fitness")
+                        // CHECK COOLDOWN even for fallback nags
+                        val nowMs = Instant.now().toEpochMilli()
+                        val fourHoursAgoMs = nowMs - 14400000L
+                        val lastGlobalNag = prefs.getLong("global_last_nag_timestamp", 0L)
+                        
+                        if (lastGlobalNag < fourHoursAgoMs) {
+                            val hasPartialWalk = summary.walkingSessionsCount > 0 || summary.totalDistanceMeters > 0.0
+                            val fallbackTitle = if (hasPartialWalk) "MAJESTY CAKE 🍰" else "BORIS & FIONA \uD83D\uDC15"
+                            val fallbackMsg = if (hasPartialWalk) "You logged a walk, but the Majesty Cake requires 2000 steps! Go get that cake. 🍰" else "Time for a walk? Your steps are low today."
+                            
+                            Log.i("DelayedNagWorker", "Firing Sovereign Fallback Nag: $fallbackTitle")
+                            nagManager.showNag(fallbackTitle, fallbackMsg, "com.google.android.apps.fitness")
+                            
+                            prefs.edit()
+                                .putLong("global_last_nag_timestamp", nowMs)
+                                .apply()
+                        } else {
+                            Log.i("DelayedNagWorker", "Sovereign Fallback suppressed by global cooldown")
+                        }
                     }
                 }
             }
