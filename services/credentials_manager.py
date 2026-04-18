@@ -47,18 +47,11 @@ class CredentialsManager:
             # Check explicit DEFAULT_USER_ID env var
             target_id = os.getenv("DEFAULT_USER_ID")
 
-        # 2. If we still have nothing and in standalone mode, generate a local ID
+        # 2. Return None if nothing found (no more generating random 'local-' IDs)
         if not target_id:
-            current_mode = os.getenv("MECRIS_MODE", "standalone")
-            if current_mode == "standalone":
-                import uuid
-                target_id = f"local-{uuid.uuid4().hex[:8]}"
-                self.save_credentials({"user_id": target_id})
-                return target_id
             return None
 
         # 3. Resolve familiar_id (e.g. 'yebyen') to pocket_id_sub (UUID) if needed
-        # If it's already a UUID or doesn't look like a name, skip DB lookup
         if target_id and not self._is_uuid(target_id) and not target_id.startswith("local-"):
             resolved = self.resolve_familiar_id(target_id)
             if resolved:

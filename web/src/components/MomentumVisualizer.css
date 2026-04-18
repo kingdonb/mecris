@@ -1,34 +1,120 @@
-.momentum-container {
-  width: 200px;
-  height: 200px;
+.momentum-wrapper {
+  position: relative;
+  width: 180px;
+  height: 180px;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: transform 2s ease-in-out;
-  animation: pulse 2s infinite alternate ease-in-out;
 }
 
-.momentum-circle {
+.momentum-glow {
+  position: absolute;
   width: 100%;
   height: 100%;
   border-radius: 50%;
-  animation: rotate 10s infinite linear;
+  filter: blur(40px);
+  opacity: 0.4;
+  animation: breathe 4s infinite alternate ease-in-out;
 }
 
-@keyframes pulse {
-  from {
-    transform: scale(0.8);
-  }
-  to {
-    transform: scale(1.2);
-  }
+.momentum-orb {
+  position: relative;
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  overflow: hidden;
+  box-shadow: inset 0 0 20px rgba(0, 0, 0, 0.5),
+              0 0 30px rgba(0, 0, 0, 0.3);
+  animation: orb-float 6s infinite ease-in-out;
+}
+
+.orb-layer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+}
+
+.layer-1 {
+  animation: shimmer 8s infinite linear;
+}
+
+.layer-2 {
+  mix-blend-mode: overlay;
+  animation: rotate 12s infinite linear reverse;
+}
+
+.orb-core {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 10px;
+  height: 10px;
+  margin-top: -5px;
+  margin-left: -5px;
+  border-radius: 50%;
+  filter: blur(4px);
+  opacity: 0.8;
+  animation: core-pulse 2s infinite alternate ease-in-out;
+}
+
+/* Majesty Effects */
+.all-clear .momentum-orb {
+  border: 1px solid rgba(255, 214, 0, 0.4);
+  box-shadow: 0 0 50px rgba(255, 214, 0, 0.2);
+}
+
+.majesty-rings {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ring {
+  position: absolute;
+  border: 1px solid rgba(255, 214, 0, 0.3);
+  border-radius: 50%;
+  animation: ring-expand 3s infinite ease-out;
+}
+
+.ring-2 {
+  animation-delay: 1.5s;
+}
+
+@keyframes breathe {
+  from { opacity: 0.3; transform: scale(0.9); }
+  to { opacity: 0.6; transform: scale(1.1); }
+}
+
+@keyframes orb-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-10px); }
+}
+
+@keyframes core-pulse {
+  from { transform: scale(1); opacity: 0.4; }
+  to { transform: scale(4); opacity: 0.9; }
+}
+
+@keyframes shimmer {
+  0% { transform: rotate(0deg) scale(1); }
+  50% { transform: rotate(180deg) scale(1.1); }
+  100% { transform: rotate(360deg) scale(1); }
+}
+
+@keyframes ring-expand {
+  0% { width: 120px; height: 120px; opacity: 0.8; }
+  100% { width: 220px; height: 220px; opacity: 0; }
 }
 
 @keyframes rotate {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
