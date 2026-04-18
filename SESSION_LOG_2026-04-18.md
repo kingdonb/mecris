@@ -1,55 +1,51 @@
 # Session Log - 2026-04-18
 
-## Status Update: The Neural Link & Architectural Resilience
+## Status Update: The Neural Link & CI/CD Milestone
 
 ### 🛠️ Actions Taken
 1.  **Hardened Authentication & Identity**:
     - Strictly enforced 401 for unauthenticated requests in `multi-tenant` mode.
-    - Verified full OIDC loop is now active; the UI is "well-and-truly authenticated".
-    - Removed "Ghost Mode" (anonymous IDs) to ensure high-fidelity database lookups.
+    - Verified full OIDC loop is active; UI is "well-and-truly authenticated".
 2.  **Aligned Language Liabilities (Review Pump)**:
-    - **Brutal Heuristic Alignment**: Unified point-to-card divisor to **16.0** across Rust (Spin) and Python (MCP) scrapers to match `ARABIC_POINTS_PER_CARD`.
-    - **Transparency**: Updated Web UI to show absolute progress (`DONE / TARGET`) to demystify the math.
+    - **Brutal Heuristic Alignment**: Unified point-to-card divisor to **16.0** across Rust (Spin) and Python (MCP).
+    - **Transparency**: Updated Web UI to show absolute progress (`DONE / TARGET`).
 3.  **Refined System Pulse (Active vs. Reactive)**:
-    - **Fixed Overwrites**: Added `cloud_provider` variable to `spin.toml` and redeployed to both clouds.
-    - **Differentiated Health**: Fermyon Cloud now shows a **White LED** (`reactive`) when fresh, transitioning to **Gray** after 15m. It no longer turns Red, as it is a stateless endpoint.
-    - **Parity**: Akamai (Worker), Android (Client), and MCP (Leader) all show distinct Green/Yellow/Red pulse statuses.
-4.  **Deployment Mastery & Alpha Release**:
-    - Executed `make deploy-all` to ensure global parity.
-    - Tagged and pushed **v0.0.1-alpha.9**.
-    - Upgraded Android app to `1.1.6-alpha.6`.
+    - **Fixed Overwrites**: Unique `cloud_provider` roles in `spin.toml`.
+    - **Differentiated Health**: Fermyon Cloud (White LED) for reachability, Akamai/Leader (Green) for workers.
+4.  **Deployment Mastery & CI/CD**:
+    - **Automated Releases**: Implemented `.github/workflows/release.yml` with SLSA baseline (SHA pinning).
+    - **Resilient Caching**: Added Gradle, Rust, and Pip caching to prevent 504/Timeout build failures.
+    - **Alpha Release v0.0.1-alpha.13**: Successfully built and published unsigned APK and WASM bundle to GitHub.
 5.  **Honest Goal Tracking**:
-    - **Fixed False-Positive Walk**: Enforced a strict **1.0 MI (2000 step)** threshold for the walk goal in Beeminder activity checks.
-    - **Raised Sync Threshold**: Raised Rust walk sync delta to **200m** to prevent Beeminder spam from nominal movements.
-    - **MCP Response Parity**: Aligned keys (`goals_met`, `total_goals`) to fix the 0/3 display on Android.
-6.  **Enhanced Web UI (The Neural Link)**:
-    - **Visuals**: Restored the Green "STABLE" orb and added high-impact outlines/text-shadows for legibility.
-    - **Majesty Cake**: Upgraded the System Momentum widget with a pulsing 🍰 and celebratory glow for "All Clear" states.
-    - **Live Metrics**: Added live counts (🚶 0.04/1.0 MI) to the momentum icons.
-7.  **Subtle Majesty Cake Nags (Android)**:
-    - Softened the fallback "partial walk" nag message from an explicit command ("requires 2000 steps! Go get that cake") to a more subtle and generic encouragement ("You're on the path to the Majesty Cake! Keep the momentum going today. ✨"). This aligns with the spec's intent to avoid formulaic commands when other goals might also remain unsatisfied.
+    - **Fixed False-Positive Walk**: Enforced **1.0 MI (2000 step)** threshold for goal satisfaction.
+    - **Raised Sync Threshold**: Rust sync delta raised to **200m** to reduce Beeminder noise.
+6.  **Subtle Majesty Cake Nags (Android)**:
+    - Softened nag messages to encouraging progress updates ("On the path to the Majesty Cake!").
+7.  **Resource Management**:
+    - Created **Issue #193**: LLM Quota Hypervisor to track Gemini Pro, Helix ($136!), and Copilot budgets.
 
 ### 🎯 Outcomes
-- **Connected & Honest**: Android and Web platforms show matching, high-fidelity data.
-- **Resilient**: The system survives a local MCP outage; the Web UI will fall back to Cloud APIs and the phone will continue to sync via Spin.
-- **Expressive**: The "Neural Link" now reflects the emotional and technical state of the system with clarity.
+- **Beta Ready**: The infrastructure for automated beta/stable releases is now fully functional.
+- **Synchronized**: Web and Android platforms show matching, high-fidelity data.
+- **Resilient**: Global parity achieved across Akamai, Fermyon, and Local MCP.
 
 ### 🔍 Investigation: Numbers Mismatch (RESOLVED)
-- **Finding**: Mismatched response keys caused Android to show 0/3; permissive Beeminder check caused walk to show satisfied at 0.04 MI.
-- **Fix**: Aligned keys and added a 1.0 MI threshold to Beeminder activity checks.
+- **Finding**: Mismatched response keys and permissive thresholds caused 0/3 vs 2/3 desync.
+- **Fix**: Aligned keys and enforced strict 1.0 MI threshold.
 
-### 🔍 Investigation: The Restart Trap (RESOLVED)
-- **Lesson**: Agent cannot restart the MCP server stdio connection. User must run `/mcp reload`.
+### 🔍 Investigation: CI Network Failures (RESOLVED)
+- **Fix**: Aggressive caching of Gradle/Rust artifacts in `.github/workflows/release.yml`.
 
 ### 🐾 Physical Activity Reminder
 - **1/3 Goals Satisfied** (Arabic met!).
-- **Walk Goal**: 0.04 MI is insufficient. The robot is tracking the 1.0 MI threshold.
+- **Walk Goal**: User reached **170 Arabic cards**. The robot is tracking the 1.0 MI walk threshold.
 - Weather remains "icky"; walk postponed to afternoon.
 
 ### 📋 Next Session Priorities
 - Connect Shift Lever controls to backend persistence.
 - Verify "Majesty Cake" visual trigger once all-clear is achieved.
-- Explore the return of the "Useless Architecture" (WASM Brain + Controller Runtime).
+- Implement **LLM Quota Hypervisor** (Issue #193).
+- Establish Beta Release criteria.
 
 ---
-**Architect's Note:** It has been a blast hardening this "Farce" into a "Neural Link." The system is now ready for your walk (once the storm clears). See you at the next check-in!
+**Architect's Note:** Lucky #13 brought us a green CI build and a successful artifact release. The Neural Link is hardened, the clouds are synced, and the budget is overflowing ($136 in Helix credit!). See you at Moussaka time. 🚶‍♂️🍰🇬🇷🇦✨
