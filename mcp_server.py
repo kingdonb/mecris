@@ -971,6 +971,7 @@ async def get_language_velocity_stats(user_id: str = None) -> Dict[str, Any]:
             
             unit = "points"
             daily_done = stats.get("daily_completions", 0)
+            min_target = 0
             
             if lang.lower() == "arabic":
                 unit = "cards"
@@ -978,9 +979,12 @@ async def get_language_velocity_stats(user_id: str = None) -> Dict[str, Any]:
                 # Actual card counts for a single day are typically < 500.
                 if daily_done > 500:
                     daily_done = int(daily_done / ARABIC_POINTS_PER_CARD)
+            elif lang.lower() == "greek":
+                # Moussaka Hour baseline goal: 100 points
+                min_target = 100
 
             pump = ReviewPump(multiplier=multiplier)
-            pump_status = pump.get_status(current_debt, tomorrow_liability, daily_done, unit=unit)
+            pump_status = pump.get_status(current_debt, tomorrow_liability, daily_done, unit=unit, min_target=min_target)
             
             # Surface additional fields from DB for the endpoint
             pump_status["safebuf"] = stats.get("safebuf", 0)

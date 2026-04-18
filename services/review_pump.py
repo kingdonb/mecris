@@ -43,11 +43,14 @@ class ReviewPump:
         backlog_portion = current_debt / days
         return int(tomorrow_liability + backlog_portion)
 
-    def get_status(self, current_debt: int, tomorrow_liability: int, daily_completions: int, unit: str = "points") -> Dict[str, Any]:
+    def get_status(self, current_debt: int, tomorrow_liability: int, daily_completions: int, unit: str = "points", min_target: int = 0) -> Dict[str, Any]:
         """
         Returns a status dictionary for the pump including target and flow state.
         """
         target = self.calculate_target(current_debt, tomorrow_liability)
+        
+        # Apply min_target baseline
+        target = max(target, min_target)
         
         # Flow states: cavitation (low), laminar (normal), turbulent (high)
         status = "laminar"

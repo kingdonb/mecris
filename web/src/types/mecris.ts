@@ -47,6 +47,8 @@ export interface AggregateStatusResponse {
   };
   budget_remaining?: number;
   today_distance_miles?: number;
+  today_steps?: number;
+  languages?: LanguageStat[];
   phone_verified?: boolean;
   vacation_mode_until?: string | null;
   system_pulse?: SystemPulse;

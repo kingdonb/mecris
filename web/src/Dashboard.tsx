@@ -217,15 +217,15 @@ const Dashboard: React.FC<DashboardProps> = ({ userToken }) => {
                       <div className={`goal-item ${data?.components?.arabic ? 'met' : ''}`} title="Arabic Review">
                           <span className="goal-icon">🇦</span>
                           <span className="goal-count">
-                              {data?.languages?.find(l => l.name.toUpperCase() === 'ARABIC')?.daily_completions || 0}/
-                              {data?.languages?.find(l => l.name.toUpperCase() === 'ARABIC')?.absolute_target || 0}
+                              {data?.languages?.find(l => l.name.toLowerCase() === 'arabic')?.daily_completions || 0}/
+                              {data?.languages?.find(l => l.name.toLowerCase() === 'arabic')?.absolute_target || 0}
                           </span>
                       </div>
                       <div className={`goal-item ${data?.components?.greek ? 'met' : ''}`} title="Greek Review">
                           <span className="goal-icon">🇬</span>
                           <span className="goal-count">
-                              {data?.languages?.find(l => l.name.toUpperCase() === 'GREEK')?.daily_completions || 0}/
-                              {data?.languages?.find(l => l.name.toUpperCase() === 'GREEK')?.absolute_target || 0}
+                              {data?.languages?.find(l => l.name.toLowerCase() === 'greek')?.daily_completions || 0}/
+                              {data?.languages?.find(l => l.name.toLowerCase() === 'greek')?.absolute_target || 0}
                           </span>
                       </div>
                   </div>
