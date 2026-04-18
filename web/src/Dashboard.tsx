@@ -16,6 +16,8 @@ const Dashboard: React.FC<DashboardProps> = ({ userToken }) => {
   const [error, setError] = useState<string | null>(null);
   const [provider, setProvider] = useState<'Home' | 'Akamai' | 'Fermyon'>('Home');
   const [baseUrl, setBaseUrl] = useState('http://localhost:8000');
+  const [syncing, setSyncing] = useState(false);
+  const [syncMessage, setSyncMessage] = useState<string | null>(null);
 
   const fetchWithTimeout = async (url: string, options: RequestInit, timeout = 3000) => {
     const controller = new AbortController();
@@ -121,13 +123,25 @@ const Dashboard: React.FC<DashboardProps> = ({ userToken }) => {
   };
 
   const handleManualSync = async () => {
+    setSyncing(true);
+    setSyncMessage(null);
     try {
       const headers: Record<string, string> = {};
       if (userToken) headers['Authorization'] = `Bearer ${userToken}`;
-      await fetch(`${baseUrl}/internal/cloud-sync`, { method: 'POST', headers });
-      refreshData();
-    } catch (e) {
+      const response = await fetch(`${baseUrl}/internal/cloud-sync`, { method: 'POST', headers });
+      
+      if (response.ok) {
+          setSyncMessage("CLOUD RECONCILIATION SUCCESSFUL");
+          setTimeout(() => setSyncMessage(null), 5000);
+          refreshData();
+      } else {
+          setSyncMessage(`RECONCILIATION FAILED: ${response.status}`);
+      }
+    } catch (e: any) {
       console.error("Manual sync failed", e);
+      setSyncMessage(`RECONCILIATION ERROR: ${e.message}`);
+    } finally {
+      setSyncing(false);
     }
   };
 
@@ -180,9 +194,18 @@ const Dashboard: React.FC<DashboardProps> = ({ userToken }) => {
         </section>
 
         <div className="manual-trigger-zone">
-            <button className="trigger-btn" onClick={handleManualSync}>
-                TRIGGER CLOUD RECONCILIATION
+            <button 
+                className={`trigger-btn ${syncing ? 'syncing' : ''}`} 
+                onClick={handleManualSync}
+                disabled={syncing}
+            >
+                {syncing ? 'RECONCILING CLOUD...' : 'TRIGGER CLOUD RECONCILIATION'}
             </button>
+            {syncMessage && (
+                <p className={`sync-status-msg ${syncMessage.includes('FAILED') || syncMessage.includes('ERROR') ? 'error' : 'success'}`}>
+                    {syncMessage}
+                </p>
+            )}
             <p className="trigger-hint">Forces Fermyon/Akamai to scrape Clozemaster & update Beeminder</p>
         </div>
 

@@ -179,6 +179,27 @@
     background: #00E5FF11;
 }
 
+.trigger-btn:disabled {
+    border-color: #222;
+    color: #444;
+    cursor: not-allowed;
+}
+
+.sync-status-msg {
+    font-size: 10px;
+    font-weight: bold;
+    margin-top: 12px;
+    letter-spacing: 0.5px;
+}
+
+.sync-status-msg.success {
+    color: #00C853;
+}
+
+.sync-status-msg.error {
+    color: #FF1744;
+}
+
 .trigger-hint {
     font-size: 9px;
     color: #555;
