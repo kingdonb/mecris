@@ -220,8 +220,10 @@ async def test_daily_aggregate_status_schema():
         with patch("mcp_server.resolve_target_user", return_value="test-user"):
             with patch("mcp_server.get_cached_daily_activity", AsyncMock(return_value={"has_activity_today": True})):
                 with patch("mcp_server.get_language_velocity_stats", AsyncMock(return_value=_FAKE_LANG_STATS_ALL_MET)):
-                    from mcp_server import get_daily_aggregate_status
-                    result = await get_daily_aggregate_status()
+                    with patch("mcp_server.usage_tracker.get_budget_status", return_value={"remaining_budget": 10.0}):
+                        with patch("mcp_server.neon_checker.get_latest_walk", return_value=None):
+                            from mcp_server import get_daily_aggregate_status
+                            result = await get_daily_aggregate_status()
 
     assert "goals" in result
     assert "satisfied_count" in result
@@ -243,8 +245,10 @@ async def test_daily_aggregate_status_all_clear_when_all_goals_met():
         with patch("mcp_server.resolve_target_user", return_value="test-user"):
             with patch("mcp_server.get_cached_daily_activity", AsyncMock(return_value={"has_activity_today": True})):
                 with patch("mcp_server.get_language_velocity_stats", AsyncMock(return_value=_FAKE_LANG_STATS_ALL_MET)):
-                    from mcp_server import get_daily_aggregate_status
-                    result = await get_daily_aggregate_status()
+                    with patch("mcp_server.usage_tracker.get_budget_status", return_value={"remaining_budget": 10.0}):
+                        with patch("mcp_server.neon_checker.get_latest_walk", return_value=None):
+                            from mcp_server import get_daily_aggregate_status
+                            result = await get_daily_aggregate_status()
 
     assert result["all_clear"] is True
     assert result["satisfied_count"] == result["total_count"]
@@ -263,8 +267,10 @@ async def test_daily_aggregate_status_not_all_clear_when_walk_missing():
         with patch("mcp_server.resolve_target_user", return_value="test-user"):
             with patch("mcp_server.get_cached_daily_activity", AsyncMock(return_value={"has_activity_today": False})):
                 with patch("mcp_server.get_language_velocity_stats", AsyncMock(return_value=_FAKE_LANG_STATS_ALL_MET)):
-                    from mcp_server import get_daily_aggregate_status
-                    result = await get_daily_aggregate_status()
+                    with patch("mcp_server.usage_tracker.get_budget_status", return_value={"remaining_budget": 10.0}):
+                        with patch("mcp_server.neon_checker.get_latest_walk", return_value=None):
+                            from mcp_server import get_daily_aggregate_status
+                            result = await get_daily_aggregate_status()
 
     assert result["all_clear"] is False
     assert result["satisfied_count"] < result["total_count"]
