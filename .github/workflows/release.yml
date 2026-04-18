@@ -24,14 +24,25 @@ jobs:
         with:
           java-version: '17'
           distribution: 'temurin'
-          cache: gradle
+          # Disabling the built-in cache to manage it manually for better resilience
+          cache: ''
+
+      - name: Cache Gradle packages
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v4+ latest main
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
 
       - name: Grant execute permission for gradlew
         run: chmod +x mecris-go-project/gradlew
 
       - name: Build with Gradle
         working-directory: ./mecris-go-project
-        run: ./gradlew assembleRelease
+        run: ./gradlew assembleRelease --no-daemon --max-workers=2
 
       - name: Upload APK
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v4+ latest main
@@ -51,6 +62,19 @@ jobs:
         run: |
           rustup update stable
           rustup target add wasm32-wasip1
+
+      - name: Cache Rust Build Artifacts
+        uses: Swatinem/rust-cache@469cb0e24707e1f169c4501c23d77da83a83fce8 # v2+ latest master
+
+      - name: Cache Spin & Python Dependencies
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v4+ latest main
+        with:
+          path: |
+            ~/.local/share/spin
+            ~/.cache/pip
+          key: ${{ runner.os }}-spin-pip-${{ hashFiles('**/requirements.txt', '**/spin.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-spin-pip-
 
       - name: Setup Spin
         uses: fermyon/actions/spin/setup@8849a6c41270af8e9f60f371982eddf33b8e35c9 # v1.x latest main
