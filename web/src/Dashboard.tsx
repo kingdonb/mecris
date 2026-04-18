@@ -193,15 +193,29 @@ const Dashboard: React.FC<DashboardProps> = ({ userToken }) => {
           <div className="momentum-viz-wrapper">
             <MomentumVisualizer momentum={momentum} isAllClear={data?.all_clear} />
             <div className="momentum-status">
-              <span className={`status-label ${data?.all_clear ? 'all-clear' : ''}`}>
-                {data?.all_clear ? 'MAJESTY CAKE' : (momentum < 0.5 ? 'CAVITATION' : 'STABLE')}
-              </span>
-              <div className="goal-icons">
-                  <span className={`goal-icon ${data?.components?.walk ? 'met' : ''}`} title="Daily Walk">🚶</span>
-                  <span className={`goal-icon ${data?.components?.arabic ? 'met' : ''}`} title="Arabic Review">🇦</span>
-                  <span className={`goal-icon ${data?.components?.greek ? 'met' : ''}`} title="Greek Review">🇬</span>
-              </div>
-              <span className="sessions-label">{data?.score} GOALS SATISFIED</span>
+              {data?.all_clear ? (
+                <>
+                  <span className="status-label all-clear">✨ THE MAJESTY CAKE ✨</span>
+                  <div className="majesty-cake-container">
+                    <span className="majesty-cake-icon">🍰</span>
+                    <div className="majesty-cake-glow"></div>
+                  </div>
+                  <span className="sessions-label bold">ALL GOALS SATISFIED</span>
+                </>
+              ) : (
+                <>
+                  <span className="accountability-header">DAILY ACCOUNTABILITY</span>
+                  <span className={`status-label ${momentum < 0.5 ? 'cavitation' : 'stable'}`}>
+                    {momentum < 0.5 ? 'CAVITATION' : 'STABLE'}
+                  </span>
+                  <div className="goal-icons">
+                      <span className={`goal-icon ${data?.components?.walk ? 'met' : ''}`} title="Daily Walk">🚶</span>
+                      <span className={`goal-icon ${data?.components?.arabic ? 'met' : ''}`} title="Arabic Review">🇦</span>
+                      <span className={`goal-icon ${data?.components?.greek ? 'met' : ''}`} title="Greek Review">🇬</span>
+                  </div>
+                  <span className="sessions-label">{data?.score} GOALS SATISFIED</span>
+                </>
+              )}
             </div>
           </div>
         </section>
