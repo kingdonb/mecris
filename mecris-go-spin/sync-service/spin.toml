@@ -46,7 +46,7 @@ component = "sync-service"
 
 [component.sync-service]
 source = "target/wasm32-wasip1/release/sync_service.wasm"
-allowed_outbound_hosts = ["postgres://*:*", "https://www.beeminder.com", "https://www.clozemaster.com", "https://api.twilio.com", "https://api.openweathermap.org"]
+allowed_outbound_hosts = ["postgres://*:*", "https://www.beeminder.com", "https://www.clozemaster.com", "https://api.twilio.com", "https://api.openweathermap.org", "https://metnoom.urmanac.com"]
 key_value_stores = ["default"]
 [component.sync-service.variables]
 db_url = "{{ db_url }}"

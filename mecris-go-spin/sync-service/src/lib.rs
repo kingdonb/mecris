@@ -940,6 +940,9 @@ async fn handle_health_get(req: Request) -> anyhow::Result<Response> {
 
     let db_url = variables::get("db_url").or_else(|_| variables::get("neon_db_url"))?;
     let connection = Connection::open(&db_url)?;
+
+    // Register heartbeat for this cloud instance
+    let _ = register_cloud_heartbeat(&connection, &user_id).await;
     
     #[derive(Serialize)]
     struct HealthResponse {

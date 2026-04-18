@@ -1257,6 +1257,7 @@ def export_user_data(user_id: str = None) -> Dict[str, Any]:
 if __name__ == "__main__":
     import sys
     import asyncio
+    import uvicorn
 
     if len(sys.argv) > 1 and sys.argv[1] == "--stdio":
         async def run_stdio():
@@ -1265,6 +1266,13 @@ if __name__ == "__main__":
             scheduler.shutdown()
             
         asyncio.run(run_stdio())
+    elif len(sys.argv) > 1 and sys.argv[1] == "--http":
+        print("Starting Mecris API on http://localhost:8000", file=sys.stderr)
+        scheduler.start()
+        try:
+            uvicorn.run(app, host="0.0.0.0", port=8000)
+        finally:
+            scheduler.shutdown()
     else:
-        # In other modes, mcp.run() might be used, but generally we run via start_server.py for SSE
+        # Default behavior: run MCP in standard mode
         mcp.run()

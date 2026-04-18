@@ -31,33 +31,41 @@ const Dashboard: React.FC<DashboardProps> = ({ userToken }) => {
   };
 
   const discoverBackend = useCallback(async () => {
-    // 1. Try Local Home Server
-    try {
-      const resp = await fetchWithTimeout('http://localhost:8000/health', { method: 'GET' });
-      if (resp.ok) {
-        setProvider('Home');
-        setBaseUrl('http://localhost:8000');
-        return 'http://localhost:8000';
-      }
-    } catch (e) { /* ignore */ }
+    const headers: Record<string, string> = {};
+    if (userToken) headers['Authorization'] = `Bearer ${userToken}`;
 
-    // 2. Try Akamai
-    const akamaiUrl = 'https://394b84e7-760c-4336-975b-653c17fdb446.fwf.app';
-    try {
-      const resp = await fetchWithTimeout(`${akamaiUrl}/health`, { method: 'GET' });
-      if (resp.ok) {
-        setProvider('Akamai');
-        setBaseUrl(akamaiUrl);
-        return akamaiUrl;
-      }
-    } catch (e) { /* ignore */ }
+    const probes = [
+      { name: 'Home', url: 'http://localhost:8000' },
+      { name: 'Akamai', url: 'https://394b84e7-760c-4336-975b-653c17fdb446.fwf.app' },
+      { name: 'Fermyon', url: 'https://mecris-sync-v2-r0r86pso.fermyon.app' }
+    ];
 
-    // 3. Fallback to Fermyon
-    const fermyonUrl = 'https://mecris-sync-v2-r0r86pso.fermyon.app';
-    setProvider('Fermyon');
-    setBaseUrl(fermyonUrl);
-    return fermyonUrl;
-  }, []);
+    let bestUrl = 'https://mecris-sync-v2-r0r86pso.fermyon.app'; // Default
+    let found = false;
+
+    for (const probe of probes) {
+      console.log(`PROBING ${probe.name}: ${probe.url}...`);
+      try {
+        const resp = await fetchWithTimeout(`${probe.url}/health`, { method: 'GET', headers });
+        if (resp.ok) {
+          console.log(`✅ ${probe.name} is ONLINE`);
+          if (!found) {
+            setProvider(probe.name as any);
+            setBaseUrl(probe.url);
+            bestUrl = probe.url;
+            found = true;
+          }
+        } else {
+          console.error(`❌ ${probe.name} returned ${resp.status}`);
+        }
+      } catch (e: any) {
+        console.warn(`⚠️ ${probe.name} is OFFLINE: ${e.message}`);
+      }
+    }
+
+    return bestUrl;
+  }, [userToken]);
+
 
   const refreshData = useCallback(async (currentUrl?: string) => {
     const url = currentUrl || baseUrl;
