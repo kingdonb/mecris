@@ -958,7 +958,7 @@ async def get_language_velocity_stats(user_id: str = None) -> Dict[str, Any]:
             # - daily_completions from Neon: 
             #   - Python sync now stores actual card count (cards_today) for Arabic if found.
             #   - Fallback is raw points (numPointsToday).
-            #   - We divide by 12 only if the value looks like points (e.g. > 500) to normalize.
+            #   - We divide by 16 only if the value looks like points (e.g. > 500) to normalize.
             
             unit = "points"
             daily_done = stats.get("daily_completions", 0)

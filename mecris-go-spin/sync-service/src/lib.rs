@@ -502,9 +502,10 @@ fn parse_forecast_count(v: &serde_json::Value) -> i32 {
 }
 
 /// Convert raw Clozemaster points into an estimated card count for ARABIC.
-/// Heuristic: 1 card ≈ 12 points (derived empirically from scoring data).
+/// Max points awarded per correctly answered Arabic hard card is 16.
+/// Using 16 rather than 12 prevents premature 'goal met' status.
 fn arabic_completions(points_today: i32) -> i32 {
-    (points_today as f64 / 12.0) as i32
+    (points_today as f64 / 16.0) as i32
 }
 
 async fn handle_cloud_sync(req: Request) -> anyhow::Result<Response> {

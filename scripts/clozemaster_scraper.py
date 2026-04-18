@@ -270,6 +270,10 @@ async def sync_clozemaster_to_beeminder(dry_run: bool = False, user_id: str = No
     scraper = ClozemasterScraper(user_id=user_id)
     beeminder = BeeminderClient()
     
+    # Pre-fetch required IDs for Neon persistence
+    target_user_id = scraper.tracker.resolve_user_id(user_id)
+    neon_url = os.getenv("NEON_DB_URL")
+    
     try:
         if await scraper.login():
             # Language configuration
@@ -342,6 +346,34 @@ async def sync_clozemaster_to_beeminder(dry_run: bool = False, user_id: str = No
                 
                 if success:
                     logger.info(f"✅ {name} sync complete")
+                    # Persist to Neon for local observability parity
+                    if neon_url:
+                        try:
+                            import psycopg2
+                            with psycopg2.connect(neon_url) as conn:
+                                with conn.cursor() as cur:
+                                    cur.execute("""
+                                        INSERT INTO language_stats (user_id, language_name, current_reviews, tomorrow_reviews, next_7_days_reviews, beeminder_slug, daily_completions, last_updated)
+                                        VALUES (%s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP)
+                                        ON CONFLICT (user_id, language_name) DO UPDATE SET
+                                            current_reviews = EXCLUDED.current_reviews,
+                                            tomorrow_reviews = EXCLUDED.tomorrow_reviews,
+                                            next_7_days_reviews = EXCLUDED.next_7_days_reviews,
+                                            beeminder_slug = EXCLUDED.beeminder_slug,
+                                            daily_completions = EXCLUDED.daily_completions,
+                                            last_updated = CURRENT_TIMESTAMP
+                                    """, (
+                                        target_user_id, 
+                                        name.upper(), 
+                                        count, 
+                                        scraper_data.get("tomorrow", 0), 
+                                        scraper_data.get("next_7_days", 0), 
+                                        goal_slug, 
+                                        scraper_data.get("cards_today", scraper_data.get("points_today", 0))
+                                    ))
+                                    conn.commit()
+                        except Exception as e:
+                            logger.error(f"Failed to persist {name} stats to Neon: {e}")
                 else:
                     logger.error(f"❌ {name} sync failed")
             
