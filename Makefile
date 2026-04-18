@@ -15,17 +15,17 @@ test-rust:
 
 test-all: test
 
-deploy-fermyon:
+deploy-fermyon: build-wasm
 	@echo "☁️ Deploying to Fermyon Cloud..."
 	$(eval JWKS_JSON := $(shell curl -s https://metnoom.urmanac.com/.well-known/openid-configuration | jq -r .jwks_uri | xargs curl -s | jq -c .))
-	cd mecris-go-spin/sync-service && spin cloud deploy --build \
+	cd mecris-go-spin/sync-service && spin cloud deploy \
 		--variable cloud_provider=fermyon \
 		--variable oidc_jwks_json='$(JWKS_JSON)'
 
-deploy-akamai:
+deploy-akamai: build-wasm
 	@echo "☁️ Deploying to Akamai Functions..."
 	$(eval JWKS_JSON := $(shell curl -s https://metnoom.urmanac.com/.well-known/openid-configuration | jq -r .jwks_uri | xargs curl -s | jq -c .))
-	cd mecris-go-spin/sync-service && spin aka deploy --build --no-confirm \
+	cd mecris-go-spin/sync-service && spin aka deploy --no-confirm \
 		--variable db_url=$${NEON_DB_URL} \
 		--variable neon_db_url=$${NEON_DB_URL} \
 		--variable master_encryption_key=$${MASTER_ENCRYPTION_KEY} \
@@ -38,6 +38,10 @@ deploy-akamai:
 		--variable oidc_discovery_url="https://metnoom.urmanac.com/.well-known/openid-configuration" \
 		--variable oidc_jwks_json='$(JWKS_JSON)' \
 		--variable cloud_provider=akamai
+
+build-wasm:
+	@echo "🦀 Building Sync Service WASM..."
+	cd mecris-go-spin/sync-service && spin build
 
 deploy-all: deploy-fermyon deploy-akamai
 	@echo "✅ Deployment to both clouds complete"
