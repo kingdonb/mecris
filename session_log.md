@@ -1675,3 +1675,20 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: Nothing — plan fully completed.
 
 **Next**: No open PRs on kingdonb/mecris. Next session should orient fresh and look for new work or await human-driven PRs. Baseline: 0 Python failures, 108 Rust, 27 Android (1 pre-existing).
+
+## 2026-04-18 🏛️ — Commit audit: 10 new commits from kingdonb, test baseline update (yebyen/mecris#216, complete)
+
+**Planned**: Audit the 10 commits that landed on kingdonb/mecris on 2026-04-18, count new tests, and update NEXT_SESSION.md with accurate baseline.
+
+**Done**:
+- Orient confirmed yebyen/mecris is fully in sync with kingdonb/mecris (HEAD: `1395e8c`)
+- Audited all 10 new commits: React web UI scaffold, CORS support, cloud heartbeats + system_pulse API, JWKS dynamic fetch, Akamai env vars, heartbeat on health check, --http flag
+- Identified 3 new Python tests in `tests/test_mcp_cors.py`: preflight, GET health, invalid origin
+- Identified 3 new Vitest (React) tests in `web/src/components/__tests__/rendering.test.tsx` (not in pytest count)
+- Estimated new Python baseline: **464 passed** (was 461), 6 skipped — unverified until next pr-test
+- Updated NEXT_SESSION.md with new feature summary and corrected baseline estimate
+- Plan issue yebyen/mecris#216 closed ✅
+
+**Skipped**: Cannot verify exact test count without running pr-test (no open PRs). Count is a code-count estimate.
+
+**Next**: No open PRs on kingdonb/mecris. Next session should orient fresh, verify new baseline via pr-test on next PR, and look for new work. Rust/Android counts unchanged.
