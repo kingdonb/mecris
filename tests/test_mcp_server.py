@@ -135,12 +135,11 @@ async def test_languages_has_goal_derived_from_beeminder_slug():
             "daily_rate": 10.0, "safebuf": 2, "derail_risk": "WARNING",
             "multiplier": 1.0, "beeminder_slug": "reviewstack",
         },
-        "lithuanian": {
+        "greek": {
             "current": 50, "tomorrow": 45, "next_7_days": 30,
             "daily_rate": 5.0, "safebuf": 0, "derail_risk": "UNKNOWN",
-            "multiplier": 1.0, "beeminder_slug": None,
-        },
-    }
+            "multiplier": 2.0, "beeminder_slug": None,
+        },    }
 
     env_patch, db_patch = _make_mcp_importable()
     with env_patch, db_patch:
@@ -150,7 +149,7 @@ async def test_languages_has_goal_derived_from_beeminder_slug():
 
     langs = {lang["name"]: lang for lang in result["languages"]}
     assert langs["arabic"]["has_goal"] is True
-    assert langs["lithuanian"]["has_goal"] is False
+    assert langs["greek"]["has_goal"] is False
 
 
 @pytest.mark.asyncio
@@ -160,12 +159,11 @@ async def test_languages_sorted_beeminder_tracked_first():
 
     # Deliberately put untracked language first in the dict to confirm sorting works
     fake_stats = {
-        "lithuanian": {
+        "greek": {
             "current": 50, "tomorrow": 45, "next_7_days": 30,
             "daily_rate": 5.0, "safebuf": 0, "derail_risk": "UNKNOWN",
-            "multiplier": 1.0, "beeminder_slug": None,
-        },
-        "arabic": {
+            "multiplier": 2.0, "beeminder_slug": None,
+        },        "arabic": {
             "current": 100, "tomorrow": 90, "next_7_days": 60,
             "daily_rate": 10.0, "safebuf": 2, "derail_risk": "WARNING",
             "multiplier": 1.0, "beeminder_slug": "reviewstack",

@@ -280,6 +280,35 @@ fun MecrisDashboard(
     var showSystemHealth by remember { mutableStateOf(false) }
     var showProfileSettings by remember { mutableStateOf(false) }
     var showSovereignLab by remember { mutableStateOf(false) }
+
+    // Proactive profile fetch when authenticated
+    LaunchedEffect(authState) {
+        if (authState is AuthState.Authenticated) {
+            scope.launch {
+                try {
+                    val token = auth.getAccessTokenSuspend()
+                    if (token != null) {
+                        val response = syncApi.getProfile("Bearer $token")
+                        if (response.isSuccessful) {
+                            val profile = response.body()
+                            profile?.let {
+                                // Sync local manager with DB data
+                                it.phone_number?.let { p -> manager.setPhoneNumber(p) }
+                                it.beeminder_user?.let { b -> manager.setBeeminderUser(b) }
+                                it.latitude?.let { lat -> manager.setLatitude(lat.toString()) }
+                                it.longitude?.let { lon -> manager.setLongitude(lon.toString()) }
+                                it.vacation_mode_until?.let { v -> manager.setVacationModeUntil(v) }
+                                manager.setAutonomousSyncEnabled(it.autonomous_sync_enabled)
+                                Log.i("MecrisDashboard", "Profile synced from database.")
+                            }
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.w("MecrisDashboard", "Failed to pre-fetch profile: ${e.message}")
+                }
+            }
+        }
+    }
     
     // Lifecycle listener to refresh on resume (with 30s debounce to prevent loops)
     val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
@@ -1296,6 +1325,29 @@ fun SystemHealthScreen(
 
     val context = LocalContext.current
 
+    // PROACTIVE REFRESH: Check permissions whenever the screen is resumed 
+    // (e.g. after returning from System Settings)
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                scope.launch {
+                    hasForeground = healthManager.hasForegroundPermissions()
+                    hasRoute = healthManager.hasRoutePermission()
+                    hasBackground = healthManager.hasBackgroundPermission()
+                    
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        hasNotification = androidx.core.content.ContextCompat.checkSelfPermission(
+                            context, android.Manifest.permission.POST_NOTIFICATIONS
+                        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+                    }
+                }
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
     LaunchedEffect(Unit) {
         hasForeground = healthManager.hasForegroundPermissions()
         hasRoute = healthManager.hasRoutePermission()
@@ -1962,6 +2014,7 @@ fun ProfileSettingsScreen(
         Spacer(modifier = Modifier.height(24.dp))
         Button(
             onClick = {
+                // 1. Local save (immediate)
                 manager.setPreferredHealthSource(preferredSource)
                 manager.setPhoneNumber(phoneNumber)
                 manager.setBeeminderUser(beeminderUser)
@@ -1969,12 +2022,44 @@ fun ProfileSettingsScreen(
                 manager.setLongitude(longitude)
                 manager.setVacationModeUntil(vacationUntil)
                 manager.setAutonomousSyncEnabled(autoSync)
-                saveStatus = "Saved locally"
+                saveStatus = "Saving..."
+
+                // 2. Database persistence (async)
+                scope.launch {
+                    try {
+                        val token = auth.getAccessTokenSuspend()
+                        if (token != null) {
+                            val req = com.mecris.go.sync.ProfileUpdateRequestDto(
+                                phone_number = phoneNumber,
+                                beeminder_user = beeminderUser,
+                                latitude = latitude.toDoubleOrNull(),
+                                longitude = longitude.toDoubleOrNull(),
+                                vacation_mode_until = vacationUntil,
+                                autonomous_sync_enabled = autoSync
+                            )
+                            val resp = syncApi.updateProfile("Bearer $token", req)
+                            if (resp.isSuccessful) {
+                                saveStatus = "Synced to Cloud ✅"
+                            } else {
+                                Log.e("ProfileSettings", "Cloud sync failed: ${resp.code()}")
+                                saveStatus = "Local save only (Sync error)"
+                            }
+                        } else {
+                            saveStatus = "Local save only (Auth error)"
+                        }
+                    } catch (e: Exception) {
+                        Log.e("ProfileSettings", "Cloud sync exception: ${e.message}")
+                        saveStatus = "Local save only (Network error)"
+                    }
+                }
             },
             modifier = Modifier.fillMaxWidth(),
-            colors = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = Color(0xFF1B5E20))
+            colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                containerColor = Color(0xFF1B5E20),
+                contentColor = Color.Black // HIGH CONTRAST
+            )
         ) {
-            Text("SAVE SETTINGS")
+            Text("SAVE SETTINGS", fontWeight = FontWeight.Bold)
         }
         
         Spacer(modifier = Modifier.height(8.dp))

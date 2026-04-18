@@ -1249,6 +1249,13 @@ async def get_daily_aggregate_status(user_id: str = None) -> Dict[str, Any]:
                     "satisfied": bool(stat.get("goal_met", False)),
                     "status": stat.get("status", "unknown"),
                 })
+            else:
+                goals.append({
+                    "name": f"{lang_key}_review",
+                    "label": label,
+                    "satisfied": False,
+                    "error": "Missing data",
+                })
         
         # Prepare full language list for icons/counts
         for name, data in lang_stats.items():

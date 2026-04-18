@@ -96,6 +96,30 @@ async fn decrypt_token(encrypted_hex: &str) -> anyhow::Result<String> {
     Ok(String::from_utf8(decrypted_bytes)?)
 }
 
+async fn encrypt_token(plaintext: &str) -> anyhow::Result<String> {
+    let key_str = variables::get("master_encryption_key")
+        .map_err(|e| anyhow::anyhow!("Failed to get master_encryption_key: {:?}", e))?;
+    let key_str = key_str.trim();
+    let key_bytes = hex::decode(&key_str)
+        .map_err(|e| anyhow::anyhow!("Hex decode failed for master_encryption_key: {}", e))?;
+    let cipher = Aes256Gcm::new_from_slice(&key_bytes)?;
+
+    let mut nonce_bytes = [0u8; 12];
+    getrandom::getrandom(&mut nonce_bytes)
+        .map_err(|e| anyhow::anyhow!("Failed to generate nonce: {}", e))?;
+    let nonce = Nonce::from_slice(&nonce_bytes);
+
+    let ciphertext = cipher.encrypt(nonce, plaintext.as_bytes())
+        .map_err(|e| anyhow::anyhow!("Encryption failed: {:?}", e))?;
+
+    // Combine nonce + ciphertext
+    let mut combined = Vec::with_capacity(12 + ciphertext.len());
+    combined.extend_from_slice(&nonce_bytes);
+    combined.extend_from_slice(&ciphertext);
+
+    Ok(hex::encode(combined))
+}
+
 async fn extract_user_id(auth_header: Option<&spin_sdk::http::HeaderValue>) -> Option<String> {
     // Allows local E2E testing without a full OAuth pipeline
     if let Ok(bypass) = variables::get("auth_bypass") {
@@ -244,6 +268,14 @@ async fn handle_sync_service(req: Request) -> anyhow::Result<Response> {
             Response::builder().status(405).body("Method Not Allowed").build()
         } else {
             handle_aggregate_status_get(req).await?
+        }
+    } else if path == "/profile" {
+        if req.method() == &spin_sdk::http::Method::Post {
+            handle_profile_post(req).await?
+        } else if req.method() == &spin_sdk::http::Method::Get {
+            handle_profile_get(req).await?
+        } else {
+            Response::builder().status(405).body("Method Not Allowed").build()
         }
     } else if path == "/internal/trigger-reminders" {
         if req.method() != &spin_sdk::http::Method::Post && req.method() != &spin_sdk::http::Method::Get {
@@ -607,6 +639,160 @@ async fn handle_aggregate_status_get(req: Request) -> anyhow::Result<Response> {
         .body(serde_json::to_string(&resp).unwrap())
         .build())
 }
+
+async fn handle_profile_post(req: Request) -> anyhow::Result<Response> {
+    let auth_header = req.header("authorization");
+    let user_id = match extract_user_id(auth_header).await {
+        Some(id) => id,
+        None => return Ok(Response::builder().status(401).body("Unauthorized").build()),
+    };
+
+    #[derive(Deserialize)]
+    struct ProfileRequest {
+        phone_number: Option<String>,
+        beeminder_user: Option<String>,
+        latitude: Option<f64>,
+        longitude: Option<f64>,
+        vacation_mode_until: Option<String>,
+        autonomous_sync_enabled: Option<bool>,
+    }
+
+    let body = req.body();
+    let profile_req: ProfileRequest = match serde_json::from_slice(&body) {
+        Ok(r) => r,
+        Err(e) => return Ok(Response::builder().status(400).body(format!("Invalid JSON: {}", e)).build()),
+    };
+
+    let db_url = variables::get("db_url").or_else(|_| variables::get("neon_db_url"))?;
+    let connection = Connection::open(&db_url)?;
+
+    // 1. Encrypt PII if provided
+    let mut phone_enc = None;
+    if let Some(phone) = &profile_req.phone_number {
+        if !phone.is_empty() {
+            match encrypt_token(phone).await {
+                Ok(enc) => phone_enc = Some(enc),
+                Err(e) => return Ok(Response::builder().status(500).body(format!("Encryption failed: {}", e)).build()),
+            }
+        }
+    }
+
+    let mut beeminder_user_enc = None;
+    if let Some(bu) = &profile_req.beeminder_user {
+        if !bu.is_empty() {
+            match encrypt_token(bu).await {
+                Ok(enc) => beeminder_user_enc = Some(enc),
+                Err(e) => return Ok(Response::builder().status(500).body(format!("Encryption failed: {}", e)).build()),
+            }
+        }
+    }
+
+    // 2. Perform surgical updates on the user row
+    // We update only the fields that were provided in the request
+    if let Some(p) = phone_enc {
+        connection.execute("UPDATE users SET phone_number_encrypted = $1, phone_verified = FALSE WHERE pocket_id_sub = $2", 
+            &[ParameterValue::Str(p), ParameterValue::Str(user_id.clone())])?;
+    }
+
+    if let Some(bu) = beeminder_user_enc {
+        connection.execute("UPDATE users SET beeminder_user_encrypted = $1 WHERE pocket_id_sub = $2", 
+            &[ParameterValue::Str(bu), ParameterValue::Str(user_id.clone())])?;
+    }
+
+    if let Some(lat) = profile_req.latitude {
+        connection.execute("UPDATE users SET location_lat = $1 WHERE pocket_id_sub = $2", 
+            &[ParameterValue::Floating64(lat), ParameterValue::Str(user_id.clone())])?;
+    }
+
+    if let Some(lon) = profile_req.longitude {
+        connection.execute("UPDATE users SET location_lon = $1 WHERE pocket_id_sub = $2", 
+            &[ParameterValue::Floating64(lon), ParameterValue::Str(user_id.clone())])?;
+    }
+
+    if let Some(vac) = profile_req.vacation_mode_until {
+        // If empty string, set to NULL
+        if vac.is_empty() {
+            connection.execute("UPDATE users SET vacation_mode_until = NULL WHERE pocket_id_sub = $1", 
+                &[ParameterValue::Str(user_id.clone())])?;
+        } else {
+            connection.execute("UPDATE users SET vacation_mode_until = $1::TIMESTAMPTZ WHERE pocket_id_sub = $2", 
+                &[ParameterValue::Str(vac), ParameterValue::Str(user_id.clone())])?;
+        }
+    }
+
+    if let Some(auto) = profile_req.autonomous_sync_enabled {
+        connection.execute("UPDATE users SET autonomous_sync_enabled = $1 WHERE pocket_id_sub = $2", 
+            &[ParameterValue::Boolean(auto), ParameterValue::Str(user_id.clone())])?;
+    }
+
+    Ok(Response::builder()
+        .status(200)
+        .header("content-type", "application/json")
+        .body(r#"{"status":"success","message":"Profile updated"}"#)
+        .build())
+}
+
+async fn handle_profile_get(req: Request) -> anyhow::Result<Response> {
+    let auth_header = req.header("authorization");
+    let user_id = match extract_user_id(auth_header).await {
+        Some(id) => id,
+        None => return Ok(Response::builder().status(401).body("Unauthorized").build()),
+    };
+
+    #[derive(Serialize)]
+    struct ProfileResponse {
+        phone_number: Option<String>,
+        beeminder_user: Option<String>,
+        latitude: Option<f64>,
+        longitude: Option<f64>,
+        vacation_mode_until: Option<String>,
+        autonomous_sync_enabled: bool,
+    }
+
+    let db_url = variables::get("db_url").or_else(|_| variables::get("neon_db_url"))?;
+    let connection = Connection::open(&db_url)?;
+
+    let query = "SELECT phone_number_encrypted, beeminder_user_encrypted, location_lat, location_lon, \
+                 vacation_mode_until::TEXT, autonomous_sync_enabled \
+                 FROM users WHERE pocket_id_sub = $1";
+    let rs = connection.query(query, &[ParameterValue::Str(user_id)])?;
+
+    if rs.rows.is_empty() {
+        return Ok(Response::builder().status(404).body("User not found").build());
+    }
+
+    let row = &rs.rows[0];
+    let phone_enc = match &row[0] { DbValue::Str(s) => Some(s.clone()), _ => None };
+    let bu_enc = match &row[1] { DbValue::Str(s) => Some(s.clone()), _ => None };
+    let lat = match &row[2] { DbValue::Floating64(f) => Some(*f), _ => None };
+    let lon = match &row[3] { DbValue::Floating64(f) => Some(*f), _ => None };
+    let vac = match &row[4] { DbValue::Str(s) => Some(s.clone()), _ => None };
+    let auto = match &row[5] { DbValue::Boolean(b) => *b, _ => false };
+
+    let phone = if let Some(p) = phone_enc {
+        decrypt_token(&p).await.ok()
+    } else { None };
+
+    let beeminder_user = if let Some(bu) = bu_enc {
+        decrypt_token(&bu).await.ok()
+    } else { None };
+
+    let resp = ProfileResponse {
+        phone_number: phone,
+        beeminder_user,
+        latitude: lat,
+        longitude: lon,
+        vacation_mode_until: vac,
+        autonomous_sync_enabled: auto,
+    };
+
+    Ok(Response::builder()
+        .status(200)
+        .header("content-type", "application/json")
+        .body(serde_json::to_string(&resp).unwrap())
+        .build())
+}
+
 
 /// Returns true when the sync request should be forwarded to the user's Home Server
 /// rather than handled locally by Spin. Delegation is skipped for local/loopback URLs

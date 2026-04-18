@@ -75,6 +75,17 @@ interface SyncServiceApi {
         @Body request: PhoneVerificationConfirmRequestDto
     ): retrofit2.Response<SyncResponse>
 
+    @GET("profile")
+    suspend fun getProfile(
+        @Header("Authorization") authHeader: String
+    ): retrofit2.Response<ProfileResponseDto>
+
+    @POST("profile")
+    suspend fun updateProfile(
+        @Header("Authorization") authHeader: String,
+        @Body request: ProfileUpdateRequestDto
+    ): retrofit2.Response<SyncResponse>
+
     companion object {
         fun create(baseUrl: String): SyncServiceApi {
             val client = OkHttpClient.Builder()
@@ -186,5 +197,23 @@ data class PhoneVerificationRequestDto(
 
 data class PhoneVerificationConfirmRequestDto(
     val code: String
+)
+
+data class ProfileResponseDto(
+    val phone_number: String?,
+    val beeminder_user: String?,
+    val latitude: Double?,
+    val longitude: Double?,
+    val vacation_mode_until: String?,
+    val autonomous_sync_enabled: Boolean
+)
+
+data class ProfileUpdateRequestDto(
+    val phone_number: String? = null,
+    val beeminder_user: String? = null,
+    val latitude: Double? = null,
+    val longitude: Double? = null,
+    val vacation_mode_until: String? = null,
+    val autonomous_sync_enabled: Boolean? = null
 )
 
