@@ -255,8 +255,19 @@
   font-family: monospace;
 }
 
+.goal-sub-count {
+  font-size: 7px;
+  color: #666;
+  font-family: monospace;
+  margin-top: -2px;
+}
+
 .met .goal-count {
   color: #00c853;
+}
+
+.met .goal-sub-count {
+  color: #00c853aa;
 }
 
 .manual-trigger-zone {

@@ -1241,19 +1241,30 @@ async def get_daily_aggregate_status(user_id: str = None) -> Dict[str, Any]:
         goals.append({"name": "daily_walk", "label": "Daily Walk (2000 steps)", "satisfied": False, "error": str(e)})
 
     # Goals 2 & 3: Arabic and Greek Review Pump (goal_met from velocity stats)
+    lang_stats_list = []
     try:
         lang_stats = await get_language_velocity_stats(target_user_id)
         for lang_key, label in [("arabic", "Arabic Review Pump"), ("greek", "Greek Review Pump")]:
+            # Convert OrderedDict items to list for the frontend
             stat = next((v for k, v in lang_stats.items() if isinstance(v, dict) and k.lower() == lang_key), None)
             if stat:
+                # Add to aggregate goals
                 goals.append({
                     "name": f"{lang_key}_review",
                     "label": label,
                     "satisfied": bool(stat.get("goal_met", False)),
                     "status": stat.get("status", "unknown"),
                 })
-            else:
-                goals.append({"name": f"{lang_key}_review", "label": label, "satisfied": False, "error": "no data"})
+        
+        # Prepare full language list for icons/counts
+        for name, data in lang_stats.items():
+            lang_stats_list.append({
+                "name": name,
+                "daily_completions": data.get("current_flow_rate", 0),
+                "absolute_target": data.get("absolute_target", 0),
+                "goal_met": data.get("goal_met", False)
+            })
+
     except Exception as e:
         logger.error(f"get_daily_aggregate_status: language stats failed: {e}")
         for lang_key, label in [("arabic", "Arabic Review Pump"), ("greek", "Greek Review Pump")]:
@@ -1266,12 +1277,14 @@ async def get_daily_aggregate_status(user_id: str = None) -> Dict[str, Any]:
     latest_walk = await asyncio.to_thread(neon_checker.get_latest_walk, target_user_id)
     
     today_distance_miles = 0.0
+    today_steps = 0
     if latest_walk:
         # Check if walk is from today
         walk_start = latest_walk.get("start_time")
         if isinstance(walk_start, datetime) and walk_start.date() == date.today():
             meters = float(latest_walk.get("distance_meters") or 0)
             today_distance_miles = meters * 0.000621371
+            today_steps = int(latest_walk.get("step_count") or 0)
 
     satisfied_count = sum(1 for g in goals if g["satisfied"])
     total_count = len(goals)
@@ -1290,6 +1303,8 @@ async def get_daily_aggregate_status(user_id: str = None) -> Dict[str, Any]:
         },
         "budget_remaining": budget_status.get("remaining_budget", 0),
         "today_distance_miles": today_distance_miles,
+        "today_steps": today_steps,
+        "languages": lang_stats_list,
         "system_pulse": system_pulse
     }
 

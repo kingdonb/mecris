@@ -211,7 +211,8 @@ const Dashboard: React.FC<DashboardProps> = ({ userToken }) => {
                   <div className="goal-icons">
                       <div className={`goal-item ${data?.components?.walk ? 'met' : ''}`} title="Daily Walk">
                           <span className="goal-icon">🚶</span>
-                          <span className="goal-count">{(data?.today_distance_miles || 0).toFixed(2)}/1.0 MI</span>
+                          <span className="goal-count">{(data?.today_distance_miles || 0).toFixed(2)} MI</span>
+                          <span className="goal-sub-count">{data?.today_steps || 0}/2000</span>
                       </div>
                       <div className={`goal-item ${data?.components?.arabic ? 'met' : ''}`} title="Arabic Review">
                           <span className="goal-icon">🇦</span>
