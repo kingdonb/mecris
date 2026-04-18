@@ -1,24 +1,24 @@
 {
   "suite_name": "Mecris Personal Accountability Suite",
-  "release_date": "2026-04-04",
-  "total_version": "1.2.0",
+  "release_date": "2026-04-18",
+  "total_version": "1.2.1-alpha.1",
   "components": {
     "android_app": {
       "name": "Mecris-Go Android",
-      "version": "1.1.5",
-      "features": ["OIDC Submarine Mode Fixes", "WorkManager Heartbeat", "Neural Link UI"],
+      "version": "1.1.6-alpha.1",
+      "features": ["OIDC Submarine Mode Fixes", "WorkManager Heartbeat", "Neural Link UI", "Moussaka Nag Exception", "Global Nag Cooldown"],
       "status": "Stable"
     },
     "spin_backend": {
       "name": "Mecris-Go Sync Service (Spin)",
-      "version": "0.3.0",
-      "features": ["Arabic Skip Counter", "Multi-Component Layout", "Neon Integration"],
+      "version": "0.3.1-alpha.1",
+      "features": ["Arabic Skip Counter", "Multi-Component Layout", "Neon Integration", "Reactive Cloud Status", "Unique Provider Heartbeats"],
       "status": "Deployed"
     },
     "python_mcp": {
       "name": "Mecris MCP Server",
-      "version": "0.5.0",
-      "features": ["29 Specialized Tools", "Ghost Presence Middleware", "Nag Ladder Heuristics", "Majesty Cake Backend"],
+      "version": "0.5.1-alpha.1",
+      "features": ["Hardened Authentication", "Enriched System Pulse", "Majestic Momentum Visualizer", "Budget/Miles Odometers"],
       "status": "Active"
     },
     "neon_infrastructure": {
