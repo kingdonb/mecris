@@ -10,8 +10,8 @@ const MomentumVisualizer: React.FC<MomentumVisualizerProps> = ({ momentum, isAll
   const isStable = momentum > 0.5;
   
   // Color palette for the "Neural Link" aesthetic
-  const baseColor = isAllClear ? '#FFD600' : (isStable ? '#00E5FF' : '#FF1744');
-  const glowColor = isAllClear ? '#FFA000' : (isStable ? '#2979FF' : '#D50000');
+  const baseColor = isAllClear ? '#FFD600' : (isStable ? '#00C853' : '#FF1744');
+  const glowColor = isAllClear ? '#FFA000' : (isStable ? '#00E676' : '#D50000');
 
   return (
     <div className={`momentum-wrapper ${isAllClear ? 'all-clear' : ''}`}>

@@ -10,6 +10,7 @@ export interface LanguageStat {
   has_goal: boolean;
   daily_completions: number;
   target_flow_rate: number;
+  absolute_target: number;
   goal_met: boolean;
 }
 
