@@ -1,0 +1,45 @@
+export interface LanguageStat {
+  name: string;
+  current: number;
+  tomorrow: number;
+  next_7_days: number;
+  daily_rate: number;
+  safebuf: number;
+  derail_risk: string;
+  pump_multiplier: number;
+  has_goal: boolean;
+  daily_completions: number;
+}
+
+export interface LanguagesResponse {
+  languages: LanguageStat[];
+}
+
+export interface AggregateStatusResponse {
+  goals: Array<{
+    name: string;
+    label: string;
+    satisfied: boolean;
+    status?: string;
+  }>;
+  satisfied_count: number;
+  total_count: number;
+  all_clear: boolean;
+  score: string;
+  components: {
+    walk: boolean;
+    arabic: boolean;
+    greek: boolean;
+  };
+  phone_verified?: boolean;
+  vacation_mode_until?: string | null;
+}
+
+export interface BudgetResponse {
+  remaining_budget: number;
+}
+
+export interface StatusResponse {
+  status: string;
+  message: string;
+}

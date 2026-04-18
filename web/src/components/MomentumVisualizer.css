@@ -1,0 +1,34 @@
+.momentum-container {
+  width: 200px;
+  height: 200px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 2s ease-in-out;
+  animation: pulse 2s infinite alternate ease-in-out;
+}
+
+.momentum-circle {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  animation: rotate 10s infinite linear;
+}
+
+@keyframes pulse {
+  from {
+    transform: scale(0.8);
+  }
+  to {
+    transform: scale(1.2);
+  }
+}
+
+@keyframes rotate {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}

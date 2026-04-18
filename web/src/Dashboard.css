@@ -1,0 +1,142 @@
+.dashboard-root {
+  background-color: #121212;
+  color: white;
+  min-height: 100vh;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  display: flex;
+  flex-direction: column;
+}
+
+.dashboard-header {
+  background-color: black;
+  color: #00E5FF;
+  padding: 12px 16px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.5);
+}
+
+.dashboard-header h1 {
+  margin: 0;
+  font-size: 1.2rem;
+  font-weight: 900;
+  letter-spacing: 1px;
+}
+
+.header-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.icon-btn {
+  background: transparent;
+  border: none;
+  font-size: 1.2rem;
+  cursor: pointer;
+  padding: 4px;
+  color: white;
+}
+
+.dashboard-content {
+  padding: 16px;
+  max-width: 600px;
+  margin: 0 auto;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.section-label {
+  font-size: 10px;
+  color: #888;
+  margin-bottom: 8px;
+  letter-spacing: 1px;
+  font-weight: bold;
+}
+
+.momentum-section {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 24px;
+}
+
+.momentum-viz-wrapper {
+  position: relative;
+  height: 200px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.momentum-status {
+  position: absolute;
+  bottom: 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.status-label {
+  font-weight: 900;
+  color: #00C853;
+  letter-spacing: 2px;
+  font-size: 1.1rem;
+}
+
+.sessions-label {
+  font-size: 10px;
+  color: #00E5FF;
+  font-weight: bold;
+}
+
+.sync-info {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.cloud-badge {
+  background: rgba(0, 200, 83, 0.2);
+  color: #00C853;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 900;
+}
+
+.sync-text {
+  font-size: 10px;
+  color: #888;
+}
+
+.text-sync-btn {
+  background: transparent;
+  border: none;
+  color: #00E5FF;
+  font-size: 10px;
+  font-weight: bold;
+  cursor: pointer;
+}
+
+.odometer-section {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-bottom: 32px;
+}
+
+.review-pump-section {
+  display: flex;
+  flex-direction: column;
+}
+
+.review-pump-list {
+  display: flex;
+  flex-direction: column;
+}

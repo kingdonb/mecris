@@ -1,0 +1,171 @@
+.review-pump-card {
+  background: #1E1E1E;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 16px;
+  width: 100%;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+}
+
+.review-pump-card.no-goal {
+  opacity: 0.6;
+}
+
+.review-pump-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 12px;
+}
+
+.review-pump-title-group {
+  display: flex;
+  flex-direction: column;
+}
+
+.review-pump-name {
+  font-weight: 900;
+  letter-spacing: 1px;
+  font-size: 1.1rem;
+}
+
+.no-goal-badge {
+  background: #333;
+  color: #ccc;
+  font-size: 8px;
+  padding: 2px 4px;
+  border-radius: 4px;
+  width: fit-content;
+  margin-top: 4px;
+}
+
+.review-pump-debt {
+  color: #888;
+  font-size: 10px;
+  margin-top: 4px;
+}
+
+.lever-badge {
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: bold;
+}
+
+.review-pump-forecast {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.forecast-item {
+  display: flex;
+  flex-direction: column;
+}
+
+.forecast-label {
+  color: #888;
+  font-size: 10px;
+}
+
+.forecast-value {
+  color: white;
+  font-weight: bold;
+  font-size: 1.1rem;
+}
+
+.text-right {
+  text-align: right;
+}
+
+.pressure-gauge {
+  background: black;
+  border-radius: 8px;
+  padding: 8px;
+  margin-bottom: 16px;
+  position: relative;
+}
+
+.gauge-background {
+  height: 8px;
+  background: #333;
+  border-radius: 4px;
+  margin-bottom: 12px;
+  position: relative;
+}
+
+.gauge-marker {
+  position: absolute;
+  top: -4px;
+  width: 2px;
+  height: 16px;
+  background: white;
+  transition: left 0.5s ease;
+}
+
+.gauge-content {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.target-flow-group, .runway-group {
+  display: flex;
+  flex-direction: column;
+}
+
+.gauge-label {
+  color: #888;
+  font-size: 10px;
+}
+
+.target-flow-value {
+  font-size: 1.8rem;
+  font-weight: 900;
+}
+
+.runway-value {
+  font-size: 1.3rem;
+  font-weight: 900;
+}
+
+.multiplier-selector {
+  display: flex;
+  flex-direction: column;
+}
+
+.selector-label {
+  color: #888;
+  font-size: 10px;
+  margin-bottom: 8px;
+}
+
+.multiplier-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.multiplier-btn {
+  background: #333;
+  color: #888;
+  border: none;
+  border-radius: 6px;
+  padding: 8px;
+  min-width: 40px;
+  font-weight: bold;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.multiplier-btn.active {
+  color: black;
+}
+
+.multiplier-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
