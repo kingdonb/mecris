@@ -269,6 +269,12 @@ fun MecrisDashboard(
     var fetchError by remember { mutableStateOf<String?>(null) }
     var syncStatus by remember { mutableStateOf("Ready") }
     var lastSyncTime by remember { mutableStateOf(cache?.lastSyncTime ?: "") }
+
+    // Proactive permission check for dashboard warning
+    var hasForegroundPermission by remember { mutableStateOf(true) }
+    LaunchedEffect(refreshTrigger) {
+        hasForegroundPermission = healthManager.hasForegroundPermissions()
+    }
     
     // UI State
     var showSystemHealth by remember { mutableStateOf(false) }
@@ -619,10 +625,13 @@ fun MecrisDashboard(
                     fetchError = fetchError,
                     collectDistance = collectDistance,
                     collectGpsRoutes = collectGpsRoutes,
+                    hasForegroundPermission = hasForegroundPermission,
                     onForceSync = { forceSync() },
                     onOpenSystemHealth = { showSystemHealth = true },
                     onRequestRoute = onRequestRoute,
                     surgicalUpdateInProgress = surgicalUpdateInProgress,
+                    onSignIn = { auth.authenticateWithPasskey(authResultLauncher) },
+                    isAuthenticated = authState is AuthState.Authenticated,
                     onMultiplierChange = { name, multiplier ->
                         val oldStats = languageStats
                         // 1. Optimistic UI update
@@ -699,12 +708,84 @@ fun MainNeuralDashboard(
     fetchError: String?,
     collectDistance: Boolean,
     collectGpsRoutes: Boolean,
+    hasForegroundPermission: Boolean,
     onForceSync: () -> Unit,
     onOpenSystemHealth: () -> Unit,
     onRequestRoute: (String) -> Unit,
     surgicalUpdateInProgress: Boolean,
-    onMultiplierChange: (String, Double) -> Unit
+    onMultiplierChange: (String, Double) -> Unit,
+    onSignIn: () -> Unit,
+    isAuthenticated: Boolean
 ) {
+    if (!isAuthenticated) {
+        Surface(
+            onClick = onSignIn,
+            color = Color(0xFF001219), // Deep space blue
+            shape = RoundedCornerShape(12.dp),
+            modifier = Modifier.fillMaxWidth().padding(bottom = 24.dp),
+            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF00E5FF).copy(alpha = 0.5f))
+        ) {
+            Column(
+                modifier = Modifier.padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text("📡", fontSize = 32.sp)
+                Spacer(modifier = Modifier.height(16.dp))
+                Text(
+                    "NEURAL LINK DISCONNECTED", 
+                    style = MaterialTheme.typography.titleMedium, 
+                    color = Color(0xFF00E5FF), 
+                    fontWeight = FontWeight.Black,
+                    letterSpacing = 1.sp
+                )
+                Text(
+                    "Establish OIDC identity to synchronize cloud goals and virtual budget.", 
+                    style = MaterialTheme.typography.bodySmall, 
+                    color = Color.LightGray,
+                    modifier = Modifier.padding(top = 8.dp),
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                )
+                Spacer(modifier = Modifier.height(24.dp))
+                Button(
+                    onClick = onSignIn,
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00E5FF), contentColor = Color.Black)
+                ) {
+                    Text("AUTHORIZE WITH PASSKEY", fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+    }
+
+    if (!hasForegroundPermission) {
+        Surface(
+            onClick = onOpenSystemHealth,
+            color = Color(0xFF330000), // Deep red
+            shape = RoundedCornerShape(8.dp),
+            modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp)
+        ) {
+            Row(
+                modifier = Modifier.padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("🚫", fontSize = 24.sp)
+                Spacer(modifier = Modifier.width(16.dp))
+                Column {
+                    Text(
+                        "HEALTH TELEMETRY OFFLINE", 
+                        style = MaterialTheme.typography.labelMedium, 
+                        color = Color(0xFFFF1744), 
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        "Permission required to read steps. Tap to resolve.", 
+                        style = MaterialTheme.typography.bodySmall, 
+                        color = Color.White
+                    )
+                }
+            }
+        }
+    }
+
     MajestyCakeWidget(status = aggregateStatus)
 
     Text(
