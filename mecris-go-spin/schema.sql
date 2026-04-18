@@ -10,6 +10,8 @@ CREATE TABLE IF NOT EXISTS users (
     clozemaster_email_encrypted TEXT,
     clozemaster_password_encrypted TEXT,
     phone_number_encrypted TEXT,            -- Encrypted PII for Twilio delivery
+    phone_verified BOOLEAN DEFAULT FALSE,   -- Set true after SMS verification flow completes
+    vacation_mode_until TIMESTAMPTZ,        -- NULL = Boris & Fiona mode; timestamp = Generic Physical mode
     location_lat DOUBLE PRECISION,          -- User's latitude for per-user weather checks (nullable)
     location_lon DOUBLE PRECISION,          -- User's longitude for per-user weather checks (nullable)
     notification_prefs JSONB DEFAULT '{}',  -- Tier settings, sleep windows, thresholds
@@ -132,10 +134,22 @@ CREATE TABLE IF NOT EXISTS budget_tracking (
     last_updated TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- 8. Scheduler Election
+-- 9. Scheduler Election (multi-user: unique per user+role)
 CREATE TABLE IF NOT EXISTS scheduler_election (
     id SERIAL PRIMARY KEY,
-    role VARCHAR(50) NOT NULL UNIQUE, -- 'leader'
+    user_id VARCHAR(255) REFERENCES users(pocket_id_sub) ON DELETE CASCADE,
+    role VARCHAR(50) NOT NULL,  -- 'leader', 'android_client'
     process_id VARCHAR(50) NOT NULL,
-    heartbeat TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    heartbeat TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (user_id, role)
+);
+
+-- 10. Phone Verifications (SMS 6-digit code flow)
+CREATE TABLE IF NOT EXISTS phone_verifications (
+    id SERIAL PRIMARY KEY,
+    user_id VARCHAR(255) NOT NULL REFERENCES users(pocket_id_sub) ON DELETE CASCADE,
+    code_hash TEXT NOT NULL,            -- SHA1 of the 6-digit code
+    expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    attempts INTEGER DEFAULT 0,
+    UNIQUE (user_id)                    -- one pending verification per user at a time
 );

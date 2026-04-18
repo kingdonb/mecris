@@ -1,12 +1,21 @@
 """
 E2E Tests for Phone Verification (#188).
 This test uses the auth_bypass mechanism to verify the full SMS verification lifecycle.
+
+Requires RUN_E2E_TESTS=1 — these tests hit the live Fermyon Cloud endpoint and check
+the production Neon DB. They are skipped in normal CI (which uses a local postgres
+that Fermyon Cloud does not write to).
 """
 import os
 import httpx
 import pytest
 import psycopg2
 from datetime import datetime, timezone
+
+pytestmark = pytest.mark.skipif(
+    not os.getenv("RUN_E2E_TESTS"),
+    reason="E2E test: requires RUN_E2E_TESTS=1 and real unified NEON_DB_URL"
+)
 
 # We'll test against the Fermyon Cloud instance or local if available
 BASE_URL = "https://mecris-sync-v2-r0r86pso.fermyon.app"
