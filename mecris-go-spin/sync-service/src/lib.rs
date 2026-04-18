@@ -310,6 +310,37 @@ fn get_modality_status_string(role: &str, mins: u64) -> &'static str {
     }
 }
 
+fn calculate_review_pump_targets(current: i32, tomorrow: i32, multiplier: f64, daily_done: i32) -> (i32, i32, bool) {
+    let clearance_days = match multiplier as i32 {
+        2 => Some(14.0),
+        3 => Some(10.0),
+        4 => Some(7.0),
+        5 => Some(5.0),
+        6 => Some(3.0),
+        7 => Some(2.0),
+        10 => Some(1.0),
+        _ => None,
+    };
+
+    let absolute_target = match clearance_days {
+        None => tomorrow,
+        Some(days) => {
+            let backlog_portion = current as f64 / days;
+            (tomorrow as f64 + backlog_portion) as i32
+        }
+    };
+
+    let target_flow_rate = (absolute_target - daily_done).max(0);
+    
+    let goal_met = if absolute_target > 0 || (current > 0 && multiplier > 1.0) {
+        daily_done >= absolute_target
+    } else {
+        current == 0
+    };
+
+    (absolute_target, target_flow_rate, goal_met)
+}
+
 async fn handle_aggregate_status_get(req: Request) -> anyhow::Result<Response> {
     let auth_header = req.header("authorization");
     let user_id = match extract_user_id(auth_header).await {
@@ -359,7 +390,7 @@ async fn handle_aggregate_status_get(req: Request) -> anyhow::Result<Response> {
     let mut arabic_met = false;
     let mut greek_met = false;
 
-    for row in lang_rs.rows {
+    for row in &lang_rs.rows {
         let name = match &row[0] { DbValue::Str(s) => s.to_uppercase(), _ => "".to_string() };
         let current = match &row[1] { DbValue::Int32(i) => *i, _ => 0 };
         let tomorrow = match &row[2] { DbValue::Int32(i) => *i, _ => 0 };
@@ -368,37 +399,28 @@ async fn handle_aggregate_status_get(req: Request) -> anyhow::Result<Response> {
 
         if name == "ARABIC" || name == "GREEK" {
             total_goals += 1;
-            
-            // Ported ReviewPump target logic
-            let clearance_days = match multiplier as i32 {
-                2 => Some(14.0),
-                3 => Some(10.0),
-                4 => Some(7.0),
-                5 => Some(5.0),
-                6 => Some(3.0),
-                7 => Some(2.0),
-                10 => Some(1.0),
-                _ => None,
-            };
-
-            let target = match clearance_days {
-                None => tomorrow,
-                Some(days) => {
-                    let backlog_portion = current as f64 / days;
-                    (tomorrow as f64 + backlog_portion) as i32
-                }
-            };
-
-            let is_met = if target > 0 || (current > 0 && multiplier > 1.0) {
-                daily_done >= target
-            } else {
-                current == 0
-            };
-
+            let (_target, _, is_met) = calculate_review_pump_targets(current, tomorrow, multiplier, daily_done);
             if is_met { goals_met += 1; }
             if name == "ARABIC" { arabic_met = is_met; }
             if name == "GREEK" { greek_met = is_met; }
         }
+    }
+
+    #[derive(Serialize)]
+    struct GoalStatus {
+        name: String,
+        label: String,
+        satisfied: bool,
+        source: String,
+        status: String,
+    }
+
+    #[derive(Serialize)]
+    struct LanguageStatBrief {
+        name: String,
+        daily_completions: i32,
+        absolute_target: i32,
+        goal_met: bool,
     }
 
     #[derive(Serialize)]
@@ -423,36 +445,132 @@ async fn handle_aggregate_status_get(req: Request) -> anyhow::Result<Response> {
 
     #[derive(Serialize)]
     struct AggregateResponse {
+        goals: Vec<GoalStatus>,
         score: String,
+        satisfied_count: i32,
         goals_met: i32,
+        total_count: i32,
         total_goals: i32,
         all_clear: bool,
         components: AggregateComponents,
+        budget_remaining: f64,
+        today_distance_miles: f64,
+        today_steps: i32,
+        languages: Vec<LanguageStatBrief>,
         vacation_mode_until: Option<String>,
         phone_verified: bool,
         system_pulse: Option<SystemPulse>,
     }
 
+    let mut languages_brief = Vec::new();
+    let mut goals = Vec::new();
+
+    // Re-loop over languages to build brief list and goals array
+    for row in &lang_rs.rows {
+        let name = match &row[0] { DbValue::Str(s) => s.clone(), _ => "".to_string() };
+        let current = match &row[1] { DbValue::Int32(i) => *i, _ => 0 };
+        let tomorrow = match &row[2] { DbValue::Int32(i) => *i, _ => 0 };
+        let multiplier = match &row[3] { DbValue::Floating64(f) => *f, _ => 1.0 };
+        let daily_done = match &row[4] { DbValue::Int32(i) => *i, _ => 0 };
+
+        let (target, _, is_met) = calculate_review_pump_targets(current, tomorrow, multiplier, daily_done);
+
+        languages_brief.push(LanguageStatBrief {
+            name: name.clone(),
+            daily_completions: daily_done,
+            absolute_target: target,
+            goal_met: is_met,
+        });
+
+        if name.to_uppercase() == "ARABIC" {
+            goals.push(GoalStatus {
+                name: "arabic_review".to_string(),
+                label: "Arabic Review Pump".to_string(),
+                satisfied: is_met,
+                source: "clozemaster".to_string(),
+                status: if is_met { "healthy".to_string() } else { "turbulent".to_string() },
+            });
+        } else if name.to_uppercase() == "GREEK" {
+            goals.push(GoalStatus {
+                name: "greek_review".to_string(),
+                label: "Greek Review Pump".to_string(),
+                satisfied: is_met,
+                source: "clozemaster".to_string(),
+                status: if is_met { "healthy".to_string() } else { "cavitation".to_string() },
+            });
+        }
+    }
+
+    // Add Walk Goal at the beginning (matching Python order)
+    goals.insert(0, GoalStatus {
+        name: "daily_walk".to_string(),
+        label: "Daily Walk (2000 steps)".to_string(),
+        satisfied: has_walked,
+        source: "neon_cloud".to_string(),
+        status: if has_walked { "healthy".to_string() } else { "cavitation".to_string() },
+    });
+
+    // Fetch budget and latest walk details for odometers
+    let budget_query = "SELECT remaining_budget FROM budget_tracking WHERE user_id = $1 LIMIT 1";
+    let budget_rs = connection.query(budget_query, &[ParameterValue::Str(user_id.clone())])?;
+    let budget_remaining = if !budget_rs.rows.is_empty() {
+        match &budget_rs.rows[0][0] {
+            DbValue::Floating64(f) => *f,
+            DbValue::Floating32(f) => *f as f64,
+            _ => 0.0
+        }
+    } else {
+        0.0
+    };
+
+    let walk_stats_query = r#"
+        SELECT step_count, distance_meters FROM walk_inferences 
+        WHERE (start_time::TIMESTAMPTZ AT TIME ZONE 'US/Eastern')::DATE = (CURRENT_TIMESTAMP AT TIME ZONE 'US/Eastern')::DATE
+        AND user_id = $1
+        ORDER BY start_time DESC LIMIT 1
+    "#;
+    let walk_stats_rs = connection.query(walk_stats_query, &[ParameterValue::Str(user_id.clone())])?;
+    let mut today_steps = 0;
+    let mut today_distance_miles = 0.0;
+    if !walk_stats_rs.rows.is_empty() {
+        today_steps = match &walk_stats_rs.rows[0][0] { DbValue::Str(s) => s.parse().unwrap_or(0), _ => 0 };
+        let meters = match &walk_stats_rs.rows[0][1] { DbValue::Str(s) => s.parse().unwrap_or(0.0), _ => 0.0 };
+        today_distance_miles = meters * 0.000621371;
+    }
+
     let mut system_pulse = None;
     if full {
-        let pulse_query = "SELECT role, heartbeat::TEXT, EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - heartbeat)) / 60 AS minutes_since \
-                           FROM scheduler_election WHERE user_id = $1";
+        let pulse_query = "SELECT role, heartbeat::TEXT, CAST(EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - heartbeat)) / 60 AS BIGINT) AS minutes_since \
+                           FROM scheduler_election WHERE user_id = $1 OR user_id IS NULL \
+                           ORDER BY heartbeat DESC";
         let pulse_rs = connection.query(pulse_query, &[ParameterValue::Str(user_id.clone())])?;
         
         let mut modalities = Vec::new();
         for row in pulse_rs.rows {
-            let role = match &row[0] { DbValue::Str(s) => s.clone(), _ => continue };
+            let db_role = match &row[0] { DbValue::Str(s) => s.clone(), _ => continue };
+            
+            // Map machine names to human-friendly display names (matching Python MCP)
+            let display_role = match db_role.as_str() {
+                "leader" => "MCP SERVER",
+                "akamai_functions" => "AKAMAI FUNCTIONS",
+                "fermyon_cloud" => "FERMYON CLOUD",
+                "android_client" => "ANDROID CLIENT",
+                _ => &db_role,
+            };
+
             let last_seen = match &row[1] { DbValue::Str(s) => s.clone(), _ => "never".to_string() };
             let mins = match &row[2] { 
+                DbValue::Int64(i) => *i as u64,
+                DbValue::Int32(i) => *i as u64,
                 DbValue::Floating64(f) => *f as u64,
                 DbValue::Str(s) => s.parse::<f64>().ok().map(|f| f as u64).unwrap_or(9999),
                 _ => 9999 
             };
 
-            let status = get_modality_status_string(&role, mins);
+            let status = get_modality_status_string(&db_role, mins);
 
             modalities.push(ModalityStatus {
-                role,
+                role: display_role.to_string(),
                 status: status.to_string(),
                 last_seen,
                 minutes_since: mins,
@@ -462,8 +580,11 @@ async fn handle_aggregate_status_get(req: Request) -> anyhow::Result<Response> {
     }
 
     let resp = AggregateResponse {
+        goals,
         score: format!("{}/{}", goals_met, total_goals),
+        satisfied_count: goals_met,
         goals_met,
+        total_count: total_goals,
         total_goals,
         all_clear: goals_met == total_goals,
         components: AggregateComponents {
@@ -471,6 +592,10 @@ async fn handle_aggregate_status_get(req: Request) -> anyhow::Result<Response> {
             arabic: arabic_met,
             greek: greek_met,
         },
+        budget_remaining,
+        today_distance_miles,
+        today_steps,
+        languages: languages_brief,
         vacation_mode_until,
         phone_verified,
         system_pulse,
@@ -1119,6 +1244,9 @@ async fn handle_languages_get(req: Request) -> anyhow::Result<Response> {
         pump_multiplier: f64,
         has_goal: bool,
         daily_completions: i32,
+        target_flow_rate: i32,
+        absolute_target: i32,
+        goal_met: bool,
     }
 
     #[derive(Serialize)]
@@ -1128,23 +1256,36 @@ async fn handle_languages_get(req: Request) -> anyhow::Result<Response> {
 
     let mut languages: Vec<LanguageStat> = row_set.rows.iter().map(|row| {
         let name = match &row[0] { DbValue::Str(s) => s.clone(), _ => "".to_string() };
+        let current = match &row[1] { DbValue::Int32(i) => *i, _ => 0 };
+        let tomorrow = match &row[2] { DbValue::Int32(i) => *i, _ => 0 };
+        let next_7 = match &row[3] { DbValue::Int32(i) => *i, _ => 0 };
+        let rate = match &row[4] { DbValue::Floating64(f) => *f, _ => 0.0 };
+        let safebuf = match &row[5] { DbValue::Int32(i) => *i, _ => 0 };
+        let risk = match &row[6] { DbValue::Str(s) => s.clone(), _ => "SAFE".to_string() };
+        let multiplier = match &row[7] { DbValue::Floating64(f) => *f, _ => 1.0 };
         let slug = match &row[8] { DbValue::Str(s) => Some(s.clone()), _ => None };
-        
+        let daily_done = match &row[9] { DbValue::Int32(i) => *i, _ => 0 };
+
         // Canonical/Autodata goals (GREEK) should be treated as having a goal even without a sync slug.
         let is_canonical = name.to_uppercase() == "GREEK";
         let has_goal = is_canonical || slug.as_ref().map_or(false, |s| !s.is_empty());
+
+        let (absolute_target, target_flow_rate, goal_met) = calculate_review_pump_targets(current, tomorrow, multiplier, daily_done);
         
         LanguageStat {
             name,
-            current: match &row[1] { DbValue::Int32(i) => *i, _ => 0 },
-            tomorrow: match &row[2] { DbValue::Int32(i) => *i, _ => 0 },
-            next_7_days: match &row[3] { DbValue::Int32(i) => *i, _ => 0 },
-            daily_rate: match &row[4] { DbValue::Floating64(f) => *f, _ => 0.0 },
-            safebuf: match &row[5] { DbValue::Int32(i) => *i, _ => 0 },
-            derail_risk: match &row[6] { DbValue::Str(s) => s.clone(), _ => "SAFE".to_string() },
-            pump_multiplier: match &row[7] { DbValue::Floating64(f) => *f, _ => 1.0 },
+            current,
+            tomorrow,
+            next_7_days: next_7,
+            daily_rate: rate,
+            safebuf,
+            derail_risk: risk,
+            pump_multiplier: multiplier,
             has_goal,
-            daily_completions: match &row[9] { DbValue::Int32(i) => *i, _ => 0 },
+            daily_completions: daily_done,
+            target_flow_rate,
+            absolute_target,
+            goal_met,
         }
     }).collect();
 
@@ -2354,20 +2495,20 @@ mod tests {
 
     #[test]
     fn test_arabic_completions_one_card() {
-        // 12 points → 1 card
-        assert_eq!(arabic_completions(12), 1);
+        // 16 points → 1 card (Brutal Heuristic /16)
+        assert_eq!(arabic_completions(16), 1);
     }
 
     #[test]
     fn test_arabic_completions_partial_card_truncates() {
-        // 11 points → 0 cards (truncated, not rounded)
-        assert_eq!(arabic_completions(11), 0);
+        // 15 points → 0 cards (truncated, not rounded)
+        assert_eq!(arabic_completions(15), 0);
     }
 
     #[test]
     fn test_arabic_completions_large_session() {
-        // 120 points → 10 cards
-        assert_eq!(arabic_completions(120), 10);
+        // 160 points → 10 cards
+        assert_eq!(arabic_completions(160), 10);
     }
 
     // --- is_within_reminder_window ---
