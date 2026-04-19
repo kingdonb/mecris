@@ -4,7 +4,7 @@ spin_manifest_version = 2
 
 [application]
 name = "mecris-sync-v2"
-version = "0.0.1-beta.1"
+version = "0.0.1-beta.2"
 authors = ["Kingdon B <kingdon@urmanac.com>"]
 description = ""
 
