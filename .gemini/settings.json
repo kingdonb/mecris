@@ -15,8 +15,7 @@
         "--no-sync",
         "--offline",
         "/Users/yebyen/w/mecris/mcp_server.py",
-        "--stdio",
-        "--http"
+        "--stdio"
       ],
       "env": {
         "PYTHONPATH": "/Users/yebyen/w/mecris",
