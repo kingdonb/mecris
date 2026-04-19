@@ -1709,3 +1709,35 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: No pr-test triggered — no open PRs. Test baseline remains estimated at ~464 until next PR run.
 
 **Next**: No open PRs on kingdonb/mecris. Next session should orient fresh and await human-driven PRs. Pending: cloud_provider + internal_api_key Fermyon Cloud config (needs human), migrate_v6 on production Neon (needs human), Rust CI fix (needs workflow PAT from kingdonb).
+
+## 2026-04-18 🏛️ — Beta baseline established: NEXT_SESSION.md updated for v0.0.1-beta.1 (yebyen/mecris#219, complete)
+
+**Planned**: Update NEXT_SESSION.md to reflect the v0.0.1-beta.1 Beta release baseline, correct HEAD reference from `65f24a0` to `90a569e`, and annotate pending items by scope (bot-actionable vs human-required).
+
+**Done**:
+- Orient confirmed yebyen/mecris fully synced with kingdonb/mecris (HEAD = `90a569e`, v0.0.1-beta.1)
+- No open PRs on kingdonb/mecris; no needs-test/pr-review/bug issues; yebyen#142 (Rust CI fix) remains out of bot scope
+- NEXT_SESSION.md rewritten: correct HEAD baseline, updated version table (Suite v0.0.1-beta.1, Android 1.1.6-beta.1), documented 3 Beta promotion commits, pending items split into 🤖 bot-actionable vs 👤 human-required categories
+- Committed at `df5cb9e`
+- Plan issue yebyen/mecris#219 closed ✅
+
+**Skipped**: Nothing — session scope was intentionally narrow (docs/state update only).
+
+**Next**: No open PRs. Next session should orient fresh. All substantive pending items (Neon migration, Fermyon Cloud config, Twilio E2E, Rust CI fix) require human with production access. Bot-actionable: verify Python test baseline on next PR run; audit session_log.md/attic for unprocessed planning docs.
+
+## 2026-04-18 🏛️ — Attic audit: all planning docs verified processed (yebyen/mecris#220, complete)
+
+**Planned**: Read session_log.md and all docs in attic/ thoroughly, extract any unfinished tasks not yet tracked as GitHub issues, and confirm each attic file has been fully processed before leaving it in place.
+
+**Done**:
+- Reviewed all 7 attic/ markdown docs (ANTHROPIC_COST_USAGE_NOTES.md, GPT_SAYS.md, NEXT_PRIORITIES.md, NEXT_SESSION_2026-03-20.md, README.md) and cold-storage/ (AUTONOMOUS_DEPLOYMENT_PLAN.md, ENHANCEMENT_ASSESSMENT.md, BORIS_FIONA_HANDOFF.md).
+- Verified all issues explicitly referenced in attic docs: #13, #92, #100 all closed ✅.
+- Identified one item never tracked (Voice Commands from NEXT_SESSION_2026-03-20.md) — assessed as superseded by current WhatsApp text-based architecture; no issue opened (not an active gap).
+- message_log cleanup from same doc: covered by existing open epics #58, #166, #167.
+- session_log.md confirmed current through 2026-04-18 entry, no dangling action items.
+- Audit findings posted as comment on yebyen/mecris#220.
+- Plan issue yebyen/mecris#220 closed ✅.
+
+**Skipped**: Nothing — audit was thorough. Voice commands issue intentionally not opened (superseded).
+
+**Next**: No open PRs on kingdonb/mecris. Next session should orient fresh. Only remaining bot-actionable item: confirm Python test baseline (~464) on next PR run. All other pending items require human with production access.

@@ -1,18 +1,26 @@
-# Next Session: yebyen/mecris synced with upstream — 21 commits audited
+# Next Session: Awaiting human-driven PRs — attic audit complete
 
-## Current Status (2026-04-18, post-sync)
-- **yebyen/mecris is fully synced with kingdonb/mecris**: HEAD is `65f24a0`. No divergence.
+## Current Status (2026-04-18, post-audit, plan yebyen/mecris#220)
+- **yebyen/mecris is fully synced with kingdonb/mecris**: HEAD is `90a569e`. No divergence.
+- **Beta milestone in place**: Suite is `v0.0.1-beta.1`. All bot-actionable pending items from last session are resolved.
 - **No open PRs on kingdonb/mecris**: Nothing to test. Wait for human-driven PRs.
 - **One open issue on yebyen**: yebyen/mecris#142 (Rust CI fix) needs `workflow` PAT scope — must be applied by kingdonb. Out of bot scope.
-- **Arabic Majesty Cake achieved**: 170/170 Arabic cards done as of 2026-04-18!
 
-## Verified This Session (2026-04-18, plan yebyen/mecris#217)
-- [x] **Upstream sync complete**: 21 commits merged from kingdonb/mecris (fast-forward, no conflicts)
-- [x] **NEXT_SESSION.md updated**: New baseline `65f24a0`, infrastructure notes extracted
-- [x] **Version baseline**: Android 1.1.6-alpha.6, Spin 0.3.1-alpha.6, Python MCP 0.5.1-alpha.6, Suite 0.0.1-alpha.6
+## Verified This Session (2026-04-18, plan yebyen/mecris#220)
+- [x] **Attic audit complete**: All docs in `attic/` reviewed. No untracked GitHub issues found. All items fully processed or superseded.
+- [x] **session_log.md confirmed current**: 1726 lines through 2026-04-18, no dangling action items.
+- [x] **NEXT_SESSION.md updated**: New baseline `90a569e`, pending items scoped, Beta context recorded (from yebyen/mecris#219)
 
-## Pending Verification (Next Session)
-- [ ] **Confirm Python test baseline via pr-test**: Estimated ~464 passed (unchanged — test mods were behavior fixes, not count changes). Verify on next PR test run.
+## Version Baseline (v0.0.1-beta.1)
+- **Android**: 1.1.6-beta.1 (Version Code reset to 1)
+- **Spin sync-service**: 0.3.1-beta.1
+- **Python MCP**: 0.5.1-beta.1
+- **Suite**: 0.0.1-beta.1
+- **Web app**: Included in suite beta promotion
+
+## Pending Verification
+
+### 👤 Human-required (cannot be resolved by bot)
 - [ ] **Run migrate_v6 on production Neon**: `NEON_DB_URL=<prod> python scripts/migrate_v6_add_phone_verified.py` — needs human with Fermyon/Neon access.
 - [ ] **Configure `cloud_provider` Spin variable**: Set `cloud_provider = "fermyon"` (or appropriate) in Fermyon Cloud runtime-config. New variable added in `mecris-go-spin/sync-service/spin.toml`.
 - [ ] **Configure internal_api_key in Fermyon Cloud**: Set `internal_api_key = "<secret>"` in runtime-config; update Akamai cron `curl` calls with `X-Internal-Api-Key: <secret>`. (Needs human with Fermyon access.)
@@ -21,26 +29,21 @@
 - [ ] **Android test count investigation**: `PocketIdAuthTest` pre-existing failure — out of bot scope.
 - [ ] **kingdonb/mecris#180 Part 1 (Android)**: Health Connect double-counting — Android-side fix. Out of bot scope.
 
-## New Features Landed Since Last Sync (audit by yebyen/mecris#217)
+### 🤖 Bot-actionable (can be resolved in future sessions)
+- [ ] **Confirm Python test baseline via pr-test**: Estimated ~464 passed (unchanged). Verify on next PR test run when a PR is available.
 
-### Post-merge upstream commits (3 new commits since yebyen/main was merged):
-- **feat(neural-link)**: `/languages` endpoint now wraps response to match frontend expectations; filters inactive languages (no Beeminder goal) from web UI except Arabic; enriches stats with `absolute_target`, `target_flow_rate`, `goal_met`, `has_goal`; Majesty Cake visualizer has pulsing animation
-- **fix(android)**: Sovereign Fallback nag now checks `global_last_nag_timestamp` cooldown; `PROGRESS: /` bug fixed by ensuring full data flow; ReviewPump shows Progress / Absolute Target; green orb color preference restored
+## New Features Landed in v0.0.1-beta.1
 
-### Pre-merge upstream commits (18 commits already in kingdonb before yebyen/main was merged):
-- **Moussaka Exception**: Greek nag cooldown reduced to 1.5h (5,400,000ms) when `prefKey == "last_greek_nag_timestamp"`. Default cooldown remains 4h.
-- **Global nag cooldown**: `global_last_nag_timestamp` SharedPrefs key — prevents 'machine gun' nagging. Both per-goal and global cooldowns must be satisfied.
-- **Fermyon heartbeats re-enabled** in sync-service (`65cbd5b`)
-- **`cloud_provider` Spin variable**: New in `spin.toml` with default `"unknown_cloud"`. Set in Fermyon Cloud runtime-config.
-- **Arabic heuristic fixed**: 16 pts/card (was 12 effective). Prevents premature 'goal met' in sync-service AND Python scraper.
-- **`get_modality_status()` in mcp_server.py**: Maps heartbeat age to healthy/degraded/offline per role: leader (<2min healthy), android_client (<20min), akamai_functions (<135min), fermyon_cloud (<5min reactive)
-- **Neural-link UI**: Fermyon Cloud shows gray when stale; human-friendly pulse modality names; priority active worker pulse over reactive reachability
-- **Manual cloud reconciliation**: Web UI feedback for manual sync
-- **Test alignment**: `test_standalone_mode_no_id_returns_none` — standalone mode now returns `None` (was generating a local ID). `mcp_server` status tests patched for mock type errors.
-- **Android version**: 1.1.6-alpha.6; Spin suite: 0.0.1-alpha.6; sync-service: 0.3.1-alpha.6
-- **`scripts/clozemaster_scraper.py`**: Updated Arabic heuristic (16pts/card divisor); Neon persistence enabled
+### Beta promotion commits (since last NEXT_SESSION.md update):
+- **release: promote suite to v0.0.1-beta.1** (`90a569e`): Reset Version Code to 1 for clean Beta baseline; expand bump_version.py to target 15+ ecosystem locations; add Release Management mandate to GEMINI.md; transition ROADMAP.md to Beta phase (Goal 0 complete)
+- **refactor(build): build WASM once and deploy to both clouds** (`a44962e`): Add build-wasm target as shared dependency; remove redundant --build flags; simplify deploy-all to single build pass
+- **feat(sync-service): align aggregate schema with web UI and fix pulse display** (`112cf6a`): Expand AggregateResponse and LanguageStat structs to match frontend expectations; implement shared calculate_review_pump_targets helper; fix 9999m heartbeat bug via BIGINT cast; map machine roles to human-friendly display names; update Arabic completion tests to /16 'Brutal Heuristic'
 
-## Infrastructure Notes (carried forward + new)
+### Previously landed (carried from last session, now in beta):
+- **feat(neural-link)**: `/languages` endpoint wraps response for frontend; filters inactive languages; enriches stats with `absolute_target`, `target_flow_rate`, `goal_met`, `has_goal`; Majesty Cake visualizer has pulsing animation
+- **fix(android)**: Sovereign Fallback nag checks `global_last_nag_timestamp` cooldown; `PROGRESS: /` bug fixed; ReviewPump shows Progress / Absolute Target; green orb color preference restored
+
+## Infrastructure Notes (carried forward)
 - **phone_verified column**: `ALTER TABLE users ADD COLUMN IF NOT EXISTS phone_verified BOOLEAN DEFAULT FALSE` — in schema.sql AND migrate_v6. Apply migrate_v6 to production Neon.
 - **phone_verifications table**: Created in schema.sql and migrate_v6. `UNIQUE(user_id)` — one pending verification per user.
 - **scheduler_election now multi-user**: `user_id VARCHAR(255) FK`, `UNIQUE(user_id, role)` — old single-column `UNIQUE(role)` dropped in migrate_v6.
@@ -66,3 +69,4 @@
 - **Rust satellite crates**: 99+ tests in sync-service, 28 in boris-fiona-walker, others not in CI yet.
 - **autonomous_sync_enabled**: DB flag per user (`users` table). Controls which users get processed by `/internal/trigger-reminders`. Default `false`.
 - **NEXT_SESSION.md merge conflict is permanently fixed**: `.gitattributes merge=union` on yebyen/mecris:main.
+- **bump_version.py now targets 15+ locations**: Covers Android, Spin, Python MCP, Web, and suite-level files.
