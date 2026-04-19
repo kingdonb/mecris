@@ -23,7 +23,7 @@
 - [x] **Strict Multi-Tenancy**: Audit all SQL queries to ensure `user_id` bounds.
 - [x] **Mandatory Encryption**: Remove all plaintext token fallbacks. System fails fast if `MASTER_ENCRYPTION_KEY` is not present.
 - [x] **The Wipe Test**: Validate the end-to-end bootstrap flow.
-- [ ] **SLSA Build Level 1**: Automated GitHub Actions CI pipeline for Android APK, Spin Wasm, and Python packages.
+- [x] **SLSA Build Level 1**: Automated GitHub Actions CI pipeline for Android APK, Spin Wasm, and Python packages.
 
 ---
 
