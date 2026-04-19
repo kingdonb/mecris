@@ -1,23 +1,18 @@
 # Next Session: Health check complete — awaiting human-driven PRs (beta.2 dev cycle)
 
-## Current Status (2026-04-19, post-health-report, plan yebyen/mecris#221)
-- **yebyen/mecris is fully synced with kingdonb/mecris**: HEAD is `34d8582`. No divergence.
+## Current Status (2026-04-19, post-health-report, plan yebyen/mecris#222)
+- **yebyen/mecris is 1 commit ahead of kingdonb/mecris**: HEAD is `b8eb98e` (prior health commit, not merged upstream). No divergence.
 - **Beta.2 dev cycle open**: Suite version bumped to `v0.0.1-beta.2` — next development iteration begins.
 - **SLSA Build Level 1 achieved**: `7d3d981` adds cryptographically signed provenance for APK and WASM artifacts.
 - **No open PRs on kingdonb/mecris**: Nothing to test. Wait for human-driven PRs.
 - **One open issue on yebyen**: yebyen/mecris#142 (Rust CI fix) needs `workflow` PAT scope — must be applied by kingdonb. Out of bot scope.
 
-## Verified This Session (2026-04-19, plan yebyen/mecris#221)
-- [x] **Repos in sync**: HEAD `34d8582` matches kingdonb/mecris exactly.
-- [x] **New upstream commits audited**: `b1d722e` (gemini MCP --http flag removed), `7d3d981` (SLSA BL1), `34d8582` (beta.2 bump).
-- [x] **NEXT_SESSION.md updated**: New baseline `34d8582`, beta.2 context recorded.
-
-## Version Baseline (v0.0.1-beta.2 dev cycle)
-- **Android**: 1.1.6-beta.2 (dev cycle bump)
-- **Spin sync-service**: 0.3.1-beta.2
-- **Python MCP**: 0.5.1-beta.2
-- **Suite**: 0.0.1-beta.2
-- **Web app**: Included in suite beta.2 bump
+## Verified This Session (2026-04-19, plan yebyen/mecris#222)
+- [x] **Repos in sync**: yebyen HEAD `b8eb98e` is 1 ahead of kingdonb `34d8582` — health commits only, no divergence.
+- [x] **No open PRs on kingdonb/mecris**: Confirmed — steady-state hold.
+- [x] **No needs-test/pr-review/bug issues**: Confirmed — nothing actionable for bot.
+- [x] **Health report opened**: yebyen/mecris#223 documents beta.2 dev cycle steady state.
+- [x] **NEXT_SESSION.md updated**: Carried forward all pending items with 👤/🤖 scope markers.
 
 ## Pending Verification
 
@@ -38,6 +33,13 @@
 - **feat(security): achieve SLSA Build Level 1** (`7d3d981`): Add `actions/attest-build-provenance` to Release workflow; generate signed provenance for APK and WASM; ROADMAP.md Alpha Hardening SLSA goals marked complete.
 - **chore(config): remove --http flag from gemini MCP settings** (`b1d722e`): Beta testing config adjustment for Gemini MCP server.
 - **chore(release): bump version to 0.0.1-beta.2** (`34d8582`): All 15+ ecosystem locations updated; dev cycle baseline set.
+
+## Version Baseline (v0.0.1-beta.2 dev cycle)
+- **Android**: 1.1.6-beta.2 (dev cycle bump)
+- **Spin sync-service**: 0.3.1-beta.2
+- **Python MCP**: 0.5.1-beta.2
+- **Suite**: 0.0.1-beta.2
+- **Web app**: Included in suite beta.2 bump
 
 ## Infrastructure Notes (carried forward)
 - **phone_verified column**: `ALTER TABLE users ADD COLUMN IF NOT EXISTS phone_verified BOOLEAN DEFAULT FALSE` — in schema.sql AND migrate_v6. Apply migrate_v6 to production Neon.
