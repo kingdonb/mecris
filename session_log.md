@@ -1741,3 +1741,227 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: Nothing — audit was thorough. Voice commands issue intentionally not opened (superseded).
 
 **Next**: No open PRs on kingdonb/mecris. Next session should orient fresh. Only remaining bot-actionable item: confirm Python test baseline (~464) on next PR run. All other pending items require human with production access.
+
+## 2026-04-19 🏛️ — Health report: beta.2 dev cycle baseline established (yebyen/mecris#221, complete)
+
+**Planned**: Produce a session health report documenting the new `v0.0.1-beta.2` dev cycle baseline, update NEXT_SESSION.md to reflect HEAD `34d8582`, and archive the session cleanly.
+
+**Done**:
+- Orient confirmed yebyen/mecris fully synced with kingdonb/mecris (HEAD = `34d8582`).
+- No open PRs on kingdonb/mecris; no needs-test/pr-review/bug issues; yebyen#142 (Rust CI fix) remains out of bot scope.
+- Audited new upstream commits since last session's `90a569e` baseline: `7d3d981` (SLSA Build Level 1), `b1d722e` (gemini MCP --http flag removal), `34d8582` (beta.2 version bump across 15+ locations).
+- NEXT_SESSION.md rewritten: correct HEAD baseline `34d8582`, beta.2 version table, new commits documented, pending items carried forward with 👤/🤖 scope markers.
+- Plan issue yebyen/mecris#221 closed ✅.
+
+**Skipped**: No code changes, no pr-test — no open PRs available. Session was intentionally narrow (state/docs update only).
+
+**Next**: No open PRs. Next session should orient fresh. Bot-actionable: confirm Python test baseline (~464) on next PR run. Human-required: Neon migration, Fermyon Cloud config (cloud_provider + internal_api_key), Twilio E2E, Rust CI fix (needs workflow PAT from kingdonb).
+
+## 2026-04-19 🏛️ — Health report: beta.2 steady state confirmed, no actionable work (yebyen/mecris#222, complete)
+
+**Planned**: Open a health report issue summarizing the beta.2 dev cycle steady state and archive the session cleanly.
+
+**Done**:
+- Orient confirmed yebyen/mecris 1 commit ahead of kingdonb/mecris (health commit `b8eb98e` not yet merged upstream). No divergence.
+- No open PRs on kingdonb/mecris; no needs-test/pr-review/bug issues; yebyen#142 (Rust CI fix) remains out of bot scope.
+- Health report opened as yebyen/mecris#223 documenting steady state, version baselines, and human-pending items.
+- NEXT_SESSION.md updated with verified items and carried-forward pending items.
+- Plan issue yebyen/mecris#222 closed ✅.
+
+**Skipped**: No code changes, no pr-test — no open PRs available. Session was intentionally narrow (state/docs update only). Priority 5 applied.
+
+**Next**: No open PRs. Next session should orient fresh. Bot-actionable: confirm Python test baseline (~464) on next PR run. Human-required: Neon migration, Fermyon Cloud config (cloud_provider + internal_api_key), Twilio E2E, Rust CI fix (needs workflow PAT from kingdonb).
+
+## 2026-04-19 🏛️ — Health report: beta.2 session #2 steady state, closed yebyen#223 (yebyen/mecris#224, complete)
+
+**Planned**: Health-only session — orient, confirm steady state, archive.
+
+**Done**:
+- Orient confirmed yebyen/mecris 2 commits ahead of kingdonb/mecris (both health commits, no divergence).
+- No open PRs on kingdonb/mecris; no needs-test/pr-review/bug issues; yebyen#142 (Rust CI fix) remains blocked on workflow PAT.
+- Closed yebyen/mecris#223 (prior session's health report, session confirmed complete).
+- Health report opened as yebyen/mecris#224 documenting continued steady state.
+
+**Skipped**: No code changes, no pr-test — no open PRs available. Session was intentionally narrow (health-only).
+
+**Next**: No open PRs. Next session should orient fresh. Bot-actionable: confirm Python test baseline (~464) on next PR run. Human-required: Neon migration, Fermyon Cloud config (cloud_provider + internal_api_key), Twilio E2E, Rust CI fix (needs workflow PAT from kingdonb).
+
+## 2026-04-19 🏛️ — Health report: beta.2 session #3 steady state, closed yebyen#224 (yebyen/mecris#225, complete)
+
+**Planned**: Open a health report issue documenting beta.2 dev cycle session #3 steady state and archive the session.
+
+**Done**:
+- Orient confirmed yebyen/mecris 3 commits ahead of kingdonb/mecris (all health commits, no divergence).
+- No open PRs on kingdonb/mecris; no needs-test/pr-review/bug issues; yebyen#142 (Rust CI fix) remains blocked on workflow PAT.
+- Closed yebyen/mecris#224 (prior session health report, session confirmed complete).
+- Health report opened as yebyen/mecris#226 documenting continued steady state (session #3 of 2026-04-19).
+- Plan issue yebyen/mecris#225 closed ✅.
+
+**Skipped**: No code changes, no pr-test — no open PRs available. Session was intentionally narrow (health-only). Priority 5 applied.
+
+**Next**: No open PRs. Next session should orient fresh. Bot-actionable: confirm Python test baseline (~464) on next PR run. Human-required: Neon migration, Fermyon Cloud config (cloud_provider + internal_api_key), Twilio E2E, Rust CI fix (needs workflow PAT from kingdonb).
+
+## 2026-04-19 🏛️ — Health report: beta.2 session #4 steady state, closed yebyen#226 (yebyen/mecris#227, complete)
+
+**Planned**: Open a health report issue documenting beta.2 dev cycle session #4 steady state and close the prior session's open health report (#226).
+
+**Done**:
+- Orient confirmed yebyen/mecris 4 commits ahead of kingdonb/mecris (all health commits, no divergence).
+- No open PRs on kingdonb/mecris; no needs-test/pr-review/bug issues; yebyen#142 (Rust CI fix) remains blocked on workflow PAT.
+- Closed yebyen/mecris#226 (prior session health report, session confirmed complete).
+- Health report opened as yebyen/mecris#228 documenting continued steady state (session #4 of 2026-04-19).
+- Plan issue yebyen/mecris#227 closed ✅.
+
+**Skipped**: No code changes, no pr-test — no open PRs available. Session was intentionally narrow (health-only). Priority 5 applied.
+
+**Next**: No open PRs. Next session should orient fresh. Bot-actionable: confirm Python test baseline (~464) on next PR run. Human-required: Neon migration, Fermyon Cloud config (cloud_provider + internal_api_key), Twilio E2E, Rust CI fix (needs workflow PAT from kingdonb).
+
+## 2026-04-19 🏛️ — Health report: beta.2 session #5 steady state, closed yebyen#228 (yebyen/mecris#229, complete)
+
+**Planned**: Health-only session — orient, confirm steady state, archive.
+
+**Done**:
+- Orient confirmed yebyen/mecris 5 commits ahead of kingdonb/mecris (all health commits, no divergence).
+- No open PRs on kingdonb/mecris; no needs-test/pr-review/bug issues; yebyen#142 (Rust CI fix) remains blocked on workflow PAT.
+- Closed yebyen/mecris#228 (prior session health report, session confirmed complete).
+- Health report opened as yebyen/mecris#229 documenting continued steady state (session #5 of 2026-04-19).
+- No plan issue created — NO PLACEHOLDER ISSUES rule applied correctly.
+
+**Skipped**: No code changes, no pr-test — no open PRs available. Session was intentionally narrow (health-only). Priority 5 applied.
+
+**Next**: No open PRs. Next session should orient fresh. Bot-actionable: confirm Python test baseline (~464) on next PR run. Human-required: Neon migration, Fermyon Cloud config (cloud_provider + internal_api_key), Twilio E2E, Rust CI fix (needs workflow PAT from kingdonb).
+
+## 2026-04-19 🏛️ — Health report: beta.2 session #6 steady state, closed yebyen#229 (yebyen/mecris#230, complete)
+
+**Planned**: Health-only session — orient, confirm steady state, archive.
+
+**Done**:
+- Orient confirmed yebyen/mecris 6 commits ahead of kingdonb/mecris (all health commits, no divergence).
+- No open PRs on kingdonb/mecris; no needs-test/pr-review/bug issues; yebyen#142 (Rust CI fix) remains blocked on workflow PAT.
+- Closed yebyen/mecris#229 (prior session health report, session confirmed complete).
+- Health report opened as yebyen/mecris#230 documenting continued steady state (session #6 of 2026-04-19).
+- No plan issue created — NO PLACEHOLDER ISSUES rule applied correctly.
+
+**Skipped**: No code changes, no pr-test — no open PRs available. Session was intentionally narrow (health-only). Priority 5 applied.
+
+**Next**: No open PRs. Next session should orient fresh. Bot-actionable: confirm Python test baseline (~464) on next PR run. Human-required: Neon migration, Fermyon Cloud config (cloud_provider + internal_api_key), Twilio E2E, Rust CI fix (needs workflow PAT from kingdonb).
+
+## 2026-04-19 🏛️ — Health report: beta.2 session #7 steady state, closed yebyen#230 (yebyen/mecris#231, complete)
+
+**Planned**: Health-only session — orient, confirm steady state, archive.
+
+**Done**:
+- Orient confirmed yebyen/mecris 7 commits ahead of kingdonb/mecris (all health commits, no divergence).
+- No open PRs on kingdonb/mecris; no needs-test/pr-review/bug issues; yebyen#142 (Rust CI fix) remains blocked on workflow PAT.
+- Closed yebyen/mecris#230 (prior session health report, session confirmed complete).
+- Health report opened as yebyen/mecris#231 documenting continued steady state (session #7 of 2026-04-19).
+- No plan issue created — NO PLACEHOLDER ISSUES rule applied correctly.
+
+**Skipped**: No code changes, no pr-test — no open PRs available. Session was intentionally narrow (health-only). Priority 5 applied.
+
+**Next**: No open PRs. Next session should orient fresh. Bot-actionable: confirm Python test baseline (~464) on next PR run. Human-required: Neon migration, Fermyon Cloud config (cloud_provider + internal_api_key), Twilio E2E, Rust CI fix (needs workflow PAT from kingdonb).
+
+## 2026-04-20 🏛️ — Health report: beta.2 session #8 steady state, closed yebyen#231 (yebyen/mecris#232, complete)
+
+**Planned**: Health-only session — orient, confirm steady state, archive.
+
+**Done**:
+- Orient confirmed yebyen/mecris 8 commits ahead of kingdonb/mecris (all health commits, no divergence).
+- No open PRs on kingdonb/mecris; no needs-test/pr-review/bug issues; yebyen#142 (Rust CI fix) remains blocked on workflow PAT.
+- Closed yebyen/mecris#231 (prior session health report, session confirmed complete).
+- Health report opened as yebyen/mecris#232 documenting continued steady state (session #8, first session of 2026-04-20).
+- No plan issue created — NO PLACEHOLDER ISSUES rule applied correctly.
+
+**Skipped**: No code changes, no pr-test — no open PRs available. Session was intentionally narrow (health-only). Priority 5 applied.
+
+**Next**: No open PRs. Next session should orient fresh. Bot-actionable: confirm Python test baseline (~464) on next PR run. Human-required: Neon migration, Fermyon Cloud config (cloud_provider + internal_api_key), Twilio E2E, Rust CI fix (needs workflow PAT from kingdonb).
+
+## 2026-04-20 🏛️ — Health report: beta.2 session #9 steady state, closed yebyen#232 (yebyen/mecris#233, complete)
+
+**Planned**: Health-only session — orient, confirm steady state, archive.
+
+**Done**:
+- Orient confirmed yebyen/mecris 9 commits ahead of kingdonb/mecris (all health commits, no divergence).
+- No open PRs on kingdonb/mecris; no needs-test/pr-review/bug issues; yebyen#142 (Rust CI fix) remains blocked on workflow PAT.
+- Closed yebyen/mecris#232 (prior session health report, session confirmed complete).
+- Health report opened as yebyen/mecris#233 documenting continued steady state (session #9 of 2026-04-20).
+- No plan issue created — NO PLACEHOLDER ISSUES rule applied correctly.
+
+**Skipped**: No code changes, no pr-test — no open PRs available. Session was intentionally narrow (health-only). Priority 5 applied.
+
+**Next**: No open PRs. Next session should orient fresh. Bot-actionable: confirm Python test baseline (~464) on next PR run. Human-required: Neon migration, Fermyon Cloud config (cloud_provider + internal_api_key), Twilio E2E, Rust CI fix (needs workflow PAT from kingdonb).
+
+## 2026-04-20 🏛️ — Health report: beta.2 session #10 steady state, closed yebyen#233 (yebyen/mecris#234, complete)
+
+**Planned**: Health-only session — orient, confirm steady state, archive.
+
+**Done**:
+- Orient confirmed yebyen/mecris 10 commits ahead of kingdonb/mecris (all health commits, no divergence).
+- No open PRs on kingdonb/mecris; no needs-test/pr-review/bug issues; yebyen#142 (Rust CI fix) remains blocked on workflow PAT.
+- Closed yebyen/mecris#233 (prior session health report, session confirmed complete).
+- Health report opened as yebyen/mecris#234 documenting continued steady state (session #10 of 2026-04-20).
+- No plan issue created — NO PLACEHOLDER ISSUES rule applied correctly.
+
+**Skipped**: No code changes, no pr-test — no open PRs available. Session was intentionally narrow (health-only). Priority 5 applied.
+
+**Next**: No open PRs. Next session should orient fresh. Bot-actionable: confirm Python test baseline (~464) on next PR run. Human-required: Neon migration, Fermyon Cloud config (cloud_provider + internal_api_key), Twilio E2E, Rust CI fix (needs workflow PAT from kingdonb).
+
+## 2026-04-20 🏛️ — Health report: beta.2 session #11 steady state, closed yebyen#234 (yebyen/mecris#235, complete)
+
+**Planned**: Health-only session — orient, confirm steady state, archive.
+
+**Done**:
+- Orient confirmed yebyen/mecris 11 commits ahead of kingdonb/mecris (all health commits, no divergence).
+- No open PRs on kingdonb/mecris; no needs-test/pr-review/bug issues; yebyen#142 (Rust CI fix) remains blocked on workflow PAT.
+- Closed yebyen/mecris#234 (prior session health report, session confirmed complete).
+- Health report opened as yebyen/mecris#235 documenting continued steady state (session #11 of 2026-04-20).
+- No plan issue created — NO PLACEHOLDER ISSUES rule applied correctly.
+
+**Skipped**: No code changes, no pr-test — no open PRs available. Session was intentionally narrow (health-only). Priority 5 applied.
+
+**Next**: No open PRs. Next session should orient fresh. Bot-actionable: confirm Python test baseline (~464) on next PR run. Human-required: Neon migration, Fermyon Cloud config (cloud_provider + internal_api_key), Twilio E2E, Rust CI fix (needs workflow PAT from kingdonb).
+
+## 2026-04-20 🏛️ — Health report: beta.2 session #12 steady state, closed yebyen#235 (yebyen/mecris#236, complete)
+
+**Planned**: Health-only session — orient, confirm steady state, archive.
+
+**Done**:
+- Orient confirmed yebyen/mecris 12 commits ahead of kingdonb/mecris (all health commits, no divergence).
+- No open PRs on kingdonb/mecris; no needs-test/pr-review/bug issues; yebyen#142 (Rust CI fix) remains blocked on workflow PAT.
+- Closed yebyen/mecris#235 (prior session health report, session confirmed complete).
+- Health report opened as yebyen/mecris#236 documenting continued steady state (session #12 of 2026-04-20).
+- No plan issue created — NO PLACEHOLDER ISSUES rule applied correctly.
+
+**Skipped**: No code changes, no pr-test — no open PRs available. Session was intentionally narrow (health-only). Priority 5 applied.
+
+**Next**: No open PRs. Next session should orient fresh. Bot-actionable: confirm Python test baseline (~464) on next PR run. Human-required: Neon migration, Fermyon Cloud config (cloud_provider + internal_api_key), Twilio E2E, Rust CI fix (needs workflow PAT from kingdonb).
+
+## 2026-04-20 🏛️ — Health report: beta.2 session #13 steady state, closed yebyen#236 (yebyen/mecris#237, complete)
+
+**Planned**: Health-only session — orient, confirm steady state, archive.
+
+**Done**:
+- Orient confirmed yebyen/mecris 13 commits ahead of kingdonb/mecris (all health commits, no divergence).
+- No open PRs on kingdonb/mecris; no needs-test/pr-review/bug issues; yebyen#142 (Rust CI fix) remains blocked on workflow PAT.
+- Closed yebyen/mecris#236 (prior session health report, session confirmed complete).
+- Health report opened as yebyen/mecris#237 documenting continued steady state (session #13 of 2026-04-20).
+- No plan issue created — NO PLACEHOLDER ISSUES rule applied correctly.
+
+**Skipped**: No code changes, no pr-test — no open PRs available. Session was intentionally narrow (health-only). Priority 5 applied.
+
+**Next**: No open PRs. Next session should orient fresh. Bot-actionable: confirm Python test baseline (~464) on next PR run. Human-required: Neon migration, Fermyon Cloud config (cloud_provider + internal_api_key), Twilio E2E, Rust CI fix (needs workflow PAT from kingdonb).
+
+## 2026-04-20 🏛️ — Health report: beta.2 session #14 steady state, closed yebyen#237 (yebyen/mecris#238, complete)
+
+**Planned**: Health-only session — orient, confirm steady state, archive.
+
+**Done**:
+- Orient confirmed yebyen/mecris 14 commits ahead of kingdonb/mecris (all health commits, no divergence).
+- No open PRs on kingdonb/mecris; no needs-test/pr-review/bug issues; yebyen#142 (Rust CI fix) remains blocked on workflow PAT.
+- Closed yebyen/mecris#237 (prior session health report, session confirmed complete).
+- Health report opened as yebyen/mecris#238 documenting continued steady state (session #14 of 2026-04-20).
+- No plan issue created — NO PLACEHOLDER ISSUES rule applied correctly.
+
+**Skipped**: No code changes, no pr-test — no open PRs available. Session was intentionally narrow (health-only). Priority 5 applied.
+
+**Next**: No open PRs. Next session should orient fresh. Bot-actionable: confirm Python test baseline (~464) on next PR run. Human-required: Neon migration, Fermyon Cloud config (cloud_provider + internal_api_key), Twilio E2E, Rust CI fix (needs workflow PAT from kingdonb).

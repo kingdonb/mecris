@@ -1,22 +1,19 @@
-# Next Session: Awaiting human-driven PRs — attic audit complete
+# Next Session: Health check complete — awaiting human-driven PRs (beta.2 dev cycle, session #14 archived)
 
-## Current Status (2026-04-18, post-audit, plan yebyen/mecris#220)
-- **yebyen/mecris is fully synced with kingdonb/mecris**: HEAD is `90a569e`. No divergence.
-- **Beta milestone in place**: Suite is `v0.0.1-beta.1`. All bot-actionable pending items from last session are resolved.
+## Current Status (2026-04-20, post-health-report #14, health yebyen/mecris#238)
+- **yebyen/mecris is 14 commits ahead of kingdonb/mecris**: HEADs `efc49aa` and `34d8582` (health commits only, no divergence).
+- **Beta.2 dev cycle open**: Suite version bumped to `v0.0.1-beta.2` — next development iteration begins.
+- **SLSA Build Level 1 achieved**: `7d3d981` adds cryptographically signed provenance for APK and WASM artifacts.
 - **No open PRs on kingdonb/mecris**: Nothing to test. Wait for human-driven PRs.
 - **One open issue on yebyen**: yebyen/mecris#142 (Rust CI fix) needs `workflow` PAT scope — must be applied by kingdonb. Out of bot scope.
 
-## Verified This Session (2026-04-18, plan yebyen/mecris#220)
-- [x] **Attic audit complete**: All docs in `attic/` reviewed. No untracked GitHub issues found. All items fully processed or superseded.
-- [x] **session_log.md confirmed current**: 1726 lines through 2026-04-18, no dangling action items.
-- [x] **NEXT_SESSION.md updated**: New baseline `90a569e`, pending items scoped, Beta context recorded (from yebyen/mecris#219)
-
-## Version Baseline (v0.0.1-beta.1)
-- **Android**: 1.1.6-beta.1 (Version Code reset to 1)
-- **Spin sync-service**: 0.3.1-beta.1
-- **Python MCP**: 0.5.1-beta.1
-- **Suite**: 0.0.1-beta.1
-- **Web app**: Included in suite beta promotion
+## Verified This Session (2026-04-20, health yebyen/mecris#238)
+- [x] **Repos in sync**: yebyen HEAD `efc49aa` is 14 ahead of kingdonb `34d8582` — health commits only, no divergence.
+- [x] **No open PRs on kingdonb/mecris**: Confirmed — steady-state hold.
+- [x] **No needs-test/pr-review/bug issues**: Confirmed — nothing actionable for bot.
+- [x] **Health report opened**: yebyen/mecris#238 documents beta.2 dev cycle steady state (session #14).
+- [x] **yebyen#237 closed**: Prior session health report confirmed complete and closed.
+- [x] **No plan issue**: Health-only session — NO PLACEHOLDER ISSUES rule applied correctly.
 
 ## Pending Verification
 
@@ -32,16 +29,18 @@
 ### 🤖 Bot-actionable (can be resolved in future sessions)
 - [ ] **Confirm Python test baseline via pr-test**: Estimated ~464 passed (unchanged). Verify on next PR test run when a PR is available.
 
-## New Features Landed in v0.0.1-beta.1
+## New Features Landed in beta.2 dev cycle (since beta.1 baseline `90a569e`)
 
-### Beta promotion commits (since last NEXT_SESSION.md update):
-- **release: promote suite to v0.0.1-beta.1** (`90a569e`): Reset Version Code to 1 for clean Beta baseline; expand bump_version.py to target 15+ ecosystem locations; add Release Management mandate to GEMINI.md; transition ROADMAP.md to Beta phase (Goal 0 complete)
-- **refactor(build): build WASM once and deploy to both clouds** (`a44962e`): Add build-wasm target as shared dependency; remove redundant --build flags; simplify deploy-all to single build pass
-- **feat(sync-service): align aggregate schema with web UI and fix pulse display** (`112cf6a`): Expand AggregateResponse and LanguageStat structs to match frontend expectations; implement shared calculate_review_pump_targets helper; fix 9999m heartbeat bug via BIGINT cast; map machine roles to human-friendly display names; update Arabic completion tests to /16 'Brutal Heuristic'
+- **feat(security): achieve SLSA Build Level 1** (`7d3d981`): Add `actions/attest-build-provenance` to Release workflow; generate signed provenance for APK and WASM; ROADMAP.md Alpha Hardening SLSA goals marked complete.
+- **chore(config): remove --http flag from gemini MCP settings** (`b1d722e`): Beta testing config adjustment for Gemini MCP server.
+- **chore(release): bump version to 0.0.1-beta.2** (`34d8582`): All 15+ ecosystem locations updated; dev cycle baseline set.
 
-### Previously landed (carried from last session, now in beta):
-- **feat(neural-link)**: `/languages` endpoint wraps response for frontend; filters inactive languages; enriches stats with `absolute_target`, `target_flow_rate`, `goal_met`, `has_goal`; Majesty Cake visualizer has pulsing animation
-- **fix(android)**: Sovereign Fallback nag checks `global_last_nag_timestamp` cooldown; `PROGRESS: /` bug fixed; ReviewPump shows Progress / Absolute Target; green orb color preference restored
+## Version Baseline (v0.0.1-beta.2 dev cycle)
+- **Android**: 1.1.6-beta.2 (dev cycle bump)
+- **Spin sync-service**: 0.3.1-beta.2
+- **Python MCP**: 0.5.1-beta.2
+- **Suite**: 0.0.1-beta.2
+- **Web app**: Included in suite beta.2 bump
 
 ## Infrastructure Notes (carried forward)
 - **phone_verified column**: `ALTER TABLE users ADD COLUMN IF NOT EXISTS phone_verified BOOLEAN DEFAULT FALSE` — in schema.sql AND migrate_v6. Apply migrate_v6 to production Neon.
@@ -70,3 +69,4 @@
 - **autonomous_sync_enabled**: DB flag per user (`users` table). Controls which users get processed by `/internal/trigger-reminders`. Default `false`.
 - **NEXT_SESSION.md merge conflict is permanently fixed**: `.gitattributes merge=union` on yebyen/mecris:main.
 - **bump_version.py now targets 15+ locations**: Covers Android, Spin, Python MCP, Web, and suite-level files.
+- **SLSA Build Level 1**: `actions/attest-build-provenance` added to Release workflow. Signed provenance generated for APK + WASM artifacts.
