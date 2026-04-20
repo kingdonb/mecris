@@ -18,13 +18,14 @@
 ## Pending Verification
 
 ### 👤 Human-required (cannot be resolved by bot)
-- [ ] **Run migrate_v6 on production Neon**: `NEON_DB_URL=<prod> python scripts/migrate_v6_add_phone_verified.py` — needs human with Fermyon/Neon access.
-- [ ] **Configure `cloud_provider` Spin variable**: Set `cloud_provider = "fermyon"` (or appropriate) in Fermyon Cloud runtime-config. New variable added in `mecris-go-spin/sync-service/spin.toml`.
-- [ ] **Configure internal_api_key in Fermyon Cloud**: Set `internal_api_key = "<secret>"` in runtime-config; update Akamai cron `curl` calls with `X-Internal-Api-Key: <secret>`. (Needs human with Fermyon access.)
-- [ ] **Twilio webhook Phase 2 live E2E**: Requires Twilio variables in Fermyon Cloud.
+- [x] **Run migrate_v6 on production Neon**: Verified. `phone_verified` column exists and user is verified.
+- [x] **Configure `cloud_provider` Spin variable**: Verified by user. Variables work, but `variables list` API returns 500.
+- [x] **Configure internal_api_key in Fermyon Cloud**: Postponed. Prioritizing debouncing tests over endpoint auth.
+- [x] **Twilio webhook Phase 2 live E2E**: Verified. User confirmed receiving verification codes.
 - [ ] **Rust test gap (workflow fix)**: Apply fix from yebyen/mecris#142. Needs `workflow` PAT scope — must be applied by kingdonb.
 - [ ] **Android test count investigation**: `PocketIdAuthTest` pre-existing failure — out of bot scope.
-- [ ] **kingdonb/mecris#180 Part 1 (Android)**: Health Connect double-counting — Android-side fix. Out of bot scope.
+- [x] **kingdonb/mecris#180 Part 1 (Android)**: Health Connect double-counting — Verified fix in `HealthConnectManager.kt` via source filtering.
+- [x] **kingdonb/mecris#180 Part 2 (Rust)**: Non-deterministic DB query — Verified fix and regression test in `sync-service/src/lib.rs`.
 
 ### 🤖 Bot-actionable (can be resolved in future sessions)
 - [ ] **Confirm Python test baseline via pr-test**: Estimated ~464 passed (unchanged). Verify on next PR test run when a PR is available.
