@@ -148,3 +148,19 @@ Full RSA signature verification via the JWKS endpoint:
 4. Checks the `iss` claim matches `OIDC_ISSUER` — mismatches return HTTP 401.
 
 **Note**: `verify_aud=False` is intentional — Pocket-ID does not populate the `aud` claim in its JWTs.
+
+## 7. VPN/Public Internet Split (Known Issue)
+
+As a security and risk mitigation strategy, the Mecris architecture currently operates in a split-network mode:
+
+- **OIDC Provider (Pocket-ID)**: Runs behind a private VPN/home network (`metnoom.urmanac.com`).
+- **API Service (Python MCP / Spin)**: Runs on the public internet.
+
+### Impact on "Sign Out" and "Sign In"
+Because the API service cannot reach the OIDC provider directly, "Sign In" or "Token Refresh" operations can only be performed when the client (Android app or CLI) is **inside the home network** or connected via **VPN**.
+
+### "Sign Out" Implementation
+The `signOut` function in the Android app (`PocketIdAuth.kt`) is designed to be safe even when off-network. It clears local `SharedPreferences` and resets the internal `AuthState` without requiring a network call to the OIDC provider. This ensures the user can always "lock" the app locally, even if they cannot reach the auth server to invalidate the session globally.
+
+### "PocketIdAuthTest" Failure Note
+The pre-existing failure in `PocketIdAuthTest` is noted as a known issue. While the test logic itself is simple, it serves as a reminder of the complex interplay between local state management and the reachable/unreachable nature of the OIDC provider in this split-network architecture.
