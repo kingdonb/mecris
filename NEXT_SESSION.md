@@ -24,6 +24,9 @@
 - [ ] **Headless Loopback for gh copilot (Issue #206)**: Subprocess wrapper for `gh copilot` to allow autonomous shell scripting assistance.
 - [ ] **Conversational RAG (Issue #207)**: Implement `ask_mecris` MCP query interface using Ollama router and local documentation index.
 - [ ] **Semantic Search: Bookmark Embeddings (Issue #208)**: Generate vector index for Chrome bookmarks and surface results in Narrator context.
+- [ ] **Agent Constraints: Token Bank (Issue #209)**: Update Neon schema to track and rate-limit autonomous ghost sessions.
+- [ ] **HCAT Sandbox Dockerfile (Issue #210)**: Create a hardened, SHA-pinned Dockerfile for executing autonomous agents securely.
+- [ ] **Human Yield Presence Detection (Issue #211)**: Add logic to detect human workstation activity and manage the `presence.lock` safely.
 
 ## New Features Landed in beta.2 dev cycle (since beta.1 baseline `90a569e`)
 
