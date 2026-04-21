@@ -2061,3 +2061,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: No code features this session (no pending bot-actionable feature work while PR #198 awaits human review).
 
 **Next**: Human review and merge of kingdonb/mecris#198. After merge, pick next kingdonb open issue for beta.2 feature work (candidates: #193 LLM Quota Hypervisor, #185 Security Hardening).
+
+## 2026-04-21 🏛️ — Rust test gap closed: 8 unit tests for calculate_review_pump_targets (session #22, yebyen/mecris#246, complete)
+
+**Planned**: Write dedicated `#[test]` cases for `calculate_review_pump_targets` — all multiplier branches, target_flow_rate clamping, goal_met edge cases. (yebyen/mecris#246)
+
+**Done**: Added 8 unit tests to `mecris-go-spin/sync-service/src/lib.rs` in a new `// --- calculate_review_pump_targets ---` section. Covers multipliers 1.0 (no clearance), 2 (14-day), 5 (5-day), 10 (1-day), and unknown (8.0 → fallback to tomorrow). Also covers target_flow_rate max(0,...) clamp, goal_met=true when daily_done≥target, and zero/zero edge case via the `current==0` branch. Committed `608a562`. Pushed to yebyen:main (pr-test now includes this commit). Rust test count confirmed 114 → 122 via pr-test run 24749188270 on kingdonb/mecris#198. Python baseline stable at 480/6-skipped.
+
+**Skipped**: Nothing. Plan fully executed.
+
+**Next**: Human review and merge of kingdonb/mecris#198 (now 9 commits). After merge, pick next beta.2 feature from kingdonb open issues (candidates: #193 LLM Quota Hypervisor, #185 Security Hardening).

@@ -1,17 +1,23 @@
-# Next Session: Human review and merge of kingdonb/mecris#198 (beta.2 PR — 8 commits)
+# Next Session: Human review and merge of kingdonb/mecris#198 (beta.2 PR — 9 commits)
 
-## Current Status (2026-04-21, post-session #21, plan yebyen/mecris#245)
-- **PR open**: kingdonb/mecris#198 — yebyen:main → kingdonb:main, 8 commits (7 feature + 1 compile fix). Ready for human review.
-- **Test baseline correct**: Python 480 passed / 6 skipped — confirmed accurate (yebyen/mecris#245). Previous "expected 506" was based on an overstated baseline (464 vs ~437 actual).
+## Current Status (2026-04-21, post-session #22, plan yebyen/mecris#246)
+- **PR open**: kingdonb/mecris#198 — yebyen:main → kingdonb:main, 9 commits (7 feature + 1 compile fix + 1 Rust test commit). Ready for human review.
+- **Test baseline correct**: Python 480 passed / 6 skipped; **Rust 122 passed** (up from 114 — 8 new unit tests for `calculate_review_pump_targets`, commit `608a562`). Both confirmed via pr-test on PR #198.
 - **yebyen/mecris#142 closed**: Rust CI fix was applied by kingdonb; issue closed in session #21.
-- **Repos status**: yebyen is 9 commits ahead of kingdonb (8 feature/fix + 1 baseline correction commit). All 8 feature commits in PR #198.
+- **Repos status**: yebyen is 10 commits ahead of kingdonb (9 on PR #198 + 0 extra). All 9 commits in PR #198.
 
-## Verified This Session (2026-04-21, session #21, plan yebyen/mecris#245)
+## Verified This Session (2026-04-21, session #22, plan yebyen/mecris#246)
+- [x] **Plan issue opened**: yebyen/mecris#246 — recorded before touching code.
+- [x] **8 unit tests for `calculate_review_pump_targets`**: All multiplier branches (2/3/4/5/6/7/10 and unknown), flow_rate clamp, goal_met edge cases. Committed `608a562`.
+- [x] **Rust test count increased**: 114 → 122 confirmed via pr-test run 24749188270 on kingdonb/mecris#198.
+- [x] **Python baseline unchanged**: 480 passed, 6 skipped — stable.
+- [x] **Plan issue closed**: yebyen/mecris#246 closed with completion comment.
+
+## Previously Verified (2026-04-21, session #21, plan yebyen/mecris#245)
 - [x] **Plan issue opened**: yebyen/mecris#245 — recorded before touching code.
-- [x] **Python test count investigation**: 26-test gap explained (yebyen/mecris#245#comment). Overstated baseline (464 vs ~437 actual) + obsidian 19 (not 20) + headless 24 (not 22). No tests broken.
+- [x] **Python test count investigation**: 26-test gap explained. Overstated baseline (464 vs ~437 actual) + obsidian 19 (not 20) + headless 24 (not 22). No tests broken.
 - [x] **yebyen/mecris#142 closed**: Rust CI working-directory fix confirmed applied; stale issue closed.
 - [x] **NEXT_SESSION.md baseline corrected**: "expected 506" warning removed; committed `b3b1bfc`.
-- [x] **Plan issue closed**: yebyen/mecris#245 closed with completion comment.
 
 ## Previously Verified (2026-04-21, session #20, plan yebyen/mecris#244)
 - [x] **Plan issue opened**: yebyen/mecris#244 — recorded before touching any code.
@@ -24,7 +30,7 @@
 ## Pending Verification
 
 ### 👤 Human-required (cannot be resolved by bot)
-- [ ] **Review and merge kingdonb/mecris#198**: 8 commits ready — obsidian parser + HeadlessLoopback + REMAINING TODAY + Majesty Cake + compile fix.
+- [ ] **Review and merge kingdonb/mecris#198**: 9 commits ready — obsidian parser + HeadlessLoopback + REMAINING TODAY + Majesty Cake + compile fix + calculate_review_pump_targets unit tests.
 - [ ] **Android test count investigation**: `PocketIdAuthTest` pre-existing failure (`ExceptionInInitializerError` at line 35) — out of bot scope.
 - [ ] **Configure internal_api_key in Fermyon Cloud**: Postponed. Prioritizing feature work.
 - [ ] **Apply migrate_v6 to production Neon**: `phone_verified`, `phone_verifications`, `scheduler_election` multi-user, `vacation_mode_until` changes.
@@ -53,10 +59,10 @@
 - **Suite**: 0.0.1-beta.2
 - **Web app**: Included in suite beta.2 bump
 
-## Test Baseline (confirmed 2026-04-21 via pr-test on kingdonb/mecris#198)
-- **Python**: 480 passed, 6 skipped (confirmed correct — baseline was ~437, not 464 as previously stated)
+## Test Baseline (confirmed 2026-04-21 via pr-test on kingdonb/mecris#198, run 24749188270)
+- **Python**: 480 passed, 6 skipped (correct — baseline was ~437, not 464 as previously stated)
 - **Android**: 36 tests total, 35 passing, 1 pre-existing PocketIdAuthTest failure (`ExceptionInInitializerError`)
-- **Rust**: 114 passed (boris-fiona-walker + sync-service combined)
+- **Rust**: 122 passed (up from 114 — 8 new tests for `calculate_review_pump_targets`, session #22)
 
 ## Infrastructure Notes (carried forward)
 - **phone_verified column**: `ALTER TABLE users ADD COLUMN IF NOT EXISTS phone_verified BOOLEAN DEFAULT FALSE` — in schema.sql AND migrate_v6. Apply migrate_v6 to production Neon.
