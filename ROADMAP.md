@@ -41,7 +41,7 @@
 - [x] **The `mecris` CLI**: A Python-based CLI entry point.
 - [x] **Heuristic decision engine**: Nag Ladder implemented for notification triggers.
 - [x] **Ghost Archivist**: Presence-aware background sync (daemon ready).
-- [ ] **Headless Loopback**: Subprocess wrapper for `gemini --yolo` and `gh copilot`.
+- [x] **Headless Loopback**: Subprocess wrapper for `gemini --yolo` and `gh copilot`.
 - [ ] **Secret Manager Integration**: Hardened token injection for autonomous turns.
 - [ ] **Smart nagging algorithms**: time-of-day, goal urgency, success patterns.
 - [x] **Web dashboard**: Neural Link visualization for check-in status.
@@ -50,11 +50,11 @@
 
 **Target v0.0.1 (GA): The Stable Anchor**
 *   **Feature Focus:** Stable autonomous nagging and reliable multi-cloud sync.
-*   **Security Focus:** **SLSA Build Level 1**.
+*   **Security Focus:** **SLSA Build Level 2** (Achieved beta.2).
 
 **Target v0.3.0 (Beta): The Autonomous Shift**
 *   **Feature Focus:** The Proactive "Wake-Up" Engine (Goal 1). Mecris begins running as a background daemon.
-*   **Security Focus:** **SLSA Build Level 2**.
+*   **Security Focus:** **SLSA Build Level 3**.
 
 
 **Infrastructure**: Build on existing FastAPI server + Twilio integration
