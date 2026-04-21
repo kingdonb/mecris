@@ -1,19 +1,19 @@
-# Next Session: Obsidian parser enhanced — run pr-test to validate Python baseline (beta.2 dev cycle, session #16 archived)
+# Next Session: HeadlessLoopback implemented — run pr-test to validate Python baseline (beta.2 dev cycle, session #17 archived)
 
-## Current Status (2026-04-21, post-session #16, plan yebyen/mecris#240)
-- **Repos ahead of kingdonb**: yebyen/mecris is now 1 commit ahead (`ebe3d30`) with the Obsidian parser enhancement — needs PR to kingdonb.
+## Current Status (2026-04-21, post-session #17, plan yebyen/mecris#241)
+- **Repos ahead of kingdonb**: yebyen/mecris is now 3 commits ahead (`ebe3d30`, `2cd262a`, `0e50bb4`) — obsidian parser + session #16 archive + headless loopback; needs PR to kingdonb.
 - **kingdonb/mecris HEAD**: `6157f5f` (docs(agent): introduce Empty Backlog Protocol to prevent doom-looping)
 - **Beta.2 dev cycle open**: Suite version at `v0.0.1-beta.2`.
+- **HeadlessLoopback implemented**: `ghost/headless_loopback.py` — `HeadlessLoopback` class spawns `gemini --yolo` as subprocess, captures stdout/stderr, enforces 30-min SIGKILL timeout; `LoopbackResult` dataclass. 22 unit tests in `tests/test_headless_loopback.py` — syntax-verified only.
 - **Obsidian parser enhanced**: `_parse_todos_from_content` now recognizes alternate checkbox styles (`[>]`, `[<]`, `[?]`, `[-]`, `[!]`, `/`) plus exposes raw `status` character.
-- **20 unit tests added**: `tests/test_obsidian_parser.py` — validated via syntax check only (no venv in bot runner); pr-test will confirm.
 
-## Verified This Session (2026-04-21, plan yebyen/mecris#240)
-- [x] **Plan issue opened**: yebyen/mecris#240 — recorded before touching any code.
-- [x] **obsidian_client.py updated**: regex broadened from `[ x]` to `[^\[\]]`; `status` field added to returned dicts; `ALTERNATE_CHECKBOX_CHARS` class constant added; `get_todos()` searches for `[>]` and `[-]` patterns in addition to `[ ]` and `[x]`.
-- [x] **tests/test_obsidian_parser.py created**: 20 unit tests across 4 test classes; syntax verified clean.
-- [x] **Commit `ebe3d30`**: `feat(obsidian): support alternate checkbox styles in todo parser (kingdonb#196)` — committed successfully.
-- [x] **Plan issue closed**: yebyen/mecris#240 closed with completion comment.
-- [x] **Health report yebyen#239**: Still open (prior session health report — needs closing next session if not already done by workflow).
+## Verified This Session (2026-04-21, plan yebyen/mecris#241)
+- [x] **Plan issue opened**: yebyen/mecris#241 — recorded before touching any code.
+- [x] **yebyen#239 closed**: Prior health report from session #15 — closed at session start.
+- [x] **ghost/headless_loopback.py created**: `HeadlessLoopback` + `LoopbackResult` — `start_new_session=True`, `SIGKILL` on timeout, `FileNotFoundError`/`OSError` caught, always returns result.
+- [x] **tests/test_headless_loopback.py created**: 22 unit tests across 4 classes — syntax verified clean (`python -m py_compile`).
+- [x] **Commit `0e50bb4`**: `feat(ghost): implement HeadlessLoopback subprocess wrapper (kingdonb#197)` — committed successfully.
+- [x] **Plan issue closed**: yebyen/mecris#241 closed with completion comment.
 
 ## Pending Verification
 
@@ -21,17 +21,16 @@
 - [ ] **Rust test gap (workflow fix)**: Apply fix from yebyen/mecris#142. Needs `workflow` PAT scope — must be applied by kingdonb.
 - [ ] **Android test count investigation**: `PocketIdAuthTest` pre-existing failure — out of bot scope.
 - [ ] **Configure internal_api_key in Fermyon Cloud**: Postponed. Prioritizing debouncing tests over endpoint auth.
-- [ ] **Open PR to kingdonb/mecris**: yebyen is now 1 commit ahead with obsidian parser enhancement — human should review and merge.
+- [ ] **Open PR to kingdonb/mecris**: yebyen is now 3 commits ahead — human should review and merge obsidian parser + headless loopback.
 
 ### 🤖 Bot-actionable (can be resolved in future sessions)
-- [ ] **Close yebyen#239**: Prior health report — close it now that session #16 produced real work.
-- [ ] **Confirm Python test baseline via pr-test**: Estimated ~464 passed (unchanged), plus 20 new tests in `test_obsidian_parser.py`. Verify on next PR test run.
+- [ ] **Confirm Python test baseline via pr-test**: Estimated ~464 passed (unchanged) + 20 new in `test_obsidian_parser.py` + 22 new in `test_headless_loopback.py` = ~506. Verify on next PR test run.
 - [ ] **Backport "REMAINING TODAY" counter (Issue #194)**: Update `LanguageStatDto` and `ReviewPumpWidget` in Android app to match Web UI "remaining" count logic.
 - [ ] **Backport "Majesty Cake" Visualizer (Issue #195)**: Implement pulsing orb and Majesty Rings in Jetpack Compose for the Android app.
-- [ ] **Implement Headless Loopback wrapper (Issue #197)**: Create a subprocess wrapper for `gemini --yolo` with timeout limits to enable background autonomous turns.
 
 ## New Features Landed in beta.2 dev cycle (since beta.1 baseline `90a569e`)
 
+- **feat(ghost): HeadlessLoopback subprocess wrapper** (`0e50bb4`): `ghost/headless_loopback.py` — spawns `gemini --yolo`, captures stdout/stderr, SIGKILL timeout, 22 unit tests. Resolves kingdonb/mecris#197.
 - **feat(obsidian): alternate checkbox styles in todo parser** (`ebe3d30`): Broaden regex to `[^\[\]]`; expose raw `status` char; add 20 unit tests. Resolves kingdonb/mecris#196.
 - **feat(security): achieve SLSA Build Level 1** (`7d3d981`): Add `actions/attest-build-provenance` to Release workflow; generate signed provenance for APK and WASM; ROADMAP.md Alpha Hardening SLSA goals marked complete.
 - **chore(config): remove --http flag from gemini MCP settings** (`b1d722e`): Beta testing config adjustment for Gemini MCP server.
@@ -68,10 +67,11 @@
 - **Classic PAT scope**: `GITHUB_CLASSIC_PAT` has `repo` scope ONLY — no `workflow` scope, no `read:org`.
 - **Fine-grained PAT**: `GITHUB_TOKEN` scoped to yebyen/mecris only. Cannot create PRs on kingdonb/mecris — use `GITHUB_CLASSIC_PAT`.
 - **Python venv not present in bot runner**: Validate Python tests via pr-test workflow only.
-- **Python test count baseline**: ~464 passed (6 skipped), 0 failing + 20 new in test_obsidian_parser.py (syntax-verified only). Rust: 108 passed. Android: 27 tests (1 pre-existing failure).
+- **Python test count baseline**: ~464 passed (6 skipped), 0 failing + 20 new in test_obsidian_parser.py + 22 new in test_headless_loopback.py (both syntax-verified only). Rust: 108 passed. Android: 27 tests (1 pre-existing failure).
 - **Rust satellite crates**: 99+ tests in sync-service, 28 in boris-fiona-walker, others not in CI yet.
 - **autonomous_sync_enabled**: DB flag per user (`users` table). Controls which users get processed by `/internal/trigger-reminders`. Default `false`.
 - **NEXT_SESSION.md merge conflict is permanently fixed**: `.gitattributes merge=union` on yebyen/mecris:main.
 - **bump_version.py now targets 15+ locations**: Covers Android, Spin, Python MCP, Web, and suite-level files.
 - **SLSA Build Level 1**: `actions/attest-build-provenance` added to Release workflow. Signed provenance generated for APK + WASM artifacts.
 - **Obsidian parser**: `_parse_todos_from_content` now uses `[^\[\]]` regex; returns `status` (raw char) + `completed` (bool). `ALTERNATE_CHECKBOX_CHARS` frozenset on class.
+- **HeadlessLoopback**: `ghost/headless_loopback.py` — `HeadlessLoopback(command, timeout, log_output)` + `LoopbackResult(exit_code, stdout, stderr, timed_out, command)`. Default command: `["gemini", "--yolo"]`, default timeout: 1800s. `start_new_session=True` isolates child process group. 22 unit tests in `tests/test_headless_loopback.py`.

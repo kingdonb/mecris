@@ -1996,3 +1996,20 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: pr-test (no venv in bot runner; Python test count will be confirmed on next human-triggered PR run). Android/Rust work (out of scope for this task).
 
 **Next**: Close yebyen#239 (prior health report). Confirm Python test baseline (+20 new tests) via pr-test when PR is opened. Human: review and merge obsidian parser enhancement into kingdonb/mecris.
+
+## 2026-04-21 🏛️ — feat(ghost): HeadlessLoopback subprocess wrapper for autonomous CLI turns, session #17 (yebyen/mecris#241, complete)
+
+**Planned**: Create `ghost/headless_loopback.py` — HeadlessLoopback class + LoopbackResult dataclass; 22 unit tests in `tests/test_headless_loopback.py` covering output capture, non-zero exit codes, timeout enforcement, and spawn errors. (Plan: yebyen/mecris#241, referencing kingdonb/mecris#197)
+
+**Done**:
+- Orient confirmed yebyen/mecris 2 commits ahead of kingdonb/mecris (`ebe3d30`, `2cd262a`); closed yebyen#239 (prior health report).
+- Empty Backlog Protocol activated — picked kingdonb#197 (HeadlessLoopback) from NEXT_SESSION.md bot-actionable list.
+- Plan issue yebyen/mecris#241 created before touching code.
+- `ghost/headless_loopback.py` created: `HeadlessLoopback` class spawns `gemini --yolo` via `subprocess.Popen(start_new_session=True)`, pipes prompt via stdin, enforces configurable timeout (default 1800s) with `SIGKILL`, swallows `ProcessLookupError`, catches `FileNotFoundError`/`OSError` — always returns `LoopbackResult`, never raises.
+- `tests/test_headless_loopback.py` created: 22 unit tests across 4 classes (`TestOutputCapture` x8, `TestNonZeroExitCode` x4, `TestTimeoutEnforcement` x6, `TestSubprocessErrors` x4). All syntax-verified clean.
+- Commit `0e50bb4`: `feat(ghost): implement HeadlessLoopback subprocess wrapper (kingdonb#197)`.
+- yebyen/mecris now 3 commits ahead of kingdonb/mecris.
+
+**Skipped**: pr-test (no venv in bot runner; Python test count will be confirmed on next human-triggered PR run). Android backport tasks (#194, #195) — preserved in NEXT_SESSION.md for future sessions.
+
+**Next**: Open PR to kingdonb/mecris with obsidian parser + headless loopback (human). Confirm Python test baseline (~506) via pr-test on next PR run. Android backports (#194, #195) remain bot-actionable.
