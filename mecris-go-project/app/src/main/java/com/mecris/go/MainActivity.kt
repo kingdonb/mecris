@@ -1048,7 +1048,9 @@ fun ReviewPumpWidget(
     
     val currentDisplayMultiplier = if (surgicalUpdateInProgress) localMultiplier else (stat.pump_multiplier ?: 1.0)
     val leverName = com.mecris.go.sync.ReviewPumpCalculator.getLeverName(currentDisplayMultiplier)
-    val targetFlowRate = com.mecris.go.sync.ReviewPumpCalculator.calculateTargetFlowRate(currentDisplayMultiplier, stat.current, stat.tomorrow)
+    val remainingToday = stat.target_flow_rate
+        ?: com.mecris.go.sync.ReviewPumpCalculator.calculateTargetFlowRate(currentDisplayMultiplier, stat.current, stat.tomorrow)
+    val goalMet = stat.goal_met || (stat.target_flow_rate != null && stat.target_flow_rate <= 0.0)
     
     val accentColor = if (stat.name.equals("ARABIC", ignoreCase = true)) Color(0xFFFFD600) 
                       else if (stat.name.equals("GREEK", ignoreCase = true)) Color(0xFF00E5FF) 
@@ -1154,8 +1156,8 @@ fun ReviewPumpWidget(
                 
                 // The Target Marker
                 val maxScale = 1000.0
-                val targetPos = (targetFlowRate / maxScale).coerceIn(0.1, 0.9).toFloat()
-                
+                val targetPos = (remainingToday / maxScale).coerceIn(0.1, 0.9).toFloat()
+
                 Canvas(modifier = Modifier.fillMaxSize()) {
                     val x = size.width * targetPos
                     drawLine(
@@ -1172,16 +1174,31 @@ fun ReviewPumpWidget(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Column {
-                        Text("TARGET FLOW", style = MaterialTheme.typography.labelSmall, color = Color.Gray)
-                        // THE ONE NUMBER: Significantly bigger and bolder
-                        Text(
-                            text = "$targetFlowRate", 
-                            style = MaterialTheme.typography.headlineLarge, 
-                            color = accentColor, 
-                            fontWeight = FontWeight.Black
-                        )
+                        Text("REMAINING TODAY", style = MaterialTheme.typography.labelSmall, color = Color.Gray)
+                        if (goalMet) {
+                            Surface(
+                                color = Color(0xFF00C853).copy(alpha = 0.2f),
+                                shape = RoundedCornerShape(4.dp)
+                            ) {
+                                Text(
+                                    text = "GOAL MET",
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                    style = MaterialTheme.typography.headlineLarge,
+                                    color = Color(0xFF00C853),
+                                    fontWeight = FontWeight.Black
+                                )
+                            }
+                        } else {
+                            // THE ONE NUMBER: Significantly bigger and bolder
+                            Text(
+                                text = "$remainingToday",
+                                style = MaterialTheme.typography.headlineLarge,
+                                color = accentColor,
+                                fontWeight = FontWeight.Black
+                            )
+                        }
                     }
-                    
+
                     Column(horizontalAlignment = Alignment.End) {
                         Text("RUNWAY", style = MaterialTheme.typography.labelSmall, color = Color.Gray)
                         Text("${stat.safebuf}D", style = MaterialTheme.typography.titleLarge, color = if (stat.safebuf < 3) Color.Red else Color(0xFF00C853), fontWeight = FontWeight.Black)
