@@ -21,6 +21,9 @@
 - [ ] **Local Inference Pipeline (Issue #203)**: Integrate Ollama and build a cloud-fallback router to manage RAG costs.
 - [ ] **Autonomous Security: JIT Secret Manager (Issue #204)**: Implement secure credential retrieval and passing for headless `gemini --yolo` turns.
 - [ ] **AI Framework Evaluation (Issue #205)**: Formalize evaluation matrix and run proof-of-concept tests for alternatives to Claude Code.
+- [ ] **Headless Loopback for gh copilot (Issue #206)**: Subprocess wrapper for `gh copilot` to allow autonomous shell scripting assistance.
+- [ ] **Conversational RAG (Issue #207)**: Implement `ask_mecris` MCP query interface using Ollama router and local documentation index.
+- [ ] **Semantic Search: Bookmark Embeddings (Issue #208)**: Generate vector index for Chrome bookmarks and surface results in Narrator context.
 
 ## New Features Landed in beta.2 dev cycle (since beta.1 baseline `90a569e`)
 
