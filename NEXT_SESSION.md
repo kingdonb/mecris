@@ -1,34 +1,37 @@
-# Next Session: Android REMAINING TODAY landed — pr-test to validate + tackle Majesty Cake (#195) (beta.2 dev cycle, session #18 archived)
+# Next Session: pr-test to validate Majesty Cake + confirm baseline (session #19 archived)
 
-## Current Status (2026-04-21, post-session #18, plan yebyen/mecris#242)
-- **Repos ahead of kingdonb**: yebyen/mecris is now 5 commits ahead (`ebe3d30`, `2cd262a`, `0e50bb4`, `6c97253`, `e30cda5`) — obsidian parser + session #16 archive + headless loopback + session #17 archive + REMAINING TODAY backport; needs PR to kingdonb.
-- **kingdonb/mecris HEAD**: `6157f5f` (docs(agent): introduce Empty Backlog Protocol to prevent doom-looping)
+## Current Status (2026-04-21, post-session #19, plan yebyen/mecris#243)
+- **Repos ahead of kingdonb**: yebyen/mecris is now 7 commits ahead — obsidian parser + HeadlessLoopback + REMAINING TODAY backport + Majesty Cake; needs PR to kingdonb.
+- **kingdonb/mecris HEAD**: `6157f5f` (docs(agent): introduce Empty Backlog Protocol to prevent doom-looping) — NOT yet in yebyen; yebyen also needs to merge this upstream commit.
 - **Beta.2 dev cycle open**: Suite version at `v0.0.1-beta.2`.
-- **REMAINING TODAY backported**: `ReviewPumpWidget` now uses server-provided `target_flow_rate`; label changed TARGET FLOW → REMAINING TODAY; GOAL MET badge shown when `goal_met==true` or `target_flow_rate <= 0`; fallback to local `ReviewPumpCalculator` if field absent (backwards-compat).
-- **HeadlessLoopback implemented**: `ghost/headless_loopback.py` — 22 unit tests syntax-verified only.
+- **Majesty Cake implemented**: `MomentumVisualizer` now has `isAllClear` param, three-state color palette (Gold/Green/Red), and Majesty Rings (two animated expanding gold circles on non-rotating Canvas overlay).
+- **9 unit tests added**: `MomentumVisualizerTest.kt` covers `momentumOrbState()` state transitions and boundary conditions — syntax-verified, not yet run via pr-test.
 
-## Verified This Session (2026-04-21, plan yebyen/mecris#242)
-- [x] **Plan issue opened**: yebyen/mecris#242 — recorded before touching any code.
-- [x] **LanguageStatDto updated**: `target_flow_rate: Double? = null`, `absolute_target: Int? = null`, `goal_met: Boolean = false` added — nullable/defaulted for API backwards-compat.
-- [x] **ReviewPumpWidget updated**: `remainingToday` uses server value with local fallback; "TARGET FLOW" → "REMAINING TODAY"; GOAL MET badge added.
-- [x] **No dead code**: `targetFlowRate` variable fully removed; no references remain.
-- [x] **Commit `e30cda5`**: `feat(android): backport REMAINING TODAY counter to ReviewPumpWidget (kingdonb#194)` — committed successfully.
-- [x] **Plan issue closed**: yebyen/mecris#242 closed with completion comment.
+## Verified This Session (2026-04-21, plan yebyen/mecris#243)
+- [x] **Plan issue opened**: yebyen/mecris#243 — recorded before touching any code.
+- [x] **MomentumOrbState enum added**: `DEBT / STABLE / ALL_CLEAR` — pure testable type.
+- [x] **momentumOrbState() function added**: pure function, no Compose dependency, drives color derivation.
+- [x] **MomentumVisualizer extended**: `isAllClear: Boolean = false` param; Gold/Green/Red colors; Majesty Rings on non-rotating overlay Canvas.
+- [x] **Call site updated**: `MainNeuralDashboard` passes `isAllClear = aggregateStatus?.all_clear == true`.
+- [x] **Commit `96a3fb5`**: `feat(android): add Majesty Rings + all_clear state to MomentumVisualizer (kingdonb#195)` — committed successfully.
+- [x] **Plan issue closed**: yebyen/mecris#243 closed with completion comment.
 
 ## Pending Verification
 
 ### 👤 Human-required (cannot be resolved by bot)
 - [ ] **Rust test gap (workflow fix)**: Apply fix from yebyen/mecris#142. Needs `workflow` PAT scope — must be applied by kingdonb.
 - [ ] **Android test count investigation**: `PocketIdAuthTest` pre-existing failure — out of bot scope.
-- [ ] **Configure internal_api_key in Fermyon Cloud**: Postponed. Prioritizing debouncing tests over endpoint auth.
-- [ ] **Open PR to kingdonb/mecris**: yebyen is now 5 commits ahead — human should review and merge obsidian parser + headless loopback + REMAINING TODAY backport.
+- [ ] **Configure internal_api_key in Fermyon Cloud**: Postponed. Prioritizing feature work.
+- [ ] **Open PR to kingdonb/mecris**: yebyen is now 7 commits ahead — human should review and merge obsidian parser + headless loopback + REMAINING TODAY + Majesty Cake.
+- [ ] **Merge upstream commit**: kingdonb `6157f5f` (Empty Backlog Protocol docs) is NOT in yebyen — needs human merge or bot sync when PAT scope allows.
 
 ### 🤖 Bot-actionable (can be resolved in future sessions)
-- [ ] **Confirm Python+Android test baseline via pr-test**: Estimated ~506 Python (464 baseline + 20 obsidian + 22 headless_loopback) + Android tests (27 total, 1 pre-existing failure). Verify on next PR test run.
-- [ ] **Backport "Majesty Cake" Visualizer (Issue #195)**: Implement pulsing orb and Majesty Rings in Jetpack Compose for the Android app.
+- [ ] **Confirm Python+Android test baseline via pr-test**: Estimated ~506 Python (464 baseline + 20 obsidian + 22 headless_loopback) + Android tests (~27 total + 9 new MomentumVisualizerTest = ~36, minus 1 pre-existing PocketIdAuthTest failure). Verify on next PR test run.
+- [ ] **Sync upstream `6157f5f` from kingdonb**: Bot can fetch and merge if a PR can be opened against yebyen fork, or via fetch+commit pattern.
 
 ## New Features Landed in beta.2 dev cycle (since beta.1 baseline `90a569e`)
 
+- **feat(android): Majesty Rings + all_clear state to MomentumVisualizer** (`96a3fb5`): `MomentumOrbState` enum, `momentumOrbState()` pure function, Gold/Green/Red color states, animated expanding rings overlay. 9 unit tests. Resolves yebyen/mecris#243, contributes to kingdonb/mecris#195.
 - **feat(android): REMAINING TODAY counter backport** (`e30cda5`): `LanguageStatDto` gains `target_flow_rate`, `absolute_target`, `goal_met`; `ReviewPumpWidget` uses server value with GOAL MET badge. Resolves yebyen/mecris#242, contributes to kingdonb/mecris#194.
 - **feat(ghost): HeadlessLoopback subprocess wrapper** (`0e50bb4`): `ghost/headless_loopback.py` — spawns `gemini --yolo`, captures stdout/stderr, SIGKILL timeout, 22 unit tests. Resolves kingdonb/mecris#197.
 - **feat(obsidian): alternate checkbox styles in todo parser** (`ebe3d30`): Broaden regex to `[^\[\]]`; expose raw `status` char; add 20 unit tests. Resolves kingdonb/mecris#196.
@@ -67,7 +70,7 @@
 - **Classic PAT scope**: `GITHUB_CLASSIC_PAT` has `repo` scope ONLY — no `workflow` scope, no `read:org`.
 - **Fine-grained PAT**: `GITHUB_TOKEN` scoped to yebyen/mecris only. Cannot create PRs on kingdonb/mecris — use `GITHUB_CLASSIC_PAT`.
 - **Python venv not present in bot runner**: Validate Python tests via pr-test workflow only.
-- **Python test count baseline**: ~464 passed (6 skipped), 0 failing + 20 new in test_obsidian_parser.py + 22 new in test_headless_loopback.py (both syntax-verified only). Rust: 108 passed. Android: 27 tests (1 pre-existing failure).
+- **Python test count baseline**: ~464 passed (6 skipped), 0 failing + 20 new in test_obsidian_parser.py + 22 new in test_headless_loopback.py (both syntax-verified only). Rust: 108 passed. Android: ~27 tests (1 pre-existing PocketIdAuthTest failure) + 9 new in MomentumVisualizerTest.kt (syntax-verified).
 - **Rust satellite crates**: 99+ tests in sync-service, 28 in boris-fiona-walker, others not in CI yet.
 - **autonomous_sync_enabled**: DB flag per user (`users` table). Controls which users get processed by `/internal/trigger-reminders`. Default `false`.
 - **NEXT_SESSION.md merge conflict is permanently fixed**: `.gitattributes merge=union` on yebyen/mecris:main.
@@ -76,3 +79,4 @@
 - **Obsidian parser**: `_parse_todos_from_content` now uses `[^\[\]]` regex; returns `status` (raw char) + `completed` (bool). `ALTERNATE_CHECKBOX_CHARS` frozenset on class.
 - **HeadlessLoopback**: `ghost/headless_loopback.py` — `HeadlessLoopback(command, timeout, log_output)` + `LoopbackResult(exit_code, stdout, stderr, timed_out, command)`. Default command: `["gemini", "--yolo"]`, default timeout: 1800s. `start_new_session=True` isolates child process group. 22 unit tests in `tests/test_headless_loopback.py`.
 - **REMAINING TODAY backport**: `LanguageStatDto` fields `target_flow_rate: Double? = null`, `absolute_target: Int? = null`, `goal_met: Boolean = false`. `ReviewPumpWidget` uses `stat.target_flow_rate` with `ReviewPumpCalculator` fallback. GOAL MET badge shown when `goalMet == true`. Label "TARGET FLOW" removed; "REMAINING TODAY" replaces it.
+- **MomentumVisualizer Majesty Cake**: `MomentumOrbState` enum (DEBT/STABLE/ALL_CLEAR); `momentumOrbState(momentum, isAllClear)` pure function; `MomentumVisualizer(isAllClear = ...)` param; Gold (#FFD600) orb + Majesty Rings (two animated expanding circles) when `all_clear == true`. 9 unit tests in `MomentumVisualizerTest.kt`.

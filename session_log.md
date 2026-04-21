@@ -2030,3 +2030,14 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: pr-test (no venv in bot runner; Android test count confirmed on next human-triggered PR run). Majesty Cake Visualizer (#195) — preserved in NEXT_SESSION.md for next session.
 
 **Next**: Open PR to kingdonb/mecris with all 5 commits (human). Confirm test baseline via pr-test. Tackle Majesty Cake Visualizer (kingdonb#195) — next bot-actionable Android backport.
+
+## 2026-04-21 — feat(android): Majesty Cake Visualizer backport — Majesty Rings + all_clear color states (session #19)
+
+**Planned**: Backport MomentumVisualizer (Majesty Cake) to Android — pulsing orb + Majesty Rings in Jetpack Compose, matching web `MomentumVisualizer.tsx`. (yebyen/mecris#243, contributes to kingdonb/mecris#195)
+
+**Done**: Extended existing `MomentumVisualizer` composable (already in `MainActivity.kt`) with `isAllClear: Boolean = false` parameter. Added `MomentumOrbState` enum (DEBT/STABLE/ALL_CLEAR) and `momentumOrbState()` pure function for testable color derivation. Color palette now syncs to state: Gold (#FFD600) for All Clear, Green (#00C853) for Stable, Red (#FF1744) for Debt — matching web component. Majesty Rings implemented as two animated expanding gold concentric circles on a non-rotating Canvas overlay (separate from the rotating orb layer). Call site updated to pass `isAllClear = aggregateStatus?.all_clear == true`. Added `MomentumVisualizerTest.kt` with 9 unit tests. Committed `96a3fb5`.
+- yebyen/mecris now 7 commits ahead of kingdonb/mecris.
+
+**Skipped**: pr-test (no venv in bot runner; Android test validation deferred to next human-triggered PR run). Upstream sync of kingdonb `6157f5f` (Empty Backlog Protocol docs) — needs human merge or separate session.
+
+**Next**: Open PR to kingdonb/mecris with all 7 commits (human). Confirm test baseline via pr-test (~506 Python + ~36 Android). Sync upstream kingdonb `6157f5f` into yebyen.
