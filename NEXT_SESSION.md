@@ -1,13 +1,19 @@
 # Next Session: Human review and merge of kingdonb/mecris#198 (beta.2 PR — 8 commits)
 
-## Current Status (2026-04-21, post-session #20, plan yebyen/mecris#244)
+## Current Status (2026-04-21, post-session #21, plan yebyen/mecris#245)
 - **PR open**: kingdonb/mecris#198 — yebyen:main → kingdonb:main, 8 commits (7 feature + 1 compile fix). Ready for human review.
-- **Test baseline confirmed via pr-test**: Python 480/6-skipped, Android 35/36 (1 pre-existing PocketIdAuthTest failure), Rust 114 — all ✅.
-- **Android compile fix committed**: `a8dd56f` — `remainingToday.toDouble()` at MainActivity.kt:1160 resolves `Number/Double` division type error introduced by REMAINING TODAY backport.
-- **Rust CI now working**: `working-directory` fix was applied by kingdonb (yebyen/mecris#142 issue can be closed — fix is in).
-- **Repos status**: yebyen is 8 commits ahead of kingdonb (7 feature + 1 compile fix, all in PR #198). kingdonb HEAD = `6157f5f` (Empty Backlog Protocol docs, already in yebyen).
+- **Test baseline correct**: Python 480 passed / 6 skipped — confirmed accurate (yebyen/mecris#245). Previous "expected 506" was based on an overstated baseline (464 vs ~437 actual).
+- **yebyen/mecris#142 closed**: Rust CI fix was applied by kingdonb; issue closed in session #21.
+- **Repos status**: yebyen is 9 commits ahead of kingdonb (8 feature/fix + 1 baseline correction commit). All 8 feature commits in PR #198.
 
-## Verified This Session (2026-04-21, plan yebyen/mecris#244)
+## Verified This Session (2026-04-21, session #21, plan yebyen/mecris#245)
+- [x] **Plan issue opened**: yebyen/mecris#245 — recorded before touching code.
+- [x] **Python test count investigation**: 26-test gap explained (yebyen/mecris#245#comment). Overstated baseline (464 vs ~437 actual) + obsidian 19 (not 20) + headless 24 (not 22). No tests broken.
+- [x] **yebyen/mecris#142 closed**: Rust CI working-directory fix confirmed applied; stale issue closed.
+- [x] **NEXT_SESSION.md baseline corrected**: "expected 506" warning removed; committed `b3b1bfc`.
+- [x] **Plan issue closed**: yebyen/mecris#245 closed with completion comment.
+
+## Previously Verified (2026-04-21, session #20, plan yebyen/mecris#244)
 - [x] **Plan issue opened**: yebyen/mecris#244 — recorded before touching any code.
 - [x] **PR opened**: kingdonb/mecris#198 — yebyen:main → kingdonb:main, 7 feature commits.
 - [x] **Android compile error found and fixed**: `remainingToday` typed as `Number` (common supertype of `Double?` and `Int`); `.toDouble()` added at line 1160; committed `a8dd56f`.
@@ -19,7 +25,6 @@
 
 ### 👤 Human-required (cannot be resolved by bot)
 - [ ] **Review and merge kingdonb/mecris#198**: 8 commits ready — obsidian parser + HeadlessLoopback + REMAINING TODAY + Majesty Cake + compile fix.
-- [x] **Close yebyen/mecris#142**: DONE — closed in session #21 (2026-04-21). Rust CI fix was already applied by kingdonb.
 - [ ] **Android test count investigation**: `PocketIdAuthTest` pre-existing failure (`ExceptionInInitializerError` at line 35) — out of bot scope.
 - [ ] **Configure internal_api_key in Fermyon Cloud**: Postponed. Prioritizing feature work.
 - [ ] **Apply migrate_v6 to production Neon**: `phone_verified`, `phone_verifications`, `scheduler_election` multi-user, `vacation_mode_until` changes.

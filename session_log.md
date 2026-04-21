@@ -2051,3 +2051,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: Python test count investigation (26 fewer than estimated — deferred to next session). Merge of #198 (human-required).
 
 **Next**: Human review and merge of kingdonb/mecris#198. Investigate Python test count discrepancy (expected 506, actual 480). Close yebyen/mecris#142 (Rust CI fix confirmed working).
+
+## 2026-04-21 🏛️ — Python test count investigation resolved + yebyen/mecris#142 closed (session #21, yebyen/mecris#245, complete)
+
+**Planned**: Investigate Python test discrepancy (480 actual vs ~506 expected) and close stale yebyen/mecris#142. (yebyen/mecris#245)
+
+**Done**: Full static audit of Python test suite. Root cause of 26-test gap identified: baseline was overstated at 464 (actual ~437) + obsidian parser has 19 tests not 20 + headless_loopback has 24 not 22. Key discovery: `test_mecris.py` (6 tests) and `test_beeminder_live.py` (8 tests) use non-pytest classes with `__init__` — never collected. `conftest.py:pytest_ignore_collect` silently drops `test_standalone_access.py` + `test_unauthorized_access.py` (5 tests) when NEON_DB_URL absent. 480 is the correct passing count — no tests broken. Findings posted on yebyen/mecris#245. NEXT_SESSION.md baseline note corrected (commit `b3b1bfc`). yebyen/mecris#142 closed (stale — Rust CI fix already applied by kingdonb).
+
+**Skipped**: No code features this session (no pending bot-actionable feature work while PR #198 awaits human review).
+
+**Next**: Human review and merge of kingdonb/mecris#198. After merge, pick next kingdonb open issue for beta.2 feature work (candidates: #193 LLM Quota Hypervisor, #185 Security Hardening).
