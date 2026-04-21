@@ -1157,7 +1157,7 @@ fun ReviewPumpWidget(
                 
                 // The Target Marker
                 val maxScale = 1000.0
-                val targetPos = (remainingToday / maxScale).coerceIn(0.1, 0.9).toFloat()
+                val targetPos = (remainingToday.toDouble() / maxScale).coerceIn(0.1, 0.9).toFloat()
 
                 Canvas(modifier = Modifier.fillMaxSize()) {
                     val x = size.width * targetPos
