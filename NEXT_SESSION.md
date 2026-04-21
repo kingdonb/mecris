@@ -19,13 +19,13 @@
 
 ### 👤 Human-required (cannot be resolved by bot)
 - [ ] **Review and merge kingdonb/mecris#198**: 8 commits ready — obsidian parser + HeadlessLoopback + REMAINING TODAY + Majesty Cake + compile fix.
-- [ ] **Close yebyen/mecris#142**: Rust CI fix (working-directory) is already applied — this issue can be closed.
+- [x] **Close yebyen/mecris#142**: DONE — closed in session #21 (2026-04-21). Rust CI fix was already applied by kingdonb.
 - [ ] **Android test count investigation**: `PocketIdAuthTest` pre-existing failure (`ExceptionInInitializerError` at line 35) — out of bot scope.
 - [ ] **Configure internal_api_key in Fermyon Cloud**: Postponed. Prioritizing feature work.
 - [ ] **Apply migrate_v6 to production Neon**: `phone_verified`, `phone_verifications`, `scheduler_election` multi-user, `vacation_mode_until` changes.
 
 ### 🤖 Bot-actionable (can be resolved in future sessions)
-- [ ] **Python test count investigation**: Expected ~506 (464 + 20 obsidian + 22 headless_loopback) but pr-test returns 480. Discrepancy of 26. Investigate whether some tests are being skipped or the baseline was overstated.
+- [x] **Python test count investigation**: RESOLVED (yebyen/mecris#245). The 26-test gap was from an overstated baseline (claimed 464, actual ~437) + minor count errors. 480 is the correct passing count. No tests are broken.
 - [ ] **Open next feature work**: After PR #198 merges, pick next kingdonb open issue for beta.2 feature work.
 
 ## New Features Landed in beta.2 dev cycle (since beta.1 baseline `90a569e`)
@@ -49,7 +49,7 @@
 - **Web app**: Included in suite beta.2 bump
 
 ## Test Baseline (confirmed 2026-04-21 via pr-test on kingdonb/mecris#198)
-- **Python**: 480 passed, 6 skipped (actual — note: expected 506, discrepancy of 26 to investigate)
+- **Python**: 480 passed, 6 skipped (confirmed correct — baseline was ~437, not 464 as previously stated)
 - **Android**: 36 tests total, 35 passing, 1 pre-existing PocketIdAuthTest failure (`ExceptionInInitializerError`)
 - **Rust**: 114 passed (boris-fiona-walker + sync-service combined)
 
