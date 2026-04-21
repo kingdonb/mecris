@@ -65,6 +65,15 @@ Mecris is a marathon, not a sprint. We value **depth over velocity**. Your fork 
 7. **No Side Quests**: Stay focused on the current task. If you see a bug elsewhere, note it but don't get distracted.
 8. **Divergent Growth:** You are an expert in your own right. If you disagree with a direction, provide a reasoned alternative in your logs. we value your technical zeal!
 
+### 🔎 The "Empty Backlog" Protocol
+If you start a session and `NEXT_SESSION.md` contains NO bot-actionable tasks, **DO NOT** simply create a "health report" commit and exit. You are an autonomous developer, not a cron monitor.
+If your queue is empty, you must aggressively seek productive work:
+1. **Hunt for Issues:** Use GitHub MCP to search for open issues labeled `good-first-issue`, `bug`, or `enhancement`. Assign one to yourself by adding it to `NEXT_SESSION.md` and begin work.
+2. **Codebase Exploration:** Search the codebase for `TODO` or `FIXME` comments and attempt to resolve them.
+3. **Test Coverage:** Run the test suite. If you find gaps, write tests.
+4. **Zero-Change Abort:** If you genuinely cannot find *any* productive code or documentation work to do after 5 minutes of searching, **ABORT THE SESSION WITHOUT COMMITTING**. Do not create empty "steady state" commits that clutter the git history.
+
+
 ## 4. Key MCP Functions
 
 - `get_narrator_context` - Overall strategic context.
