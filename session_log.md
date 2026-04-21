@@ -2013,3 +2013,20 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: pr-test (no venv in bot runner; Python test count will be confirmed on next human-triggered PR run). Android backport tasks (#194, #195) — preserved in NEXT_SESSION.md for future sessions.
 
 **Next**: Open PR to kingdonb/mecris with obsidian parser + headless loopback (human). Confirm Python test baseline (~506) via pr-test on next PR run. Android backports (#194, #195) remain bot-actionable.
+
+## 2026-04-21 🏛️ — feat(android): REMAINING TODAY counter backport to ReviewPumpWidget, session #18 (yebyen/mecris#242, complete)
+
+**Planned**: Add `target_flow_rate`, `absolute_target`, `goal_met` to `LanguageStatDto`; update `ReviewPumpWidget` to show server-provided "REMAINING TODAY" value and GOAL MET badge. (Plan: yebyen/mecris#242, referencing kingdonb/mecris#194)
+
+**Done**:
+- Orient confirmed yebyen/mecris 4 commits ahead of kingdonb/mecris; no needs-test/pr-review gates; one open yebyen issue (#142, human-only).
+- Plan issue yebyen/mecris#242 created before touching code.
+- `SyncServiceApi.kt`: added `target_flow_rate: Double? = null`, `absolute_target: Int? = null`, `goal_met: Boolean = false` to `LanguageStatDto` — nullable/defaulted for backwards-compat.
+- `MainActivity.kt`: `remainingToday` variable prefers `stat.target_flow_rate`, falls back to `ReviewPumpCalculator.calculateTargetFlowRate()`. `goalMet` flag derived from `stat.goal_met || target_flow_rate <= 0`. Label "TARGET FLOW" → "REMAINING TODAY". Green "GOAL MET" badge surface shown when goal satisfied. `targetFlowRate` variable fully eliminated — no dead code.
+- Commit `e30cda5`: `feat(android): backport REMAINING TODAY counter to ReviewPumpWidget (kingdonb#194)`.
+- Plan issue yebyen/mecris#242 closed with completion comment.
+- yebyen/mecris now 5 commits ahead of kingdonb/mecris.
+
+**Skipped**: pr-test (no venv in bot runner; Android test count confirmed on next human-triggered PR run). Majesty Cake Visualizer (#195) — preserved in NEXT_SESSION.md for next session.
+
+**Next**: Open PR to kingdonb/mecris with all 5 commits (human). Confirm test baseline via pr-test. Tackle Majesty Cake Visualizer (kingdonb#195) — next bot-actionable Android backport.
