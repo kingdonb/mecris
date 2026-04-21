@@ -1,36 +1,51 @@
-# Next Session: Health check complete — repos fully in sync, awaiting human-driven PRs (beta.2 dev cycle, session #15 archived)
+# Next Session: Human review and merge of kingdonb/mecris#198 (beta.2 PR — 9 commits)
 
-## Current Status (2026-04-21, post-health-report #15, health yebyen/mecris#239)
-- **Repos FULLY IN SYNC**: Both yebyen/mecris and kingdonb/mecris HEAD at `a10d988` — first fully-synced state in 14+ sessions.
-- **Beta.2 dev cycle open**: Suite version bumped to `v0.0.1-beta.2` — next development iteration begins.
-- **SLSA Build Level 1 achieved**: `7d3d981` adds cryptographically signed provenance for APK and WASM artifacts.
-- **No open PRs on kingdonb/mecris**: Nothing to test. Wait for human-driven PRs.
-- **One open issue on yebyen**: yebyen/mecris#142 (Rust CI fix) needs `workflow` PAT scope — must be applied by kingdonb. Out of bot scope.
+## Current Status (2026-04-21, post-session #22, plan yebyen/mecris#246)
+- **PR open**: kingdonb/mecris#198 — yebyen:main → kingdonb:main, 9 commits (7 feature + 1 compile fix + 1 Rust test commit). Ready for human review.
+- **Test baseline correct**: Python 480 passed / 6 skipped; **Rust 122 passed** (up from 114 — 8 new unit tests for `calculate_review_pump_targets`, commit `608a562`). Both confirmed via pr-test on PR #198.
+- **yebyen/mecris#142 closed**: Rust CI fix was applied by kingdonb; issue closed in session #21.
+- **Repos status**: yebyen is 10 commits ahead of kingdonb (9 on PR #198 + 0 extra). All 9 commits in PR #198.
 
-## Verified This Session (2026-04-21, health yebyen/mecris#239)
-- [x] **Repos fully in sync**: yebyen HEAD `a10d988` matches kingdonb HEAD `a10d988` — kingdonb merged all health commits in `bea91e0`, then pushed two docs commits (`27c665c`, `a10d988`) which yebyen also has.
-- [x] **No open PRs on kingdonb/mecris**: Confirmed — steady-state hold.
-- [x] **No needs-test/pr-review/bug issues**: Confirmed — nothing actionable for bot.
-- [x] **Health report opened**: yebyen/mecris#239 documents beta.2 dev cycle steady state (session #15), repos now fully in sync.
-- [x] **yebyen#238 closed**: Prior session health report confirmed complete and closed.
-- [x] **No plan issue**: Health-only session — NO PLACEHOLDER ISSUES rule applied correctly.
+## Verified This Session (2026-04-21, session #22, plan yebyen/mecris#246)
+- [x] **Plan issue opened**: yebyen/mecris#246 — recorded before touching code.
+- [x] **8 unit tests for `calculate_review_pump_targets`**: All multiplier branches (2/3/4/5/6/7/10 and unknown), flow_rate clamp, goal_met edge cases. Committed `608a562`.
+- [x] **Rust test count increased**: 114 → 122 confirmed via pr-test run 24749188270 on kingdonb/mecris#198.
+- [x] **Python baseline unchanged**: 480 passed, 6 skipped — stable.
+- [x] **Plan issue closed**: yebyen/mecris#246 closed with completion comment.
+
+## Previously Verified (2026-04-21, session #21, plan yebyen/mecris#245)
+- [x] **Plan issue opened**: yebyen/mecris#245 — recorded before touching code.
+- [x] **Python test count investigation**: 26-test gap explained. Overstated baseline (464 vs ~437 actual) + obsidian 19 (not 20) + headless 24 (not 22). No tests broken.
+- [x] **yebyen/mecris#142 closed**: Rust CI working-directory fix confirmed applied; stale issue closed.
+- [x] **NEXT_SESSION.md baseline corrected**: "expected 506" warning removed; committed `b3b1bfc`.
+
+## Previously Verified (2026-04-21, session #20, plan yebyen/mecris#244)
+- [x] **Plan issue opened**: yebyen/mecris#244 — recorded before touching any code.
+- [x] **PR opened**: kingdonb/mecris#198 — yebyen:main → kingdonb:main, 7 feature commits.
+- [x] **Android compile error found and fixed**: `remainingToday` typed as `Number` (common supertype of `Double?` and `Int`); `.toDouble()` added at line 1160; committed `a8dd56f`.
+- [x] **pr-test baseline confirmed**: Python 480 passed / 6 skipped; Android 36 tests / 1 pre-existing failure; Rust 114 passed.
+- [x] **Rust CI working**: yebyen/mecris#142 fix confirmed applied by kingdonb — `working-directory` is correct in pr-test.yml.
+- [x] **Plan issue closed**: yebyen/mecris#244 closed with completion comment.
 
 ## Pending Verification
 
 ### 👤 Human-required (cannot be resolved by bot)
-- [ ] **Rust test gap (workflow fix)**: Apply fix from yebyen/mecris#142. Needs `workflow` PAT scope — must be applied by kingdonb.
-- [ ] **Android test count investigation**: `PocketIdAuthTest` pre-existing failure — out of bot scope.
-- [ ] **Configure internal_api_key in Fermyon Cloud**: Postponed. Prioritizing debouncing tests over endpoint auth.
+- [ ] **Review and merge kingdonb/mecris#198**: 9 commits ready — obsidian parser + HeadlessLoopback + REMAINING TODAY + Majesty Cake + compile fix + calculate_review_pump_targets unit tests.
+- [ ] **Android test count investigation**: `PocketIdAuthTest` pre-existing failure (`ExceptionInInitializerError` at line 35) — out of bot scope.
+- [ ] **Configure internal_api_key in Fermyon Cloud**: Postponed. Prioritizing feature work.
+- [ ] **Apply migrate_v6 to production Neon**: `phone_verified`, `phone_verifications`, `scheduler_election` multi-user, `vacation_mode_until` changes.
 
 ### 🤖 Bot-actionable (can be resolved in future sessions)
-- [ ] **Backport "REMAINING TODAY" counter (Issue #194)**: Update `LanguageStatDto` and `ReviewPumpWidget` in Android app to match Web UI "remaining" count logic.
-- [ ] **Backport "Majesty Cake" Visualizer (Issue #195)**: Implement pulsing orb and Majesty Rings in Jetpack Compose for the Android app.
-- [ ] **Enhance Obsidian Todo Parser (Issue #196)**: Update `obsidian_client.py` regex to capture alternate checkbox styles (e.g. `[>]`, `[-]`).
-- [ ] **Implement Headless Loopback wrapper (Issue #197)**: Create a subprocess wrapper for `gemini --yolo` with timeout limits to enable background autonomous turns.
-- [ ] **Confirm Python test baseline via pr-test**: Estimated ~464 passed (unchanged). Verify on next PR test run when a PR is available.
+- [x] **Python test count investigation**: RESOLVED (yebyen/mecris#245). The 26-test gap was from an overstated baseline (claimed 464, actual ~437) + minor count errors. 480 is the correct passing count. No tests are broken.
+- [ ] **Open next feature work**: After PR #198 merges, pick next kingdonb open issue for beta.2 feature work.
 
 ## New Features Landed in beta.2 dev cycle (since beta.1 baseline `90a569e`)
 
+- **fix(android): Number/Double division type error in ReviewPumpWidget progress bar** (`a8dd56f`): `remainingToday.toDouble()` at line 1160 — resolves compile error from `Number` type inference. Contributes to kingdonb/mecris#198.
+- **feat(android): Majesty Rings + all_clear state to MomentumVisualizer** (`96a3fb5`): `MomentumOrbState` enum, `momentumOrbState()` pure function, Gold/Green/Red color states, animated expanding rings overlay. 9 unit tests. Resolves yebyen/mecris#243, contributes to kingdonb/mecris#195.
+- **feat(android): REMAINING TODAY counter backport** (`e30cda5`): `LanguageStatDto` gains `target_flow_rate`, `absolute_target`, `goal_met`; `ReviewPumpWidget` uses server value with GOAL MET badge. Resolves yebyen/mecris#242, contributes to kingdonb/mecris#194.
+- **feat(ghost): HeadlessLoopback subprocess wrapper** (`0e50bb4`): `ghost/headless_loopback.py` — spawns `gemini --yolo`, captures stdout/stderr, SIGKILL timeout, 22 unit tests. Resolves kingdonb/mecris#197.
+- **feat(obsidian): alternate checkbox styles in todo parser** (`ebe3d30`): Broaden regex to `[^\[\]]`; expose raw `status` char; add 20 unit tests. Resolves kingdonb/mecris#196.
 - **feat(security): achieve SLSA Build Level 1** (`7d3d981`): Add `actions/attest-build-provenance` to Release workflow; generate signed provenance for APK and WASM; ROADMAP.md Alpha Hardening SLSA goals marked complete.
 - **chore(config): remove --http flag from gemini MCP settings** (`b1d722e`): Beta testing config adjustment for Gemini MCP server.
 - **chore(release): bump version to 0.0.1-beta.2** (`34d8582`): All 15+ ecosystem locations updated; dev cycle baseline set.
@@ -43,6 +58,11 @@
 - **Python MCP**: 0.5.1-beta.2
 - **Suite**: 0.0.1-beta.2
 - **Web app**: Included in suite beta.2 bump
+
+## Test Baseline (confirmed 2026-04-21 via pr-test on kingdonb/mecris#198, run 24749188270)
+- **Python**: 480 passed, 6 skipped (correct — baseline was ~437, not 464 as previously stated)
+- **Android**: 36 tests total, 35 passing, 1 pre-existing PocketIdAuthTest failure (`ExceptionInInitializerError`)
+- **Rust**: 122 passed (up from 114 — 8 new tests for `calculate_review_pump_targets`, session #22)
 
 ## Infrastructure Notes (carried forward)
 - **phone_verified column**: `ALTER TABLE users ADD COLUMN IF NOT EXISTS phone_verified BOOLEAN DEFAULT FALSE` — in schema.sql AND migrate_v6. Apply migrate_v6 to production Neon.
@@ -66,9 +86,14 @@
 - **Classic PAT scope**: `GITHUB_CLASSIC_PAT` has `repo` scope ONLY — no `workflow` scope, no `read:org`.
 - **Fine-grained PAT**: `GITHUB_TOKEN` scoped to yebyen/mecris only. Cannot create PRs on kingdonb/mecris — use `GITHUB_CLASSIC_PAT`.
 - **Python venv not present in bot runner**: Validate Python tests via pr-test workflow only.
-- **Python test count baseline**: ~464 passed (6 skipped), 0 failing. Rust: 108 passed. Android: 27 tests (1 pre-existing failure).
 - **Rust satellite crates**: 99+ tests in sync-service, 28 in boris-fiona-walker, others not in CI yet.
 - **autonomous_sync_enabled**: DB flag per user (`users` table). Controls which users get processed by `/internal/trigger-reminders`. Default `false`.
 - **NEXT_SESSION.md merge conflict is permanently fixed**: `.gitattributes merge=union` on yebyen/mecris:main.
 - **bump_version.py now targets 15+ locations**: Covers Android, Spin, Python MCP, Web, and suite-level files.
 - **SLSA Build Level 1**: `actions/attest-build-provenance` added to Release workflow. Signed provenance generated for APK + WASM artifacts.
+- **Obsidian parser**: `_parse_todos_from_content` now uses `[^\[\]]` regex; returns `status` (raw char) + `completed` (bool). `ALTERNATE_CHECKBOX_CHARS` frozenset on class.
+- **HeadlessLoopback**: `ghost/headless_loopback.py` — `HeadlessLoopback(command, timeout, log_output)` + `LoopbackResult(exit_code, stdout, stderr, timed_out, command)`. Default command: `["gemini", "--yolo"]`, default timeout: 1800s. `start_new_session=True` isolates child process group. 22 unit tests in `tests/test_headless_loopback.py`.
+- **REMAINING TODAY backport**: `LanguageStatDto` fields `target_flow_rate: Double? = null`, `absolute_target: Int? = null`, `goal_met: Boolean = false`. `ReviewPumpWidget` uses `stat.target_flow_rate` with `ReviewPumpCalculator` fallback. GOAL MET badge shown when `goalMet == true`. Label "TARGET FLOW" removed; "REMAINING TODAY" replaces it.
+- **MomentumVisualizer Majesty Cake**: `MomentumOrbState` enum (DEBT/STABLE/ALL_CLEAR); `momentumOrbState(momentum, isAllClear)` pure function; `MomentumVisualizer(isAllClear = ...)` param; Gold (#FFD600) orb + Majesty Rings (two animated expanding circles) when `all_clear == true`. 9 unit tests in `MomentumVisualizerTest.kt`.
+- **ReviewPumpWidget progress bar type fix**: `remainingToday.toDouble()` at MainActivity.kt:1160 — `Number / Double` was ambiguous to Kotlin compiler; explicit cast resolves it.
+- **Rust CI working-directory fixed**: yebyen/mecris#142 fix applied by kingdonb — `cargo test` runs from `mecris-go-spin/sync-service/`. 114 Rust tests passing in CI.

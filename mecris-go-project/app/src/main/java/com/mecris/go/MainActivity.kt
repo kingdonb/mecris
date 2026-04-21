@@ -39,6 +39,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -834,7 +835,7 @@ fun MainNeuralDashboard(
         val momentumValue = if (isFetching) 0.5f else if (isStable) 0.9f else 0.2f
         val momentumColor = if (isFetching) Color.White else if (isStable) Color(0xFF00C853) else Color(0xFFFF1744)
 
-        MomentumVisualizer(momentum = momentumValue, overrideColor = if (isFetching) Color.White else null)
+        MomentumVisualizer(momentum = momentumValue, isAllClear = aggregateStatus?.all_clear == true, overrideColor = if (isFetching) Color.White else null)
 
         Column(modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 8.dp),
                horizontalAlignment = Alignment.CenterHorizontally) {
@@ -1048,7 +1049,9 @@ fun ReviewPumpWidget(
     
     val currentDisplayMultiplier = if (surgicalUpdateInProgress) localMultiplier else (stat.pump_multiplier ?: 1.0)
     val leverName = com.mecris.go.sync.ReviewPumpCalculator.getLeverName(currentDisplayMultiplier)
-    val targetFlowRate = com.mecris.go.sync.ReviewPumpCalculator.calculateTargetFlowRate(currentDisplayMultiplier, stat.current, stat.tomorrow)
+    val remainingToday = stat.target_flow_rate
+        ?: com.mecris.go.sync.ReviewPumpCalculator.calculateTargetFlowRate(currentDisplayMultiplier, stat.current, stat.tomorrow)
+    val goalMet = stat.goal_met || (stat.target_flow_rate != null && stat.target_flow_rate <= 0.0)
     
     val accentColor = if (stat.name.equals("ARABIC", ignoreCase = true)) Color(0xFFFFD600) 
                       else if (stat.name.equals("GREEK", ignoreCase = true)) Color(0xFF00E5FF) 
@@ -1154,8 +1157,8 @@ fun ReviewPumpWidget(
                 
                 // The Target Marker
                 val maxScale = 1000.0
-                val targetPos = (targetFlowRate / maxScale).coerceIn(0.1, 0.9).toFloat()
-                
+                val targetPos = (remainingToday.toDouble() / maxScale).coerceIn(0.1, 0.9).toFloat()
+
                 Canvas(modifier = Modifier.fillMaxSize()) {
                     val x = size.width * targetPos
                     drawLine(
@@ -1172,16 +1175,31 @@ fun ReviewPumpWidget(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Column {
-                        Text("TARGET FLOW", style = MaterialTheme.typography.labelSmall, color = Color.Gray)
-                        // THE ONE NUMBER: Significantly bigger and bolder
-                        Text(
-                            text = "$targetFlowRate", 
-                            style = MaterialTheme.typography.headlineLarge, 
-                            color = accentColor, 
-                            fontWeight = FontWeight.Black
-                        )
+                        Text("REMAINING TODAY", style = MaterialTheme.typography.labelSmall, color = Color.Gray)
+                        if (goalMet) {
+                            Surface(
+                                color = Color(0xFF00C853).copy(alpha = 0.2f),
+                                shape = RoundedCornerShape(4.dp)
+                            ) {
+                                Text(
+                                    text = "GOAL MET",
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                    style = MaterialTheme.typography.headlineLarge,
+                                    color = Color(0xFF00C853),
+                                    fontWeight = FontWeight.Black
+                                )
+                            }
+                        } else {
+                            // THE ONE NUMBER: Significantly bigger and bolder
+                            Text(
+                                text = "$remainingToday",
+                                style = MaterialTheme.typography.headlineLarge,
+                                color = accentColor,
+                                fontWeight = FontWeight.Black
+                            )
+                        }
                     }
-                    
+
                     Column(horizontalAlignment = Alignment.End) {
                         Text("RUNWAY", style = MaterialTheme.typography.labelSmall, color = Color.Gray)
                         Text("${stat.safebuf}D", style = MaterialTheme.typography.titleLarge, color = if (stat.safebuf < 3) Color.Red else Color(0xFF00C853), fontWeight = FontWeight.Black)
@@ -1431,8 +1449,19 @@ fun SystemHealthScreen(
 
 // --- Reusable UI Components ---
 
+/** Three-state model for the MomentumVisualizer orb — testable without Compose. */
+enum class MomentumOrbState { DEBT, STABLE, ALL_CLEAR }
+
+/** Pure function: derives orb state from momentum and all_clear flag. */
+fun momentumOrbState(momentum: Float, isAllClear: Boolean): MomentumOrbState = when {
+    isAllClear -> MomentumOrbState.ALL_CLEAR
+    momentum > 0.5f -> MomentumOrbState.STABLE
+    else -> MomentumOrbState.DEBT
+}
+
 @Composable
-fun MomentumVisualizer(momentum: Float, overrideColor: Color? = null) {
+fun MomentumVisualizer(momentum: Float, isAllClear: Boolean = false, overrideColor: Color? = null) {
+    val orbState = momentumOrbState(momentum, isAllClear)
     val infiniteTransition = rememberInfiniteTransition(label = "momentum")
     val pulseScale by infiniteTransition.animateFloat(
         initialValue = 0.8f,
@@ -1446,16 +1475,60 @@ fun MomentumVisualizer(momentum: Float, overrideColor: Color? = null) {
         animationSpec = infiniteRepeatable(animation = tween(10000, easing = LinearEasing), repeatMode = RepeatMode.Restart),
         label = "rotation"
     )
+    val ring1Progress by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(animation = tween(3000, easing = LinearEasing), repeatMode = RepeatMode.Restart),
+        label = "ring1"
+    )
+    val ring2Progress by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(animation = tween(3000, delayMillis = 1500, easing = LinearEasing), repeatMode = RepeatMode.Restart),
+        label = "ring2"
+    )
 
-    val color1 = overrideColor ?: (if (momentum > 0.5f) Color(0xFF00C853) else Color(0xFFFF1744))
-    val color2 = overrideColor?.copy(alpha = 0.5f) ?: (if (momentum > 0.5f) Color(0xFF2979FF) else Color(0xFFFFEA00))
+    val color1 = overrideColor ?: when (orbState) {
+        MomentumOrbState.ALL_CLEAR -> Color(0xFFFFD600)
+        MomentumOrbState.STABLE    -> Color(0xFF00C853)
+        MomentumOrbState.DEBT      -> Color(0xFFFF1744)
+    }
+    val color2 = overrideColor?.copy(alpha = 0.5f) ?: when (orbState) {
+        MomentumOrbState.ALL_CLEAR -> Color(0xFFFFA000)
+        MomentumOrbState.STABLE    -> Color(0xFF2979FF)
+        MomentumOrbState.DEBT      -> Color(0xFFFFEA00)
+    }
+    val ringColor = Color(0xFFFFD600)
 
-    Canvas(modifier = Modifier.fillMaxSize().graphicsLayer(scaleX = pulseScale * (0.8f + momentum * 0.4f), scaleY = pulseScale * (0.8f + momentum * 0.4f), rotationZ = rotation)) {
-        drawCircle(
-            brush = Brush.radialGradient(colors = listOf(color1.copy(alpha = 0.8f), color2.copy(alpha = 0.2f), Color.Transparent), center = Offset(size.width / 2, size.height / 2), radius = size.width / 2),
-            radius = size.width / 2,
-            center = Offset(size.width / 2, size.height / 2)
-        )
+    Box(modifier = Modifier.fillMaxSize()) {
+        // Orb layer — rotates and pulses
+        Canvas(modifier = Modifier.fillMaxSize().graphicsLayer(scaleX = pulseScale * (0.8f + momentum * 0.4f), scaleY = pulseScale * (0.8f + momentum * 0.4f), rotationZ = rotation)) {
+            drawCircle(
+                brush = Brush.radialGradient(colors = listOf(color1.copy(alpha = 0.8f), color2.copy(alpha = 0.2f), Color.Transparent), center = Offset(size.width / 2, size.height / 2), radius = size.width / 2),
+                radius = size.width / 2,
+                center = Offset(size.width / 2, size.height / 2)
+            )
+        }
+        // Majesty Rings layer — non-rotating, shown only when all_clear
+        if (isAllClear) {
+            Canvas(modifier = Modifier.fillMaxSize()) {
+                val baseRadius = size.minDimension / 2 * 0.6f
+                val ring1Radius = baseRadius * (1f + ring1Progress * 0.8f)
+                drawCircle(
+                    color = ringColor.copy(alpha = (1f - ring1Progress) * 0.6f),
+                    radius = ring1Radius,
+                    center = center,
+                    style = Stroke(width = 2.dp.toPx())
+                )
+                val ring2Radius = baseRadius * (1f + ring2Progress * 0.8f)
+                drawCircle(
+                    color = ringColor.copy(alpha = (1f - ring2Progress) * 0.6f),
+                    radius = ring2Radius,
+                    center = center,
+                    style = Stroke(width = 2.dp.toPx())
+                )
+            }
+        }
     }
 }
 

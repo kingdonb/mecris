@@ -161,15 +161,20 @@ class ObsidianMCPClient:
         
         return goals
     
+    # Alternate checkbox style characters recognized by Obsidian themes
+    ALTERNATE_CHECKBOX_CHARS = frozenset({">", "<", "?", "-", "!", "/", "*", "~", "^", '"'})
+
     async def get_todos(self) -> List[Dict[str, Any]]:
         """Extract todos from vault by searching for checkbox patterns"""
         todos = []
-        
-        # Search for markdown checkboxes
+
+        # Search for markdown checkboxes — standard and alternate styles
         checkbox_matches = await self.search_vault("- [ ]")
         completed_matches = await self.search_vault("- [x]")
-        
-        all_matches = checkbox_matches + completed_matches
+        alternate_matches = await self.search_vault("- [>]")
+        canceled_matches = await self.search_vault("- [-]")
+
+        all_matches = checkbox_matches + completed_matches + alternate_matches + canceled_matches
         
         for match in all_matches:
             file_path = match.get("file_path", "")
@@ -192,33 +197,39 @@ class ObsidianMCPClient:
         return unique_todos
     
     def _parse_todos_from_content(self, content: str, source_file: str) -> List[Dict[str, Any]]:
-        """Parse todos from markdown content"""
+        """Parse todos from markdown content, including alternate Obsidian checkbox styles."""
         todos = []
         lines = content.split('\n')
-        
+
+        # Matches standard ([ ], [x]) and alternate ([>], [-], [?], etc.) checkboxes.
+        # Group 1: leading indent; Group 2: single status char; Group 3: todo text.
+        todo_re = re.compile(r'^(\s*)[-*]\s*\[([^\[\]])\]\s*(.+)')
+
         for i, line in enumerate(lines):
-            # Match markdown checkboxes
-            todo_match = re.match(r'^(\s*)[-*]\s*\[([ x])\]\s*(.+)', line)
-            if todo_match:
-                indent = todo_match.group(1)
-                status = todo_match.group(2)
-                todo_text = todo_match.group(3).strip()
-                
-                # Skip if it looks like a goal (contains "Goal:" pattern)
-                if re.search(r'\bgoal\b', todo_text, re.IGNORECASE):
-                    continue
-                
-                todos.append({
-                    "content": todo_text,
-                    "completed": status.lower() == "x",
-                    "indent_level": len(indent),
-                    "source_file": source_file,
-                    "line_number": i + 1,
-                    "priority": self._extract_priority(todo_text),
-                    "tags": self._extract_tags(todo_text),
-                    "last_updated": datetime.now().isoformat()
-                })
-        
+            todo_match = todo_re.match(line)
+            if not todo_match:
+                continue
+
+            indent = todo_match.group(1)
+            status_char = todo_match.group(2)
+            todo_text = todo_match.group(3).strip()
+
+            # Skip if it looks like a goal (contains "Goal:" pattern)
+            if re.search(r'\bgoal\b', todo_text, re.IGNORECASE):
+                continue
+
+            todos.append({
+                "content": todo_text,
+                "status": status_char,
+                "completed": status_char.lower() == "x",
+                "indent_level": len(indent),
+                "source_file": source_file,
+                "line_number": i + 1,
+                "priority": self._extract_priority(todo_text),
+                "tags": self._extract_tags(todo_text),
+                "last_updated": datetime.now().isoformat()
+            })
+
         return todos
     
     def _extract_priority(self, text: str) -> Optional[str]:

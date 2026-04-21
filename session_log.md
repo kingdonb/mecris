@@ -1980,3 +1980,94 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: No code changes, no pr-test — no open PRs available. Session was intentionally narrow (health-only). Priority 5 applied.
 
 **Next**: No open PRs. Next session should orient fresh. Bot-actionable: confirm Python test baseline (~464) on next PR run. Human-required: Fermyon Cloud config (internal_api_key), Twilio E2E, Rust CI fix (needs workflow PAT from kingdonb).
+
+## 2026-04-21 🏛️ — feat(obsidian): alternate checkbox styles in todo parser, session #16 (yebyen/mecris#240, complete)
+
+**Planned**: Update `_parse_todos_from_content` in `obsidian_client.py` to recognize alternate Obsidian checkbox styles (`[>]`, `[<]`, `[?]`, `[-]`, etc.) and expose raw status character; add unit tests. (Plan: yebyen/mecris#240, referencing kingdonb/mecris#196)
+
+**Done**:
+- Orient confirmed repos fully in sync at `6157f5f`; Empty Backlog Protocol activated — picked kingdonb#196 from NEXT_SESSION.md bot-actionable list.
+- Plan issue yebyen/mecris#240 created before touching code.
+- `obsidian_client.py`: regex broadened from `[(space)x]` to `[^\[\]]` to capture any single-char Obsidian theme checkbox style. `status` field added to returned dict (raw char). `ALTERNATE_CHECKBOX_CHARS` class constant added. `get_todos()` now also searches for `[>]` and `[-]` in vault.
+- `tests/test_obsidian_parser.py` created: 20 unit tests across 4 classes (standard checkboxes, alternate styles, multi-line content, tag/priority extraction). Syntax verified clean.
+- Commit `ebe3d30`: `feat(obsidian): support alternate checkbox styles in todo parser (kingdonb#196)`.
+- yebyen/mecris is now 1 commit ahead of kingdonb/mecris — PR needed from human.
+
+**Skipped**: pr-test (no venv in bot runner; Python test count will be confirmed on next human-triggered PR run). Android/Rust work (out of scope for this task).
+
+**Next**: Close yebyen#239 (prior health report). Confirm Python test baseline (+20 new tests) via pr-test when PR is opened. Human: review and merge obsidian parser enhancement into kingdonb/mecris.
+
+## 2026-04-21 🏛️ — feat(ghost): HeadlessLoopback subprocess wrapper for autonomous CLI turns, session #17 (yebyen/mecris#241, complete)
+
+**Planned**: Create `ghost/headless_loopback.py` — HeadlessLoopback class + LoopbackResult dataclass; 22 unit tests in `tests/test_headless_loopback.py` covering output capture, non-zero exit codes, timeout enforcement, and spawn errors. (Plan: yebyen/mecris#241, referencing kingdonb/mecris#197)
+
+**Done**:
+- Orient confirmed yebyen/mecris 2 commits ahead of kingdonb/mecris (`ebe3d30`, `2cd262a`); closed yebyen#239 (prior health report).
+- Empty Backlog Protocol activated — picked kingdonb#197 (HeadlessLoopback) from NEXT_SESSION.md bot-actionable list.
+- Plan issue yebyen/mecris#241 created before touching code.
+- `ghost/headless_loopback.py` created: `HeadlessLoopback` class spawns `gemini --yolo` via `subprocess.Popen(start_new_session=True)`, pipes prompt via stdin, enforces configurable timeout (default 1800s) with `SIGKILL`, swallows `ProcessLookupError`, catches `FileNotFoundError`/`OSError` — always returns `LoopbackResult`, never raises.
+- `tests/test_headless_loopback.py` created: 22 unit tests across 4 classes (`TestOutputCapture` x8, `TestNonZeroExitCode` x4, `TestTimeoutEnforcement` x6, `TestSubprocessErrors` x4). All syntax-verified clean.
+- Commit `0e50bb4`: `feat(ghost): implement HeadlessLoopback subprocess wrapper (kingdonb#197)`.
+- yebyen/mecris now 3 commits ahead of kingdonb/mecris.
+
+**Skipped**: pr-test (no venv in bot runner; Python test count will be confirmed on next human-triggered PR run). Android backport tasks (#194, #195) — preserved in NEXT_SESSION.md for future sessions.
+
+**Next**: Open PR to kingdonb/mecris with obsidian parser + headless loopback (human). Confirm Python test baseline (~506) via pr-test on next PR run. Android backports (#194, #195) remain bot-actionable.
+
+## 2026-04-21 🏛️ — feat(android): REMAINING TODAY counter backport to ReviewPumpWidget, session #18 (yebyen/mecris#242, complete)
+
+**Planned**: Add `target_flow_rate`, `absolute_target`, `goal_met` to `LanguageStatDto`; update `ReviewPumpWidget` to show server-provided "REMAINING TODAY" value and GOAL MET badge. (Plan: yebyen/mecris#242, referencing kingdonb/mecris#194)
+
+**Done**:
+- Orient confirmed yebyen/mecris 4 commits ahead of kingdonb/mecris; no needs-test/pr-review gates; one open yebyen issue (#142, human-only).
+- Plan issue yebyen/mecris#242 created before touching code.
+- `SyncServiceApi.kt`: added `target_flow_rate: Double? = null`, `absolute_target: Int? = null`, `goal_met: Boolean = false` to `LanguageStatDto` — nullable/defaulted for backwards-compat.
+- `MainActivity.kt`: `remainingToday` variable prefers `stat.target_flow_rate`, falls back to `ReviewPumpCalculator.calculateTargetFlowRate()`. `goalMet` flag derived from `stat.goal_met || target_flow_rate <= 0`. Label "TARGET FLOW" → "REMAINING TODAY". Green "GOAL MET" badge surface shown when goal satisfied. `targetFlowRate` variable fully eliminated — no dead code.
+- Commit `e30cda5`: `feat(android): backport REMAINING TODAY counter to ReviewPumpWidget (kingdonb#194)`.
+- Plan issue yebyen/mecris#242 closed with completion comment.
+- yebyen/mecris now 5 commits ahead of kingdonb/mecris.
+
+**Skipped**: pr-test (no venv in bot runner; Android test count confirmed on next human-triggered PR run). Majesty Cake Visualizer (#195) — preserved in NEXT_SESSION.md for next session.
+
+**Next**: Open PR to kingdonb/mecris with all 5 commits (human). Confirm test baseline via pr-test. Tackle Majesty Cake Visualizer (kingdonb#195) — next bot-actionable Android backport.
+
+## 2026-04-21 — feat(android): Majesty Cake Visualizer backport — Majesty Rings + all_clear color states (session #19)
+
+**Planned**: Backport MomentumVisualizer (Majesty Cake) to Android — pulsing orb + Majesty Rings in Jetpack Compose, matching web `MomentumVisualizer.tsx`. (yebyen/mecris#243, contributes to kingdonb/mecris#195)
+
+**Done**: Extended existing `MomentumVisualizer` composable (already in `MainActivity.kt`) with `isAllClear: Boolean = false` parameter. Added `MomentumOrbState` enum (DEBT/STABLE/ALL_CLEAR) and `momentumOrbState()` pure function for testable color derivation. Color palette now syncs to state: Gold (#FFD600) for All Clear, Green (#00C853) for Stable, Red (#FF1744) for Debt — matching web component. Majesty Rings implemented as two animated expanding gold concentric circles on a non-rotating Canvas overlay (separate from the rotating orb layer). Call site updated to pass `isAllClear = aggregateStatus?.all_clear == true`. Added `MomentumVisualizerTest.kt` with 9 unit tests. Committed `96a3fb5`.
+- yebyen/mecris now 7 commits ahead of kingdonb/mecris.
+
+**Skipped**: pr-test (no venv in bot runner; Android test validation deferred to next human-triggered PR run). Upstream sync of kingdonb `6157f5f` (Empty Backlog Protocol docs) — needs human merge or separate session.
+
+**Next**: Open PR to kingdonb/mecris with all 7 commits (human). Confirm test baseline via pr-test (~506 Python + ~36 Android). Sync upstream kingdonb `6157f5f` into yebyen.
+
+## 2026-04-21 🏛️ — pr-test baseline confirmed + Android compile fix (session #20, yebyen/mecris#244, complete)
+
+**Planned**: Open PR yebyen:main → kingdonb:main (7 commits) and run pr-test to confirm beta.2 test baseline. (yebyen/mecris#244)
+
+**Done**: PR kingdonb/mecris#198 opened (8 commits — 7 feature + 1 compile fix). Android compile error discovered during first pr-test run: `remainingToday` inferred as `Number` (common supertype of `Double?` and `Int`) in MainActivity.kt:1160 — Kotlin's `/` operator not defined on `Number`. Fix: `.toDouble()` cast; committed `a8dd56f`. Confirmed working on third pr-test run: Python 480/6-skipped ✅, Android 35/36 ✅ (1 pre-existing PocketIdAuthTest failure), Rust 114 ✅. Rust CI now working in pr-test.yml (working-directory fix was applied by kingdonb — yebyen/mecris#142 resolved). Python count discrepancy noted: expected 506, got 480 (26 fewer than estimated — investigate next session).
+
+**Skipped**: Python test count investigation (26 fewer than estimated — deferred to next session). Merge of #198 (human-required).
+
+**Next**: Human review and merge of kingdonb/mecris#198. Investigate Python test count discrepancy (expected 506, actual 480). Close yebyen/mecris#142 (Rust CI fix confirmed working).
+
+## 2026-04-21 🏛️ — Python test count investigation resolved + yebyen/mecris#142 closed (session #21, yebyen/mecris#245, complete)
+
+**Planned**: Investigate Python test discrepancy (480 actual vs ~506 expected) and close stale yebyen/mecris#142. (yebyen/mecris#245)
+
+**Done**: Full static audit of Python test suite. Root cause of 26-test gap identified: baseline was overstated at 464 (actual ~437) + obsidian parser has 19 tests not 20 + headless_loopback has 24 not 22. Key discovery: `test_mecris.py` (6 tests) and `test_beeminder_live.py` (8 tests) use non-pytest classes with `__init__` — never collected. `conftest.py:pytest_ignore_collect` silently drops `test_standalone_access.py` + `test_unauthorized_access.py` (5 tests) when NEON_DB_URL absent. 480 is the correct passing count — no tests broken. Findings posted on yebyen/mecris#245. NEXT_SESSION.md baseline note corrected (commit `b3b1bfc`). yebyen/mecris#142 closed (stale — Rust CI fix already applied by kingdonb).
+
+**Skipped**: No code features this session (no pending bot-actionable feature work while PR #198 awaits human review).
+
+**Next**: Human review and merge of kingdonb/mecris#198. After merge, pick next kingdonb open issue for beta.2 feature work (candidates: #193 LLM Quota Hypervisor, #185 Security Hardening).
+
+## 2026-04-21 🏛️ — Rust test gap closed: 8 unit tests for calculate_review_pump_targets (session #22, yebyen/mecris#246, complete)
+
+**Planned**: Write dedicated `#[test]` cases for `calculate_review_pump_targets` — all multiplier branches, target_flow_rate clamping, goal_met edge cases. (yebyen/mecris#246)
+
+**Done**: Added 8 unit tests to `mecris-go-spin/sync-service/src/lib.rs` in a new `// --- calculate_review_pump_targets ---` section. Covers multipliers 1.0 (no clearance), 2 (14-day), 5 (5-day), 10 (1-day), and unknown (8.0 → fallback to tomorrow). Also covers target_flow_rate max(0,...) clamp, goal_met=true when daily_done≥target, and zero/zero edge case via the `current==0` branch. Committed `608a562`. Pushed to yebyen:main (pr-test now includes this commit). Rust test count confirmed 114 → 122 via pr-test run 24749188270 on kingdonb/mecris#198. Python baseline stable at 480/6-skipped.
+
+**Skipped**: Nothing. Plan fully executed.
+
+**Next**: Human review and merge of kingdonb/mecris#198 (now 9 commits). After merge, pick next beta.2 feature from kingdonb open issues (candidates: #193 LLM Quota Hypervisor, #185 Security Hardening).

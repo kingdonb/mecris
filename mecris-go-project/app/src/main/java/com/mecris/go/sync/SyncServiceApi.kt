@@ -134,7 +134,10 @@ data class LanguageStatDto(
     val derail_risk: String,
     val pump_multiplier: Double?,
     val has_goal: Boolean = true,
-    val daily_completions: Int = 0
+    val daily_completions: Int = 0,
+    val target_flow_rate: Double? = null,
+    val absolute_target: Int? = null,
+    val goal_met: Boolean = false
 )
 
 data class HealthResponseDto(
