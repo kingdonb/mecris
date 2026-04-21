@@ -28,6 +28,10 @@
 - [x] **kingdonb/mecris#180 Part 2 (Rust)**: Non-deterministic DB query — Verified fix and regression test in `sync-service/src/lib.rs`.
 
 ### 🤖 Bot-actionable (can be resolved in future sessions)
+- [ ] **Backport "REMAINING TODAY" counter (Issue #194)**: Update `LanguageStatDto` and `ReviewPumpWidget` in Android app to match Web UI "remaining" count logic.
+- [ ] **Backport "Majesty Cake" Visualizer (Issue #195)**: Implement pulsing orb and Majesty Rings in Jetpack Compose for the Android app.
+- [ ] **Enhance Obsidian Todo Parser (Issue #196)**: Update `obsidian_client.py` regex to capture alternate checkbox styles (e.g. `[>]`, `[-]`).
+- [ ] **Implement Headless Loopback wrapper (Issue #197)**: Create a subprocess wrapper for `gemini --yolo` with timeout limits to enable background autonomous turns.
 - [ ] **Confirm Python test baseline via pr-test**: Estimated ~464 passed (unchanged). Verify on next PR test run when a PR is available.
 
 ## New Features Landed in beta.2 dev cycle (since beta.1 baseline `90a569e`)
