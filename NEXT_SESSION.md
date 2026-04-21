@@ -18,6 +18,9 @@
 - [ ] **Smart Nagging: Success Patterns (Issue #200)**: Implement probability-based nag suppression in `services/smart_nag.py` using historical walk data.
 - [ ] **Contextual Awareness: Chrome Bookmarks (Issue #201)**: Build a local Chrome bookmarks parser and MCP endpoint to surface relevant research in the Narrator context.
 - [ ] **RAG Foundation: Documentation Graph (Issue #202)**: Standardize doc front-matter and implement automated link/graph verification to prepare for vector indexing.
+- [ ] **Local Inference Pipeline (Issue #203)**: Integrate Ollama and build a cloud-fallback router to manage RAG costs.
+- [ ] **Autonomous Security: JIT Secret Manager (Issue #204)**: Implement secure credential retrieval and passing for headless `gemini --yolo` turns.
+- [ ] **AI Framework Evaluation (Issue #205)**: Formalize evaluation matrix and run proof-of-concept tests for alternatives to Claude Code.
 
 ## New Features Landed in beta.2 dev cycle (since beta.1 baseline `90a569e`)
 
