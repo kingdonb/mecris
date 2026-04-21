@@ -14,6 +14,9 @@
 
 ### 🤖 Bot-actionable (can be resolved in future sessions)
 - [ ] **Open next feature work**: Pick from the high-depth backlog below.
+- [ ] **Dual-Widget "Debt vs. Flow" UI (Issue #160)**: Android UI Epic. Build a secondary gauge indicator to visualize long-term debt vs daily flow (building on #194/#195).
+- [ ] **Port Twilio to WASM Brain (Issue #167)**: Move SMS/WhatsApp dispatch logic from Python/boris-fiona-walker directly into the `sync-service` Rust module.
+- [ ] **Rust Reminder Engine (Issue #169)**: Implement the 2000-step threshold, sleep window heuristics, and weather checks natively in Rust for the background trigger.
 - [ ] **Implement Renovate Configuration (Issue #199)**: Create a centralized `renovate.json` to manage dependencies across all modules (Python, Rust, Android, Web).
 - [ ] **Smart Nagging: Success Patterns (Issue #200)**: Implement probability-based nag suppression in `services/smart_nag.py` using historical walk data.
 - [ ] **Contextual Awareness: Chrome Bookmarks (Issue #201)**: Build a local Chrome bookmarks parser and MCP endpoint to surface relevant research in the Narrator context.
