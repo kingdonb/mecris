@@ -1,31 +1,26 @@
-# Next Session: Health check complete — awaiting human-driven PRs (beta.2 dev cycle, session #14 archived)
+# Next Session: Health check complete — repos fully in sync, awaiting human-driven PRs (beta.2 dev cycle, session #15 archived)
 
-## Current Status (2026-04-20, post-health-report #14, health yebyen/mecris#238)
-- **yebyen/mecris is 14 commits ahead of kingdonb/mecris**: HEADs `efc49aa` and `34d8582` (health commits only, no divergence).
+## Current Status (2026-04-21, post-health-report #15, health yebyen/mecris#239)
+- **Repos FULLY IN SYNC**: Both yebyen/mecris and kingdonb/mecris HEAD at `a10d988` — first fully-synced state in 14+ sessions.
 - **Beta.2 dev cycle open**: Suite version bumped to `v0.0.1-beta.2` — next development iteration begins.
 - **SLSA Build Level 1 achieved**: `7d3d981` adds cryptographically signed provenance for APK and WASM artifacts.
 - **No open PRs on kingdonb/mecris**: Nothing to test. Wait for human-driven PRs.
 - **One open issue on yebyen**: yebyen/mecris#142 (Rust CI fix) needs `workflow` PAT scope — must be applied by kingdonb. Out of bot scope.
 
-## Verified This Session (2026-04-20, health yebyen/mecris#238)
-- [x] **Repos in sync**: yebyen HEAD `efc49aa` is 14 ahead of kingdonb `34d8582` — health commits only, no divergence.
+## Verified This Session (2026-04-21, health yebyen/mecris#239)
+- [x] **Repos fully in sync**: yebyen HEAD `a10d988` matches kingdonb HEAD `a10d988` — kingdonb merged all health commits in `bea91e0`, then pushed two docs commits (`27c665c`, `a10d988`) which yebyen also has.
 - [x] **No open PRs on kingdonb/mecris**: Confirmed — steady-state hold.
 - [x] **No needs-test/pr-review/bug issues**: Confirmed — nothing actionable for bot.
-- [x] **Health report opened**: yebyen/mecris#238 documents beta.2 dev cycle steady state (session #14).
-- [x] **yebyen#237 closed**: Prior session health report confirmed complete and closed.
+- [x] **Health report opened**: yebyen/mecris#239 documents beta.2 dev cycle steady state (session #15), repos now fully in sync.
+- [x] **yebyen#238 closed**: Prior session health report confirmed complete and closed.
 - [x] **No plan issue**: Health-only session — NO PLACEHOLDER ISSUES rule applied correctly.
 
 ## Pending Verification
 
 ### 👤 Human-required (cannot be resolved by bot)
-- [x] **Run migrate_v6 on production Neon**: Verified. `phone_verified` column exists and user is verified.
-- [x] **Configure `cloud_provider` Spin variable**: Verified by user. Variables work, but `variables list` API returns 500.
-- [x] **Configure internal_api_key in Fermyon Cloud**: Postponed. Prioritizing debouncing tests over endpoint auth.
-- [x] **Twilio webhook Phase 2 live E2E**: Verified. User confirmed receiving verification codes.
 - [ ] **Rust test gap (workflow fix)**: Apply fix from yebyen/mecris#142. Needs `workflow` PAT scope — must be applied by kingdonb.
 - [ ] **Android test count investigation**: `PocketIdAuthTest` pre-existing failure — out of bot scope.
-- [x] **kingdonb/mecris#180 Part 1 (Android)**: Health Connect double-counting — Verified fix in `HealthConnectManager.kt` via source filtering.
-- [x] **kingdonb/mecris#180 Part 2 (Rust)**: Non-deterministic DB query — Verified fix and regression test in `sync-service/src/lib.rs`.
+- [ ] **Configure internal_api_key in Fermyon Cloud**: Postponed. Prioritizing debouncing tests over endpoint auth.
 
 ### 🤖 Bot-actionable (can be resolved in future sessions)
 - [ ] **Backport "REMAINING TODAY" counter (Issue #194)**: Update `LanguageStatDto` and `ReviewPumpWidget` in Android app to match Web UI "remaining" count logic.
@@ -39,6 +34,8 @@
 - **feat(security): achieve SLSA Build Level 1** (`7d3d981`): Add `actions/attest-build-provenance` to Release workflow; generate signed provenance for APK and WASM; ROADMAP.md Alpha Hardening SLSA goals marked complete.
 - **chore(config): remove --http flag from gemini MCP settings** (`b1d722e`): Beta testing config adjustment for Gemini MCP server.
 - **chore(release): bump version to 0.0.1-beta.2** (`34d8582`): All 15+ ecosystem locations updated; dev cycle baseline set.
+- **docs(beta): clear verified migration and double-counting items** (`27c665c`): NEXT_SESSION cleanup.
+- **docs(auth): document VPN/Public Internet split as known issue** (`a10d988`): Auth docs update.
 
 ## Version Baseline (v0.0.1-beta.2 dev cycle)
 - **Android**: 1.1.6-beta.2 (dev cycle bump)
