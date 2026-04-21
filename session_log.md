@@ -1980,3 +1980,19 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: No code changes, no pr-test — no open PRs available. Session was intentionally narrow (health-only). Priority 5 applied.
 
 **Next**: No open PRs. Next session should orient fresh. Bot-actionable: confirm Python test baseline (~464) on next PR run. Human-required: Fermyon Cloud config (internal_api_key), Twilio E2E, Rust CI fix (needs workflow PAT from kingdonb).
+
+## 2026-04-21 🏛️ — feat(obsidian): alternate checkbox styles in todo parser, session #16 (yebyen/mecris#240, complete)
+
+**Planned**: Update `_parse_todos_from_content` in `obsidian_client.py` to recognize alternate Obsidian checkbox styles (`[>]`, `[<]`, `[?]`, `[-]`, etc.) and expose raw status character; add unit tests. (Plan: yebyen/mecris#240, referencing kingdonb/mecris#196)
+
+**Done**:
+- Orient confirmed repos fully in sync at `6157f5f`; Empty Backlog Protocol activated — picked kingdonb#196 from NEXT_SESSION.md bot-actionable list.
+- Plan issue yebyen/mecris#240 created before touching code.
+- `obsidian_client.py`: regex broadened from `[(space)x]` to `[^\[\]]` to capture any single-char Obsidian theme checkbox style. `status` field added to returned dict (raw char). `ALTERNATE_CHECKBOX_CHARS` class constant added. `get_todos()` now also searches for `[>]` and `[-]` in vault.
+- `tests/test_obsidian_parser.py` created: 20 unit tests across 4 classes (standard checkboxes, alternate styles, multi-line content, tag/priority extraction). Syntax verified clean.
+- Commit `ebe3d30`: `feat(obsidian): support alternate checkbox styles in todo parser (kingdonb#196)`.
+- yebyen/mecris is now 1 commit ahead of kingdonb/mecris — PR needed from human.
+
+**Skipped**: pr-test (no venv in bot runner; Python test count will be confirmed on next human-triggered PR run). Android/Rust work (out of scope for this task).
+
+**Next**: Close yebyen#239 (prior health report). Confirm Python test baseline (+20 new tests) via pr-test when PR is opened. Human: review and merge obsidian parser enhancement into kingdonb/mecris.

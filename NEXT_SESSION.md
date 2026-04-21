@@ -1,19 +1,19 @@
-# Next Session: Health check complete — repos fully in sync, awaiting human-driven PRs (beta.2 dev cycle, session #15 archived)
+# Next Session: Obsidian parser enhanced — run pr-test to validate Python baseline (beta.2 dev cycle, session #16 archived)
 
-## Current Status (2026-04-21, post-health-report #15, health yebyen/mecris#239)
-- **Repos FULLY IN SYNC**: Both yebyen/mecris and kingdonb/mecris HEAD at `a10d988` — first fully-synced state in 14+ sessions.
-- **Beta.2 dev cycle open**: Suite version bumped to `v0.0.1-beta.2` — next development iteration begins.
-- **SLSA Build Level 1 achieved**: `7d3d981` adds cryptographically signed provenance for APK and WASM artifacts.
-- **No open PRs on kingdonb/mecris**: Nothing to test. Wait for human-driven PRs.
-- **One open issue on yebyen**: yebyen/mecris#142 (Rust CI fix) needs `workflow` PAT scope — must be applied by kingdonb. Out of bot scope.
+## Current Status (2026-04-21, post-session #16, plan yebyen/mecris#240)
+- **Repos ahead of kingdonb**: yebyen/mecris is now 1 commit ahead (`ebe3d30`) with the Obsidian parser enhancement — needs PR to kingdonb.
+- **kingdonb/mecris HEAD**: `6157f5f` (docs(agent): introduce Empty Backlog Protocol to prevent doom-looping)
+- **Beta.2 dev cycle open**: Suite version at `v0.0.1-beta.2`.
+- **Obsidian parser enhanced**: `_parse_todos_from_content` now recognizes alternate checkbox styles (`[>]`, `[<]`, `[?]`, `[-]`, `[!]`, `/`) plus exposes raw `status` character.
+- **20 unit tests added**: `tests/test_obsidian_parser.py` — validated via syntax check only (no venv in bot runner); pr-test will confirm.
 
-## Verified This Session (2026-04-21, health yebyen/mecris#239)
-- [x] **Repos fully in sync**: yebyen HEAD `a10d988` matches kingdonb HEAD `a10d988` — kingdonb merged all health commits in `bea91e0`, then pushed two docs commits (`27c665c`, `a10d988`) which yebyen also has.
-- [x] **No open PRs on kingdonb/mecris**: Confirmed — steady-state hold.
-- [x] **No needs-test/pr-review/bug issues**: Confirmed — nothing actionable for bot.
-- [x] **Health report opened**: yebyen/mecris#239 documents beta.2 dev cycle steady state (session #15), repos now fully in sync.
-- [x] **yebyen#238 closed**: Prior session health report confirmed complete and closed.
-- [x] **No plan issue**: Health-only session — NO PLACEHOLDER ISSUES rule applied correctly.
+## Verified This Session (2026-04-21, plan yebyen/mecris#240)
+- [x] **Plan issue opened**: yebyen/mecris#240 — recorded before touching any code.
+- [x] **obsidian_client.py updated**: regex broadened from `[ x]` to `[^\[\]]`; `status` field added to returned dicts; `ALTERNATE_CHECKBOX_CHARS` class constant added; `get_todos()` searches for `[>]` and `[-]` patterns in addition to `[ ]` and `[x]`.
+- [x] **tests/test_obsidian_parser.py created**: 20 unit tests across 4 test classes; syntax verified clean.
+- [x] **Commit `ebe3d30`**: `feat(obsidian): support alternate checkbox styles in todo parser (kingdonb#196)` — committed successfully.
+- [x] **Plan issue closed**: yebyen/mecris#240 closed with completion comment.
+- [x] **Health report yebyen#239**: Still open (prior session health report — needs closing next session if not already done by workflow).
 
 ## Pending Verification
 
@@ -21,16 +21,18 @@
 - [ ] **Rust test gap (workflow fix)**: Apply fix from yebyen/mecris#142. Needs `workflow` PAT scope — must be applied by kingdonb.
 - [ ] **Android test count investigation**: `PocketIdAuthTest` pre-existing failure — out of bot scope.
 - [ ] **Configure internal_api_key in Fermyon Cloud**: Postponed. Prioritizing debouncing tests over endpoint auth.
+- [ ] **Open PR to kingdonb/mecris**: yebyen is now 1 commit ahead with obsidian parser enhancement — human should review and merge.
 
 ### 🤖 Bot-actionable (can be resolved in future sessions)
+- [ ] **Close yebyen#239**: Prior health report — close it now that session #16 produced real work.
+- [ ] **Confirm Python test baseline via pr-test**: Estimated ~464 passed (unchanged), plus 20 new tests in `test_obsidian_parser.py`. Verify on next PR test run.
 - [ ] **Backport "REMAINING TODAY" counter (Issue #194)**: Update `LanguageStatDto` and `ReviewPumpWidget` in Android app to match Web UI "remaining" count logic.
 - [ ] **Backport "Majesty Cake" Visualizer (Issue #195)**: Implement pulsing orb and Majesty Rings in Jetpack Compose for the Android app.
-- [ ] **Enhance Obsidian Todo Parser (Issue #196)**: Update `obsidian_client.py` regex to capture alternate checkbox styles (e.g. `[>]`, `[-]`).
 - [ ] **Implement Headless Loopback wrapper (Issue #197)**: Create a subprocess wrapper for `gemini --yolo` with timeout limits to enable background autonomous turns.
-- [ ] **Confirm Python test baseline via pr-test**: Estimated ~464 passed (unchanged). Verify on next PR test run when a PR is available.
 
 ## New Features Landed in beta.2 dev cycle (since beta.1 baseline `90a569e`)
 
+- **feat(obsidian): alternate checkbox styles in todo parser** (`ebe3d30`): Broaden regex to `[^\[\]]`; expose raw `status` char; add 20 unit tests. Resolves kingdonb/mecris#196.
 - **feat(security): achieve SLSA Build Level 1** (`7d3d981`): Add `actions/attest-build-provenance` to Release workflow; generate signed provenance for APK and WASM; ROADMAP.md Alpha Hardening SLSA goals marked complete.
 - **chore(config): remove --http flag from gemini MCP settings** (`b1d722e`): Beta testing config adjustment for Gemini MCP server.
 - **chore(release): bump version to 0.0.1-beta.2** (`34d8582`): All 15+ ecosystem locations updated; dev cycle baseline set.
@@ -66,9 +68,10 @@
 - **Classic PAT scope**: `GITHUB_CLASSIC_PAT` has `repo` scope ONLY — no `workflow` scope, no `read:org`.
 - **Fine-grained PAT**: `GITHUB_TOKEN` scoped to yebyen/mecris only. Cannot create PRs on kingdonb/mecris — use `GITHUB_CLASSIC_PAT`.
 - **Python venv not present in bot runner**: Validate Python tests via pr-test workflow only.
-- **Python test count baseline**: ~464 passed (6 skipped), 0 failing. Rust: 108 passed. Android: 27 tests (1 pre-existing failure).
+- **Python test count baseline**: ~464 passed (6 skipped), 0 failing + 20 new in test_obsidian_parser.py (syntax-verified only). Rust: 108 passed. Android: 27 tests (1 pre-existing failure).
 - **Rust satellite crates**: 99+ tests in sync-service, 28 in boris-fiona-walker, others not in CI yet.
 - **autonomous_sync_enabled**: DB flag per user (`users` table). Controls which users get processed by `/internal/trigger-reminders`. Default `false`.
 - **NEXT_SESSION.md merge conflict is permanently fixed**: `.gitattributes merge=union` on yebyen/mecris:main.
 - **bump_version.py now targets 15+ locations**: Covers Android, Spin, Python MCP, Web, and suite-level files.
 - **SLSA Build Level 1**: `actions/attest-build-provenance` added to Release workflow. Signed provenance generated for APK + WASM artifacts.
+- **Obsidian parser**: `_parse_todos_from_content` now uses `[^\[\]]` regex; returns `status` (raw char) + `completed` (bool). `ALTERNATE_CHECKBOX_CHARS` frozenset on class.
