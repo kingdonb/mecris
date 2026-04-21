@@ -2041,3 +2041,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: pr-test (no venv in bot runner; Android test validation deferred to next human-triggered PR run). Upstream sync of kingdonb `6157f5f` (Empty Backlog Protocol docs) — needs human merge or separate session.
 
 **Next**: Open PR to kingdonb/mecris with all 7 commits (human). Confirm test baseline via pr-test (~506 Python + ~36 Android). Sync upstream kingdonb `6157f5f` into yebyen.
+
+## 2026-04-21 🏛️ — pr-test baseline confirmed + Android compile fix (session #20, yebyen/mecris#244, complete)
+
+**Planned**: Open PR yebyen:main → kingdonb:main (7 commits) and run pr-test to confirm beta.2 test baseline. (yebyen/mecris#244)
+
+**Done**: PR kingdonb/mecris#198 opened (8 commits — 7 feature + 1 compile fix). Android compile error discovered during first pr-test run: `remainingToday` inferred as `Number` (common supertype of `Double?` and `Int`) in MainActivity.kt:1160 — Kotlin's `/` operator not defined on `Number`. Fix: `.toDouble()` cast; committed `a8dd56f`. Confirmed working on third pr-test run: Python 480/6-skipped ✅, Android 35/36 ✅ (1 pre-existing PocketIdAuthTest failure), Rust 114 ✅. Rust CI now working in pr-test.yml (working-directory fix was applied by kingdonb — yebyen/mecris#142 resolved). Python count discrepancy noted: expected 506, got 480 (26 fewer than estimated — investigate next session).
+
+**Skipped**: Python test count investigation (26 fewer than estimated — deferred to next session). Merge of #198 (human-required).
+
+**Next**: Human review and merge of kingdonb/mecris#198. Investigate Python test count discrepancy (expected 506, actual 480). Close yebyen/mecris#142 (Rust CI fix confirmed working).

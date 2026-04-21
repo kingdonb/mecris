@@ -1,36 +1,36 @@
-# Next Session: pr-test to validate Majesty Cake + confirm baseline (session #19 archived)
+# Next Session: Human review and merge of kingdonb/mecris#198 (beta.2 PR — 8 commits)
 
-## Current Status (2026-04-21, post-session #19, plan yebyen/mecris#243)
-- **Repos ahead of kingdonb**: yebyen/mecris is now 7 commits ahead — obsidian parser + HeadlessLoopback + REMAINING TODAY backport + Majesty Cake; needs PR to kingdonb.
-- **kingdonb/mecris HEAD**: `6157f5f` (docs(agent): introduce Empty Backlog Protocol to prevent doom-looping) — NOT yet in yebyen; yebyen also needs to merge this upstream commit.
-- **Beta.2 dev cycle open**: Suite version at `v0.0.1-beta.2`.
-- **Majesty Cake implemented**: `MomentumVisualizer` now has `isAllClear` param, three-state color palette (Gold/Green/Red), and Majesty Rings (two animated expanding gold circles on non-rotating Canvas overlay).
-- **9 unit tests added**: `MomentumVisualizerTest.kt` covers `momentumOrbState()` state transitions and boundary conditions — syntax-verified, not yet run via pr-test.
+## Current Status (2026-04-21, post-session #20, plan yebyen/mecris#244)
+- **PR open**: kingdonb/mecris#198 — yebyen:main → kingdonb:main, 8 commits (7 feature + 1 compile fix). Ready for human review.
+- **Test baseline confirmed via pr-test**: Python 480/6-skipped, Android 35/36 (1 pre-existing PocketIdAuthTest failure), Rust 114 — all ✅.
+- **Android compile fix committed**: `a8dd56f` — `remainingToday.toDouble()` at MainActivity.kt:1160 resolves `Number/Double` division type error introduced by REMAINING TODAY backport.
+- **Rust CI now working**: `working-directory` fix was applied by kingdonb (yebyen/mecris#142 issue can be closed — fix is in).
+- **Repos status**: yebyen is 8 commits ahead of kingdonb (7 feature + 1 compile fix, all in PR #198). kingdonb HEAD = `6157f5f` (Empty Backlog Protocol docs, already in yebyen).
 
-## Verified This Session (2026-04-21, plan yebyen/mecris#243)
-- [x] **Plan issue opened**: yebyen/mecris#243 — recorded before touching any code.
-- [x] **MomentumOrbState enum added**: `DEBT / STABLE / ALL_CLEAR` — pure testable type.
-- [x] **momentumOrbState() function added**: pure function, no Compose dependency, drives color derivation.
-- [x] **MomentumVisualizer extended**: `isAllClear: Boolean = false` param; Gold/Green/Red colors; Majesty Rings on non-rotating overlay Canvas.
-- [x] **Call site updated**: `MainNeuralDashboard` passes `isAllClear = aggregateStatus?.all_clear == true`.
-- [x] **Commit `96a3fb5`**: `feat(android): add Majesty Rings + all_clear state to MomentumVisualizer (kingdonb#195)` — committed successfully.
-- [x] **Plan issue closed**: yebyen/mecris#243 closed with completion comment.
+## Verified This Session (2026-04-21, plan yebyen/mecris#244)
+- [x] **Plan issue opened**: yebyen/mecris#244 — recorded before touching any code.
+- [x] **PR opened**: kingdonb/mecris#198 — yebyen:main → kingdonb:main, 7 feature commits.
+- [x] **Android compile error found and fixed**: `remainingToday` typed as `Number` (common supertype of `Double?` and `Int`); `.toDouble()` added at line 1160; committed `a8dd56f`.
+- [x] **pr-test baseline confirmed**: Python 480 passed / 6 skipped; Android 36 tests / 1 pre-existing failure; Rust 114 passed.
+- [x] **Rust CI working**: yebyen/mecris#142 fix confirmed applied by kingdonb — `working-directory` is correct in pr-test.yml.
+- [x] **Plan issue closed**: yebyen/mecris#244 closed with completion comment.
 
 ## Pending Verification
 
 ### 👤 Human-required (cannot be resolved by bot)
-- [ ] **Rust test gap (workflow fix)**: Apply fix from yebyen/mecris#142. Needs `workflow` PAT scope — must be applied by kingdonb.
-- [ ] **Android test count investigation**: `PocketIdAuthTest` pre-existing failure — out of bot scope.
+- [ ] **Review and merge kingdonb/mecris#198**: 8 commits ready — obsidian parser + HeadlessLoopback + REMAINING TODAY + Majesty Cake + compile fix.
+- [ ] **Close yebyen/mecris#142**: Rust CI fix (working-directory) is already applied — this issue can be closed.
+- [ ] **Android test count investigation**: `PocketIdAuthTest` pre-existing failure (`ExceptionInInitializerError` at line 35) — out of bot scope.
 - [ ] **Configure internal_api_key in Fermyon Cloud**: Postponed. Prioritizing feature work.
-- [ ] **Open PR to kingdonb/mecris**: yebyen is now 7 commits ahead — human should review and merge obsidian parser + headless loopback + REMAINING TODAY + Majesty Cake.
-- [ ] **Merge upstream commit**: kingdonb `6157f5f` (Empty Backlog Protocol docs) is NOT in yebyen — needs human merge or bot sync when PAT scope allows.
+- [ ] **Apply migrate_v6 to production Neon**: `phone_verified`, `phone_verifications`, `scheduler_election` multi-user, `vacation_mode_until` changes.
 
 ### 🤖 Bot-actionable (can be resolved in future sessions)
-- [ ] **Confirm Python+Android test baseline via pr-test**: Estimated ~506 Python (464 baseline + 20 obsidian + 22 headless_loopback) + Android tests (~27 total + 9 new MomentumVisualizerTest = ~36, minus 1 pre-existing PocketIdAuthTest failure). Verify on next PR test run.
-- [ ] **Sync upstream `6157f5f` from kingdonb**: Bot can fetch and merge if a PR can be opened against yebyen fork, or via fetch+commit pattern.
+- [ ] **Python test count investigation**: Expected ~506 (464 + 20 obsidian + 22 headless_loopback) but pr-test returns 480. Discrepancy of 26. Investigate whether some tests are being skipped or the baseline was overstated.
+- [ ] **Open next feature work**: After PR #198 merges, pick next kingdonb open issue for beta.2 feature work.
 
 ## New Features Landed in beta.2 dev cycle (since beta.1 baseline `90a569e`)
 
+- **fix(android): Number/Double division type error in ReviewPumpWidget progress bar** (`a8dd56f`): `remainingToday.toDouble()` at line 1160 — resolves compile error from `Number` type inference. Contributes to kingdonb/mecris#198.
 - **feat(android): Majesty Rings + all_clear state to MomentumVisualizer** (`96a3fb5`): `MomentumOrbState` enum, `momentumOrbState()` pure function, Gold/Green/Red color states, animated expanding rings overlay. 9 unit tests. Resolves yebyen/mecris#243, contributes to kingdonb/mecris#195.
 - **feat(android): REMAINING TODAY counter backport** (`e30cda5`): `LanguageStatDto` gains `target_flow_rate`, `absolute_target`, `goal_met`; `ReviewPumpWidget` uses server value with GOAL MET badge. Resolves yebyen/mecris#242, contributes to kingdonb/mecris#194.
 - **feat(ghost): HeadlessLoopback subprocess wrapper** (`0e50bb4`): `ghost/headless_loopback.py` — spawns `gemini --yolo`, captures stdout/stderr, SIGKILL timeout, 22 unit tests. Resolves kingdonb/mecris#197.
@@ -47,6 +47,11 @@
 - **Python MCP**: 0.5.1-beta.2
 - **Suite**: 0.0.1-beta.2
 - **Web app**: Included in suite beta.2 bump
+
+## Test Baseline (confirmed 2026-04-21 via pr-test on kingdonb/mecris#198)
+- **Python**: 480 passed, 6 skipped (actual — note: expected 506, discrepancy of 26 to investigate)
+- **Android**: 36 tests total, 35 passing, 1 pre-existing PocketIdAuthTest failure (`ExceptionInInitializerError`)
+- **Rust**: 114 passed (boris-fiona-walker + sync-service combined)
 
 ## Infrastructure Notes (carried forward)
 - **phone_verified column**: `ALTER TABLE users ADD COLUMN IF NOT EXISTS phone_verified BOOLEAN DEFAULT FALSE` — in schema.sql AND migrate_v6. Apply migrate_v6 to production Neon.
@@ -70,7 +75,6 @@
 - **Classic PAT scope**: `GITHUB_CLASSIC_PAT` has `repo` scope ONLY — no `workflow` scope, no `read:org`.
 - **Fine-grained PAT**: `GITHUB_TOKEN` scoped to yebyen/mecris only. Cannot create PRs on kingdonb/mecris — use `GITHUB_CLASSIC_PAT`.
 - **Python venv not present in bot runner**: Validate Python tests via pr-test workflow only.
-- **Python test count baseline**: ~464 passed (6 skipped), 0 failing + 20 new in test_obsidian_parser.py + 22 new in test_headless_loopback.py (both syntax-verified only). Rust: 108 passed. Android: ~27 tests (1 pre-existing PocketIdAuthTest failure) + 9 new in MomentumVisualizerTest.kt (syntax-verified).
 - **Rust satellite crates**: 99+ tests in sync-service, 28 in boris-fiona-walker, others not in CI yet.
 - **autonomous_sync_enabled**: DB flag per user (`users` table). Controls which users get processed by `/internal/trigger-reminders`. Default `false`.
 - **NEXT_SESSION.md merge conflict is permanently fixed**: `.gitattributes merge=union` on yebyen/mecris:main.
@@ -80,3 +84,5 @@
 - **HeadlessLoopback**: `ghost/headless_loopback.py` — `HeadlessLoopback(command, timeout, log_output)` + `LoopbackResult(exit_code, stdout, stderr, timed_out, command)`. Default command: `["gemini", "--yolo"]`, default timeout: 1800s. `start_new_session=True` isolates child process group. 22 unit tests in `tests/test_headless_loopback.py`.
 - **REMAINING TODAY backport**: `LanguageStatDto` fields `target_flow_rate: Double? = null`, `absolute_target: Int? = null`, `goal_met: Boolean = false`. `ReviewPumpWidget` uses `stat.target_flow_rate` with `ReviewPumpCalculator` fallback. GOAL MET badge shown when `goalMet == true`. Label "TARGET FLOW" removed; "REMAINING TODAY" replaces it.
 - **MomentumVisualizer Majesty Cake**: `MomentumOrbState` enum (DEBT/STABLE/ALL_CLEAR); `momentumOrbState(momentum, isAllClear)` pure function; `MomentumVisualizer(isAllClear = ...)` param; Gold (#FFD600) orb + Majesty Rings (two animated expanding circles) when `all_clear == true`. 9 unit tests in `MomentumVisualizerTest.kt`.
+- **ReviewPumpWidget progress bar type fix**: `remainingToday.toDouble()` at MainActivity.kt:1160 — `Number / Double` was ambiguous to Kotlin compiler; explicit cast resolves it.
+- **Rust CI working-directory fixed**: yebyen/mecris#142 fix applied by kingdonb — `cargo test` runs from `mecris-go-spin/sync-service/`. 114 Rust tests passing in CI.
