@@ -3257,6 +3257,80 @@ mod tests {
         assert_eq!(get_modality_status_string("unknown_role", 1), "unknown");
     }
 
+    // --- calculate_review_pump_targets ---
+
+    #[test]
+    fn test_calculate_review_pump_multiplier_1_uses_tomorrow_as_target() {
+        // multiplier=1.0 → no match in the table → clearance_days=None → target=tomorrow
+        let (target, flow_rate, goal_met) = calculate_review_pump_targets(100, 20, 1.0, 0);
+        assert_eq!(target, 20);
+        assert_eq!(flow_rate, 20);
+        assert!(!goal_met);
+    }
+
+    #[test]
+    fn test_calculate_review_pump_multiplier_2_fourteen_day_clearance() {
+        // multiplier=2 → clearance_days=14 → target = tomorrow(20) + current(100)/14 = 20+7 = 27
+        let (target, flow_rate, goal_met) = calculate_review_pump_targets(100, 20, 2.0, 0);
+        assert_eq!(target, 27);
+        assert_eq!(flow_rate, 27);
+        assert!(!goal_met);
+    }
+
+    #[test]
+    fn test_calculate_review_pump_multiplier_10_one_day_clearance() {
+        // multiplier=10 → clearance_days=1 → target = tomorrow(20) + current(100)/1 = 120
+        let (target, flow_rate, goal_met) = calculate_review_pump_targets(100, 20, 10.0, 0);
+        assert_eq!(target, 120);
+        assert_eq!(flow_rate, 120);
+        assert!(!goal_met);
+    }
+
+    #[test]
+    fn test_calculate_review_pump_goal_met_when_daily_done_reaches_target() {
+        // multiplier=1.0, daily_done=tomorrow → goal met
+        let (target, flow_rate, goal_met) = calculate_review_pump_targets(0, 15, 1.0, 15);
+        assert_eq!(target, 15);
+        assert_eq!(flow_rate, 0);
+        assert!(goal_met);
+    }
+
+    #[test]
+    fn test_calculate_review_pump_flow_rate_clamped_to_zero() {
+        // daily_done exceeds target → target_flow_rate must not go negative
+        let (target, flow_rate, goal_met) = calculate_review_pump_targets(0, 10, 1.0, 20);
+        assert_eq!(target, 10);
+        assert_eq!(flow_rate, 0);
+        assert!(goal_met);
+    }
+
+    #[test]
+    fn test_calculate_review_pump_unknown_multiplier_falls_back_to_tomorrow() {
+        // multiplier=8.0 is not in the match table → clearance_days=None → target=tomorrow
+        let (target, flow_rate, goal_met) = calculate_review_pump_targets(200, 30, 8.0, 5);
+        assert_eq!(target, 30);
+        assert_eq!(flow_rate, 25);
+        assert!(!goal_met);
+    }
+
+    #[test]
+    fn test_calculate_review_pump_zero_backlog_zero_tomorrow_goal_met() {
+        // current=0, tomorrow=0, multiplier=1.0 → absolute_target=0 → goal_met via current==0 branch
+        let (target, flow_rate, goal_met) = calculate_review_pump_targets(0, 0, 1.0, 0);
+        assert_eq!(target, 0);
+        assert_eq!(flow_rate, 0);
+        assert!(goal_met);
+    }
+
+    #[test]
+    fn test_calculate_review_pump_multiplier_5_five_day_clearance() {
+        // multiplier=5 → clearance_days=5 → target = tomorrow(10) + current(50)/5 = 10+10 = 20
+        let (target, flow_rate, goal_met) = calculate_review_pump_targets(50, 10, 5.0, 15);
+        assert_eq!(target, 20);
+        assert_eq!(flow_rate, 5);
+        assert!(!goal_met);
+    }
+
     // --- add_cors ---
 
     #[test]
