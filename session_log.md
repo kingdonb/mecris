@@ -2081,3 +2081,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: DB-backed `walk_history_provider` integration into `reminder_service.py` — the pure-function library is ready, but live plumbing is deferred to a future session.
 
 **Next**: Wire `smart_nag.evaluate_nag()` into `ReminderService.check_reminder_needed()` using a real DB provider, OR pick next beta.3 backlog item (kingdonb/mecris#199 Renovate, #201 Chrome Bookmarks, #202 RAG Foundation).
+
+## 2026-04-22 🏛️ — smart_nag walk_history_provider wired into ReminderService (session #24, yebyen/mecris#248, complete)
+
+**Planned**: Implement a DB-backed `walk_history_provider` and wire it into `reminder_service.py` so that `smart_nag.evaluate_nag()` actually suppresses or escalates live nags based on historical walk data. (yebyen/mecris#248)
+
+**Done**: Added `walk_history_provider=None` parameter to `ReminderService.__init__`. Imported `evaluate_nag` from `services.smart_nag`. Integrated in two places: (1) pre-window catch-up check fires `walk_reminder_catchup` (tier 2, freeform) when peak window has passed without activity; (2) in-window suppression returns no-send when `success_probability > 0.70`. Provider failures swallowed gracefully via try/except. 5 new integration tests added; all 61 tests green. Committed `dcc6496`. Plan issue #248 closed.
+
+**Skipped**: Real Neon DB query implementation for `walk_history_provider` — the interface contract is established, but the actual DB-backed provider function that queries walk timestamps still needs to be written and passed to the scheduler/worker that instantiates `ReminderService`.
+
+**Next**: Implement the Neon DB-backed `walk_history_provider` function in the scheduler/worker layer, OR pick the next beta.3 backlog item (kingdonb/mecris#199 Renovate is smallest; #157 WASM Migration is highest priority per roadmap).
