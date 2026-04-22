@@ -1125,7 +1125,40 @@ async def get_arabic_skip_count(user_id: str = None) -> int:
     return await asyncio.to_thread(count_arabic_reminders, neon_url, target_user_id)
 
 
-reminder_service = ReminderService(get_narrator_context, get_coaching_insight, get_last_sent_time, velocity_provider=get_language_velocity_stats, skip_count_provider=get_arabic_skip_count)
+async def get_walk_history(user_id: str = None) -> list:
+    """Return start_time datetimes for walk_inferences in the last 30 days.
+
+    Used as walk_history_provider for ReminderService smart_nag integration.
+    Returns [] if NEON_DB_URL is not configured or on any DB error.
+    """
+    from datetime import timedelta
+    target_user_id = usage_tracker.resolve_user_id(user_id)
+    neon_url = os.getenv("NEON_DB_URL", "")
+    if not neon_url:
+        return []
+
+    def _fetch():
+        import psycopg2
+        cutoff = datetime.now(tz=None) - timedelta(days=30)
+        with psycopg2.connect(neon_url) as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT start_time FROM walk_inferences "
+                    "WHERE user_id = %s AND start_time >= %s "
+                    "ORDER BY start_time ASC",
+                    (target_user_id, cutoff),
+                )
+                rows = cur.fetchall()
+                return [row[0] for row in rows]
+
+    try:
+        return await asyncio.to_thread(_fetch)
+    except Exception as e:
+        logger.error(f"get_walk_history failed: {e}")
+        return []
+
+
+reminder_service = ReminderService(get_narrator_context, get_coaching_insight, get_last_sent_time, velocity_provider=get_language_velocity_stats, skip_count_provider=get_arabic_skip_count, walk_history_provider=get_walk_history)
 
 # ---------------------------------------------------------------------------
 # Budget Governor MCP tool (Plan: yebyen/mecris#26)
