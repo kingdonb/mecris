@@ -1,7 +1,9 @@
 import os
 import logging
 from datetime import datetime, timezone
-from typing import Dict, Any, Optional
+from typing import Dict, Any, List, Optional
+
+from services.smart_nag import evaluate_nag
 
 logger = logging.getLogger("mecris.services.reminder")
 
@@ -16,12 +18,13 @@ class ReminderService:
     - Cooldowns are enforced per-type, but the aggregate frequency is the primary rate-limit.
     """
 
-    def __init__(self, context_provider, coaching_provider, log_provider=None, velocity_provider=None, skip_count_provider=None):
+    def __init__(self, context_provider, coaching_provider, log_provider=None, velocity_provider=None, skip_count_provider=None, walk_history_provider=None):
         self.context_provider = context_provider
         self.coaching_provider = coaching_provider
         self.log_provider = log_provider
         self.velocity_provider = velocity_provider
         self.skip_count_provider = skip_count_provider  # async (user_id) -> int: consecutive ignored Arabic cycles
+        self.walk_history_provider = walk_history_provider  # async (user_id) -> List[datetime]: recent walk start times
         # HX9403f1b85350b8c05780a1128b79f3c2 = mecris_status_v2 (Confirmed working)
         self.walk_template_sid = "HX9403f1b85350b8c05780a1128b79f3c2" 
         self.urgency_template_sid = "HX638b7f9403e04c8fa880370f1b7a9ba1" # urgency_alert_v2
@@ -259,13 +262,38 @@ class ReminderService:
         # ALL NORMAL REMINDERS RESPECT THE NORMAL SLEEP WINDOW (8pm-8am)
         if is_normal_sleep_time:
             return {"should_send": False, "reason": f"Sleep window active (8pm-8am, current hour: {current_hour})"}
-            
+
+        # Smart-nag: evaluate walk history once before the standard window logic
+        smart_nag_result = None
+        if not has_walked and self.walk_history_provider:
+            try:
+                walk_history: List[datetime] = await self.walk_history_provider(user_id)
+                smart_nag_result = evaluate_nag(walk_history, current_hour, has_walked, now=now)
+                if smart_nag_result["catch_up_nag"]:
+                    hours_since_walk = await self._get_hours_since_last("walk_reminder", user_id)
+                    if hours_since_walk >= 1.0:
+                        return {
+                            "should_send": True,
+                            "type": "walk_reminder_catchup",
+                            "tier": 2,
+                            "use_template": False,
+                            "fallback_message": (
+                                f"⚠️ Your usual walk window has passed — "
+                                f"Boris and Fiona have been patient enough. 🐕🚨"
+                            ),
+                        }
+            except Exception:
+                logger.warning("walk_history_provider failed; skipping smart_nag integration")
+
         # 2. Walk Reminders (Dynamic window based on user preferences)
         time_window_start = context.get("time_window_start", 13)
         time_window_end = context.get("time_window_end", 17)
-        
+
         if time_window_start <= current_hour <= time_window_end:
             if not has_walked:
+                # Smart-nag suppression: high success probability at current hour → user will walk naturally
+                if smart_nag_result and smart_nag_result["should_suppress"]:
+                    return {"should_send": False, "reason": f"smart_nag: {smart_nag_result['reason']}"}
                 # Cooldown: 2.5 hours between walk nags
                 hours_since_walk = await self._get_hours_since_last("walk_reminder", user_id)
                 if hours_since_walk >= 2.5:

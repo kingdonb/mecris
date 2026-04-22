@@ -1154,3 +1154,183 @@ def test_arabic_tier2_escalation_message_contains_arabic_script():
     assert any(ord(ch) in _ARABIC_RANGE for ch in msg), (
         f"Arabic Tier 2 escalation message lacks Arabic script: {msg!r}"
     )
+
+
+# --- smart_nag integration tests (yebyen/mecris#248) ---
+
+def _make_walk_history_provider(walks):
+    """Return an async walk_history_provider that yields a fixed list of datetimes."""
+    async def provider(user_id=None):
+        return walks
+    return provider
+
+
+@pytest.mark.asyncio
+async def test_smart_nag_suppresses_walk_within_window():
+    """smart_nag: suppress walk reminder when user has 80%+ success rate at current hour."""
+    from datetime import timedelta
+
+    # Build 24 days of walks at 15:00 (100% rate at hour 15 → above 70% threshold)
+    MOCKED_NOW = datetime.datetime(2026, 4, 22, 15, 0, 0)
+    walks = [MOCKED_NOW - timedelta(days=i, hours=0) for i in range(1, 25)]
+    # Each walk is at hour 15 — success_probability at hour 15 = 24/30 = 0.80 > 0.70
+
+    mock_context = {
+        "daily_walk_status": {"has_activity_today": False},
+        "beeminder_alerts": [],
+        "goal_runway": [],
+        "time_window_start": 13,
+        "time_window_end": 17,
+    }
+    mock_insight = {"momentum": "low", "message": "Get moving!"}
+
+    rs = ReminderService(
+        make_async_mock(mock_context),
+        make_async_mock(mock_insight),
+        walk_history_provider=_make_walk_history_provider(walks),
+    )
+
+    class MockAfternoon(datetime.datetime):
+        @classmethod
+        def now(cls, *args, **kwargs):
+            return MOCKED_NOW
+
+    with patch('services.reminder_service.datetime', MockAfternoon):
+        result = await rs.check_reminder_needed()
+        assert result["should_send"] is False
+        assert "smart_nag" in result["reason"]
+        assert "suppressing" in result["reason"].lower() or "suppress" in result["reason"].lower() or "%" in result["reason"]
+
+
+@pytest.mark.asyncio
+async def test_smart_nag_does_not_suppress_below_threshold():
+    """smart_nag: does NOT suppress when success rate is below threshold (only 30%)."""
+    from datetime import timedelta
+
+    MOCKED_NOW = datetime.datetime(2026, 4, 22, 15, 0, 0)
+    # Only 9 walks at hour 15 in last 30 days → 9/30 = 30%, below 70% threshold
+    walks = [MOCKED_NOW - timedelta(days=i * 3) for i in range(1, 10)]
+
+    mock_context = {
+        "daily_walk_status": {"has_activity_today": False},
+        "beeminder_alerts": [],
+        "goal_runway": [],
+        "time_window_start": 13,
+        "time_window_end": 17,
+    }
+    mock_insight = {"momentum": "low", "message": "Get moving!"}
+
+    rs = ReminderService(
+        make_async_mock(mock_context),
+        make_async_mock(mock_insight),
+        walk_history_provider=_make_walk_history_provider(walks),
+    )
+
+    class MockAfternoon(datetime.datetime):
+        @classmethod
+        def now(cls, *args, **kwargs):
+            return MOCKED_NOW
+
+    with patch('services.reminder_service.datetime', MockAfternoon):
+        result = await rs.check_reminder_needed()
+        assert result["should_send"] is True
+        assert result["type"] == "walk_reminder"
+
+
+@pytest.mark.asyncio
+async def test_smart_nag_catchup_fires_outside_walk_window():
+    """smart_nag: catch-up nag fires after peak window passed, even outside standard walk window."""
+    from datetime import timedelta
+
+    # User's peak is at hour 14 (80%+ success there)
+    MOCKED_NOW = datetime.datetime(2026, 4, 22, 18, 0, 0)  # 6 PM — outside window end (17)
+    # Build walks at hour 14 to establish peak (use timedelta to avoid month-boundary issues)
+    base = datetime.datetime(2026, 4, 22, 14, 0, 0)
+    walks = [base - datetime.timedelta(days=i) for i in range(1, 25)]
+
+    mock_context = {
+        "daily_walk_status": {"has_activity_today": False},
+        "beeminder_alerts": [],
+        "goal_runway": [],
+        "time_window_start": 13,
+        "time_window_end": 17,
+    }
+    mock_insight = {"momentum": "low", "message": "Get moving!"}
+
+    rs = ReminderService(
+        make_async_mock(mock_context),
+        make_async_mock(mock_insight),
+        walk_history_provider=_make_walk_history_provider(walks),
+    )
+
+    class MockEvening(datetime.datetime):
+        @classmethod
+        def now(cls, *args, **kwargs):
+            return MOCKED_NOW
+
+    with patch('services.reminder_service.datetime', MockEvening):
+        result = await rs.check_reminder_needed()
+        assert result["should_send"] is True
+        assert result["type"] == "walk_reminder_catchup"
+        assert result["tier"] == 2
+        assert result["use_template"] is False
+        assert "Boris" in result["fallback_message"] or "walk" in result["fallback_message"].lower()
+
+
+@pytest.mark.asyncio
+async def test_smart_nag_not_activated_without_provider():
+    """smart_nag: standard walk reminder fires unchanged when walk_history_provider is absent."""
+    mock_context = {
+        "daily_walk_status": {"has_activity_today": False},
+        "beeminder_alerts": [],
+        "goal_runway": [],
+        "time_window_start": 13,
+        "time_window_end": 17,
+    }
+    mock_insight = {"momentum": "low", "message": "Get moving!"}
+
+    rs = ReminderService(make_async_mock(mock_context), make_async_mock(mock_insight))
+    # No walk_history_provider → smart_nag_result stays None
+
+    class MockAfternoon(datetime.datetime):
+        @classmethod
+        def now(cls, *args, **kwargs):
+            return cls(2026, 4, 22, 15, 0, 0)
+
+    with patch('services.reminder_service.datetime', MockAfternoon):
+        result = await rs.check_reminder_needed()
+        assert result["should_send"] is True
+        assert result["type"] == "walk_reminder"
+
+
+@pytest.mark.asyncio
+async def test_smart_nag_provider_failure_falls_back_gracefully():
+    """smart_nag: exception from walk_history_provider is swallowed; standard logic proceeds."""
+    async def failing_provider(user_id=None):
+        raise RuntimeError("DB connection failed")
+
+    mock_context = {
+        "daily_walk_status": {"has_activity_today": False},
+        "beeminder_alerts": [],
+        "goal_runway": [],
+        "time_window_start": 13,
+        "time_window_end": 17,
+    }
+    mock_insight = {"momentum": "low", "message": "Get moving!"}
+
+    rs = ReminderService(
+        make_async_mock(mock_context),
+        make_async_mock(mock_insight),
+        walk_history_provider=failing_provider,
+    )
+
+    class MockAfternoon(datetime.datetime):
+        @classmethod
+        def now(cls, *args, **kwargs):
+            return cls(2026, 4, 22, 15, 0, 0)
+
+    with patch('services.reminder_service.datetime', MockAfternoon):
+        result = await rs.check_reminder_needed()
+        # Provider failed gracefully — standard walk_reminder still fires
+        assert result["should_send"] is True
+        assert result["type"] == "walk_reminder"
