@@ -2141,3 +2141,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: Nothing. Plan fully executed. Note for human: migrate_v7 must be applied to production Neon before `autonomous_turns` data accumulates or #216 Post-Mortem Generator can run.
 
 **Next**: kingdonb/mecris#216 (Post-Mortem Generator — now unblocked, reads `autonomous_turns` for exit_code != 0) or kingdonb/mecris#157 (WASM POC — highest roadmap priority).
+
+## 2026-04-22 🏛️ — Post-Mortem Generator implemented (session #30, yebyen/mecris#255, complete)
+
+**Planned**: Implement `ghost/post_mortem.py` to query `autonomous_turns` for `exit_code != 0` rows and draft `attic/post-mortems/YYYY-MM-DD-failure-turnN.md` with Summary, Captured Output/stderr, and Proposed Fix sections. 13 tests covering no-failures, single failure, multiple failures, and fail-open scenarios. (Plan: yebyen/mecris#255, upstream: kingdonb/mecris#216)
+
+**Done**: `ghost/post_mortem.py` implements `PostMortemGenerator` that delegates DB access to `TokenBankService.get_failed_turns()` (already had the SQL from session #29). Reports include a markdown table of turn metadata, the captured summary as a code block, and a scaffolded Proposed Fix section. Fail-open: without NEON_DB_URL, `run()` returns None. 13/13 tests green in `tests/test_post_mortem.py`. Committed `f69dcf9`. Closes kingdonb/mecris#216. Full Ghost Archivist self-healing loop (Token Bank + Post-Mortem Generator) is structurally complete.
+
+**Skipped**: Nothing. Plan fully executed. Note for human: real post-mortems will only be generated once `autonomous_turns` data accumulates — requires applying migrate_v7 to production Neon.
+
+**Next**: kingdonb/mecris#157 (WASM Migration POC — highest roadmap priority, architectural work) or kingdonb/mecris#210 (HCAT Sandbox Dockerfile — next Goal-1 security item).

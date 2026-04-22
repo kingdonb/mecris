@@ -1,13 +1,14 @@
-# Next Session: Post-Mortem Generator (kingdonb/mecris#216) or WASM Migration POC (kingdonb/mecris#157)
+# Next Session: WASM Migration POC (kingdonb/mecris#157) or next beta.3 backlog item
 
-## Current Status (2026-04-22, post-session #29)
-- **Token Bank complete**: `scripts/migrate_v7_autonomous_tracking.py` creates `token_bank` and `autonomous_turns` tables. `services/token_bank.py` implements `TokenBankService` with `check_and_debit`, `record_turn_start/end`, `get_failed_turns`. 13 tests green. Commit `89927fd`. Closes kingdonb/mecris#209.
-- **kingdonb/mecris#216 now unblocked**: `autonomous_turns` table exists; Post-Mortem Generator can proceed.
+## Current Status (2026-04-22, post-session #30)
+- **Post-Mortem Generator complete**: `ghost/post_mortem.py` implements `PostMortemGenerator` that queries `autonomous_turns` for `exit_code != 0` rows via `TokenBankService.get_failed_turns()` and drafts `attic/post-mortems/YYYY-MM-DD-failure-turnN.md`. 13 tests green. Commit `f69dcf9`. Closes kingdonb/mecris#216.
+- **Full Ghost Archivist loop now exists**: Token Bank (session #29) tracks turns; Post-Mortem Generator (session #30) inspects failures. The self-healing cycle is structurally complete.
+- **Blocked on prod**: Post-Mortem Generator will only produce real reports once `autonomous_turns` data accumulates in Neon — requires human to apply migrate_v7 to prod.
 - **v0.0.1-beta.3 dev cycle active**: Large backlog of features awaiting bot work.
-- **Neon migration v7 pending apply**: Script is written and committed but must be applied to production Neon by a human.
+- **Neon migration v7 pending apply**: Script committed (`89927fd`) but must be applied to production Neon by a human.
 
 ## Verified This Session
-- [x] **Token Bank (yebyen/mecris#254)**: Migration script, `TokenBankService`, and 13 unit tests. All passing. Committed `89927fd`. Closes kingdonb/mecris#209.
+- [x] **Post-Mortem Generator (yebyen/mecris#255)**: `ghost/post_mortem.py` + `tests/test_post_mortem.py` (13 tests). All passing. Committed `f69dcf9`. Closes kingdonb/mecris#216.
 
 ## Pending Verification
 
@@ -19,7 +20,6 @@
 - [ ] **Renovate app install**: `renovate.json` is committed but Renovate bot must be installed on the GitHub repo to take effect. Install from https://github.com/apps/renovate.
 
 ### 🤖 Bot-actionable (can be resolved in future sessions)
-- [ ] **Post-Mortem Generator (Issue #216)**: Now unblocked — `autonomous_turns` table exists. Check for exit_code != 0 rows, draft `attic/post-mortems/YYYY-MM-DD-failure.md`. Depends on migrate_v7 being applied to prod.
 - [ ] **The Holy Grail: Python-Native WASM Migration (Issue #157)**: Research `componentize-py` and build a POC WASM component derived directly from Python logic.
 - [ ] **Dual-Widget "Debt vs. Flow" UI (Issue #160)**: Android UI Epic. Build a secondary gauge indicator to visualize long-term debt vs daily flow.
 - [ ] **Port Twilio to WASM Brain (Issue #167)**: Move SMS/WhatsApp dispatch logic from Python/boris-fiona-walker into the `sync-service` Rust module.
@@ -38,6 +38,7 @@
 - [ ] **Budget Governor: WASM Port (Issue #214)**: Port the 5%/5% spend envelope logic from Python to Rust to ensure consistent routing recommendations in the cloud.
 
 ## Infrastructure Notes (carried forward)
+- **Post-Mortem Generator**: `PostMortemGenerator` in `ghost/post_mortem.py` — fail-open, returns None without NEON_DB_URL. Use `PostMortemGenerator(db_url=...).run(user_id)` to generate reports.
 - **Token Bank**: `TokenBankService` is fail-open — without `NEON_DB_URL`, `check_and_debit` returns 0 and logs a warning. Safe to import without a live DB.
 - **smart_nag integration complete**: `ReminderService` receives `walk_history_provider=get_walk_history` (mcp_server.py). SQL: `SELECT start_time FROM walk_inferences WHERE user_id = %s AND start_time >= %s ORDER BY start_time ASC` (last 30 days).
 - **mecris pulse**: `render_pulse(context)` is a pure function — safe to call with any dict. `run_pulse(user_id)` is the async entrypoint importing `get_narrator_context` at call time (deferred import avoids circular dependency at module load).
