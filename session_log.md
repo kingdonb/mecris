@@ -2111,3 +2111,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: Nothing. Plan fully executed.
 
 **Next**: Pick next beta.3 backlog feature. Candidates: #199 (Renovate config — smallest), #157 (WASM POC — highest roadmap priority), #215 (mecris pulse CLI dashboard — high visibility).
+
+## 2026-04-22 🏛️ — Implement mecris pulse CLI dashboard (session #27, yebyen/mecris#251, complete)
+
+**Planned**: Create `cli/pulse.py` — a `rich`-powered terminal dashboard displaying goal runways, budget, walk status, system heartbeat, and recommendations via `mecris pulse`. (Plan: yebyen/mecris#251, upstream: kingdonb/mecris#215)
+
+**Done**: `cli/pulse.py` implemented with `render_pulse()` (pure-function renderer consuming a narrator context dict), `build_mock_context()` (deterministic test fixture), and `run_pulse()` (async entrypoint importing `get_narrator_context` at call time). `mecris pulse` subcommand registered in `cli/main.py`. 18 unit tests in `tests/test_pulse.py` — all passing. Renders a rich dashboard with goal runway table (color-coded SAFE/CAUTION/WARNING/CRITICAL), budget panel ($remaining, % used, days left), walk status panel, system heartbeat (scheduler up/down, leader, daily aggregate score), urgent items, and top 3 recommendations. Commit `c367c98`. Plan issue #251 closed.
+
+**Skipped**: Nothing. Plan fully executed.
+
+**Next**: Pick next beta.3 backlog feature. Candidates: #199 (Renovate config — smallest), #209 (Token Bank — DB schema + Python service, good scope), #157 (WASM POC — highest roadmap priority).

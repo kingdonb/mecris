@@ -1,13 +1,13 @@
 # Next Session: Pick next beta.3 feature from backlog
 
-## Current Status (2026-04-22, post-session #26)
-- **DB-backed walk_history_provider complete**: `get_walk_history()` in `mcp_server.py` queries `walk_inferences` for `start_time` values in the last 30 days and is wired into the module-level `ReminderService` as `walk_history_provider`. Commit `4cf2bc2`. Closes yebyen/mecris#250.
-- **smart_nag fully production-wired**: `ReminderService` now receives real walk history from Neon DB on every reminder check cycle. No stub or lambda remains in the production path.
-- **490 tests green**: 3 new tests cover `get_walk_history` (DB return, empty NEON_DB_URL, DB error). Pre-existing 9 failures in `test_sms_mock.py` and `test_issue_52_template_mapping.py` are NEON_DB_URL env issues, unchanged.
+## Current Status (2026-04-22, post-session #27)
+- **mecris pulse complete**: `cli/pulse.py` delivers a `rich`-powered terminal dashboard via `mecris pulse`. Displays goal runways (color-coded by derail risk), budget panel, walk status, system heartbeat, urgent items, and top recommendations. Commit `c367c98`. Closes kingdonb/mecris#215.
+- **18 tests green**: All `tests/test_pulse.py` tests pass (helper color logic, mock context structure, render_pulse smoke tests — 6 render variants tested).
+- **CLI wired**: `mecris pulse` subcommand registered in `cli/main.py`, dispatches to `run_pulse()` which calls `get_narrator_context` from mcp_server.
 - **v0.0.1-beta.3 dev cycle active**: Large backlog of features awaiting bot work.
 
 ## Verified This Session
-- [x] **DB-backed walk_history_provider (yebyen/mecris#250)**: `get_walk_history` implemented, wired, tested. 490 tests green. Commit `4cf2bc2`.
+- [x] **mecris pulse CLI dashboard (yebyen/mecris#251)**: `cli/pulse.py` implemented, `mecris pulse` wired, 18 tests green. Commit `c367c98`.
 
 ## Pending Verification
 
@@ -35,11 +35,11 @@
 - [ ] **Human Yield Presence Detection (Issue #211)**: Add logic to detect human workstation activity and manage the `presence.lock` safely.
 - [ ] **Observability: Log Local Notifications (Issue #213)**: Implement remote logging for local Android notifications to provide a complete accountability audit trail.
 - [ ] **Budget Governor: WASM Port (Issue #214)**: Port the 5%/5% spend envelope logic from Python to Rust to ensure consistent routing recommendations in the cloud.
-- [ ] **CLI Dashboard: mecris pulse (Issue #215)**: Implement a high-density terminal dashboard to view the entire ecosystem state in one command.
 - [ ] **Autonomous Post-Mortem Generator (Issue #216)**: Enable the Ghost Archivist to detect failed turns and autonomously draft analysis reports in the attic.
 
 ## Infrastructure Notes (carried forward)
 - **smart_nag integration complete**: `ReminderService` receives `walk_history_provider=get_walk_history` (mcp_server.py). SQL: `SELECT start_time FROM walk_inferences WHERE user_id = %s AND start_time >= %s ORDER BY start_time ASC` (last 30 days).
+- **mecris pulse**: `render_pulse(context)` is a pure function — safe to call with any dict. `run_pulse(user_id)` is the async entrypoint importing `get_narrator_context` at call time (deferred import avoids circular dependency at module load).
 - **DelayedNagWorker time guards**: Arabic 08:00–20:00; Walk 08:00–20:00 (fixed session #25); Sovereign Fallback 08:00–20:00 (fixed session #25); GREEK 17:00–22:30.
 - **phone_verified column**: `ALTER TABLE users ADD COLUMN IF NOT EXISTS phone_verified BOOLEAN DEFAULT FALSE` — Apply migrate_v6 to production Neon.
 - **aggregate_step_count ordering contract**: SQL at `lib.rs:1309` uses `ORDER BY start_time ASC`; `.last()` relies on this.
