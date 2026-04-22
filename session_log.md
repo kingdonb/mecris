@@ -2131,3 +2131,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: Nothing. Plan fully executed. Note for human: Renovate bot must be installed on the repo at https://github.com/apps/renovate to activate.
 
 **Next**: Pick next beta.3 backlog feature. Candidates: #209 (Token Bank — DB schema + Python service, medium scope), #157 (WASM POC — highest roadmap priority), #216 (Post-Mortem Generator — autonomous observability).
+
+## 2026-04-22 🏛️ — Token Bank schema migration and service implemented (session #29, yebyen/mecris#254, complete)
+
+**Planned**: Create `scripts/migrate_v7_autonomous_tracking.py` with `token_bank` and `autonomous_turns` tables, implement `services/token_bank.py` to check/debit daily token allowance before spawning headless turns, and add unit tests verifying rejection when allowance is exceeded. (Plan: yebyen/mecris#254, upstream: kingdonb/mecris#209)
+
+**Done**: `scripts/migrate_v7_autonomous_tracking.py` creates `token_bank` (user_id PK, daily_allowance, tokens_used_today, last_reset_date) and `autonomous_turns` (turn_id PK, user_id FK, agent_role, start_time, end_time, exit_code, tokens_consumed, summary) tables. `services/token_bank.py` implements `TokenBankService` with `check_and_debit` (raises `TokenBudgetExceededError` when allowance exceeded, fail-open without NEON_DB_URL), `record_turn_start`, `record_turn_end`, and `get_failed_turns` (feeds kingdonb/mecris#216). 13 unit tests in `tests/test_token_bank.py` — all passing. Committed `89927fd`. Plan issue #254 closed. Closes kingdonb/mecris#209. Unblocks kingdonb/mecris#216.
+
+**Skipped**: Nothing. Plan fully executed. Note for human: migrate_v7 must be applied to production Neon before `autonomous_turns` data accumulates or #216 Post-Mortem Generator can run.
+
+**Next**: kingdonb/mecris#216 (Post-Mortem Generator — now unblocked, reads `autonomous_turns` for exit_code != 0) or kingdonb/mecris#157 (WASM POC — highest roadmap priority).
