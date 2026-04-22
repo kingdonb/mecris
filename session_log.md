@@ -2101,3 +2101,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: Nothing. Plan fully executed.
 
 **Next**: Implement the Neon DB-backed `walk_history_provider` function in the scheduler/worker layer (interface defined in session #24), OR pick next beta.3 backlog item (kingdonb/mecris#199 Renovate is smallest; #157 WASM Migration is highest-priority per roadmap).
+
+## 2026-04-22 — DB-backed walk_history_provider wired into ReminderService 🏛️
+
+**Planned**: Implement `get_walk_history()` querying Neon `walk_inferences` and wire it into the module-level `ReminderService` instantiation as `walk_history_provider`. (Plan: yebyen/mecris#250)
+
+**Done**: `get_walk_history(user_id)` added to `mcp_server.py` — queries `walk_inferences` for `start_time` values in the last 30 days using `asyncio.to_thread` + psycopg2, matching the established pattern of `get_last_sent_time`. Returns `List[datetime]`; returns `[]` on missing NEON_DB_URL or any DB error. Wired into `ReminderService` at module-level instantiation (`mcp_server.py:1128`). 3 unit tests added to `tests/test_mcp_server.py`. 490 tests green. Commit `4cf2bc2`. Plan issue #250 closed.
+
+**Skipped**: Nothing. Plan fully executed.
+
+**Next**: Pick next beta.3 backlog feature. Candidates: #199 (Renovate config — smallest), #157 (WASM POC — highest roadmap priority), #215 (mecris pulse CLI dashboard — high visibility).

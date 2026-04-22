@@ -1,15 +1,13 @@
-# Next Session: Implement DB-backed walk_history_provider OR pick next beta.3 feature
+# Next Session: Pick next beta.3 feature from backlog
 
-## Current Status (2026-04-22, post-session #25)
-- **quiet-hours guards standardized**: `DelayedNagWorker.kt` Walk branch now has `localHour >= 8 && localHour < 20` (was missing upper bound); Sovereign Fallback now has a full time guard (was completely unguarded). Commit `73fe632`. Closes kingdonb/mecris#212.
-- **smart_nag fully integrated**: `ReminderService.check_reminder_needed()` calls `evaluate_nag()` with a `walk_history_provider`. Interface contract established; 61/61 tests green. Commit `dcc6496`.
-- **Interface contract defined**: `walk_history_provider` is `async (user_id) -> List[datetime]` — next step is a real Neon DB query implementation.
-- **catch-up nag live**: `walk_reminder_catchup` (tier 2, no template) fires outside the standard window when peak window has passed without activity.
-- **Suppression live**: Walk reminder suppressed inside window when `success_probability > 0.70`.
+## Current Status (2026-04-22, post-session #26)
+- **DB-backed walk_history_provider complete**: `get_walk_history()` in `mcp_server.py` queries `walk_inferences` for `start_time` values in the last 30 days and is wired into the module-level `ReminderService` as `walk_history_provider`. Commit `4cf2bc2`. Closes yebyen/mecris#250.
+- **smart_nag fully production-wired**: `ReminderService` now receives real walk history from Neon DB on every reminder check cycle. No stub or lambda remains in the production path.
+- **490 tests green**: 3 new tests cover `get_walk_history` (DB return, empty NEON_DB_URL, DB error). Pre-existing 9 failures in `test_sms_mock.py` and `test_issue_52_template_mapping.py` are NEON_DB_URL env issues, unchanged.
 - **v0.0.1-beta.3 dev cycle active**: Large backlog of features awaiting bot work.
 
 ## Verified This Session
-- [x] **quiet-hours guards (yebyen/mecris#249)**: Walk branch `localHour < 20` upper bound added; Sovereign Fallback `localHourFallback >= 8 && localHourFallback < 20` guard added. 61/61 tests green. Commit `73fe632`.
+- [x] **DB-backed walk_history_provider (yebyen/mecris#250)**: `get_walk_history` implemented, wired, tested. 490 tests green. Commit `4cf2bc2`.
 
 ## Pending Verification
 
@@ -19,7 +17,6 @@
 - [ ] **Apply migrate_v6 to production Neon**: `phone_verified`, `phone_verifications`, `scheduler_election` multi-user, `vacation_mode_until` changes.
 
 ### 🤖 Bot-actionable (can be resolved in future sessions)
-- [ ] **DB-backed walk_history_provider**: Implement a real Neon DB query that returns `List[datetime]` of recent walk start times, wired into the scheduler/worker that calls `check_reminder_needed()`. The interface is defined; this is the next plumbing step.
 - [ ] **The Holy Grail: Python-Native WASM Migration (Issue #157)**: Research `componentize-py` and build a POC WASM component derived directly from Python logic.
 - [ ] **Dual-Widget "Debt vs. Flow" UI (Issue #160)**: Android UI Epic. Build a secondary gauge indicator to visualize long-term debt vs daily flow.
 - [ ] **Port Twilio to WASM Brain (Issue #167)**: Move SMS/WhatsApp dispatch logic from Python/boris-fiona-walker into the `sync-service` Rust module.
@@ -42,8 +39,8 @@
 - [ ] **Autonomous Post-Mortem Generator (Issue #216)**: Enable the Ghost Archivist to detect failed turns and autonomously draft analysis reports in the attic.
 
 ## Infrastructure Notes (carried forward)
-- **smart_nag integration note**: `ReminderService` now accepts `walk_history_provider`. The worker/scheduler that instantiates `ReminderService` must pass a real DB-backed provider. The interface: `async (user_id: str | None) -> List[datetime]` — returns walk start datetimes for the last 30 days.
-- **DelayedNagWorker time guards**: Arabic 08:00–20:00; Walk 08:00–20:00 (fixed this session); Sovereign Fallback 08:00–20:00 (fixed this session); GREEK 17:00–22:30.
+- **smart_nag integration complete**: `ReminderService` receives `walk_history_provider=get_walk_history` (mcp_server.py). SQL: `SELECT start_time FROM walk_inferences WHERE user_id = %s AND start_time >= %s ORDER BY start_time ASC` (last 30 days).
+- **DelayedNagWorker time guards**: Arabic 08:00–20:00; Walk 08:00–20:00 (fixed session #25); Sovereign Fallback 08:00–20:00 (fixed session #25); GREEK 17:00–22:30.
 - **phone_verified column**: `ALTER TABLE users ADD COLUMN IF NOT EXISTS phone_verified BOOLEAN DEFAULT FALSE` — Apply migrate_v6 to production Neon.
 - **aggregate_step_count ordering contract**: SQL at `lib.rs:1309` uses `ORDER BY start_time ASC`; `.last()` relies on this.
 - **Moussaka Exception**: `last_greek_nag_timestamp` → 1.5h cooldown. All others: 4h.
