@@ -2121,3 +2121,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: Nothing. Plan fully executed.
 
 **Next**: Pick next beta.3 backlog feature. Candidates: #199 (Renovate config — smallest), #209 (Token Bank — DB schema + Python service, good scope), #157 (WASM POC — highest roadmap priority).
+
+## 2026-04-22 🏛️ — Centralized Renovate configuration added (session #28, yebyen/mecris#253, complete)
+
+**Planned**: Create `renovate.json` at the repo root covering all four package ecosystems (Python/pep621, Rust/cargo, Android/Gradle, Web/npm). (Plan: yebyen/mecris#253, upstream: kingdonb/mecris#199)
+
+**Done**: `renovate.json` created with `$schema`, `config:recommended` + `:semanticCommits` + `:dependencyDashboard` extends, `America/New_York` timezone, Monday-morning weekly schedule, `dependencies` label, ignorePaths for `.venv/`, `target/`, `node_modules/`, `.models/`. Four packageRules group each ecosystem into a single PR (Python deps, Rust crates, Android/Gradle dependencies, Web npm dependencies). Major version bumps get `major-update` label and are never automerged. JSON validated. Committed `fada2e6`. Plan issue #253 closed. Closes kingdonb/mecris#199.
+
+**Skipped**: Nothing. Plan fully executed. Note for human: Renovate bot must be installed on the repo at https://github.com/apps/renovate to activate.
+
+**Next**: Pick next beta.3 backlog feature. Candidates: #209 (Token Bank — DB schema + Python service, medium scope), #157 (WASM POC — highest roadmap priority), #216 (Post-Mortem Generator — autonomous observability).

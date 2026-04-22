@@ -1,12 +1,14 @@
 # Next Session: Pick next beta.3 feature from backlog
 
-## Current Status (2026-04-22, post-session #27)
-- **mecris pulse complete**: `cli/pulse.py` delivers a `rich`-powered terminal dashboard via `mecris pulse`. Displays goal runways (color-coded by derail risk), budget panel, walk status, system heartbeat, urgent items, and top recommendations. Commit `c367c98`. Closes kingdonb/mecris#215.
+## Current Status (2026-04-22, post-session #28)
+- **renovate.json complete**: Centralized Renovate configuration committed (`fada2e6`). Covers Python (pep621), Rust (cargo), Android/Gradle (gradle + gradle-wrapper), and Web/npm. Weekly schedule (Monday AM ET), grouped PRs per ecosystem, major bumps labeled `major-update`. Closes kingdonb/mecris#199.
+- **mecris pulse complete**: `cli/pulse.py` delivers a `rich`-powered terminal dashboard via `mecris pulse`. Commit `c367c98`. Closes kingdonb/mecris#215.
 - **18 tests green**: All `tests/test_pulse.py` tests pass (helper color logic, mock context structure, render_pulse smoke tests — 6 render variants tested).
 - **CLI wired**: `mecris pulse` subcommand registered in `cli/main.py`, dispatches to `run_pulse()` which calls `get_narrator_context` from mcp_server.
 - **v0.0.1-beta.3 dev cycle active**: Large backlog of features awaiting bot work.
 
 ## Verified This Session
+- [x] **renovate.json (yebyen/mecris#253)**: Created covering pep621, cargo, gradle, npm. JSON valid. Committed `fada2e6`. Closes kingdonb/mecris#199.
 - [x] **mecris pulse CLI dashboard (yebyen/mecris#251)**: `cli/pulse.py` implemented, `mecris pulse` wired, 18 tests green. Commit `c367c98`.
 
 ## Pending Verification
@@ -15,13 +17,13 @@
 - [ ] **Android test count investigation**: `PocketIdAuthTest` pre-existing failure (`ExceptionInInitializerError` at line 35) — out of bot scope.
 - [ ] **Configure internal_api_key in Fermyon Cloud**: Postponed. Prioritizing feature work.
 - [ ] **Apply migrate_v6 to production Neon**: `phone_verified`, `phone_verifications`, `scheduler_election` multi-user, `vacation_mode_until` changes.
+- [ ] **Renovate app install**: `renovate.json` is committed but Renovate bot must be installed on the GitHub repo to take effect. Install from https://github.com/apps/renovate.
 
 ### 🤖 Bot-actionable (can be resolved in future sessions)
 - [ ] **The Holy Grail: Python-Native WASM Migration (Issue #157)**: Research `componentize-py` and build a POC WASM component derived directly from Python logic.
 - [ ] **Dual-Widget "Debt vs. Flow" UI (Issue #160)**: Android UI Epic. Build a secondary gauge indicator to visualize long-term debt vs daily flow.
 - [ ] **Port Twilio to WASM Brain (Issue #167)**: Move SMS/WhatsApp dispatch logic from Python/boris-fiona-walker into the `sync-service` Rust module.
 - [ ] **Rust Reminder Engine (Issue #169)**: Implement the 2000-step threshold, sleep window heuristics, and weather checks natively in Rust.
-- [ ] **Implement Renovate Configuration (Issue #199)**: Create a centralized `renovate.json` to manage dependencies across all modules.
 - [ ] **Contextual Awareness: Chrome Bookmarks (Issue #201)**: Build a local Chrome bookmarks parser and MCP endpoint.
 - [ ] **RAG Foundation: Documentation Graph (Issue #202)**: Standardize doc front-matter and implement automated link/graph verification.
 - [ ] **Local Inference Pipeline (Issue #203)**: Integrate Ollama and build a cloud-fallback router.
