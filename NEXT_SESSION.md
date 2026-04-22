@@ -37,6 +37,9 @@
 - [ ] **HCAT Sandbox Dockerfile (Issue #210)**: Create a hardened, SHA-pinned Dockerfile for executing autonomous agents securely.
 - [ ] **Human Yield Presence Detection (Issue #211)**: Add logic to detect human workstation activity and manage the `presence.lock` safely.
 - [ ] **Observability: Log Local Notifications (Issue #213)**: Implement remote logging for local Android notifications to provide a complete accountability audit trail.
+- [ ] **Budget Governor: WASM Port (Issue #214)**: Port the 5%/5% spend envelope logic from Python to Rust to ensure consistent routing recommendations in the cloud.
+- [ ] **CLI Dashboard: mecris pulse (Issue #215)**: Implement a high-density terminal dashboard to view the entire ecosystem state in one command.
+- [ ] **Autonomous Post-Mortem Generator (Issue #216)**: Enable the Ghost Archivist to detect failed turns and autonomously draft analysis reports in the attic.
 
 ## Infrastructure Notes (carried forward)
 - **smart_nag integration note**: `ReminderService` now accepts `walk_history_provider`. The worker/scheduler that instantiates `ReminderService` must pass a real DB-backed provider. The interface: `async (user_id: str | None) -> List[datetime]` — returns walk start datetimes for the last 30 days.
