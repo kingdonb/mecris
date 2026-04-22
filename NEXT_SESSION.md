@@ -39,6 +39,7 @@
 - [ ] **Agent Constraints: Token Bank (Issue #209)**: Update Neon schema to track and rate-limit autonomous ghost sessions.
 - [ ] **HCAT Sandbox Dockerfile (Issue #210)**: Create a hardened, SHA-pinned Dockerfile for executing autonomous agents securely.
 - [ ] **Human Yield Presence Detection (Issue #211)**: Add logic to detect human workstation activity and manage the `presence.lock` safely.
+- [ ] **Observability: Log Local Notifications (Issue #213)**: Implement remote logging for local Android notifications to provide a complete accountability audit trail.
 
 ## Infrastructure Notes (carried forward)
 - **smart_nag integration note**: `ReminderService` now accepts `walk_history_provider`. The worker/scheduler that instantiates `ReminderService` must pass a real DB-backed provider. The interface: `async (user_id: str | None) -> List[datetime]` — returns walk start datetimes for the last 30 days.
