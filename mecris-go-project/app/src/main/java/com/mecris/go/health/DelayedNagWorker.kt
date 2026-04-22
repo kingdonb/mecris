@@ -85,8 +85,9 @@ class DelayedNagWorker(
                 }
             } else {
                 // 3. SOVEREIGN FALLBACK: Basic local walk check
+                val localHourFallback = java.time.LocalDateTime.now().hour
                 val healthManager = HealthConnectManager(applicationContext)
-                if (healthManager.hasForegroundPermissions()) {
+                if (localHourFallback >= 8 && localHourFallback < 20 && healthManager.hasForegroundPermissions()) {
                     val summary = healthManager.fetchRecentWalkData()
                     if (summary.totalSteps < 2000) {
                         // CHECK COOLDOWN even for fallback nags
@@ -148,7 +149,7 @@ class DelayedNagWorker(
         }
 
         // 2. WALK / MAJESTY CAKE (Priority 2: Physical Wellbeing)
-        if (!status.components.walk && localHour >= 8) {
+        if (!status.components.walk && localHour >= 8 && localHour < 20) {
             val hasPartialWalk = walkSummary != null && (walkSummary.walkingSessionsCount > 0 || walkSummary.totalDistanceMeters > 0.0) && walkSummary.totalSteps < 2000
             val goalName = if (hasPartialWalk) "MAJESTY CAKE" else "WALK"
             val fallbackTitle = if (hasPartialWalk) "MAJESTY CAKE 🍰" else "PHYSICAL GOAL"
