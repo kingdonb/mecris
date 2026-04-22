@@ -2091,3 +2091,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: Real Neon DB query implementation for `walk_history_provider` — the interface contract is established, but the actual DB-backed provider function that queries walk timestamps still needs to be written and passed to the scheduler/worker that instantiates `ReminderService`.
 
 **Next**: Implement the Neon DB-backed `walk_history_provider` function in the scheduler/worker layer, OR pick the next beta.3 backlog item (kingdonb/mecris#199 Renovate is smallest; #157 WASM Migration is highest priority per roadmap).
+
+## 2026-04-22 🏛️ — Standardized quiet-hours guards in DelayedNagWorker.kt (session #25, yebyen/mecris#249, complete)
+
+**Planned**: Add `localHour >= 8 && localHour < 20` to the Walk nag branch (missing upper bound) and add a complete time guard to the Sovereign Fallback block (had no time guard at all). (yebyen/mecris#249, kingdonb/mecris#212)
+
+**Done**: Walk branch (line 151): added `&& localHour < 20` upper bound — was open-ended, could fire at 21:00+. Sovereign Fallback block: added `val localHourFallback = java.time.LocalDateTime.now().hour` and `localHourFallback >= 8 && localHourFallback < 20` guard before health permissions check — was completely unguarded, allowing 4 AM wake notifications when token was expired. 61/61 Python tests green (17 smart_nag + 44 reminder_service). Committed `73fe632`. Plan issue #249 closed.
+
+**Skipped**: Nothing. Plan fully executed.
+
+**Next**: Implement the Neon DB-backed `walk_history_provider` function in the scheduler/worker layer (interface defined in session #24), OR pick next beta.3 backlog item (kingdonb/mecris#199 Renovate is smallest; #157 WASM Migration is highest-priority per roadmap).
