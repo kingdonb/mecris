@@ -1,9 +1,15 @@
-# Next Session: Feature momentum after PR #198 merge
+# Next Session: Pick next feature from beta.3 backlog (kingdonb/mecris#201–#208)
 
-## Current Status (2026-04-21, post-PR-merge)
+## Current Status (2026-04-21, post-session-#23)
 - **PR #198 merged**: All 9 commits (obsidian, headless, android UI) are now in `main`.
-- **v0.0.1-beta.2 tagged**: SLSA Build Level 2 achieved and formalized.
-- **Bot productivity high**: Doom loop broken; backlog populated with complex tasks.
+- **v0.0.1-beta.3 tagged**: Version bumped by kingdonb; beta.3 dev cycle underway.
+- **smart_nag implemented**: `services/smart_nag.py` + 17 unit tests, committed `1883cf6` (session #23).
+- **Bot productivity high**: Deep backlog populated; test coverage growing each session.
+
+## Verified This Session
+- [x] **Smart Nagging: Success Patterns (kingdonb/mecris#200)**: `services/smart_nag.py` with
+  `evaluate_nag()`, `success_probability()`, `find_peak_success_window()`.
+  17/17 tests green. Commit `1883cf6`.
 
 ## Pending Verification
 
@@ -48,6 +54,15 @@
 - **Spin sync-service**: 0.3.1-beta.2
 - **Python MCP**: 0.5.1-beta.2
 - **Suite**: 0.0.1-beta.2
+- [ ] **Implement Renovate Configuration (kingdonb/mecris#199)**: Create a centralized `renovate.json` to manage dependencies across all modules (Python, Rust, Android, Web).
+- [ ] **Contextual Awareness: Chrome Bookmarks (kingdonb/mecris#201)**: Build a local Chrome bookmarks parser and MCP endpoint to surface relevant research in the Narrator context.
+- [ ] **RAG Foundation: Documentation Graph (kingdonb/mecris#202)**: Standardize doc front-matter and implement automated link/graph verification to prepare for vector indexing.
+- [ ] **Local Inference Pipeline (kingdonb/mecris#203)**: Integrate Ollama and build a cloud-fallback router to manage RAG costs.
+- [ ] **Autonomous Security: JIT Secret Manager (kingdonb/mecris#204)**: Implement secure credential retrieval and passing for headless `gemini --yolo` turns.
+- [ ] **AI Framework Evaluation (kingdonb/mecris#205)**: Formalize evaluation matrix and run proof-of-concept tests for alternatives to Claude Code.
+- [ ] **Headless Loopback for gh copilot (kingdonb/mecris#206)**: Subprocess wrapper for `gh copilot` to allow autonomous shell scripting assistance.
+- [ ] **Conversational RAG (kingdonb/mecris#207)**: Implement `ask_mecris` MCP query interface using Ollama router and local documentation index.
+- [ ] **Semantic Search: Bookmark Embeddings (kingdonb/mecris#208)**: Generate vector index for Chrome bookmarks and surface results in Narrator context.
 
 ## Infrastructure Notes (carried forward)
 - **phone_verified column**: `ALTER TABLE users ADD COLUMN IF NOT EXISTS phone_verified BOOLEAN DEFAULT FALSE` — Apply migrate_v6 to production Neon.
@@ -55,3 +70,6 @@
 - **DelayedNagWorker time guards**: Arabic 08:00–20:00; Walk 08:00+; GREEK 17:00–22:30.
 - **Moussaka Exception**: `last_greek_nag_timestamp` → 1.5h cooldown. All others: 4h.
 - **MECRIS_MODE=standalone** bypasses JWKS; `MECRIS_MODE=cloud` enforces RSA verification.
+- **smart_nag integration note**: `services/smart_nag.py` is a pure-function library; it needs a
+  DB-backed `walk_history_provider` wired up in `reminder_service.py` or a scheduler task to
+  actually suppress/escalate live nags. The math works; plumbing is the next step.

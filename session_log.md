@@ -2071,3 +2071,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: Nothing. Plan fully executed.
 
 **Next**: Human review and merge of kingdonb/mecris#198 (now 9 commits). After merge, pick next beta.2 feature from kingdonb open issues (candidates: #193 LLM Quota Hypervisor, #185 Security Hardening).
+
+## 2026-04-21 🏛️ — Smart Nagging success-probability heuristic (session #23, yebyen/mecris#247, complete)
+
+**Planned**: Create `services/smart_nag.py` with `success_probability(hour, day_of_week)` to suppress walk nags during high-probability success windows (>70%) and fire catch-up nags when the window passes. (yebyen/mecris#247, kingdonb/mecris#200)
+
+**Done**: Implemented `services/smart_nag.py` — three pure functions (`success_probability`, `find_peak_success_window`, `evaluate_nag`) with injectable `now` param for deterministic testing. 30-day history window, ±1h success band, >70% suppression threshold. `tests/test_smart_nag.py` — 17 tests, all green. Committed `1883cf6`. Plan issue #247 closed.
+
+**Skipped**: DB-backed `walk_history_provider` integration into `reminder_service.py` — the pure-function library is ready, but live plumbing is deferred to a future session.
+
+**Next**: Wire `smart_nag.evaluate_nag()` into `ReminderService.check_reminder_needed()` using a real DB provider, OR pick next beta.3 backlog item (kingdonb/mecris#199 Renovate, #201 Chrome Bookmarks, #202 RAG Foundation).
