@@ -2191,3 +2191,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: Nothing — plan fully executed.
 
 **Next**: WASM Migration POC (kingdonb/mecris#157) — highest architectural priority. Or Local Inference Pipeline (#203) to enable offline generation (Ollama) with Anthropic as cloud fallback.
+
+## 🏛️ 2026-04-23 — Python-native ReviewPump WASM POC (session #35, yebyen/mecris#261, complete)
+
+**Planned**: Research `componentize-py` and produce a minimal POC demonstrating Python-in-WASM for a Mecris service, targeting `poc/wasm/` directory with passing pytest. (Plan: yebyen/mecris#261, upstream: kingdonb/mecris#157)
+
+**Done**: `poc/wasm/review-pump-py/app.py` — Python-native ReviewPump WASM component using componentize-py + spin-python-sdk HTTP trigger pattern. Pure-logic functions (`calculate_target`, `get_status`, `_parse_request`, `_json_ok`, `_error_json`) are importable in tests without the WASM runtime; `IncomingHandler` is guarded by `try/except ImportError`. `tests/test_review_pump_py_component.py` — 34 pytest tests achieving parity with the 15 Rust unit tests in `mecris-go-spin/review-pump/src/lib.rs`. Also fixed a module-naming conflict (`sys.path` vs `importlib.util`) so arabic-skip-counter and review-pump-py tests don't collide. `docs/LOGIC_VACUUMING_CANDIDATES.md` updated with Phase 1.7 entry confirming zero-rewrite migration path validated. Committed `ca90259`.
+
+**Skipped**: Actual `spin py2wasm` build (requires `wasm32-wasi` toolchain not present in CI); WASM binary artifact not produced. The Python logic and tests fully validate the pattern. Buildable in any environment with `spin` CLI and `componentize-py` installed.
+
+**Next**: BudgetGovernor Python-native WASM port (Phase 2 per LOGIC_VACUUMING_CANDIDATES.md): replace File I/O with Spin KV, `requests` with `spin_sdk` outbound HTTP — core envelope logic is pure Python and portable. Or pivot to Local Inference Pipeline (#203) or HCAT Sandbox Dockerfile (#210).

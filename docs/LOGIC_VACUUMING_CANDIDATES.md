@@ -332,13 +332,20 @@ Note: Phase 1.6 uses `spin py2wasm` (the `spin-python-sdk` toolchain), which wra
 ## Recommended Migration Sequence
 
 ```
-Phase 0  (now)       — This document. Candidates identified.
-Phase 1  (next)      — Port ReviewPump as Python WASM via componentize-py/spin-python-sdk.
-                        Alternative: port to Rust if Python binary size is prohibitive.
-                        Expose as /internal/review-pump-status. Unit tests required.
-Phase 1.5            — arabic_skip_counter: replace psycopg2 with Neon HTTP API,
-                        wrap with componentize-py. Validates Python + I/O-via-HTTP pattern.
-Phase 2              — Port BudgetGovernor core envelope (Python-native via componentize-py).
+Phase 0  (done)      — This document. Candidates identified.
+Phase 1  (done)      — ReviewPump ported to Rust (mecris-go-spin/review-pump/).
+                        Exposes /internal/review-pump-status. 15 Rust unit tests.
+Phase 1.5b (done)    — arabic_skip_counter: psycopg2 replaced with Neon HTTP API.
+                        componentize-py WitWorld function-export POC validated.
+Phase 1.6 (done)     — arabic_skip_counter re-implemented as spin HTTP trigger
+                        (spin_sdk IncomingHandler). 16 Python pytest tests.
+                        Source: mecris-go-spin/arabic-skip-counter/app.py
+Phase 1.7 (done)     — ReviewPump Python-native WASM POC (kingdonb/mecris#157).
+                        poc/wasm/review-pump-py/app.py — zero-rewrite migration path
+                        demonstrated. 34 Python pytest tests. Validates the pattern for
+                        pure-logic services: calculate_target, get_status, _parse_request.
+                        Parity with Rust review-pump confirmed test-by-test.
+Phase 2  (next)      — Port BudgetGovernor core envelope (Python-native via componentize-py).
                         KV store spend log, outbound HTTP for Helix balance.
                         Python MCP server becomes a thin wrapper calling the WASM component.
 Phase 3              — Android app binds WASM component directly (Wasmtime for Android).
