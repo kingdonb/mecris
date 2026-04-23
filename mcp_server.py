@@ -33,6 +33,7 @@ from services.review_pump import ReviewPump, ARABIC_POINTS_PER_CARD
 from services.credentials_manager import credentials_manager
 from ghost.presence import get_neon_store, StatusType
 from services.rag_retriever import RAGRetriever
+from services.rag_generator import generate_answer as _rag_generate
 
 # Load environment variables
 load_dotenv()
@@ -1465,6 +1466,7 @@ def ask_mecris(query: str) -> Dict[str, Any]:
             "note": "Empty query — please provide a search term.",
         }
     results = _rag_retriever.retrieve(query, top_k=5)
+    answer = _rag_generate(query, results)
     note = (
         "Results are BM25 keyword-ranked. Use retrieved snippets as context for your answer."
         if results
@@ -1473,6 +1475,7 @@ def ask_mecris(query: str) -> Dict[str, Any]:
     return {
         "query": query,
         "result_count": len(results),
+        "answer": answer,
         "results": results,
         "note": note,
     }

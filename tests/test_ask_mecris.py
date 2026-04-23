@@ -2,13 +2,15 @@
 tests/test_ask_mecris.py — Unit tests for the ask_mecris MCP tool and BM25 retriever.
 
 Plan: yebyen/mecris#259 / kingdonb/mecris#207
+Plan: yebyen/mecris#260 (generation step)
 """
 
 import pytest
 from pathlib import Path
-from unittest.mock import patch, MagicMock  # noqa: F401 — kept for future use
+from unittest.mock import patch, MagicMock, PropertyMock
 
 from services.rag_retriever import BM25, RAGRetriever, _parse_frontmatter, _snippet
+from services.rag_generator import generate_answer, _build_context
 
 
 # ---------------------------------------------------------------------------
@@ -247,3 +249,105 @@ def test_ask_mecris_result_structure_via_retriever(tmp_repo):
     for res in results:
         for field in ("source", "title", "description", "date", "type", "snippet"):
             assert field in res, f"Missing field '{field}' in result"
+
+
+# ---------------------------------------------------------------------------
+# RAG generation tests (services/rag_generator.py)
+# ---------------------------------------------------------------------------
+
+_SAMPLE_CHUNKS = [
+    {
+        "source": "docs/ARCHITECTURE.md",
+        "title": "Architecture",
+        "description": "System design overview",
+        "date": "2026-01-02",
+        "type": "doc",
+        "snippet": "Mecris uses FastMCP, Beeminder, Twilio, and a PostgreSQL Neon database.",
+    },
+    {
+        "source": "docs/SETUP_GUIDE.md",
+        "title": "Setup Guide",
+        "description": "Installation instructions",
+        "date": "2026-01-01",
+        "type": "doc",
+        "snippet": "Install mecris with uv. Configure NEON_DB_URL in .env.",
+    },
+]
+
+
+class TestBuildContext:
+    def test_includes_title_and_snippet(self):
+        ctx = _build_context(_SAMPLE_CHUNKS)
+        assert "Architecture" in ctx
+        assert "FastMCP" in ctx
+
+    def test_numbered_entries(self):
+        ctx = _build_context(_SAMPLE_CHUNKS)
+        assert "[1]" in ctx
+        assert "[2]" in ctx
+
+    def test_empty_chunks_returns_empty(self):
+        assert _build_context([]) == ""
+
+
+class TestGenerateAnswerNoApiKey:
+    def test_returns_none_when_no_api_key(self, monkeypatch):
+        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+        result = generate_answer("what is mecris?", _SAMPLE_CHUNKS)
+        assert result is None
+
+    def test_returns_none_for_empty_chunks(self, monkeypatch):
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
+        result = generate_answer("what is mecris?", [])
+        assert result is None
+
+
+class TestGenerateAnswerMocked:
+    def test_returns_answer_string(self, monkeypatch):
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
+        mock_text = MagicMock()
+        mock_text.text = "Mecris is a personal accountability system."
+        mock_response = MagicMock()
+        mock_response.content = [mock_text]
+        mock_client = MagicMock()
+        mock_client.messages.create.return_value = mock_response
+
+        with patch("services.rag_generator._anthropic_lib") as mock_anthropic:
+            mock_anthropic.Anthropic.return_value = mock_client
+            result = generate_answer("what is mecris?", _SAMPLE_CHUNKS)
+
+        assert result == "Mecris is a personal accountability system."
+
+    def test_api_failure_returns_none(self, monkeypatch):
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
+        mock_client = MagicMock()
+        mock_client.messages.create.side_effect = RuntimeError("API down")
+
+        with patch("services.rag_generator._anthropic_lib") as mock_anthropic:
+            mock_anthropic.Anthropic.return_value = mock_client
+            result = generate_answer("what is mecris?", _SAMPLE_CHUNKS)
+
+        assert result is None
+
+    def test_model_passed_through(self, monkeypatch):
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
+        mock_text = MagicMock()
+        mock_text.text = "answer"
+        mock_response = MagicMock()
+        mock_response.content = [mock_text]
+        mock_client = MagicMock()
+        mock_client.messages.create.return_value = mock_response
+
+        with patch("services.rag_generator._anthropic_lib") as mock_anthropic:
+            mock_anthropic.Anthropic.return_value = mock_client
+            generate_answer("q", _SAMPLE_CHUNKS, model="claude-opus-4-6")
+            call_kwargs = mock_client.messages.create.call_args
+        assert call_kwargs.kwargs["model"] == "claude-opus-4-6"
+
+
+def test_ask_mecris_answer_field_in_mcp_server_source():
+    """ask_mecris must include 'answer' key in its return dict."""
+    mcp_server_path = Path(__file__).parent.parent / "mcp_server.py"
+    source = mcp_server_path.read_text(encoding="utf-8")
+    assert '"answer": answer' in source or "'answer': answer" in source
+    assert "_rag_generate" in source
