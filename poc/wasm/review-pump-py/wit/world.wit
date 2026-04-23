@@ -1,0 +1,17 @@
+package mecris:review-pump-py@0.1.0;
+
+/// ReviewPump HTTP component — Python-native WASM POC (kingdonb/mecris#157).
+///
+/// Route: POST /internal/review-pump-status
+/// Body JSON: {"debt": <i32>, "tomorrow_liability": <i32>, "daily_completions": <i32>,
+///             "multiplier_x10": <u32>, "unit": <string>}
+/// Returns JSON: PumpStatus object
+///
+/// Implements the zero-rewrite migration path: Python logic compiled to WASM
+/// via componentize-py + spin-python-sdk (spin py2wasm), with no Rust translation.
+///
+/// Build command:
+///   pip install -r requirements.txt && spin py2wasm app -o review-pump-py.wasm
+world review-pump-py {
+  export wasi:http/incoming-handler@0.2.0;
+}
