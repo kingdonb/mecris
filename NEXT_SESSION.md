@@ -1,14 +1,15 @@
-# Next Session: WASM Migration POC (kingdonb/mecris#157) or next beta.3 backlog item
+# Next Session: WASM Migration POC (kingdonb/mecris#157) or RAG Foundation completion (kingdonb/mecris#202)
 
-## Current Status (2026-04-22, post-session #30)
-- **Post-Mortem Generator complete**: `ghost/post_mortem.py` implements `PostMortemGenerator` that queries `autonomous_turns` for `exit_code != 0` rows via `TokenBankService.get_failed_turns()` and drafts `attic/post-mortems/YYYY-MM-DD-failure-turnN.md`. 13 tests green. Commit `f69dcf9`. Closes kingdonb/mecris#216.
-- **Full Ghost Archivist loop now exists**: Token Bank (session #29) tracks turns; Post-Mortem Generator (session #30) inspects failures. The self-healing cycle is structurally complete.
-- **Blocked on prod**: Post-Mortem Generator will only produce real reports once `autonomous_turns` data accumulates in Neon — requires human to apply migrate_v7 to prod.
-- **v0.0.1-beta.3 dev cycle active**: Large backlog of features awaiting bot work.
-- **Neon migration v7 pending apply**: Script committed (`89927fd`) but must be applied to production Neon by a human.
+## Current Status (2026-04-23, post-session #31)
+- **RAG Foundation scripts complete**: `scripts/verify_docs_graph.py` (doc link graph verifier) and `scripts/chunk_session_logs.py` (session log chunker) implemented and committed `6e64e12`. Closes partial scope of kingdonb/mecris#202.
+- **Session chunks generated**: 74 session entries across 17 dates written to `attic/session-chunks/` with YAML front-matter. Ready for future vector indexing.
+- **Doc graph result**: 95 docs scanned, 0 broken links, 91 orphaned docs (expected — most docs are standalone planning documents, not cross-linked).
+- **Remaining #202 scope**: Front-matter standardization on docs/ files (70+ files) not done — large mechanical task for a future session.
+- **Full Ghost Archivist loop exists**: Token Bank (session #29) + Post-Mortem Generator (session #30) complete. Self-healing cycle structurally complete.
+- **Blocked on prod**: Post-Mortem Generator and Token Bank require human to apply migrate_v7 to Neon.
 
 ## Verified This Session
-- [x] **Post-Mortem Generator (yebyen/mecris#255)**: `ghost/post_mortem.py` + `tests/test_post_mortem.py` (13 tests). All passing. Committed `f69dcf9`. Closes kingdonb/mecris#216.
+- [x] **RAG Foundation scripts (yebyen/mecris#256)**: `scripts/verify_docs_graph.py` + `scripts/chunk_session_logs.py`. Both execute without errors. 17 chunk files + PREAMBLE in `attic/session-chunks/`. Committed `6e64e12`.
 
 ## Pending Verification
 
@@ -20,12 +21,12 @@
 - [ ] **Renovate app install**: `renovate.json` is committed but Renovate bot must be installed on the GitHub repo to take effect. Install from https://github.com/apps/renovate.
 
 ### 🤖 Bot-actionable (can be resolved in future sessions)
+- [ ] **RAG Foundation: YAML front-matter on docs/ (Issue #202 remaining)**: Add YAML metadata blocks to all 70+ files in `docs/`. Large mechanical task — consider scripting it.
 - [ ] **The Holy Grail: Python-Native WASM Migration (Issue #157)**: Research `componentize-py` and build a POC WASM component derived directly from Python logic.
 - [ ] **Dual-Widget "Debt vs. Flow" UI (Issue #160)**: Android UI Epic. Build a secondary gauge indicator to visualize long-term debt vs daily flow.
 - [ ] **Port Twilio to WASM Brain (Issue #167)**: Move SMS/WhatsApp dispatch logic from Python/boris-fiona-walker into the `sync-service` Rust module.
 - [ ] **Rust Reminder Engine (Issue #169)**: Implement the 2000-step threshold, sleep window heuristics, and weather checks natively in Rust.
 - [ ] **Contextual Awareness: Chrome Bookmarks (Issue #201)**: Build a local Chrome bookmarks parser and MCP endpoint.
-- [ ] **RAG Foundation: Documentation Graph (Issue #202)**: Standardize doc front-matter and implement automated link/graph verification.
 - [ ] **Local Inference Pipeline (Issue #203)**: Integrate Ollama and build a cloud-fallback router.
 - [ ] **Autonomous Security: JIT Secret Manager (Issue #204)**: Implement secure credential retrieval for headless `gemini --yolo` turns.
 - [ ] **AI Framework Evaluation (Issue #205)**: Formalize evaluation matrix and run POC tests.
@@ -38,6 +39,8 @@
 - [ ] **Budget Governor: WASM Port (Issue #214)**: Port the 5%/5% spend envelope logic from Python to Rust to ensure consistent routing recommendations in the cloud.
 
 ## Infrastructure Notes (carried forward)
+- **RAG chunk files**: `attic/session-chunks/YYYY-MM-DD.md` — YAML front-matter with `date`, `primary_activity`, `entry_count`, `source`. Regenerate with `python scripts/chunk_session_logs.py`.
+- **Doc graph verifier**: `python scripts/verify_docs_graph.py [--json]` — scan `docs/` for broken/orphaned links. Zero broken links currently.
 - **Post-Mortem Generator**: `PostMortemGenerator` in `ghost/post_mortem.py` — fail-open, returns None without NEON_DB_URL. Use `PostMortemGenerator(db_url=...).run(user_id)` to generate reports.
 - **Token Bank**: `TokenBankService` is fail-open — without `NEON_DB_URL`, `check_and_debit` returns 0 and logs a warning. Safe to import without a live DB.
 - **smart_nag integration complete**: `ReminderService` receives `walk_history_provider=get_walk_history` (mcp_server.py). SQL: `SELECT start_time FROM walk_inferences WHERE user_id = %s AND start_time >= %s ORDER BY start_time ASC` (last 30 days).

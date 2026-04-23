@@ -2151,3 +2151,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: Nothing. Plan fully executed. Note for human: real post-mortems will only be generated once `autonomous_turns` data accumulates — requires applying migrate_v7 to production Neon.
 
 **Next**: kingdonb/mecris#157 (WASM Migration POC — highest roadmap priority, architectural work) or kingdonb/mecris#210 (HCAT Sandbox Dockerfile — next Goal-1 security item).
+
+## 🏛️ 2026-04-23 — RAG Foundation: doc graph verifier + session log chunker (session #31)
+
+**Planned**: Implement `scripts/verify_docs_graph.py` (doc link graph verifier) and `scripts/chunk_session_logs.py` (session log chunker) for kingdonb/mecris#202. Both scripts should execute without errors; verifier reports broken/orphaned links; chunker produces per-day files in `attic/session-chunks/`. (Plan: yebyen/mecris#256)
+
+**Done**: Both scripts implemented and verified. `verify_docs_graph.py` scans 95 docs, handles standard markdown links and Obsidian wikilinks, strips code blocks to prevent false positives — reports 0 broken links, 91 orphaned docs (expected: standalone planning docs). `chunk_session_logs.py` parses `session_log.md` into 74 entries across 17 dates, writes YAML front-matter chunk files to `attic/session-chunks/` (17 files + PREAMBLE.md). All 18 chunk files committed `6e64e12`.
+
+**Skipped**: YAML front-matter standardization on docs/ files (scope in kingdonb/mecris#202) — 70+ files is a large mechanical task deferred to a future session. No unit tests written (pytest venv absent in CI environment; scripts verified by execution).
+
+**Next**: YAML front-matter standardization for docs/ (remaining #202 scope), then WASM Migration POC (#157) or Conversational RAG (#207).
