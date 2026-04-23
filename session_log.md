@@ -2201,3 +2201,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: Actual `spin py2wasm` build (requires `wasm32-wasi` toolchain not present in CI); WASM binary artifact not produced. The Python logic and tests fully validate the pattern. Buildable in any environment with `spin` CLI and `componentize-py` installed.
 
 **Next**: BudgetGovernor Python-native WASM port (Phase 2 per LOGIC_VACUUMING_CANDIDATES.md): replace File I/O with Spin KV, `requests` with `spin_sdk` outbound HTTP — core envelope logic is pure Python and portable. Or pivot to Local Inference Pipeline (#203) or HCAT Sandbox Dockerfile (#210).
+
+## 🏛️ 2026-04-23 — BudgetGovernor Python-native WASM POC (session #36, yebyen/mecris#262, complete)
+
+**Planned**: Create `poc/wasm/budget-governor-py/` with an HTTP `IncomingHandler` component that ports the 5%/5% spend envelope logic from `services/budget_governor.py`, replacing file I/O with Spin KV and `requests` with `spin_sdk` outbound HTTP. Validation: pytest suite with all core logic importable without WASM runtime.
+
+**Done**: `poc/wasm/budget-governor-py/app.py` — componentize-py HTTP component with 5-action API (status/check/record/recommend/gate). Pure-logic layer: `make_bucket_config`, `_calc_total_spent`, `_calc_window_spent`, `check_envelope`, `recommend_bucket`, `get_status`, `budget_gate`, `_load_spend_log_from_json`, `_dump_spend_log_to_json`, `make_spend_entry`. All no-I/O and importable without spin_sdk. `IncomingHandler` guarded by `try/except ImportError`. `poc/wasm/budget-governor-py/requirements.txt` matches review-pump-py pattern. `tests/test_budget_governor_py_component.py` — 61/61 green, 11 test classes covering all public functions plus KV serialization round-trips. Exceeds the 34-test review-pump-py benchmark. Committed `4fd02ab`.
+
+**Skipped**: `spin py2wasm` build (requires wasm32-wasi toolchain not in CI). Spin KV init schema and Fermyon variable config (requires deployment environment). Wire-up into `spin.toml` deferred to next session.
+
+**Next**: Wire `poc/wasm/review-pump-py/` into `spin.toml` as `/internal/review-pump-status-py` (The Holy Grail, Issue #157) — pattern is fully established, just needs the `spin.toml` stanza and route registration.
