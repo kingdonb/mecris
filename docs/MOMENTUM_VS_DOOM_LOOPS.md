@@ -7,19 +7,15 @@ In the disciplines of platform engineering and distributed systems, we spend our
 
 The juxtaposition of fighting "Reconciliation Doom Loops" in Kubernetes while simultaneously building "Positive Momentum Loops" in a personal accountability system like Mecris reveals a striking duality. It turns out that the pathologies of poorly behaved Kubernetes controllers and the cognitive friction of human procrastination share a surprising amount of architectural DNA.
 
-## The Professional Doom Loop: Version Skew and Throttled Reconciliations
+## The Professional Doom Loop: Subscriptions and Schema Dissonance
 
 In a complex Kubernetes environment, a Reconciliation Doom Loop represents a total breakdown of the feedback cycle. The "Source of Truth" (our GitOps repositories) and the "Observed State" (the resources running in the cluster) fall into a state of cognitive dissonance, leading to infinite requeues.
 
-We recently battled two distinct, yet conceptually related, issues in this domain. 
+We recently solved a critical production issue that perfectly illustrates this. The **Crossplane Kubernetes Provider** was pegged at 99.62% CPU, consuming 750m+ CPU for hours. The root cause was a hidden interaction between **Crossplane Composition Subscriptions** and **API Version Skew**.
 
-The first was a classic **API version skew**. Consider a Kubernetes provider object where the schema evolves from `v1alpha1` to `v1alpha2`. A field's validation rules tighten—perhaps rejecting a `null` value in the newer version. If a resource was created in the older version and the cluster upgrades without a clean migration, Server-Side Apply gets trapped. Flux attempts a dry-run using the original definition and hits a validation error ("null is not allowed here"), even though the manifest looks perfectly valid to the user. 
+While our GitOps tool (Flux) was already using the `Migrate API Version` feature gate to gracefully handle the transition from `v1alpha1` to `v1alpha2`, the Crossplane compositions were not. Because compositions actively subscribe to the resources they create, they trigger a reconciliation immediately upon any change. When a composition applied a `v1alpha1` object but the cluster's stored version was `v1alpha2`, the resulting metadata drift and field-manager conflicts triggered an **instant, infinite re-reconciliation loop**.
 
-Flux's elegant solution to this was the "Migrate API Version" feature gate (introduced in v2.8.6). Because downstream providers often fail to clean up their own schema upgrades, Flux built a safety valve to force-migrate etcd storage versions to match the latest schema. It forces observability, highlighting the dissonance so the user can intentionally upgrade their GitOps manifests.
-
-The second issue—the one currently burning cycles—is a mysterious **Crossplane CPU throttling bug**. Despite having migrated our APIs, the Crossplane controller is inexplicably pegged at 99.62% CPU, taking four to five minutes to process applications, and seemingly infinite-looping on reconciliations. It's a classic noisy neighbor, soaking up resources up to its limit without ever achieving stability.
-
-However, reflecting on the Flux solution sparked a realization: Crossplane operates as a Universal Control Plane (UCP). While Flux manages the resources *on* the Crossplane cluster, Crossplane itself is responsible for creating and managing resources across *other* downstream clusters and cloud providers. Is it possible that Crossplane is suffering from a similar, unhandled API version skew or drift on the *downstream* side? If Crossplane lacks a mechanism equivalent to Flux's "Migrate API Version" for the resources *it* manages, it could be trapped in a validation loop with external APIs, thrashing its CPU as it endlessly requeues failed synchronizations. It is also crucial to acknowledge a glaring disparity in our tech stack: while we are running the absolute latest version of Flux, we are running a minor series of Crossplane (1.20.x) that was released almost a full year ago. They have certainly made significant progress in that time, and we might simply be experiencing a known bug that an upgrade will resolve entirely.
+The fix was surgical: updating the version references inside the compositions from `v1alpha1` to `v1alpha2`. As soon as the dissonance was removed, the production controller's CPU usage dropped from 750m to **2m**. It was a 375x efficiency gain achieved by aligning the controller's "inner dialect" with the cluster's "stored reality."
 
 ## The Personal Momentum Loop: The Mecris Solution
 
