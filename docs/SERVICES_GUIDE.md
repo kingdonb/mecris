@@ -1,3 +1,10 @@
+---
+title: "🛠️ Mecris Services Guide"
+description: "Current status: ⚠️ WARNING (1.1 days left, $0.98 remaining)"
+tags: ["services", "guide"]
+date: "2025-08-01"
+---
+
 # 🛠️ Mecris Services Guide
 
 > "No more 'run this? run that?' — your complete service operations manual"

@@ -1,3 +1,10 @@
+---
+title: "Claude Code & Noclod Integration Brief"
+description: "This document details the configuration and recent fixes required to enable claude-code CLI to work with an OpenAI-compatible backend (like Groq) via the noclod proxy stack."
+tags: ["claude", "code", "noclod", "integration"]
+date: "2026-03-09"
+---
+
 # Claude Code & Noclod Integration Brief
 
 ## Overview

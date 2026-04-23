@@ -1,3 +1,10 @@
+---
+title: "MECRIS OPERATIONAL SYNTHESIS: A Narrative of Goals, Growth, and Value"
+description: "Our journey with Mecris began with a fundamental insight, much like a personal revelation about managing student loans. The realization was simple yet profound: simply meeting immediate obligations—pa"
+tags: ["mecris", "operational", "synthesis"]
+date: "2026-03-21"
+---
+
 # MECRIS OPERATIONAL SYNTHESIS: A Narrative of Goals, Growth, and Value
 
 ## Introduction: The Spark of Proactive Management

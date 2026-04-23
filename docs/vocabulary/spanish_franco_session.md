@@ -1,3 +1,10 @@
+---
+title: "Spanish Vocabulary: The Franco Session"
+description: "'Como explorador de vanguardia, mi orden de marcha es asegurar los pasos para la fuerza del clan.'"
+tags: ["spanish", "franco", "session"]
+date: "2026-04-05"
+---
+
 # Spanish Vocabulary: The Franco Session
 **Date:** 2026-04-05
 **Theme:** Leadership, Persistence, and Whiteout Survival

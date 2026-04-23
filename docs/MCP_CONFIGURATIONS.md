@@ -1,3 +1,10 @@
+---
+title: "Model Context Protocol (MCP) Configurations"
+description: "This document outlines the various Model Context Protocol (MCP) server configurations used throughout the Mecris project and its associated skills."
+tags: ["mcp", "configurations"]
+date: "2026-03-01"
+---
+
 # Model Context Protocol (MCP) Configurations
 
 This document outlines the various Model Context Protocol (MCP) server configurations used throughout the Mecris project and its associated skills.

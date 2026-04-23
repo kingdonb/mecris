@@ -273,3 +273,79 @@ async def test_daily_aggregate_status_not_all_clear_when_walk_missing():
     assert result["all_clear"] is False
     assert result["satisfied_count"] < result["total_count"]
     assert result["components"]["walk"] is False
+
+
+# ---------------------------------------------------------------------------
+# get_walk_history — DB-backed walk_history_provider (yebyen/mecris#250)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_get_walk_history_returns_datetimes_from_db():
+    """get_walk_history queries walk_inferences and returns a list of datetimes."""
+    import datetime
+    sys.modules.pop("mcp_server", None)
+
+    walk_dt = datetime.datetime(2026, 4, 20, 9, 30, 0)
+
+    # Import within the mock context so import-time DB calls succeed
+    env_patch, db_patch = _make_mcp_importable()
+    with env_patch, db_patch:
+        from mcp_server import get_walk_history
+
+    # Call the function with a fresh targeted mock after import
+    import mcp_server
+    mock_cur = MagicMock()
+    mock_cur.fetchall.return_value = [(walk_dt,)]
+    mock_conn = MagicMock()
+    mock_conn.__enter__ = MagicMock(return_value=mock_conn)
+    mock_conn.__exit__ = MagicMock(return_value=False)
+    mock_conn.cursor.return_value.__enter__ = MagicMock(return_value=mock_cur)
+    mock_conn.cursor.return_value.__exit__ = MagicMock(return_value=False)
+
+    with patch.dict("os.environ", {"NEON_DB_URL": "postgres://fake"}), \
+         patch("psycopg2.connect", return_value=mock_conn), \
+         patch.object(mcp_server, "usage_tracker") as mock_tracker:
+        mock_tracker.resolve_user_id.return_value = "test-user"
+        result = await get_walk_history("test-user")
+
+    assert result == [walk_dt]
+    sql_calls = [str(c) for c in mock_cur.execute.call_args_list]
+    assert any("walk_inferences" in s for s in sql_calls)
+    assert any("start_time" in s for s in sql_calls)
+
+
+@pytest.mark.asyncio
+async def test_get_walk_history_returns_empty_when_no_neon_url():
+    """get_walk_history returns [] when NEON_DB_URL is not set."""
+    sys.modules.pop("mcp_server", None)
+
+    env_patch, db_patch = _make_mcp_importable()
+    with env_patch, db_patch:
+        from mcp_server import get_walk_history
+
+    import mcp_server
+    with patch.dict("os.environ", {"NEON_DB_URL": ""}), \
+         patch.object(mcp_server, "usage_tracker") as mock_tracker:
+        mock_tracker.resolve_user_id.return_value = "test-user"
+        result = await get_walk_history("test-user")
+
+    assert result == []
+
+
+@pytest.mark.asyncio
+async def test_get_walk_history_returns_empty_on_db_error():
+    """get_walk_history swallows DB errors and returns []."""
+    sys.modules.pop("mcp_server", None)
+
+    env_patch, db_patch = _make_mcp_importable()
+    with env_patch, db_patch:
+        from mcp_server import get_walk_history
+
+    import mcp_server
+    with patch.dict("os.environ", {"NEON_DB_URL": "postgres://fake"}), \
+         patch("psycopg2.connect", side_effect=RuntimeError("DB down")), \
+         patch.object(mcp_server, "usage_tracker") as mock_tracker:
+        mock_tracker.resolve_user_id.return_value = "test-user"
+        result = await get_walk_history("test-user")
+
+    assert result == []

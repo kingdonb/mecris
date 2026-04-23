@@ -1,3 +1,10 @@
+---
+title: "WASM-Brain: Strategic Migration Plan"
+description: "This document tracks candidates for migration to WebAssembly (WASM) to enable 'Submarine Mode' (offline or local-first execution) across Android, Spin, and CLI environments."
+tags: ["wasm", "brain", "plan"]
+date: "2026-04-04"
+---
+
 # WASM-Brain: Strategic Migration Plan
 
 This document tracks candidates for migration to WebAssembly (WASM) to enable "Submarine Mode" (offline or local-first execution) across Android, Spin, and CLI environments.

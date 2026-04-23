@@ -1,3 +1,10 @@
+---
+title: "🚀 Mecris Onboarding: The Standalone Journey"
+description: "This guide describes how a new user can get started with Mecris in Standalone Mode without needing a cloud deployment (Spin) or a Beeminder/Clozemaster account."
+tags: ["onboarding", "story"]
+date: "2026-04-05"
+---
+
 # 🚀 Mecris Onboarding: The Standalone Journey
 
 This guide describes how a new user can get started with Mecris in **Standalone Mode** without needing a cloud deployment (Spin) or a Beeminder/Clozemaster account.

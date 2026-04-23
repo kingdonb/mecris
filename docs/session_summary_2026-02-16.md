@@ -1,3 +1,10 @@
+---
+title: "Session Summary: 2026-02-16"
+description: "Investigate why getdailyactivity failed to find a logged walk and fix the underlying issues."
+tags: ["session", "summary", "2026"]
+date: "2026-02-16"
+---
+
 # Session Summary: 2026-02-16
 
 ## Session Goal

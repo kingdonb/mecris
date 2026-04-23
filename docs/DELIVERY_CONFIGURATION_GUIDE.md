@@ -1,3 +1,10 @@
+---
+title: "Delivery Configuration Guide"
+description: "1. Check consent: curl http://localhost:8000/sms-consent/summary"
+tags: ["delivery", "configuration", "guide"]
+date: "2025-08-05"
+---
+
 # Delivery Configuration Guide
 
 > **Mecris Intelligent Reminder System - Production Configuration**

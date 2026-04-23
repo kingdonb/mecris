@@ -1,3 +1,10 @@
+---
+title: "Handling Unexpected High-Cost Tasks"
+description: "1. Start with critical, well-scoped tasks"
+tags: ["high", "cost", "task", "strategy"]
+date: "2025-09-10"
+---
+
 # Handling Unexpected High-Cost Tasks
 
 ## Risk Mitigation Strategies

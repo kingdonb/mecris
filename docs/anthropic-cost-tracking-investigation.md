@@ -1,3 +1,10 @@
+---
+title: "Anthropic Cost Tracking Investigation"
+description: "This document captures our investigation into integrating Anthropic's Admin API for cost tracking within the Mecris system. We successfully implemented API connectivity but discovered important limita"
+tags: ["anthropic", "cost", "tracking", "investigation"]
+date: "2025-09-10"
+---
+
 # Anthropic Cost Tracking Investigation
 
 ## Overview

@@ -1,3 +1,10 @@
+---
+title: "Reminder System Architecture (Phase 2 & 3)"
+description: "This document captures the architectural decisions made during the April 2026 'Grill-Me' session regarding the transition of the dog-walk reminder system into an autonomous Rust-based WASM service."
+tags: ["reminder", "system", "architecture"]
+date: "2026-04-12"
+---
+
 # Reminder System Architecture (Phase 2 & 3)
 
 This document captures the architectural decisions made during the April 2026 "Grill-Me" session regarding the transition of the dog-walk reminder system into an autonomous Rust-based WASM service.

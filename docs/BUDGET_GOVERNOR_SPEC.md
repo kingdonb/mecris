@@ -1,3 +1,10 @@
+---
+title: "Budget Governor Spec"
+description: "Extend Mecris cost metering to cover all active AI budget buckets with a unified rate envelope, routing logic, and inversion logic for 'spend it' buckets."
+tags: ["budget", "governor", "spec"]
+date: "2026-03-26"
+---
+
 # Budget Governor Spec
 
 *Tracking issue: kingdonb/mecris#144*

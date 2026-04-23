@@ -1,3 +1,10 @@
+---
+title: "SMS Message Samples for Mecris Reminder System"
+description: "Mecris project documentation."
+tags: ["sms", "message", "samples"]
+date: "2025-08-05"
+---
+
 # SMS Message Samples for Mecris Reminder System
 
 > **Campaign**: Personal Reminders / Health & Wellness  

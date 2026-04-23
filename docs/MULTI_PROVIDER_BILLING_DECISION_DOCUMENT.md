@@ -1,3 +1,10 @@
+---
+title: "Multi-Provider Billing System - Decision Document"
+description: "1. Fix Groq manual entry: 30 minutes - enables multi-provider tracking"
+tags: ["multi", "provider", "billing", "decision", "document"]
+date: "2025-09-10"
+---
+
 # Multi-Provider Billing System - Decision Document
 
 ## Current State Assessment

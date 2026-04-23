@@ -1,3 +1,10 @@
+---
+title: "Context‑Decision‑Document (CDD) Pattern"
+description: "The Context‑Decision‑Document (CDD) pattern structures interactions that require:"
+tags: ["context", "decision", "document"]
+date: "2025-08-30"
+---
+
 # Context‑Decision‑Document (CDD) Pattern
 
 ## Overview

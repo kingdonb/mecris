@@ -1,3 +1,10 @@
+---
+title: "Zirp (Zirpia) CRD – High‑Level Design"
+description: "The Zirp custom resource provides a Kubernetes‑native abstraction for a burstable compute budget that mirrors the economics of an AWS Burstable instance, but for our Claude‑Code proxy fleet. It"
+tags: ["zirp", "crd", "design"]
+date: "2025-09-09"
+---
+
 # Zirp (Zirpia) CRD – High‑Level Design
 
 ## Purpose

@@ -1,3 +1,10 @@
+---
+title: "🏗️ Mecris Formalization Plan"
+description: "Mecris project documentation."
+tags: ["formalization", "plan"]
+date: "2025-08-01"
+---
+
 # 🏗️ Mecris Formalization Plan
 *Aug 1 - Aug 4: From scattered scripts to production-ready cognitive system*
 

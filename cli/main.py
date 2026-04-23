@@ -201,6 +201,13 @@ async def run_login(args):
     except Exception as e:
         print(f"❌ Login failed during token exchange: {e}")
 
+async def run_pulse(args):
+    """Render the high-density ecosystem dashboard."""
+    from cli.pulse import run_pulse as _run_pulse
+    user_id = args.user_id  # may be None; pulse resolves via credentials_manager
+    await _run_pulse(user_id)
+
+
 async def run_nag_eval(args):
     """Evaluate the reminder heuristics without triggering a send."""
     from mcp_server import check_reminder_needed
@@ -313,6 +320,9 @@ def _actual_main():
     int_presence_parser = internal_subparsers.add_parser("presence", help="Report presence to the global store")
     int_presence_parser.add_argument("--ghost", action="store_true", help="Report as ghost presence instead of human")
 
+    # --- Pulse Subcommand ---
+    pulse_parser = subparsers.add_parser("pulse", help="Show high-density ecosystem status dashboard")
+
     # --- Nag Subcommands ---
     nag_parser = subparsers.add_parser("nag", help="Autonomous Nagging System controls")
     nag_subparsers = nag_parser.add_subparsers(dest="nag_command")
@@ -326,7 +336,9 @@ def _actual_main():
     
     setup_logging(args.verbose)
     
-    if args.command == "login":
+    if args.command == "pulse":
+        asyncio.run(run_pulse(args))
+    elif args.command == "login":
         asyncio.run(run_login(args))
     elif args.command == "presence":
         sys.exit(run_presence(args))

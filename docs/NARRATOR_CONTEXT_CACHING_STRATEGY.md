@@ -1,3 +1,10 @@
+---
+title: "🚀 Narrator Context Caching Strategy"
+description: "The narrator context endpoint currently takes 10+ seconds due to redundant external API calls and lack of caching. This document outlines a comprehensive caching strategy that will:"
+tags: ["narrator", "context", "caching", "strategy"]
+date: "2025-08-04"
+---
+
 # 🚀 Narrator Context Caching Strategy
 
 > **Performance optimization plan to reduce `/narrator/context` latency from 10+ seconds to <2 seconds**

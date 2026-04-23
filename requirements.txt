@@ -14,3 +14,4 @@ mcp
 cryptography
 apscheduler>=3.10
 SQLAlchemy>=2.0
+anthropic>=0.25.0

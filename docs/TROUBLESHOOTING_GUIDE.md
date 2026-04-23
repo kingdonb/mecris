@@ -1,3 +1,10 @@
+---
+title: "🔧 Mecris Troubleshooting Guide"
+description: "This guide addresses the most common Mecris failures and their solutions. Start here when tests fail or services misbehave."
+tags: ["troubleshooting", "guide"]
+date: "2025-08-06"
+---
+
 # 🔧 Mecris Troubleshooting Guide
 
 > **"When things break, fix them systematically. When they break again, document why."**

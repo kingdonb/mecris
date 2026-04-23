@@ -1,0 +1,49 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended",
+    ":semanticCommits",
+    ":dependencyDashboard"
+  ],
+  "timezone": "America/New_York",
+  "schedule": ["before 9am on Monday"],
+  "labels": ["dependencies"],
+  "ignorePaths": [
+    ".venv/**",
+    "**/node_modules/**",
+    "**/target/**",
+    ".models/**"
+  ],
+  "packageRules": [
+    {
+      "description": "Group all Python (PEP 621) dependencies into a single PR",
+      "matchManagers": ["pep621"],
+      "groupName": "Python dependencies",
+      "automerge": false
+    },
+    {
+      "description": "Group all Rust/Cargo crates across all sub-crates into a single PR",
+      "matchManagers": ["cargo"],
+      "groupName": "Rust crates",
+      "automerge": false
+    },
+    {
+      "description": "Group Android/Gradle dependencies (including version catalog) into a single PR",
+      "matchManagers": ["gradle", "gradle-wrapper"],
+      "groupName": "Android/Gradle dependencies",
+      "automerge": false
+    },
+    {
+      "description": "Group web/npm dependencies into a single PR",
+      "matchManagers": ["npm"],
+      "groupName": "Web (npm) dependencies",
+      "automerge": false
+    },
+    {
+      "description": "Flag major version bumps with extra label — require manual review",
+      "matchUpdateTypes": ["major"],
+      "automerge": false,
+      "addLabels": ["major-update"]
+    }
+  ]
+}

@@ -1,3 +1,10 @@
+---
+title: "Data Architecture and Privacy Assessment"
+description: "This document provides a thorough audit of the current state of data access, storage, and PII handling in the Mecris system. It is written to provide a clear technical understanding of how data moves"
+tags: ["data", "architecture", "privacy"]
+date: "2026-04-13"
+---
+
 # Data Architecture and Privacy Assessment
 
 This document provides a thorough audit of the current state of data access, storage, and PII handling in the Mecris system. It is written to provide a clear technical understanding of how data moves through the system and the implications for user privacy.

@@ -1,3 +1,10 @@
+---
+title: "Groq‑Powered Claude Code Summary"
+description: "We now run Claude Code using Groq’s token‑as‑a‑service models. Groq provides a set of open‑weight LLMs that are fast, cost‑effective, and well‑suited for code generation and execution."
+tags: ["groq", "claude", "code", "summary"]
+date: "2025-08-21"
+---
+
 # Groq‑Powered Claude Code Summary
 
 ## Overview

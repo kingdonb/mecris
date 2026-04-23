@@ -2101,3 +2101,93 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: Nothing. Plan fully executed.
 
 **Next**: Implement the Neon DB-backed `walk_history_provider` function in the scheduler/worker layer (interface defined in session #24), OR pick next beta.3 backlog item (kingdonb/mecris#199 Renovate is smallest; #157 WASM Migration is highest-priority per roadmap).
+
+## 2026-04-22 — DB-backed walk_history_provider wired into ReminderService 🏛️
+
+**Planned**: Implement `get_walk_history()` querying Neon `walk_inferences` and wire it into the module-level `ReminderService` instantiation as `walk_history_provider`. (Plan: yebyen/mecris#250)
+
+**Done**: `get_walk_history(user_id)` added to `mcp_server.py` — queries `walk_inferences` for `start_time` values in the last 30 days using `asyncio.to_thread` + psycopg2, matching the established pattern of `get_last_sent_time`. Returns `List[datetime]`; returns `[]` on missing NEON_DB_URL or any DB error. Wired into `ReminderService` at module-level instantiation (`mcp_server.py:1128`). 3 unit tests added to `tests/test_mcp_server.py`. 490 tests green. Commit `4cf2bc2`. Plan issue #250 closed.
+
+**Skipped**: Nothing. Plan fully executed.
+
+**Next**: Pick next beta.3 backlog feature. Candidates: #199 (Renovate config — smallest), #157 (WASM POC — highest roadmap priority), #215 (mecris pulse CLI dashboard — high visibility).
+
+## 2026-04-22 🏛️ — Implement mecris pulse CLI dashboard (session #27, yebyen/mecris#251, complete)
+
+**Planned**: Create `cli/pulse.py` — a `rich`-powered terminal dashboard displaying goal runways, budget, walk status, system heartbeat, and recommendations via `mecris pulse`. (Plan: yebyen/mecris#251, upstream: kingdonb/mecris#215)
+
+**Done**: `cli/pulse.py` implemented with `render_pulse()` (pure-function renderer consuming a narrator context dict), `build_mock_context()` (deterministic test fixture), and `run_pulse()` (async entrypoint importing `get_narrator_context` at call time). `mecris pulse` subcommand registered in `cli/main.py`. 18 unit tests in `tests/test_pulse.py` — all passing. Renders a rich dashboard with goal runway table (color-coded SAFE/CAUTION/WARNING/CRITICAL), budget panel ($remaining, % used, days left), walk status panel, system heartbeat (scheduler up/down, leader, daily aggregate score), urgent items, and top 3 recommendations. Commit `c367c98`. Plan issue #251 closed.
+
+**Skipped**: Nothing. Plan fully executed.
+
+**Next**: Pick next beta.3 backlog feature. Candidates: #199 (Renovate config — smallest), #209 (Token Bank — DB schema + Python service, good scope), #157 (WASM POC — highest roadmap priority).
+
+## 2026-04-22 🏛️ — Centralized Renovate configuration added (session #28, yebyen/mecris#253, complete)
+
+**Planned**: Create `renovate.json` at the repo root covering all four package ecosystems (Python/pep621, Rust/cargo, Android/Gradle, Web/npm). (Plan: yebyen/mecris#253, upstream: kingdonb/mecris#199)
+
+**Done**: `renovate.json` created with `$schema`, `config:recommended` + `:semanticCommits` + `:dependencyDashboard` extends, `America/New_York` timezone, Monday-morning weekly schedule, `dependencies` label, ignorePaths for `.venv/`, `target/`, `node_modules/`, `.models/`. Four packageRules group each ecosystem into a single PR (Python deps, Rust crates, Android/Gradle dependencies, Web npm dependencies). Major version bumps get `major-update` label and are never automerged. JSON validated. Committed `fada2e6`. Plan issue #253 closed. Closes kingdonb/mecris#199.
+
+**Skipped**: Nothing. Plan fully executed. Note for human: Renovate bot must be installed on the repo at https://github.com/apps/renovate to activate.
+
+**Next**: Pick next beta.3 backlog feature. Candidates: #209 (Token Bank — DB schema + Python service, medium scope), #157 (WASM POC — highest roadmap priority), #216 (Post-Mortem Generator — autonomous observability).
+
+## 2026-04-22 🏛️ — Token Bank schema migration and service implemented (session #29, yebyen/mecris#254, complete)
+
+**Planned**: Create `scripts/migrate_v7_autonomous_tracking.py` with `token_bank` and `autonomous_turns` tables, implement `services/token_bank.py` to check/debit daily token allowance before spawning headless turns, and add unit tests verifying rejection when allowance is exceeded. (Plan: yebyen/mecris#254, upstream: kingdonb/mecris#209)
+
+**Done**: `scripts/migrate_v7_autonomous_tracking.py` creates `token_bank` (user_id PK, daily_allowance, tokens_used_today, last_reset_date) and `autonomous_turns` (turn_id PK, user_id FK, agent_role, start_time, end_time, exit_code, tokens_consumed, summary) tables. `services/token_bank.py` implements `TokenBankService` with `check_and_debit` (raises `TokenBudgetExceededError` when allowance exceeded, fail-open without NEON_DB_URL), `record_turn_start`, `record_turn_end`, and `get_failed_turns` (feeds kingdonb/mecris#216). 13 unit tests in `tests/test_token_bank.py` — all passing. Committed `89927fd`. Plan issue #254 closed. Closes kingdonb/mecris#209. Unblocks kingdonb/mecris#216.
+
+**Skipped**: Nothing. Plan fully executed. Note for human: migrate_v7 must be applied to production Neon before `autonomous_turns` data accumulates or #216 Post-Mortem Generator can run.
+
+**Next**: kingdonb/mecris#216 (Post-Mortem Generator — now unblocked, reads `autonomous_turns` for exit_code != 0) or kingdonb/mecris#157 (WASM POC — highest roadmap priority).
+
+## 2026-04-22 🏛️ — Post-Mortem Generator implemented (session #30, yebyen/mecris#255, complete)
+
+**Planned**: Implement `ghost/post_mortem.py` to query `autonomous_turns` for `exit_code != 0` rows and draft `attic/post-mortems/YYYY-MM-DD-failure-turnN.md` with Summary, Captured Output/stderr, and Proposed Fix sections. 13 tests covering no-failures, single failure, multiple failures, and fail-open scenarios. (Plan: yebyen/mecris#255, upstream: kingdonb/mecris#216)
+
+**Done**: `ghost/post_mortem.py` implements `PostMortemGenerator` that delegates DB access to `TokenBankService.get_failed_turns()` (already had the SQL from session #29). Reports include a markdown table of turn metadata, the captured summary as a code block, and a scaffolded Proposed Fix section. Fail-open: without NEON_DB_URL, `run()` returns None. 13/13 tests green in `tests/test_post_mortem.py`. Committed `f69dcf9`. Closes kingdonb/mecris#216. Full Ghost Archivist self-healing loop (Token Bank + Post-Mortem Generator) is structurally complete.
+
+**Skipped**: Nothing. Plan fully executed. Note for human: real post-mortems will only be generated once `autonomous_turns` data accumulates — requires applying migrate_v7 to production Neon.
+
+**Next**: kingdonb/mecris#157 (WASM Migration POC — highest roadmap priority, architectural work) or kingdonb/mecris#210 (HCAT Sandbox Dockerfile — next Goal-1 security item).
+
+## 🏛️ 2026-04-23 — RAG Foundation: doc graph verifier + session log chunker (session #31)
+
+**Planned**: Implement `scripts/verify_docs_graph.py` (doc link graph verifier) and `scripts/chunk_session_logs.py` (session log chunker) for kingdonb/mecris#202. Both scripts should execute without errors; verifier reports broken/orphaned links; chunker produces per-day files in `attic/session-chunks/`. (Plan: yebyen/mecris#256)
+
+**Done**: Both scripts implemented and verified. `verify_docs_graph.py` scans 95 docs, handles standard markdown links and Obsidian wikilinks, strips code blocks to prevent false positives — reports 0 broken links, 91 orphaned docs (expected: standalone planning docs). `chunk_session_logs.py` parses `session_log.md` into 74 entries across 17 dates, writes YAML front-matter chunk files to `attic/session-chunks/` (17 files + PREAMBLE.md). All 18 chunk files committed `6e64e12`.
+
+**Skipped**: YAML front-matter standardization on docs/ files (scope in kingdonb/mecris#202) — 70+ files is a large mechanical task deferred to a future session. No unit tests written (pytest venv absent in CI environment; scripts verified by execution).
+
+**Next**: YAML front-matter standardization for docs/ (remaining #202 scope), then WASM Migration POC (#157) or Conversational RAG (#207).
+
+## 🏛️ 2026-04-23 — RAG Foundation: YAML front-matter stamped on all 95 docs/ files (session #32)
+
+**Planned**: Write and run `scripts/add_docs_frontmatter.py` to stamp all 70+ files in `docs/` with YAML front-matter `{title, description, tags, date}` in a single idempotent pass. Validate with `verify_docs_graph.py` (0 errors) and `--dry-run` showing 0 would_update after run. (Plan: yebyen/mecris#258)
+
+**Done**: `scripts/add_docs_frontmatter.py` implemented with full extraction logic — title from H1 (fallback to stem title-case), description from first substantial paragraph (strips blockquotes/code/markdown), tags from filename stem (stop-word filtered), date from `git log --diff-filter=A` or mtime. All 95 docs/**/*.md files stamped in one pass. 20 unit tests in `tests/test_add_docs_frontmatter.py` — all pass. Committed `903056a`. Closes remaining scope of kingdonb/mecris#202.
+
+**Skipped**: Nothing. Plan fully executed.
+
+**Next**: Conversational RAG — implement `ask_mecris` MCP query interface (kingdonb/mecris#207), now that all docs have YAML front-matter and session chunks exist in `attic/session-chunks/`. Or WASM Migration POC (kingdonb/mecris#157) — highest architectural priority.
+
+## 🏛️ 2026-04-23 — ask_mecris MCP tool with BM25 retrieval (session #33, yebyen/mecris#259, complete)
+
+**Planned**: Build `ask_mecris(query: str)` MCP tool retrieving top-5 chunks from `attic/session-chunks/` and `docs/` via BM25 keyword search. No Ollama dependency. 30 tests covering BM25 core, front-matter parsing, corpus loading, result shape, and mcp_server.py registration. (Plan: yebyen/mecris#259, upstream: kingdonb/mecris#207)
+
+**Done**: `services/rag_retriever.py` — pure-Python Okapi BM25 (k1=1.5, b=0.75), lazy-loading `RAGRetriever` covering docs/ (95 files) + attic/session-chunks/ (17 files) = 112 indexed documents. Front-matter parser handles `---` YAML delimiter. `ask_mecris(query)` MCP tool registered in `mcp_server.py` with module-level `_rag_retriever` instance; empty-query guard; returns `{query, result_count, results, note}`. 30/30 tests in `tests/test_ask_mecris.py` — all pass. Committed `f7786cf`. Plan yebyen/mecris#259 closed.
+
+**Skipped**: Generation step (LLM synthesis of retrieved chunks). `ask_mecris` is retrieval-only — full conversational RAG requires a generation call (Ollama/#203 or direct Anthropic SDK). Carried forward to NEXT_SESSION.md.
+
+**Next**: Wire the generation step into `ask_mecris` (via Anthropic SDK as interim if Ollama is unavailable), closing kingdonb/mecris#207 fully. Or pivot to WASM Migration POC (kingdonb/mecris#157) — highest architectural priority.
+
+## 🏛️ 2026-04-23 — ask_mecris LLM generation step via Anthropic SDK (session #34, yebyen/mecris#260, complete)
+
+**Planned**: Extend `ask_mecris` MCP tool to pass retrieved BM25 chunks to Claude (Anthropic SDK) and return a synthesized natural language answer. Fail-open design. (Plan: yebyen/mecris#260, upstream: kingdonb/mecris#207)
+
+**Done**: `services/rag_generator.py` — module-level `try: import anthropic as _anthropic_lib` (patchable for tests). `generate_answer(query, chunks, model)` builds numbered context block from chunk snippets (600 chars each), calls `claude-haiku-4-5-20251001` with a Mecris system prompt, returns `Optional[str]`. Returns `None` (fail-open) when: `ANTHROPIC_API_KEY` unset, SDK missing, or API raises. `mcp_server.py` updated to import `_rag_generate` and add `"answer": answer` to `ask_mecris` response dict. `anthropic>=0.25.0` added to `requirements.txt`. 9 new tests covering `_build_context`, fail-open paths, mocked success, mocked API failure, model pass-through. 39/39 tests green. Committed `3a32853`.
+
+**Skipped**: Nothing — plan fully executed.
+
+**Next**: WASM Migration POC (kingdonb/mecris#157) — highest architectural priority. Or Local Inference Pipeline (#203) to enable offline generation (Ollama) with Anthropic as cloud fallback.

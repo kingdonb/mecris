@@ -1,3 +1,10 @@
+---
+title: "Virtual Budget Management Architecture"
+description: "Traditional LLM billing systems use two incompatible models:"
+tags: ["virtual", "budget", "architecture"]
+date: "2025-09-10"
+---
+
 # Virtual Budget Management Architecture
 
 ## The Fundamental Problem

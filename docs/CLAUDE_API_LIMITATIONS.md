@@ -1,3 +1,10 @@
+---
+title: "Claude API Credit Tracking Limitations"
+description: "1. Use the manual update system - most reliable"
+tags: ["claude", "limitations"]
+date: "2025-08-02"
+---
+
 # Claude API Credit Tracking Limitations
 
 ## Current Status

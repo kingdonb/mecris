@@ -1,3 +1,10 @@
+---
+title: "INTELLIGENTREMINDERSYSTEM.md"
+description: "The system follows a three-tier escalation strategy based on urgency and user responsiveness."
+tags: ["intelligent", "reminder", "system"]
+date: "2025-08-04"
+---
+
 # INTELLIGENT_REMINDER_SYSTEM.md
 
 **Adaptive Daily Reminder System with Graceful Budget Degradation**  

@@ -1,3 +1,10 @@
+---
+title: "Multi‑Source Budget Aggregation Design"
+description: "All endpoints use existing auth tokens and are idempotent where appropriate."
+tags: ["multi", "source", "budget", "design"]
+date: "2025-08-22"
+---
+
 # Multi‑Source Budget Aggregation Design
 
 ## Persistent Budget Model (Neon)

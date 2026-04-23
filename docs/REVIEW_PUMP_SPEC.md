@@ -1,3 +1,10 @@
+---
+title: "Design Spec: The Review Pump Lever"
+description: "The 'Review Pump' is a mechanism to manage language review backlogs (e.g., Clozemaster). It calculates a daily 'Flow Rate' (velocity) required to clear debt based on a user-selected 'Lever' (multiplie"
+tags: ["review", "pump", "spec"]
+date: "2026-03-20"
+---
+
 # Design Spec: The Review Pump Lever
 
 ## Overview

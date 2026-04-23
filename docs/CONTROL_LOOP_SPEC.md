@@ -1,3 +1,10 @@
+---
+title: "🔄 Mecris Control Loop Specification"
+description: "Mecris implements a self-managing AI control loop where Claude monitors its own progress, manages API budget, and makes autonomous decisions about when to work, when to alert the human, and when to pa"
+tags: ["control", "loop", "spec"]
+date: "2025-07-30"
+---
+
 # 🔄 Mecris Control Loop Specification
 
 > **Self-Managing AI Framework for Time-Bucketed Iteration with Budget Awareness**

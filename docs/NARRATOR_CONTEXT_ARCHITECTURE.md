@@ -1,3 +1,10 @@
+---
+title: "📊 Narrator Context Architecture"
+description: "The narrator context system (GET /narrator/context) performs real-time synthesis of multiple data sources to provide strategic insights, not just raw data dumps."
+tags: ["narrator", "context", "architecture"]
+date: "2025-07-30"
+---
+
 # 📊 Narrator Context Architecture
 
 > **How Mecris aggregates and synthesizes personal data for strategic decision-making**

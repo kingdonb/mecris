@@ -1,3 +1,10 @@
+---
+title: "Conversion Process (Issue 27)"
+description: "Transform embedded task lists in markdown documents into first‑class GitHub Issues. This keeps the project backlog searchable, trackable, and visible in the GitHub UI while cleaning up documentation."
+tags: ["conversion", "process"]
+date: "2025-11-23"
+---
+
 # Conversion Process (Issue 27)
 
 ## Purpose

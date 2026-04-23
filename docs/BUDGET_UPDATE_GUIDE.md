@@ -1,3 +1,10 @@
+---
+title: "Budget Update Guide"
+description: "Mecris keeps track of your Claude API usage locally like a checkbook:"
+tags: ["budget", "update", "guide"]
+date: "2025-08-03"
+---
+
 # Budget Update Guide
 
 > **Simple instructions for keeping Mecris budget tracking accurate**

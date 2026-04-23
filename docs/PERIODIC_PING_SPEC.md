@@ -1,3 +1,10 @@
+---
+title: "Periodic Ping System Specification"
+description: "The periodic ping system enables Claude to autonomously contribute to goal tracking and accountability between active user sessions. This system provides scheduled 'drops in the bucket' that maintain"
+tags: ["periodic", "ping", "spec"]
+date: "2025-07-29"
+---
+
 # Periodic Ping System Specification
 
 > Autonomous operation system for scheduled Mecris narrator check-ins

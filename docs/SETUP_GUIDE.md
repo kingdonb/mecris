@@ -1,3 +1,10 @@
+---
+title: "🛠️ Mecris Setup & Configuration Guide"
+description: "This guide covers the technical setup for the Mecris MCP server and how to configure it for different agents (Gemini and Claude)."
+tags: ["setup", "guide"]
+date: "2026-02-26"
+---
+
 # 🛠️ Mecris Setup & Configuration Guide
 
 This guide covers the technical setup for the Mecris MCP server and how to configure it for different agents (Gemini and Claude).

@@ -1,3 +1,10 @@
+---
+title: "Bug Report: Step Discrepancy & Non-Deterministic Aggregation"
+description: "The Android app now supports a preferredhealthsource setting in SharedPreferences (mecrisappprefs). When set, HealthConnectManager performs a specific AggregateRequest filtered by DataOrigin for that"
+tags: ["bug", "report", "step", "discrepancy"]
+date: "2026-04-12"
+---
+
 # Bug Report: Step Discrepancy & Non-Deterministic Aggregation
 
 ## 1. The 1183 vs 2303 Discrepancy (Health Connect Over-counting)

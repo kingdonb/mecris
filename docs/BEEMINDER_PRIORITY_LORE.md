@@ -1,3 +1,10 @@
+---
+title: "Beeminder Priority Lore: Architectural Impressions"
+description: "Beeminder's background worker system (documented at doc.beeminder.com/priority) is a masterclass in balancing snappiness (user-facing responsiveness) with throughput (massive background data processin"
+tags: ["beeminder", "priority", "lore"]
+date: "2026-02-16"
+---
+
 # Beeminder Priority Lore: Architectural Impressions
 
 ## Core Philosophy: The Multi-Tiered Priority Queue

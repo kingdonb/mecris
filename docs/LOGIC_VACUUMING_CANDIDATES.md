@@ -1,3 +1,10 @@
+---
+title: "Logic Vacuuming Candidates — Phase 0 Analysis"
+description: "'Logic Vacuuming' is the strategic migration of accountability logic from the Python MCP server"
+tags: ["logic", "vacuuming", "candidates"]
+date: "2026-03-29"
+---
+
 # Logic Vacuuming Candidates — Phase 0 Analysis
 
 **Date**: 2026-03-29
