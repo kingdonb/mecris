@@ -32,6 +32,10 @@ route = "/internal/review-pump-status"
 component = "review-pump"
 
 [[trigger.http]]
+route = "/internal/review-pump-status-py"
+component = "review-pump-py"
+
+[[trigger.http]]
 route = "/internal/arabic-skip-count"
 component = "arabic-skip-counter"
 
@@ -76,6 +80,17 @@ source = "../review-pump/target/wasm32-wasip1/release/review_pump.wasm"
 command = "cargo build --target wasm32-wasip1 --release --features spin"
 workdir = "../review-pump"
 watch = ["src/**/*.rs", "Cargo.toml"]
+
+# review-pump-py: Python-native WASM component (componentize-py + spin_sdk, Phase 1.7 / Holy Grail #157).
+# HTTP trigger: POST /internal/review-pump-status-py
+# Body JSON: {debt, tomorrow_liability, daily_completions, multiplier_x10, unit}
+# Returns JSON: PumpStatus object — parity with Rust review-pump at /internal/review-pump-status
+[component.review-pump-py]
+source = "../../poc/wasm/review-pump-py/review-pump-py.wasm"
+[component.review-pump-py.build]
+command = "python3 -m pip install --user --break-system-packages -r requirements.txt && spin py2wasm app -o review-pump-py.wasm"
+workdir = "../../poc/wasm/review-pump-py"
+watch = ["app.py", "wit/*.wit"]
 
 # arabic-skip-counter: Python WASM component (componentize-py + spin_sdk, Phase 1.6).
 # HTTP trigger: GET /internal/arabic-skip-count?user_id=<id>&hours=<n>
