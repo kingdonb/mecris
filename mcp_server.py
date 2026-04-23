@@ -32,6 +32,7 @@ from services.language_sync_service import LanguageSyncService
 from services.review_pump import ReviewPump, ARABIC_POINTS_PER_CARD
 from services.credentials_manager import credentials_manager
 from ghost.presence import get_neon_store, StatusType
+from services.rag_retriever import RAGRetriever
 
 # Load environment variables
 load_dotenv()
@@ -1440,6 +1441,41 @@ def export_user_data(user_id: str = None) -> Dict[str, Any]:
     except Exception as e:
         logger.error(f"export_user_data failed: {e}")
         return {"exported": False, "error": str(e)}
+
+
+_rag_retriever = RAGRetriever()
+
+
+@mcp.tool(
+    description=(
+        "Search Mecris docs and session logs using BM25 keyword retrieval. "
+        "Returns the top-5 most relevant text chunks. "
+        "Use for answering questions about past decisions, project architecture, "
+        "session history, or configuration. "
+        "Instructs the caller to say 'I don't know' if no results are found."
+    )
+)
+def ask_mecris(query: str) -> Dict[str, Any]:
+    """Retrieve relevant documentation and session log chunks for a query."""
+    if not query.strip():
+        return {
+            "query": query,
+            "result_count": 0,
+            "results": [],
+            "note": "Empty query — please provide a search term.",
+        }
+    results = _rag_retriever.retrieve(query, top_k=5)
+    note = (
+        "Results are BM25 keyword-ranked. Use retrieved snippets as context for your answer."
+        if results
+        else "No matching chunks found. If the context does not contain the answer, say 'I don't know'."
+    )
+    return {
+        "query": query,
+        "result_count": len(results),
+        "results": results,
+        "note": note,
+    }
 
 
 if __name__ == "__main__":
