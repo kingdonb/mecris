@@ -2171,3 +2171,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: Nothing. Plan fully executed.
 
 **Next**: Conversational RAG — implement `ask_mecris` MCP query interface (kingdonb/mecris#207), now that all docs have YAML front-matter and session chunks exist in `attic/session-chunks/`. Or WASM Migration POC (kingdonb/mecris#157) — highest architectural priority.
+
+## 🏛️ 2026-04-23 — ask_mecris MCP tool with BM25 retrieval (session #33, yebyen/mecris#259, complete)
+
+**Planned**: Build `ask_mecris(query: str)` MCP tool retrieving top-5 chunks from `attic/session-chunks/` and `docs/` via BM25 keyword search. No Ollama dependency. 30 tests covering BM25 core, front-matter parsing, corpus loading, result shape, and mcp_server.py registration. (Plan: yebyen/mecris#259, upstream: kingdonb/mecris#207)
+
+**Done**: `services/rag_retriever.py` — pure-Python Okapi BM25 (k1=1.5, b=0.75), lazy-loading `RAGRetriever` covering docs/ (95 files) + attic/session-chunks/ (17 files) = 112 indexed documents. Front-matter parser handles `---` YAML delimiter. `ask_mecris(query)` MCP tool registered in `mcp_server.py` with module-level `_rag_retriever` instance; empty-query guard; returns `{query, result_count, results, note}`. 30/30 tests in `tests/test_ask_mecris.py` — all pass. Committed `f7786cf`. Plan yebyen/mecris#259 closed.
+
+**Skipped**: Generation step (LLM synthesis of retrieved chunks). `ask_mecris` is retrieval-only — full conversational RAG requires a generation call (Ollama/#203 or direct Anthropic SDK). Carried forward to NEXT_SESSION.md.
+
+**Next**: Wire the generation step into `ask_mecris` (via Anthropic SDK as interim if Ollama is unavailable), closing kingdonb/mecris#207 fully. Or pivot to WASM Migration POC (kingdonb/mecris#157) — highest architectural priority.

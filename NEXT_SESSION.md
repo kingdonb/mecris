@@ -1,16 +1,16 @@
-# Next Session: Conversational RAG (kingdonb/mecris#207) or WASM Migration POC (kingdonb/mecris#157)
+# Next Session: Conversational RAG Generation Layer (kingdonb/mecris#207) or WASM Migration POC (kingdonb/mecris#157)
 
-## Current Status (2026-04-23, post-session #32)
-- **RAG Foundation COMPLETE**: All 3 components done — `verify_docs_graph.py` (session #31), `chunk_session_logs.py` (session #31), `add_docs_frontmatter.py` (session #32). kingdonb/mecris#202 fully closed.
-- **All 95 docs/ files have YAML front-matter**: `{title, description, tags, date}` stamped idempotently. `add_docs_frontmatter.py --dry-run` confirms 0 files need update. Committed `903056a`.
-- **Ghost Archivist loop complete**: Token Bank (session #29) + Post-Mortem Generator (session #30) structurally complete. Blocked on human applying migrate_v7 to Neon.
-- **RAG infrastructure ready for next phase**: All docs indexed with metadata → Conversational RAG (`ask_mecris` MCP endpoint, kingdonb/mecris#207) is the natural next step.
-- **WASM Migration POC (kingdonb/mecris#157)** remains the highest-priority architectural item on the roadmap.
+## Current Status (2026-04-23, post-session #33)
+- **ask_mecris BM25 retrieval COMPLETE**: `services/rag_retriever.py` (pure-Python BM25) + `ask_mecris` MCP tool registered in `mcp_server.py`. 30 tests pass. Committed `f7786cf`. Plan yebyen/mecris#259 closed.
+- **RAG query layer is retrieval-only**: No generation (no LLM call in ask_mecris). Returns top-5 ranked chunks with metadata — the caller uses them as context. Full conversational RAG (generation step) blocked on Local Inference Pipeline (kingdonb/mecris#203) or similar.
+- **RAG Foundation still COMPLETE**: All 95 docs/ files have YAML front-matter; 17 session chunks in `attic/session-chunks/`; doc graph verifier shows 0 broken links.
+- **Ghost Archivist loop complete**: Token Bank (session #29) + Post-Mortem Generator (session #30). Blocked on human applying migrate_v7 to Neon.
+- **WASM Migration POC (kingdonb/mecris#157)** remains highest-priority architectural item on roadmap.
 
 ## Verified This Session
-- [x] **YAML front-matter stamper (yebyen/mecris#258)**: `scripts/add_docs_frontmatter.py` stamps all 95 docs/**/*.md with `{title, description, tags, date}`. 20 unit tests pass. Committed `903056a`.
-- [x] **Idempotency confirmed**: Post-run `--dry-run` shows `Would update: 0 | Already have front-matter: 95`.
-- [x] **verify_docs_graph.py still clean**: 0 broken links after front-matter addition.
+- [x] **ask_mecris MCP tool (yebyen/mecris#259)**: `services/rag_retriever.py` — pure-Python BM25 with lazy corpus loading, front-matter parsing, doc + session-chunk loaders. `ask_mecris(query)` MCP tool registered in `mcp_server.py`. 30 unit tests pass. Committed `f7786cf`.
+- [x] **Corpus is indexed**: `RAGRetriever` loads all 95 `docs/*.md` + 17 `attic/session-chunks/*.md` on first retrieve call. Idempotent — re-index via `_rag_retriever.reset()`.
+- [x] **Empty query guard**: Returns `{result_count: 0, results: []}` without hitting the corpus.
 
 ## Pending Verification
 
@@ -22,7 +22,7 @@
 - [ ] **Renovate app install**: `renovate.json` is committed but Renovate bot must be installed on the GitHub repo to take effect. Install from https://github.com/apps/renovate.
 
 ### 🤖 Bot-actionable (can be resolved in future sessions)
-- [ ] **Conversational RAG: `ask_mecris` MCP endpoint (Issue #207)**: Now that all docs have YAML front-matter and session chunks exist in `attic/session-chunks/`, implement the `ask_mecris` query interface. Likely needs a vector index (via Ollama or a lightweight embedding model).
+- [ ] **Conversational RAG: generation step (Issue #207)**: `ask_mecris` retrieval is done. Next: wire a generation call (Ollama / cloud LLM) to synthesize retrieved chunks into a natural language answer. Blocked on Local Inference Pipeline (#203) unless using a direct Anthropic SDK call as interim.
 - [ ] **The Holy Grail: Python-Native WASM Migration (Issue #157)**: Research `componentize-py` and build a POC WASM component derived directly from Python logic.
 - [ ] **Dual-Widget "Debt vs. Flow" UI (Issue #160)**: Android UI Epic. Build a secondary gauge indicator to visualize long-term debt vs daily flow.
 - [ ] **Port Twilio to WASM Brain (Issue #167)**: Move SMS/WhatsApp dispatch logic from Python/boris-fiona-walker into the `sync-service` Rust module.
@@ -39,6 +39,8 @@
 - [ ] **Budget Governor: WASM Port (Issue #214)**: Port the 5%/5% spend envelope logic from Python to Rust to ensure consistent routing recommendations in the cloud.
 
 ## Infrastructure Notes (carried forward)
+- **ask_mecris corpus**: `_rag_retriever` is module-level in `mcp_server.py`. Corpus loaded lazily on first `ask_mecris` call. Force re-index: `_rag_retriever.reset()`. Covers docs/ (95 files) + attic/session-chunks/ (17 files) = 112 documents.
+- **ask_mecris result shape**: `{source, title, description, date, type, snippet}` per result. `type` is `"doc"` or `"session"`.
 - **RAG front-matter**: `python scripts/add_docs_frontmatter.py` — stamps docs with YAML. Idempotent. `--force` overwrites existing. All 95 docs already stamped.
 - **RAG chunk files**: `attic/session-chunks/YYYY-MM-DD.md` — YAML front-matter with `date`, `primary_activity`, `entry_count`, `source`. Regenerate with `python scripts/chunk_session_logs.py`.
 - **Doc graph verifier**: `python scripts/verify_docs_graph.py [--json]` — scan `docs/` for broken/orphaned links. Zero broken links currently.
