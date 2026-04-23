@@ -1,15 +1,16 @@
-# Next Session: WASM Migration POC (kingdonb/mecris#157) or RAG Foundation completion (kingdonb/mecris#202)
+# Next Session: Conversational RAG (kingdonb/mecris#207) or WASM Migration POC (kingdonb/mecris#157)
 
-## Current Status (2026-04-23, post-session #31)
-- **RAG Foundation scripts complete**: `scripts/verify_docs_graph.py` (doc link graph verifier) and `scripts/chunk_session_logs.py` (session log chunker) implemented and committed `6e64e12`. Closes partial scope of kingdonb/mecris#202.
-- **Session chunks generated**: 74 session entries across 17 dates written to `attic/session-chunks/` with YAML front-matter. Ready for future vector indexing.
-- **Doc graph result**: 95 docs scanned, 0 broken links, 91 orphaned docs (expected — most docs are standalone planning documents, not cross-linked).
-- **Remaining #202 scope**: Front-matter standardization on docs/ files (70+ files) not done — large mechanical task for a future session.
-- **Full Ghost Archivist loop exists**: Token Bank (session #29) + Post-Mortem Generator (session #30) complete. Self-healing cycle structurally complete.
-- **Blocked on prod**: Post-Mortem Generator and Token Bank require human to apply migrate_v7 to Neon.
+## Current Status (2026-04-23, post-session #32)
+- **RAG Foundation COMPLETE**: All 3 components done — `verify_docs_graph.py` (session #31), `chunk_session_logs.py` (session #31), `add_docs_frontmatter.py` (session #32). kingdonb/mecris#202 fully closed.
+- **All 95 docs/ files have YAML front-matter**: `{title, description, tags, date}` stamped idempotently. `add_docs_frontmatter.py --dry-run` confirms 0 files need update. Committed `903056a`.
+- **Ghost Archivist loop complete**: Token Bank (session #29) + Post-Mortem Generator (session #30) structurally complete. Blocked on human applying migrate_v7 to Neon.
+- **RAG infrastructure ready for next phase**: All docs indexed with metadata → Conversational RAG (`ask_mecris` MCP endpoint, kingdonb/mecris#207) is the natural next step.
+- **WASM Migration POC (kingdonb/mecris#157)** remains the highest-priority architectural item on the roadmap.
 
 ## Verified This Session
-- [x] **RAG Foundation scripts (yebyen/mecris#256)**: `scripts/verify_docs_graph.py` + `scripts/chunk_session_logs.py`. Both execute without errors. 17 chunk files + PREAMBLE in `attic/session-chunks/`. Committed `6e64e12`.
+- [x] **YAML front-matter stamper (yebyen/mecris#258)**: `scripts/add_docs_frontmatter.py` stamps all 95 docs/**/*.md with `{title, description, tags, date}`. 20 unit tests pass. Committed `903056a`.
+- [x] **Idempotency confirmed**: Post-run `--dry-run` shows `Would update: 0 | Already have front-matter: 95`.
+- [x] **verify_docs_graph.py still clean**: 0 broken links after front-matter addition.
 
 ## Pending Verification
 
@@ -21,7 +22,7 @@
 - [ ] **Renovate app install**: `renovate.json` is committed but Renovate bot must be installed on the GitHub repo to take effect. Install from https://github.com/apps/renovate.
 
 ### 🤖 Bot-actionable (can be resolved in future sessions)
-- [ ] **RAG Foundation: YAML front-matter on docs/ (Issue #202 remaining)**: Add YAML metadata blocks to all 70+ files in `docs/`. Large mechanical task — consider scripting it.
+- [ ] **Conversational RAG: `ask_mecris` MCP endpoint (Issue #207)**: Now that all docs have YAML front-matter and session chunks exist in `attic/session-chunks/`, implement the `ask_mecris` query interface. Likely needs a vector index (via Ollama or a lightweight embedding model).
 - [ ] **The Holy Grail: Python-Native WASM Migration (Issue #157)**: Research `componentize-py` and build a POC WASM component derived directly from Python logic.
 - [ ] **Dual-Widget "Debt vs. Flow" UI (Issue #160)**: Android UI Epic. Build a secondary gauge indicator to visualize long-term debt vs daily flow.
 - [ ] **Port Twilio to WASM Brain (Issue #167)**: Move SMS/WhatsApp dispatch logic from Python/boris-fiona-walker into the `sync-service` Rust module.
@@ -31,7 +32,6 @@
 - [ ] **Autonomous Security: JIT Secret Manager (Issue #204)**: Implement secure credential retrieval for headless `gemini --yolo` turns.
 - [ ] **AI Framework Evaluation (Issue #205)**: Formalize evaluation matrix and run POC tests.
 - [ ] **Headless Loopback for gh copilot (Issue #206)**: Subprocess wrapper for `gh copilot`.
-- [ ] **Conversational RAG (Issue #207)**: Implement `ask_mecris` MCP query interface.
 - [ ] **Semantic Search: Bookmark Embeddings (Issue #208)**: Generate vector index for Chrome bookmarks.
 - [ ] **HCAT Sandbox Dockerfile (Issue #210)**: Create a hardened, SHA-pinned Dockerfile for executing autonomous agents securely.
 - [ ] **Human Yield Presence Detection (Issue #211)**: Add logic to detect human workstation activity and manage the `presence.lock` safely.
@@ -39,6 +39,7 @@
 - [ ] **Budget Governor: WASM Port (Issue #214)**: Port the 5%/5% spend envelope logic from Python to Rust to ensure consistent routing recommendations in the cloud.
 
 ## Infrastructure Notes (carried forward)
+- **RAG front-matter**: `python scripts/add_docs_frontmatter.py` — stamps docs with YAML. Idempotent. `--force` overwrites existing. All 95 docs already stamped.
 - **RAG chunk files**: `attic/session-chunks/YYYY-MM-DD.md` — YAML front-matter with `date`, `primary_activity`, `entry_count`, `source`. Regenerate with `python scripts/chunk_session_logs.py`.
 - **Doc graph verifier**: `python scripts/verify_docs_graph.py [--json]` — scan `docs/` for broken/orphaned links. Zero broken links currently.
 - **Post-Mortem Generator**: `PostMortemGenerator` in `ghost/post_mortem.py` — fail-open, returns None without NEON_DB_URL. Use `PostMortemGenerator(db_url=...).run(user_id)` to generate reports.

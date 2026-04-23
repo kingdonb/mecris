@@ -2161,3 +2161,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: YAML front-matter standardization on docs/ files (scope in kingdonb/mecris#202) — 70+ files is a large mechanical task deferred to a future session. No unit tests written (pytest venv absent in CI environment; scripts verified by execution).
 
 **Next**: YAML front-matter standardization for docs/ (remaining #202 scope), then WASM Migration POC (#157) or Conversational RAG (#207).
+
+## 🏛️ 2026-04-23 — RAG Foundation: YAML front-matter stamped on all 95 docs/ files (session #32)
+
+**Planned**: Write and run `scripts/add_docs_frontmatter.py` to stamp all 70+ files in `docs/` with YAML front-matter `{title, description, tags, date}` in a single idempotent pass. Validate with `verify_docs_graph.py` (0 errors) and `--dry-run` showing 0 would_update after run. (Plan: yebyen/mecris#258)
+
+**Done**: `scripts/add_docs_frontmatter.py` implemented with full extraction logic — title from H1 (fallback to stem title-case), description from first substantial paragraph (strips blockquotes/code/markdown), tags from filename stem (stop-word filtered), date from `git log --diff-filter=A` or mtime. All 95 docs/**/*.md files stamped in one pass. 20 unit tests in `tests/test_add_docs_frontmatter.py` — all pass. Committed `903056a`. Closes remaining scope of kingdonb/mecris#202.
+
+**Skipped**: Nothing. Plan fully executed.
+
+**Next**: Conversational RAG — implement `ask_mecris` MCP query interface (kingdonb/mecris#207), now that all docs have YAML front-matter and session chunks exist in `attic/session-chunks/`. Or WASM Migration POC (kingdonb/mecris#157) — highest architectural priority.
