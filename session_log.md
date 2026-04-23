@@ -2181,3 +2181,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: Generation step (LLM synthesis of retrieved chunks). `ask_mecris` is retrieval-only — full conversational RAG requires a generation call (Ollama/#203 or direct Anthropic SDK). Carried forward to NEXT_SESSION.md.
 
 **Next**: Wire the generation step into `ask_mecris` (via Anthropic SDK as interim if Ollama is unavailable), closing kingdonb/mecris#207 fully. Or pivot to WASM Migration POC (kingdonb/mecris#157) — highest architectural priority.
+
+## 🏛️ 2026-04-23 — ask_mecris LLM generation step via Anthropic SDK (session #34, yebyen/mecris#260, complete)
+
+**Planned**: Extend `ask_mecris` MCP tool to pass retrieved BM25 chunks to Claude (Anthropic SDK) and return a synthesized natural language answer. Fail-open design. (Plan: yebyen/mecris#260, upstream: kingdonb/mecris#207)
+
+**Done**: `services/rag_generator.py` — module-level `try: import anthropic as _anthropic_lib` (patchable for tests). `generate_answer(query, chunks, model)` builds numbered context block from chunk snippets (600 chars each), calls `claude-haiku-4-5-20251001` with a Mecris system prompt, returns `Optional[str]`. Returns `None` (fail-open) when: `ANTHROPIC_API_KEY` unset, SDK missing, or API raises. `mcp_server.py` updated to import `_rag_generate` and add `"answer": answer` to `ask_mecris` response dict. `anthropic>=0.25.0` added to `requirements.txt`. 9 new tests covering `_build_context`, fail-open paths, mocked success, mocked API failure, model pass-through. 39/39 tests green. Committed `3a32853`.
+
+**Skipped**: Nothing — plan fully executed.
+
+**Next**: WASM Migration POC (kingdonb/mecris#157) — highest architectural priority. Or Local Inference Pipeline (#203) to enable offline generation (Ollama) with Anthropic as cloud fallback.

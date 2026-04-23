@@ -1,16 +1,16 @@
-# Next Session: Conversational RAG Generation Layer (kingdonb/mecris#207) or WASM Migration POC (kingdonb/mecris#157)
+# Next Session: WASM Migration POC (kingdonb/mecris#157) or Conversational RAG hardening
 
-## Current Status (2026-04-23, post-session #33)
-- **ask_mecris BM25 retrieval COMPLETE**: `services/rag_retriever.py` (pure-Python BM25) + `ask_mecris` MCP tool registered in `mcp_server.py`. 30 tests pass. Committed `f7786cf`. Plan yebyen/mecris#259 closed.
-- **RAG query layer is retrieval-only**: No generation (no LLM call in ask_mecris). Returns top-5 ranked chunks with metadata — the caller uses them as context. Full conversational RAG (generation step) blocked on Local Inference Pipeline (kingdonb/mecris#203) or similar.
-- **RAG Foundation still COMPLETE**: All 95 docs/ files have YAML front-matter; 17 session chunks in `attic/session-chunks/`; doc graph verifier shows 0 broken links.
-- **Ghost Archivist loop complete**: Token Bank (session #29) + Post-Mortem Generator (session #30). Blocked on human applying migrate_v7 to Neon.
+## Current Status (2026-04-23, post-session #34)
+- **ask_mecris RAG pipeline COMPLETE**: BM25 retrieval (session #33) + LLM generation step (session #34). `ask_mecris(query)` now returns `{query, result_count, answer, results, note}`. `answer` is a prose string synthesized by `claude-haiku-4-5-20251001` when `ANTHROPIC_API_KEY` is set; `None` (fail-open) otherwise.
+- **Generation is fail-open**: `services/rag_generator.py` — returns `None` on missing API key, missing SDK, or API error. No crashing the MCP server if Anthropic is unreachable.
+- **39 tests pass** in `tests/test_ask_mecris.py` (30 retrieval + 9 generation). Committed `3a32853`.
 - **WASM Migration POC (kingdonb/mecris#157)** remains highest-priority architectural item on roadmap.
+- **Ghost Archivist loop complete**: Token Bank (session #29) + Post-Mortem Generator (session #30). Blocked on human applying migrate_v7 to Neon.
 
 ## Verified This Session
-- [x] **ask_mecris MCP tool (yebyen/mecris#259)**: `services/rag_retriever.py` — pure-Python BM25 with lazy corpus loading, front-matter parsing, doc + session-chunk loaders. `ask_mecris(query)` MCP tool registered in `mcp_server.py`. 30 unit tests pass. Committed `f7786cf`.
-- [x] **Corpus is indexed**: `RAGRetriever` loads all 95 `docs/*.md` + 17 `attic/session-chunks/*.md` on first retrieve call. Idempotent — re-index via `_rag_retriever.reset()`.
-- [x] **Empty query guard**: Returns `{result_count: 0, results: []}` without hitting the corpus.
+- [x] **ask_mecris generation step (yebyen/mecris#260)**: `services/rag_generator.py` — module-level `_anthropic_lib` import with try/except (patchable). `generate_answer(query, chunks, model)` builds numbered context block and calls `claude-haiku-4-5-20251001`. 9 tests: `_build_context`, fail-open (no key, empty chunks), mocked success, mocked API failure, model pass-through. 39/39 tests green.
+- [x] **ask_mecris answer field**: `mcp_server.py` returns `"answer": answer` alongside raw BM25 chunks. Transparent fallback — caller sees `None` when generation is skipped.
+- [x] **anthropic>=0.25.0 in requirements.txt**: Dependency added; installed via uv in CI build.
 
 ## Pending Verification
 
@@ -20,15 +20,15 @@
 - [ ] **Android test count investigation**: `PocketIdAuthTest` pre-existing failure (`ExceptionInInitializerError` at line 35) — out of bot scope.
 - [ ] **Configure internal_api_key in Fermyon Cloud**: Postponed. Prioritizing feature work.
 - [ ] **Renovate app install**: `renovate.json` is committed but Renovate bot must be installed on the GitHub repo to take effect. Install from https://github.com/apps/renovate.
+- [ ] **Verify ask_mecris answer quality**: With a real `ANTHROPIC_API_KEY` in the MCP server env, call `ask_mecris("what is mecris?")` and confirm the `answer` field is prose (not None).
 
 ### 🤖 Bot-actionable (can be resolved in future sessions)
-- [ ] **Conversational RAG: generation step (Issue #207)**: `ask_mecris` retrieval is done. Next: wire a generation call (Ollama / cloud LLM) to synthesize retrieved chunks into a natural language answer. Blocked on Local Inference Pipeline (#203) unless using a direct Anthropic SDK call as interim.
-- [ ] **The Holy Grail: Python-Native WASM Migration (Issue #157)**: Research `componentize-py` and build a POC WASM component derived directly from Python logic.
+- [ ] **The Holy Grail: Python-Native WASM Migration (Issue #157)**: Research `componentize-py` and build a POC WASM component derived directly from Python logic. Highest architectural priority.
 - [ ] **Dual-Widget "Debt vs. Flow" UI (Issue #160)**: Android UI Epic. Build a secondary gauge indicator to visualize long-term debt vs daily flow.
 - [ ] **Port Twilio to WASM Brain (Issue #167)**: Move SMS/WhatsApp dispatch logic from Python/boris-fiona-walker into the `sync-service` Rust module.
 - [ ] **Rust Reminder Engine (Issue #169)**: Implement the 2000-step threshold, sleep window heuristics, and weather checks natively in Rust.
 - [ ] **Contextual Awareness: Chrome Bookmarks (Issue #201)**: Build a local Chrome bookmarks parser and MCP endpoint.
-- [ ] **Local Inference Pipeline (Issue #203)**: Integrate Ollama and build a cloud-fallback router.
+- [ ] **Local Inference Pipeline (Issue #203)**: Integrate Ollama and build a cloud-fallback router. (ask_mecris already uses Anthropic as interim — this would let it run offline.)
 - [ ] **Autonomous Security: JIT Secret Manager (Issue #204)**: Implement secure credential retrieval for headless `gemini --yolo` turns.
 - [ ] **AI Framework Evaluation (Issue #205)**: Formalize evaluation matrix and run POC tests.
 - [ ] **Headless Loopback for gh copilot (Issue #206)**: Subprocess wrapper for `gh copilot`.
@@ -40,7 +40,8 @@
 
 ## Infrastructure Notes (carried forward)
 - **ask_mecris corpus**: `_rag_retriever` is module-level in `mcp_server.py`. Corpus loaded lazily on first `ask_mecris` call. Force re-index: `_rag_retriever.reset()`. Covers docs/ (95 files) + attic/session-chunks/ (17 files) = 112 documents.
-- **ask_mecris result shape**: `{source, title, description, date, type, snippet}` per result. `type` is `"doc"` or `"session"`.
+- **ask_mecris result shape**: `{query, result_count, answer, results, note}`. `answer` is `Optional[str]` — prose when `ANTHROPIC_API_KEY` is set and API succeeds, `None` otherwise. `results` always present (raw BM25 chunks).
+- **rag_generator model**: `claude-haiku-4-5-20251001` by default. Override via `model=` kwarg if needed.
 - **RAG front-matter**: `python scripts/add_docs_frontmatter.py` — stamps docs with YAML. Idempotent. `--force` overwrites existing. All 95 docs already stamped.
 - **RAG chunk files**: `attic/session-chunks/YYYY-MM-DD.md` — YAML front-matter with `date`, `primary_activity`, `entry_count`, `source`. Regenerate with `python scripts/chunk_session_logs.py`.
 - **Doc graph verifier**: `python scripts/verify_docs_graph.py [--json]` — scan `docs/` for broken/orphaned links. Zero broken links currently.
