@@ -1,16 +1,16 @@
-# Next Session: WASM Migration POC (kingdonb/mecris#157) or Conversational RAG hardening
+# Next Session: BudgetGovernor Python-native WASM port (Phase 2) or HCAT Sandbox Dockerfile
 
-## Current Status (2026-04-23, post-session #34)
-- **ask_mecris RAG pipeline COMPLETE**: BM25 retrieval (session #33) + LLM generation step (session #34). `ask_mecris(query)` now returns `{query, result_count, answer, results, note}`. `answer` is a prose string synthesized by `claude-haiku-4-5-20251001` when `ANTHROPIC_API_KEY` is set; `None` (fail-open) otherwise.
-- **Generation is fail-open**: `services/rag_generator.py` — returns `None` on missing API key, missing SDK, or API error. No crashing the MCP server if Anthropic is unreachable.
-- **39 tests pass** in `tests/test_ask_mecris.py` (30 retrieval + 9 generation). Committed `3a32853`.
-- **WASM Migration POC (kingdonb/mecris#157)** remains highest-priority architectural item on roadmap.
+## Current Status (2026-04-23, post-session #35)
+- **ReviewPump Python-native WASM POC COMPLETE**: `poc/wasm/review-pump-py/` — zero-rewrite migration path fully validated. 34 pytest tests, parity with Rust review-pump. `LOGIC_VACUUMING_CANDIDATES.md` updated (Phase 1.7).
+- **ask_mecris RAG pipeline COMPLETE**: BM25 retrieval (session #33) + LLM generation step (session #34). `ask_mecris(query)` returns `{query, result_count, answer, results, note}`. `answer` is synthesized by `claude-haiku-4-5-20251001` when `ANTHROPIC_API_KEY` is set; `None` (fail-open) otherwise.
+- **39 tests pass** in `tests/test_ask_mecris.py`. **34 tests pass** in `tests/test_review_pump_py_component.py`.
+- **WASM Migration Phase 2**: BudgetGovernor Python-native port is the natural next step per LOGIC_VACUUMING_CANDIDATES.md.
 - **Ghost Archivist loop complete**: Token Bank (session #29) + Post-Mortem Generator (session #30). Blocked on human applying migrate_v7 to Neon.
 
 ## Verified This Session
-- [x] **ask_mecris generation step (yebyen/mecris#260)**: `services/rag_generator.py` — module-level `_anthropic_lib` import with try/except (patchable). `generate_answer(query, chunks, model)` builds numbered context block and calls `claude-haiku-4-5-20251001`. 9 tests: `_build_context`, fail-open (no key, empty chunks), mocked success, mocked API failure, model pass-through. 39/39 tests green.
-- [x] **ask_mecris answer field**: `mcp_server.py` returns `"answer": answer` alongside raw BM25 chunks. Transparent fallback — caller sees `None` when generation is skipped.
-- [x] **anthropic>=0.25.0 in requirements.txt**: Dependency added; installed via uv in CI build.
+- [x] **ReviewPump Python-native WASM POC (yebyen/mecris#261)**: `poc/wasm/review-pump-py/app.py` — componentize-py HTTP trigger pattern. `calculate_target`, `get_status`, `_parse_request`, `_json_ok`, `_error_json` all importable without WASM runtime. 34/34 tests green (`tests/test_review_pump_py_component.py`). Committed `ca90259`.
+- [x] **module collision fix**: Used `importlib.util.spec_from_file_location` to load `review_pump_py_app` by absolute path, preventing `sys.modules['app']` collision with `test_arabic_skip_counter_component.py`.
+- [x] **LOGIC_VACUUMING_CANDIDATES.md Phase 1.7**: Migration sequence updated to record all completed phases (0, 1, 1.5b, 1.6, 1.7).
 
 ## Pending Verification
 
@@ -21,9 +21,11 @@
 - [ ] **Configure internal_api_key in Fermyon Cloud**: Postponed. Prioritizing feature work.
 - [ ] **Renovate app install**: `renovate.json` is committed but Renovate bot must be installed on the GitHub repo to take effect. Install from https://github.com/apps/renovate.
 - [ ] **Verify ask_mecris answer quality**: With a real `ANTHROPIC_API_KEY` in the MCP server env, call `ask_mecris("what is mecris?")` and confirm the `answer` field is prose (not None).
+- [ ] **Verify poc/wasm/review-pump-py/ builds**: Run `pip install -r requirements.txt && spin py2wasm app -o review-pump-py.wasm` in a `spin`-enabled environment to confirm the binary compiles.
 
 ### 🤖 Bot-actionable (can be resolved in future sessions)
-- [ ] **The Holy Grail: Python-Native WASM Migration (Issue #157)**: Research `componentize-py` and build a POC WASM component derived directly from Python logic. Highest architectural priority.
+- [ ] **BudgetGovernor Python-native WASM (Phase 2)**: `services/budget_governor.py` → `poc/wasm/budget-governor-py/` or `mecris-go-spin/budget-governor-py/`. Replace `File I/O` with Spin KV, `requests` with `spin_sdk` outbound HTTP, `os.getenv` with Spin variables. Core envelope logic is pure Python — portable with componentize-py. Use `IncomingHandler` pattern from `arabic-skip-counter` (Phase 1.6). Pattern established; now apply it to BudgetGovernor.
+- [ ] **The Holy Grail: Python-Native WASM Migration (Issue #157)**: Remaining deliverable: wire `poc/wasm/review-pump-py/` into `spin.toml` as an HTTP route (`/internal/review-pump-status-py`) alongside the Rust version. Demonstrate side-by-side parity.
 - [ ] **Dual-Widget "Debt vs. Flow" UI (Issue #160)**: Android UI Epic. Build a secondary gauge indicator to visualize long-term debt vs daily flow.
 - [ ] **Port Twilio to WASM Brain (Issue #167)**: Move SMS/WhatsApp dispatch logic from Python/boris-fiona-walker into the `sync-service` Rust module.
 - [ ] **Rust Reminder Engine (Issue #169)**: Implement the 2000-step threshold, sleep window heuristics, and weather checks natively in Rust.
@@ -39,6 +41,8 @@
 - [ ] **Budget Governor: WASM Port (Issue #214)**: Port the 5%/5% spend envelope logic from Python to Rust to ensure consistent routing recommendations in the cloud.
 
 ## Infrastructure Notes (carried forward)
+- **poc/wasm/ pattern**: Use `importlib.util.spec_from_file_location("unique_name", path)` when loading WASM component `app.py` files in tests to avoid `sys.modules['app']` collision.
+- **componentize-py class naming**: Function-export world → `class WitWorld`. HTTP trigger world → `class IncomingHandler(spin_sdk.http.IncomingHandler)`. See `LOGIC_VACUUMING_CANDIDATES.md` for full details.
 - **ask_mecris corpus**: `_rag_retriever` is module-level in `mcp_server.py`. Corpus loaded lazily on first `ask_mecris` call. Force re-index: `_rag_retriever.reset()`. Covers docs/ (95 files) + attic/session-chunks/ (17 files) = 112 documents.
 - **ask_mecris result shape**: `{query, result_count, answer, results, note}`. `answer` is `Optional[str]` — prose when `ANTHROPIC_API_KEY` is set and API succeeds, `None` otherwise. `results` always present (raw BM25 chunks).
 - **rag_generator model**: `claude-haiku-4-5-20251001` by default. Override via `model=` kwarg if needed.
