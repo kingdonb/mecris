@@ -145,13 +145,15 @@ def test_multiple_failures_only_one_file_generated(generator, tmp_output):
 
 def test_no_db_url_returns_none(tmp_output):
     """Without NEON_DB_URL, run() returns None gracefully (fail-open)."""
-    gen = PostMortemGenerator(db_url=None, output_dir=tmp_output)
-    result = gen.run(USER_ID)
+    with patch.dict("os.environ", {}, clear=True):
+        gen = PostMortemGenerator(db_url=None, output_dir=tmp_output)
+        result = gen.run(USER_ID)
     assert result is None
 
 
 def test_no_db_url_no_file_created(tmp_output):
     """Without NEON_DB_URL, no file is written."""
-    gen = PostMortemGenerator(db_url=None, output_dir=tmp_output)
-    gen.run(USER_ID)
+    with patch.dict("os.environ", {}, clear=True):
+        gen = PostMortemGenerator(db_url=None, output_dir=tmp_output)
+        gen.run(USER_ID)
     assert not tmp_output.exists() or list(tmp_output.iterdir()) == []

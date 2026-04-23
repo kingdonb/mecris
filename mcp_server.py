@@ -396,16 +396,47 @@ async def get_narrator_context(user_id: str = None) -> Dict[str, Any]:
         active_goals = [g for g in goals if g.get("status") == "active"]
         try:
             todos = await obsidian_client.get_todos()
-        except Exception:
+        except Exception as e:
+            logger.warning(f"Failed to fetch Obsidian todos (server may be offline): {e}")
             todos = []
         
-        beeminder_goals = await get_cached_beeminder_goals(target_user_id)
+        try:
+            beeminder_goals = await get_cached_beeminder_goals(target_user_id)
+        except Exception as e:
+            logger.error(f"Failed to fetch Beeminder goals: {e}")
+            beeminder_goals = []
+
         client = get_user_beeminder_client(target_user_id)
-        emergencies = await client.get_emergencies(beeminder_goals)
-        goal_runway = await client.get_runway_summary(limit=6, all_goals=beeminder_goals)
-        budget_status = await asyncio.to_thread(usage_tracker.get_budget_status, target_user_id)
-        daily_walk_status = await get_cached_daily_activity("bike", target_user_id)
-        groq_context = await asyncio.to_thread(get_groq_context_for_narrator, target_user_id)
+        
+        emergencies = []
+        try:
+            emergencies = await client.get_emergencies(beeminder_goals)
+        except Exception as e:
+            logger.error(f"Failed to fetch Beeminder emergencies: {e}")
+
+        goal_runway = []
+        try:
+            goal_runway = await client.get_runway_summary(limit=6, all_goals=beeminder_goals)
+        except Exception as e:
+            logger.error(f"Failed to fetch goal runway: {e}")
+
+        budget_status = {}
+        try:
+            budget_status = await asyncio.to_thread(usage_tracker.get_budget_status, target_user_id)
+        except Exception as e:
+            logger.error(f"Failed to fetch budget status: {e}")
+
+        daily_walk_status = {}
+        try:
+            daily_walk_status = await get_cached_daily_activity("bike", target_user_id)
+        except Exception as e:
+            logger.error(f"Failed to fetch daily activity: {e}")
+
+        groq_context = {}
+        try:
+            groq_context = await asyncio.to_thread(get_groq_context_for_narrator, target_user_id)
+        except Exception as e:
+            logger.error(f"Failed to fetch Groq context: {e}")
 
         # Greek backlog boost: check if 7-day review forecast exceeds threshold
         lang_stats = await asyncio.to_thread(neon_checker.get_language_stats, target_user_id)
