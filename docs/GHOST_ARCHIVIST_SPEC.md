@@ -1,3 +1,10 @@
+---
+title: "Spec: The Ghost Archivist (Goal 1.1)"
+description: "The Ghost Archivist is the first implementation of an autonomous 'Ghost Session.' Its purpose is to ensure that Mecris observes the passage of time and records daily snapshots even if the human user d"
+tags: ["ghost", "archivist", "spec"]
+date: "2026-04-04"
+---
+
 # Spec: The Ghost Archivist (Goal 1.1)
 
 The **Ghost Archivist** is the first implementation of an autonomous "Ghost Session." Its purpose is to ensure that Mecris observes the passage of time and records daily snapshots even if the human user does not interact with the system (app or CLI) for 24+ hours.

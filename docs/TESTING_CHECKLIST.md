@@ -1,3 +1,10 @@
+---
+title: "🧪 MCP Testing Checklist"
+description: "Mecris project documentation."
+tags: ["testing", "checklist"]
+date: "2025-07-30"
+---
+
 # 🧪 MCP Testing Checklist
 
 ## Pre-Testing Setup

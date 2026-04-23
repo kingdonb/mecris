@@ -1,3 +1,10 @@
+---
+title: "PR Reasoning: Intelligent Contextual Coaching & WASM Upgrades"
+description: "This document outlines the technical justification for the changes introduced in the feat/intelligent-reminders branch and maps them to the project's open GitHub issues."
+tags: ["pr20", "intel", "reasoning"]
+date: "2026-02-18"
+---
+
 # PR Reasoning: Intelligent Contextual Coaching & WASM Upgrades
 
 This document outlines the technical justification for the changes introduced in the `feat/intelligent-reminders` branch and maps them to the project's open GitHub issues.

@@ -1,3 +1,10 @@
+---
+title: "🛠️ Mecris Operations Guide"
+description: "This is your practical guide to operating Mecris day-to-day. Not theory, not architecture — just the commands, workflows, and procedures you need to keep your cognitive agent system running smoothly."
+tags: ["mecris", "operations", "guide"]
+date: "2025-08-01"
+---
+
 # 🛠️ Mecris Operations Guide
 
 > **"Your daily field manual for running a containerized mind palace"**

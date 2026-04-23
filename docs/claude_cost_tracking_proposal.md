@@ -1,3 +1,10 @@
+---
+title: "Mecris Claude Cost Tracking System - Proposal"
+description: "Implement a robust, real-time budget tracking and planning system for Mecris MCP server that:"
+tags: ["claude", "cost", "tracking", "proposal"]
+date: "2025-09-10"
+---
+
 # Mecris Claude Cost Tracking System - Proposal
 
 ## Objective

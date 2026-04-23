@@ -1,3 +1,10 @@
+---
+title: "A2P SMS Campaign Compliance Guide"
+description: "1. Web Interface: Simple signup form with Twilio consent"
+tags: ["a2p", "compliance", "guide"]
+date: "2025-08-05"
+---
+
 # A2P SMS Campaign Compliance Guide
 
 > **Mecris as a Service - Personal Accountability Automation**  

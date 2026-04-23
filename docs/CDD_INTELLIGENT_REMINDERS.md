@@ -1,3 +1,10 @@
+---
+title: "CDD: Intelligent Context-Aware Reminders & Coaching"
+description: "The original reminder system was a static cron job that sent SMS notifications based solely on time of day. This led to 'nag fatigue' and irrelevant notifications (e.g., reminding to walk during a sto"
+tags: ["cdd", "intelligent", "reminders"]
+date: "2026-02-18"
+---
+
 # CDD: Intelligent Context-Aware Reminders & Coaching
 
 ## 1. Context

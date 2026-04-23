@@ -1,3 +1,10 @@
+---
+title: "Security Audit Report: Mecris Personal LLM Accountability System"
+description: "The Mecris system has made significant strides in migrating to a multi-tenant Neon (Postgres) backend. However, an audit of the application layer—specifically the Python MCP server and its associated"
+tags: ["security", "audit", "report", "2026"]
+date: "2026-04-04"
+---
+
 # Security Audit Report: Mecris Personal LLM Accountability System
 **Date:** April 4, 2026
 **Auditor:** Gemini (Mecris Senior Architect)

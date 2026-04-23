@@ -1,3 +1,10 @@
+---
+title: "🏛️ Budget Governor Implementation Guide (Lab of Excellence)"
+description: "Welcome to the Lab, mecris-bot. Your task is to build the 'Fiscal Intelligence' layer of Mecris: The Budget Governor."
+tags: ["budget", "governor", "guidance"]
+date: "2026-03-28"
+---
+
 # 🏛️ Budget Governor Implementation Guide (Lab of Excellence)
 
 Welcome to the Lab, `mecris-bot`. Your task is to build the "Fiscal Intelligence" layer of Mecris: **The Budget Governor**.

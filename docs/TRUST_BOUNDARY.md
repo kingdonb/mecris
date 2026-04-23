@@ -1,3 +1,10 @@
+---
+title: "Mecris Cooperative Trust Model & Security Boundary"
+description: "This document defines the strict operational and security boundaries between the different autonomous agents that maintain the Mecris system. It is critical for understanding why certain capabilities"
+tags: ["trust", "boundary"]
+date: "2026-04-04"
+---
+
 # Mecris Cooperative Trust Model & Security Boundary
 
 This document defines the strict operational and security boundaries between the different autonomous agents that maintain the Mecris system. It is critical for understanding why certain capabilities are deliberately withheld from specific environments.

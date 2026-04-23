@@ -1,3 +1,10 @@
+---
+title: "🔐 Bootstrap Key Management & Encryption"
+description: "This document outlines the secure 'Dark-Pipe' workflow for initializing the Mecris Master Encryption Key and securing user credentials. This process ensures that sensitive keys never touch the termina"
+tags: ["bootstrap", "key", "management"]
+date: "2026-03-23"
+---
+
 # 🔐 Bootstrap Key Management & Encryption
 
 This document outlines the secure "Dark-Pipe" workflow for initializing the Mecris Master Encryption Key and securing user credentials. This process ensures that sensitive keys never touch the terminal screen or shell history by using subshell expansion.

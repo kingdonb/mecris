@@ -1,3 +1,10 @@
+---
+title: "Language Reinforcement Plan"
+description: "To encourage the user to increase the Greek review stack (numReadyForReview) by playing more cards, aligning with the goal of building a substantial backlog."
+tags: ["language", "reinforcement", "plan"]
+date: "2026-03-21"
+---
+
 
 ## Conceptual Design: "Number Go Up" Reminder/Driver for Greek Reviews
 

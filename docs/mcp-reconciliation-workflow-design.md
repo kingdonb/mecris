@@ -1,3 +1,10 @@
+---
+title: "MCP Reconciliation Workflow Design"
+description: "Current system has a 'manual plug' where the $19.54 remaining budget is accurate (manually tracked), but we need to reconcile this with automatic session tracking to maintain proper bookkeeping."
+tags: ["mcp", "reconciliation", "workflow", "design"]
+date: "2025-09-10"
+---
+
 # MCP Reconciliation Workflow Design
 
 ## Problem Statement

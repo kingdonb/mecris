@@ -1,3 +1,10 @@
+---
+title: "🧠 Mecris System Guide"
+description: "Mecris (Greek: μακρύς - 'long, extended') is a persistent cognitive agent system designed to help you live deliberately, act efficiently, and get your goals done. It's your digital narrator - not a ch"
+tags: ["mecris", "system", "guide"]
+date: "2025-07-31"
+---
+
 # 🧠 Mecris System Guide
 ## The Not-a-Torment-Nexus Personal Accountability Platform
 

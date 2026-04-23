@@ -1,3 +1,10 @@
+---
+title: "Review of 'Harmonious Discord' PR"
+description: "This PR by gemini-flash attempted a massive 'mega-PR' to implement a dual-language (Python/Rust) architecture dubbed 'Harmonious Discord.' While it grasped the philosophical tension between fast itera"
+tags: ["review", "harmonious", "discord"]
+date: "2026-04-06"
+---
+
 # Review of "Harmonious Discord" PR
 
 **Date:** 2026-04-06

@@ -1,3 +1,10 @@
+---
+title: "Mecris Budget and Goal Analysis"
+description: "I analyzed the Mecris narrator context system after the migration to Neon PostgreSQL and the implementation of Multi-Tenancy. The system now has a robust, user-isolated goal tracking mechanism and sma"
+tags: ["mecris", "analysis"]
+date: "2025-08-03"
+---
+
 # Mecris Budget and Goal Analysis
 
 *Analysis Date: March 21, 2026*

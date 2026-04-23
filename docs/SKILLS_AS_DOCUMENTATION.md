@@ -1,3 +1,10 @@
+---
+title: "Skills as Documentation in Mecris"
+description: "This document outlines the philosophy and practical implications of treating Agent Skills as a primary form of documentation within the Mecris system, particularly in the context of the Gemini CLI and"
+tags: ["skills", "documentation"]
+date: "2026-02-16"
+---
+
 # Skills as Documentation in Mecris
 
 This document outlines the philosophy and practical implications of treating Agent Skills as a primary form of documentation within the Mecris system, particularly in the context of the Gemini CLI and integration with custom skill repositories.

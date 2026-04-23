@@ -1,3 +1,10 @@
+---
+title: "Backend Decision Engine: Spin AKA & Fermyon Cloud"
+description: "The goal is to move away from rigid rules and toward a heuristic-driven exception engine. The system should only 'disturb the peace' when a specific set of conditions (exceptions) are met, rather than"
+tags: ["backend", "decision", "engine"]
+date: "2026-03-04"
+---
+
 # Backend Decision Engine: Spin AKA & Fermyon Cloud
 
 > **Mecris Strategic Control Loop**  

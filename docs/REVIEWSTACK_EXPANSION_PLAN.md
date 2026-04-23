@@ -1,3 +1,10 @@
+---
+title: "📊 Reviewstack Expansion & API Stewardship Plan"
+description: "We intend to create a new Beeminder goal for Greek reviews to mirror the existing Arabic reviewstack goal."
+tags: ["reviewstack", "expansion", "plan"]
+date: "2026-03-15"
+---
+
 # 📊 Reviewstack Expansion & API Stewardship Plan
 
 ## 1. Current State Assessment (March 15, 2026)

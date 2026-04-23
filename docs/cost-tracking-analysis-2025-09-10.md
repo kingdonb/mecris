@@ -1,3 +1,10 @@
+---
+title: "Cost Tracking Analysis & Integration Plan"
+description: "Mecris project documentation."
+tags: ["cost", "tracking", "analysis", "2025"]
+date: "2025-09-10"
+---
+
 # Cost Tracking Analysis & Integration Plan
 ## Date: 2025-09-10
 

@@ -1,3 +1,10 @@
+---
+title: "Enhancement: Local Default User in Multi-Tenant Mode"
+description: "Currently, when MECRISMODE is set to multi-tenant, the system disables all local credential fallback logic. This is intended to prevent security leaks in a public cloud environment, but it creates exc"
+tags: ["enhancement", "multi", "tenant", "default", "user"]
+date: "2026-04-13"
+---
+
 # Enhancement: Local Default User in Multi-Tenant Mode
 
 ## The Problem

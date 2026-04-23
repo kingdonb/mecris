@@ -1,3 +1,10 @@
+---
+title: "Beeminder 'Lore' Catalog: doc.bmndr.com"
+description: "This catalog tracks important documentation slugs found in the doc.beeminder.com (alias doc.bmndr.com) ecosystem. These documents are rendered from Etherpads via the ExPost system and represent the ph"
+tags: ["beeminder", "lore", "catalog"]
+date: "2026-03-15"
+---
+
 # Beeminder "Lore" Catalog: doc.bmndr.com
 
 This catalog tracks important documentation slugs found in the `doc.beeminder.com` (alias `doc.bmndr.com`) ecosystem. These documents are rendered from Etherpads via the **ExPost** system and represent the philosophical and technical underpinnings of Beeminder.

@@ -1,3 +1,10 @@
+---
+title: "📝 Session Logging Architecture"
+description: "Persistent memory system for Claude sessions - creates breadcrumbs for future context and tracks decision history."
+tags: ["session", "logging", "spec"]
+date: "2025-07-30"
+---
+
 # 📝 Session Logging Architecture
 
 ## Purpose

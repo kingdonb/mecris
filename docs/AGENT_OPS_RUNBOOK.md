@@ -1,3 +1,10 @@
+---
+title: "Agent Operations Runbook & Workarounds"
+description: "This document records the operational quirks, workarounds, and nuances required for an AI agent to successfully interact with the Mecris environment, particularly during status updates, deployments, a"
+tags: ["agent", "ops", "runbook"]
+date: "2026-04-12"
+---
+
 # Agent Operations Runbook & Workarounds
 
 This document records the operational quirks, workarounds, and nuances required for an AI agent to successfully interact with the Mecris environment, particularly during status updates, deployments, and debugging.

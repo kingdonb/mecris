@@ -1,3 +1,10 @@
+---
+title: "Claude Session Handoff - 2025-09-10"
+description: "You are continuing work on Mecris cost tracking reconciliation system. We just discovered the budget tracking has a 'manual plug' that needs proper reconciliation workflow."
+tags: ["claude", "session", "handoff", "2025"]
+date: "2025-09-10"
+---
+
 # Claude Session Handoff - 2025-09-10
 
 ## Context When You Read This

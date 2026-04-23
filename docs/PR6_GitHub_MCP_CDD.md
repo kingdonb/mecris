@@ -1,3 +1,10 @@
+---
+title: "Context‑Decision‑Document (CDD) for PR #6 – GitHub MCP Integration"
+description: "1. Automation: Reduces manual effort for each PR review."
+tags: ["pr6", "github", "mcp", "cdd"]
+date: "2025-08-30"
+---
+
 # Context‑Decision‑Document (CDD) for PR #6 – GitHub MCP Integration
 
 ## Context

@@ -1,3 +1,10 @@
+---
+title: "Post-Mortem: Greek Data Corruption (ellinika)"
+description: "Automated syncs from both Python and Rust (Failover) were incorrectly pushing the Clozemaster Greek review backlog count (e.g., 23, 26) to the Beeminder goal ellinika. However, ellinika is an odometer"
+tags: ["2026", "greek", "data", "corruption"]
+date: "2026-03-31"
+---
+
 # Post-Mortem: Greek Data Corruption (ellinika)
 
 **Date**: 2026-03-31

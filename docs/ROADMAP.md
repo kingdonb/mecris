@@ -1,3 +1,10 @@
+---
+title: "🚀 Mecris Roadmap"
+description: "1. Documentation Architecture - Complete permanent doc structure (#15)"
+tags: ["roadmap"]
+date: "2025-10-19"
+---
+
 # 🚀 Mecris Roadmap
 
 *Strategic priorities toward autonomous SMS accountability system*

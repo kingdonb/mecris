@@ -1,3 +1,10 @@
+---
+title: "Deployment Plan CDD"
+description: "Implement a production‑ready, autonomous workflow that:"
+tags: ["deployment", "plan", "cdd"]
+date: "2025-08-30"
+---
+
 # Deployment Plan CDD
 
 **Context**

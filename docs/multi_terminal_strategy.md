@@ -1,3 +1,10 @@
+---
+title: "Multi‑Terminal Claude Code Strategy"
+description: "A developer launches three Claude Code terminals:"
+tags: ["multi", "terminal", "strategy"]
+date: "2025-09-09"
+---
+
 # Multi‑Terminal Claude Code Strategy
 
 **Goal:** Enable reliable, cost‑effective use of Claude Code across the five Mecris projects (Mecris, AWS‑Accounts, NoClaude, Cozystack, Urmanac) by running concurrent terminals, an orchestrator, and intelligent request routing.

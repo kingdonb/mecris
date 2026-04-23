@@ -1,3 +1,10 @@
+---
+title: "Twilio Setup and Testing Guide"
+description: "Mecris uses Twilio to send critical alerts when:"
+tags: ["twilio", "setup", "guide"]
+date: "2025-08-03"
+---
+
 # Twilio Setup and Testing Guide
 
 > **SMS and WhatsApp alerts for Mecris budget and goal emergencies**

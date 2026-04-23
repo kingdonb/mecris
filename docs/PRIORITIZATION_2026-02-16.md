@@ -1,3 +1,10 @@
+---
+title: "Prioritization Document: Mecris Session - February 16, 2026"
+description: "Given the current context and your explicit requests, here's a prioritization and overview of our tasks for today and the immediate future:"
+tags: ["prioritization", "2026"]
+date: "2026-02-16"
+---
+
 # Prioritization Document: Mecris Session - February 16, 2026
 
 Given the current context and your explicit requests, here's a prioritization and overview of our tasks for today and the immediate future:

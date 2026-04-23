@@ -1,3 +1,10 @@
+---
+title: "Proposal for Automated Clozemaster 'Reviewstack' Goal Tracking"
+description: "The 'reviewstack' Beeminder goal, tracking 'Cards in Review stack (Clozemaster Arabic),' is currently challenging to manage. Manual tracking leads to a significant backlog of 'Ready for Review' senten"
+tags: ["automate", "reviewstack", "goal"]
+date: "2026-02-16"
+---
+
 # Proposal for Automated Clozemaster "Reviewstack" Goal Tracking
 
 ## 1. Introduction

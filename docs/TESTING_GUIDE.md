@@ -1,3 +1,10 @@
+---
+title: "Mecris Testing Guide"
+description: "Comprehensive testing documentation for the Mecris system as of August 2025."
+tags: ["testing", "guide"]
+date: "2025-08-05"
+---
+
 # Mecris Testing Guide
 
 Comprehensive testing documentation for the Mecris system as of August 2025.

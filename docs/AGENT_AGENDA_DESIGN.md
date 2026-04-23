@@ -1,3 +1,10 @@
+---
+title: "👻 Agent Agenda: Presence, Free Will, and the Autonomous Continuum"
+description: "Transform Mecris from a reactive toolset into a proactive cognitive system. This design enables agents to wake up autonomously, execute mission-critical maintenance, and maintain the 'narrative thread"
+tags: ["agent", "agenda", "design"]
+date: "2026-03-25"
+---
+
 # 👻 Agent Agenda: Presence, Free Will, and the Autonomous Continuum
 
 ## 1. Vision

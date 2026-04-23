@@ -1,3 +1,10 @@
+---
+title: "Mecris-Go: Technical Architecture & Design"
+description: "Mecris-Go is a serverless extension of the Mecris accountability system. It transforms the system from a passive observer into an autonomous agent that proactively detects activity via Android Health"
+tags: ["android", "app", "design"]
+date: "2026-03-04"
+---
+
 # Mecris-Go: Technical Architecture & Design
 
 > **Mecris-Go**  

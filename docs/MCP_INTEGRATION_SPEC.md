@@ -1,3 +1,10 @@
+---
+title: "MCP Integration Specification"
+description: "Mecris will integrate with multiple MCP servers to provide structured access to personal data sources. This document specifies how we'll compose existing and custom MCP capabilities into our unified F"
+tags: ["mcp", "integration", "spec"]
+date: "2025-07-29"
+---
+
 # MCP Integration Specification
 
 > Machine Context Provider integrations for the Mecris personal accountability system

@@ -1,3 +1,10 @@
+---
+title: "🛡️ Mecris Security-First Roadmap"
+description: "1.  JWT Signature Verification (Complete)"
+tags: ["security", "roadmap"]
+date: "2026-03-21"
+---
+
 # 🛡️ Mecris Security-First Roadmap
 
 > **Mission**: Establish a zero-trust foundation and secure PII before scaling to multi-tenancy.

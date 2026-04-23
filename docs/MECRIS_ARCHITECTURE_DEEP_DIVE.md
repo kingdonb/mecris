@@ -1,3 +1,10 @@
+---
+title: "🧠 Mecris Architecture: The Nervous System"
+description: "This document maps the asynchronous flows and data pathways of the Mecris accountability system."
+tags: ["mecris", "architecture", "deep", "dive"]
+date: "2026-03-15"
+---
+
 # 🧠 Mecris Architecture: The Nervous System
 
 This document maps the asynchronous flows and data pathways of the Mecris accountability system.

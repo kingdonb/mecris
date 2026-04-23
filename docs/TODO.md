@@ -1,3 +1,10 @@
+---
+title: "Mecris TODO - Remaining Work Items"
+description: "Mecris project documentation."
+tags: ["todo"]
+date: "2025-08-02"
+---
+
 # Mecris TODO - Remaining Work Items
 
 ## High Priority

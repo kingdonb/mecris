@@ -1,3 +1,10 @@
+---
+title: "BEEMINDERACTIVITYTRACKING.md"
+description: "1. Multi-Goal Support: Track multiple activity goals simultaneously"
+tags: ["beeminder", "activity", "tracking"]
+date: "2025-08-04"
+---
+
 # BEEMINDER_ACTIVITY_TRACKING.md
 
 **Daily Walk Detection via Beeminder Datapoint Analysis**  

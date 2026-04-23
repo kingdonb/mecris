@@ -1,3 +1,10 @@
+---
+title: "📖 The History and Lore of Mecris"
+description: "Mecris began as a simple Model Context Protocol (MCP) server with a SQLite backend. Its primary mission was personal: helping its creator maintain focus and accountability on life goals (like walking"
+tags: ["history", "lore"]
+date: "2026-03-21"
+---
+
 # 📖 The History and Lore of Mecris
 
 ## 🕊️ Origins: The Humble MCP Server

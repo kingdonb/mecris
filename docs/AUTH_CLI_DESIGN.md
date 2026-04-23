@@ -1,3 +1,10 @@
+---
+title: "Design: Terminal-Based Authentication & CLI Login"
+description: "This document outlines the implementation plan for mecris login and the enforcement of authentication within the Mecris MCP ecosystem."
+tags: ["auth", "cli", "design"]
+date: "2026-04-04"
+---
+
 # Design: Terminal-Based Authentication & CLI Login
 
 This document outlines the implementation plan for `mecris login` and the enforcement of authentication within the Mecris MCP ecosystem.

@@ -1,3 +1,10 @@
+---
+title: "🔐 Authentication Configuration (Pocket-ID & OIDC)"
+description: "Mecris uses Pocket-ID as its OIDC (OpenID Connect) provider for user authentication and multi-tenant isolation. This document covers the configuration of Pocket-ID and how to optimize it for 'submarin"
+tags: ["auth", "configuration"]
+date: "2026-04-01"
+---
+
 # 🔐 Authentication Configuration (Pocket-ID & OIDC)
 
 Mecris uses **Pocket-ID** as its OIDC (OpenID Connect) provider for user authentication and multi-tenant isolation. This document covers the configuration of Pocket-ID and how to optimize it for "submarine" operation (prolonged periods without access to the auth server).

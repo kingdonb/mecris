@@ -1,3 +1,10 @@
+---
+title: "MCP Groq Tools Debugging Session"
+description: "Starting investigation..."
+tags: ["mcp", "groq", "debugging", "2025"]
+date: "2025-09-10"
+---
+
 # MCP Groq Tools Debugging Session
 ## Date: 2025-09-10
 

@@ -1,3 +1,10 @@
+---
+title: "Cooperative Co-Authorizing Background Workers"
+description: "Relying on external crons (like GitHub Actions or Fermyon's gated spin aka service) to act as a 'Cloud Brain' masks underlying unreliability in the primary systems. The user has two powerful, active s"
+tags: ["cooperative", "workers", "design"]
+date: "2026-03-20"
+---
+
 # Cooperative Co-Authorizing Background Workers
 
 ## 1. Introduction & The Pivot

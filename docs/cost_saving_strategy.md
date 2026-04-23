@@ -1,3 +1,10 @@
+---
+title: "Cost‑Saving Strategy for Multi‑Terminal Claude Code"
+description: "The routing script queries the service mesh for real‑time back‑pressure signals (e.g., 429 Too Many Requests). When a signal is detected, the mesh forwards the request to the next proxy in the chain."
+tags: ["cost", "saving", "strategy"]
+date: "2025-09-09"
+---
+
 # Cost‑Saving Strategy for Multi‑Terminal Claude Code
 
 **Purpose** – Explain how the three‑proxy architecture (free Groq, paid Groq, paid Anthropic) turns the existing multi‑terminal workflow into a measurable money‑saving engine while allowing us to broaden the scope of the five Mecris projects.

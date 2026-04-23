@@ -1,3 +1,10 @@
+---
+title: "🦢 Mecris Project Assessment"
+description: "Mecris is an AI-powered personal productivity system that integrates with Beeminder, Obsidian, and Twilio for goal tracking and accountability. It's built around an MCP (Master Control Program) server"
+tags: ["untitled", "goose"]
+date: "2025-08-05"
+---
+
 # 🦢 Mecris Project Assessment
 
 ## Overview

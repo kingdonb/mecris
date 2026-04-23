@@ -1,3 +1,10 @@
+---
+title: "Mecris MCP Endpoints Documentation"
+description: "Mecris exposes 10 MCP (Model Context Protocol) endpoints that provide Claude with real-time access to your accountability systems, budget tracking, and goal management. This documentation covers each"
+tags: ["mcp", "endpoints"]
+date: "2025-08-19"
+---
+
 # Mecris MCP Endpoints Documentation
 
 > "Welcome to Mecris, the not-a-Torment-Nexus you were warned about. This isn't dystopia, it's **delegation**."
