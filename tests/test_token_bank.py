@@ -36,25 +36,28 @@ def bank():
 
 def test_no_db_url_allows_turn():
     """Without NEON_DB_URL, check_and_debit returns 0 (fail-open)."""
-    svc = TokenBankService(db_url=None)
     with patch.dict("os.environ", {}, clear=True):
+        svc = TokenBankService(db_url=None)
         result = svc.check_and_debit(USER_ID, 1000, AGENT_ROLE)
     assert result == 0
 
 
 def test_no_db_url_record_turn_start_returns_none():
-    svc = TokenBankService(db_url=None)
-    assert svc.record_turn_start(USER_ID, AGENT_ROLE) is None
+    with patch.dict("os.environ", {}, clear=True):
+        svc = TokenBankService(db_url=None)
+        assert svc.record_turn_start(USER_ID, AGENT_ROLE) is None
 
 
 def test_no_db_url_record_turn_end_is_noop():
-    svc = TokenBankService(db_url=None)
-    svc.record_turn_end(42, exit_code=0, tokens_consumed=100)  # must not raise
+    with patch.dict("os.environ", {}, clear=True):
+        svc = TokenBankService(db_url=None)
+        svc.record_turn_end(42, exit_code=0, tokens_consumed=100)  # must not raise
 
 
 def test_no_db_url_get_failed_turns_returns_empty():
-    svc = TokenBankService(db_url=None)
-    assert svc.get_failed_turns(USER_ID) == []
+    with patch.dict("os.environ", {}, clear=True):
+        svc = TokenBankService(db_url=None)
+        assert svc.get_failed_turns(USER_ID) == []
 
 
 # ---------------------------------------------------------------------------
