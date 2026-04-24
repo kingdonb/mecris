@@ -37,13 +37,17 @@ Neon-backed usage::
         store.escalate_to_sofy(user_id)  # bot emergency override
 """
 
+import logging
 import os
+import subprocess
 import time
 from dataclasses import dataclass
 from contextlib import contextmanager
 from datetime import datetime
 from enum import Enum
 from typing import Optional
+
+logger = logging.getLogger("mecris.presence")
 
 try:
     import psycopg2
@@ -59,6 +63,9 @@ except ImportError:
 PRESENCE_TTL_SECONDS = 30 * 60  # 30 minutes
 
 DEFAULT_LOCK_PATH = os.path.join(os.getcwd(), "presence.lock")
+
+# Fixed system-level lock path for background agents — not CWD-relative.
+SYSTEM_LOCK_PATH = os.environ.get("MECRIS_PRESENCE_LOCK", "/tmp/mecris_presence.lock")
 
 
 @dataclass
@@ -131,6 +138,58 @@ def presence_lock(lock_path: Optional[str] = None):
         yield path
     finally:
         release_lock(path)
+
+
+# ─── Composite presence detection (kingdonb/mecris#211) ─────────────────────
+
+def is_mecris_cli_active() -> bool:
+    """Return True if an interactive mecris CLI process is currently running.
+
+    Uses ``pgrep -f cli.main`` to search process command lines.  Filters out
+    the current process so that a background agent calling this from within a
+    mecris process doesn't falsely detect itself.
+    """
+    try:
+        result = subprocess.run(
+            ["pgrep", "-f", "cli.main"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        pids = [p.strip() for p in result.stdout.strip().splitlines() if p.strip()]
+        own_pid = str(os.getpid())
+        pids = [p for p in pids if p != own_pid]
+        return len(pids) > 0
+    except Exception as exc:
+        logger.warning("is_mecris_cli_active: pgrep failed: %s", exc)
+        return False
+
+
+def is_human_present(
+    lock_path: Optional[str] = None,
+    ttl: int = PRESENCE_TTL_SECONDS,
+) -> bool:
+    """Return True if a human operator is considered active.
+
+    Checks two signals in order:
+
+    1. A fresh presence lock file at *lock_path* (defaults to
+       ``SYSTEM_LOCK_PATH``).  Fresh means younger than *ttl* seconds.
+    2. An active ``cli.main`` process detected via ``pgrep``.
+
+    Either signal alone is sufficient — this is an OR, not an AND.
+    Background schedulers and ghost agents should call this before
+    spawning autonomous turns and yield if it returns True.
+    """
+    path = lock_path or SYSTEM_LOCK_PATH
+    status = check_presence(path, ttl=ttl)
+    if status.human_present:
+        logger.info("Human presence: fresh lock at %s (age %.0fs)", path, status.age_seconds or 0)
+        return True
+    if is_mecris_cli_active():
+        logger.info("Human presence: active mecris CLI session detected.")
+        return True
+    return False
 
 
 # ─── Neon-backed presence store (Phase 1 — kingdonb/mecris#164) ──────────────

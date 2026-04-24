@@ -309,6 +309,10 @@ class MecrisScheduler:
 
     async def _start_leader_jobs(self):
         """Register recurring jobs that only the leader should run."""
+        from ghost.presence import is_human_present, SYSTEM_LOCK_PATH
+        if is_human_present(SYSTEM_LOCK_PATH):
+            logger.info("Human presence detected. Skipping autonomous job registration.")
+            return
         for attempt in range(5):
             try:
                 # IDs are scoped by user_id
