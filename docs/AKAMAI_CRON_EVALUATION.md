@@ -1,7 +1,7 @@
 # Akamai Functions & Cron Evaluation
 
 > **Mecris Strategic Document**  
-> *Establishing a paper trail for the evaluation of Akamai Functions ($100/mo) vs. product value. This document serves as a baseline for the upcoming review with Tim Enwall.*
+> *Establishing a paper trail for the evaluation of Akamai Functions ($100/mo) vs. product value. This document serves as a baseline for the upcoming review with Akamai Leadership.*
 
 ## 📊 Current Status (2026-04-24)
 
@@ -29,7 +29,7 @@
 | 2026-04-24 | Log Inspection | "No logs found" | `spin aka logs` |
 | 2026-04-24 | Impact Audit | 0 messages sent in 72h | Neon DB `message_log` |
 
-## ⚖️ Strategic Considerations for Tim Enwall
+## ⚖️ Strategic Considerations for Akamai Leadership
 
 1.  **The "Ghost Nag" Insurance**: Is 100% failover reliability worth $1,200/year? If Mecris is a personal project, probably not. If it is a multi-tenant platform for paying users, it is a mandatory infrastructure cost.
 2.  **Infrastructure Weight**: Akamai Functions provide the "Global Brain" that doesn't sleep. However, we could achieve similar results with a $5/mo digital ocean droplet running the same Rust WASM logic. 
