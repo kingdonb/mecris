@@ -28,7 +28,7 @@ jobs:
           cache: ''
 
       - name: Cache Gradle packages
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v4+ latest main
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5+ latest main
         with:
           path: |
             ~/.gradle/caches
@@ -67,7 +67,7 @@ jobs:
         uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2+ latest master
 
       - name: Cache Spin & Python Dependencies
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v4+ latest main
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5+ latest main
         with:
           path: |
             ~/.local/share/spin
