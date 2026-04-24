@@ -3,7 +3,7 @@
 > **Mission**: Transform Mecris from reactive MCP server to autonomous cognitive agent with rich contextual awareness
 
 ## 📊 Current Status
-- **Version**: v0.0.1-beta.3 (2026-04-21) ✅
+- **Version**: v0.0.1-beta.4 (2026-04-23) ✅
 - **Budget**: $20.88 remaining (Expires 2026-04-14)
 - **Foundation**: Production-ready MCP server with Beeminder, Budget, and Twilio integrations ✅
 - **Progress**: Autonomous nagging implemented via MCP Scheduler and Android Heartbeat ✅
