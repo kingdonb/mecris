@@ -31,7 +31,7 @@ class DelayedNagWorker(
         Log.i("DelayedNagWorker", "Executing fuzzy nag check for: $originalTarget")
 
         val token = pocketIdAuth.getAccessTokenSuspend()
-        val nagManager = NagNotificationManager(applicationContext)
+        val nagManager = NagNotificationManager(applicationContext, syncApi)
 
         try {
             if (token != null) {
@@ -67,8 +67,14 @@ class DelayedNagWorker(
                             
                             if (lastGoalNag < (nowMs - cooldownMs) && lastGlobalNag < (nowMs - cooldownMs)) {
                                 val finalMessage = llmMessage ?: message
+                                val nagType = when (prefKey) {
+                                    "last_arabic_nag_timestamp" -> "arabic_pressure"
+                                    "last_walk_nag_timestamp" -> "walk_reminder"
+                                    "last_greek_nag_timestamp" -> "greek_reminder"
+                                    else -> "unknown"
+                                }
                                 Log.i("DelayedNagWorker", "Firing Nag: $title (LLM: ${llmMessage != null})")
-                                nagManager.showNag(title, finalMessage, packageName)
+                                nagManager.showNag(title, finalMessage, packageName, nagType)
                                 
                                 // Update both timestamps
                                 prefs.edit()
@@ -101,7 +107,7 @@ class DelayedNagWorker(
                             val fallbackMsg = if (hasPartialWalk) "You're on the path to the Majesty Cake! Keep the momentum going today. ✨" else "Time for a walk? Your steps are low today."
                             
                             Log.i("DelayedNagWorker", "Firing Sovereign Fallback Nag: $fallbackTitle")
-                            nagManager.showNag(fallbackTitle, fallbackMsg, "com.google.android.apps.fitness")
+                            nagManager.showNag(fallbackTitle, fallbackMsg, "com.google.android.apps.fitness", "walk_reminder")
                             
                             prefs.edit()
                                 .putLong("global_last_nag_timestamp", nowMs)

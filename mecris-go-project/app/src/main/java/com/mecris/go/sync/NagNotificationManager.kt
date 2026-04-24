@@ -6,11 +6,19 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.os.Build
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.mecris.go.MainActivity
 import com.mecris.go.R
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.launch
+import java.time.Instant
 
-class NagNotificationManager(private val context: Context) {
+class NagNotificationManager(
+    private val context: Context,
+    private val api: SyncServiceApi? = null
+) {
 
     companion object {
         private const val CHANNEL_ID = "mecris_nag_channel"
@@ -35,7 +43,7 @@ class NagNotificationManager(private val context: Context) {
         }
     }
 
-    fun showNag(title: String, message: String, packageToLaunch: String? = null) {
+    fun showNag(title: String, message: String, packageToLaunch: String? = null, type: String = "unknown") {
         val dashboardIntent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
         }
@@ -70,5 +78,17 @@ class NagNotificationManager(private val context: Context) {
 
         val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         notificationManager.notify(NOTIFICATION_ID, builder.build())
+
+        val sentAt = Instant.now().toString()
+        api?.let { syncApi ->
+            @Suppress("OPT_IN_USAGE")
+            GlobalScope.launch(Dispatchers.IO) {
+                try {
+                    syncApi.logMessage(LogMessageRequestDto(type = type, channel = "android_native", sent_at = sentAt))
+                } catch (e: Exception) {
+                    Log.w("NagNotificationManager", "Failed to log message audit: ${e.message}")
+                }
+            }
+        }
     }
 }

@@ -75,6 +75,11 @@ interface SyncServiceApi {
         @Body request: PhoneVerificationConfirmRequestDto
     ): retrofit2.Response<SyncResponse>
 
+    @POST("internal/log-message")
+    suspend fun logMessage(
+        @Body request: LogMessageRequestDto
+    ): retrofit2.Response<Unit>
+
     @GET("profile")
     suspend fun getProfile(
         @Header("Authorization") authHeader: String
@@ -218,5 +223,11 @@ data class ProfileUpdateRequestDto(
     val longitude: Double? = null,
     val vacation_mode_until: String? = null,
     val autonomous_sync_enabled: Boolean? = null
+)
+
+data class LogMessageRequestDto(
+    val type: String,
+    val channel: String,
+    val sent_at: String? = null
 )
 
