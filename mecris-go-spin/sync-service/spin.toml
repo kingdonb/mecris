@@ -40,6 +40,10 @@ route = "/internal/budget-governor-py"
 component = "budget-governor-py"
 
 [[trigger.http]]
+route = "/internal/log-message"
+component = "log-message-py"
+
+[[trigger.http]]
 route = "/internal/arabic-skip-count"
 component = "arabic-skip-counter"
 
@@ -107,6 +111,20 @@ key_value_stores = ["default"]
 [component.budget-governor-py.build]
 command = "python3 -m pip install --user --break-system-packages -r requirements.txt && spin py2wasm app -o budget-governor-py.wasm"
 workdir = "../../poc/wasm/budget-governor-py"
+watch = ["app.py", "wit/*.wit"]
+
+# log-message-py: Python WASM component (componentize-py + spin_sdk, kingdonb/mecris#213).
+# HTTP trigger: POST /internal/log-message
+# Body JSON: {"type": <str>, "channel": <str>, "sent_at": <ISO 8601, optional>}
+# Returns JSON: {"logged": true, "entry_count": <int>, "logged_at": <ISO 8601>}
+# GET /internal/log-message returns {"entries": [...], "entry_count": <int>}
+# Persists notification audit log via Spin KV. Part of Observability Mandate (#245).
+[component.log-message-py]
+source = "../../poc/wasm/log-message-py/log-message-py.wasm"
+key_value_stores = ["default"]
+[component.log-message-py.build]
+command = "python3 -m pip install --user --break-system-packages -r requirements.txt && spin py2wasm app -o log-message-py.wasm"
+workdir = "../../poc/wasm/log-message-py"
 watch = ["app.py", "wit/*.wit"]
 
 # arabic-skip-counter: Python WASM component (componentize-py + spin_sdk, Phase 1.6).
