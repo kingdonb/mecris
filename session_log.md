@@ -2241,3 +2241,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: Nothing — plan fully executed. LAN isolation via custom `--internal` Docker bridge network is documented in the build script but not exercised in CI (no `docker network create` step added to CI workflow this session).
 
 **Next**: Dual-Widget "Debt vs. Flow" UI (kingdonb/mecris#160) — Android UI Epic building the secondary gauge indicator. Consumes `goal_met`, `target_flow_rate`, `outstanding_debt` fields already in the Python/Rust APIs.
+
+## 🏛️ 2026-04-24 — Human Yield Presence Detection (session #40, yebyen/mecris#266, complete)
+
+**Planned**: Implement `lib/presence.py` with lock-file-based presence detection, integrate with `MecrisScheduler` to abort pending autonomous turns when lock is held, cover with pytest tests. (Plan: yebyen/mecris#266, upstream: kingdonb/mecris#211)
+
+**Done**: `ghost/presence.py` already existed with file-based lock + Neon state machine. Extended it with three new additions: `SYSTEM_LOCK_PATH` (`/tmp/mecris_presence.lock` — fixed, not CWD-relative), `is_mecris_cli_active()` (pgrep-based CLI session detection, self-PID filtered, fail-open on subprocess error), and `is_human_present()` (OR of fresh lock + active CLI process). Added 4-line guard at top of `MecrisScheduler._start_leader_jobs()` — skips autonomous job registration when human detected. 16 new tests in `tests/test_presence_scheduler.py` (SYSTEM_LOCK_PATH shape, pgrep edge cases, composite detection, scheduler guard). All 16 pass. Committed `e5100cf`. Plan yebyen/mecris#266 closed.
+
+**Skipped**: Nothing — plan fully executed. Note: pre-existing `test_presence_neon.py` failures (13 tests) are unrelated to this work — they fail because `psycopg2` is not installed in the CI environment; confirmed pre-existing via `git stash` baseline check.
+
+**Next**: Observability — Log Android Notifications to message_log (kingdonb/mecris#213). Requires WASM `POST /internal/log-message` endpoint + `NagNotificationManager.kt` update. Both bot-tractable if Android source is accessible.
