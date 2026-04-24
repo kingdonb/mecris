@@ -15,42 +15,42 @@ Mecris is a production-grade accountability system featuring a 30-tool MCP serve
 
 ## System Architecture
 
-The architecture follows a **Hub-and-Spoke** model. The Hub (WASM API) serves as the "source of truth," while diverse Hosts (Mobile, Python, Agents) act as sensors and interfaces.
+The architecture follows a **Peer Persistence** model. Both the Local Host (Python MCP) and the Cloud Hub (WASM API) maintain direct lines to the central Neon database, ensuring the system can survive a total loss of the cloud APIs.
 
 ```text
                                ┌─────────────────┐
                                │   NEON DB       │
                                │ (Central State) │
-                               └────────┬────────┘
-                                        │
-                ┌───────────────────────┴───────────────────────┐
-                │        THE PERSISTENCE HUB (WASM API)         │
-                ├───────────────────────┬───────────────────────┤
-                │   FREE: FERMYON       │   PRO: AKAMAI CRON    │
-                │  (Event-Driven)       │  (Scheduled Logic)    │
-                └───────────┬───────────┴───────────┬───────────┘
-                            │                       │
-           ┌────────────────┴───────────────────────┴────────────────┐
-           │             THE STANDARD BUS (JSON / WIT)               │
+                               └─┬─────────────┬─┘
+                  (Cloud Path)   │             │   (Local Path)
+                ┌────────────────┴──────┐      ▼────────────────┐
+                │   CLOUD HUB (WASM API)│      │   LOCAL MCP    │
+                ├───────────────────────┤      │ (Python / SQL) │
+                │   FREE: FERMYON       │      └──────┬─────────┘
+                │   PRO: AKAMAI CRON    │             │
+                └───────────┬───────────┘             │
+                            │                         │
+           ┌────────────────┴─────────────────────────┴──────────────┐
+           │              THE STANDARD BUS (JSON / WIT)              │
            └────┬───────────────┬─────────────────┬─────────────┬────┘
                 ▼               ▼                 ▼             ▼
          ┌────────────┐  ┌─────────────┐  ┌───────────────┐  ┌─────────────┐
-         │ MOBILE GO  │  │  LOCAL MCP  │  │ AGENTS/BOTS   │  │ CI TRIGGERS │
-         │ (Sensors)  │  │ (RAG / FS)  │  │ (Narrators)   │  │ (GHA/Hooks) │
-         └─────┬──────┘  └──────┬──────┘  └───────────────┘  └─────────────┘
+         │ MOBILE GO  │  │ AGENTS/BOTS  │  │ HUMAN / CLI   │  │ CI TRIGGERS │
+         │ (Sensors)  │  │ (Narrators)  │  │ (Gemini/Term) │  │ (GHA/Hooks) │
+         └────────────┘  └─────────────┘  └───────────────┘  └─────────────┘
 ```
 
 ## Core Components
 
-### The Persistence Hub (Cloud Layer)
-- **Fermyon Cloud**: The primary reactive layer. Handles HTTP triggers from the Android app, Python MCP, and Narrators.
-- **Akamai Functions**: The proactive layer. Implements native `spin aka cron` triggers to check goal status and send reminders when local devices are offline.
-- **WASM Brain**: Core business logic (Review Pump, Budget Governor) is vacuumed into language-neutral WASM components to ensure identical execution across all cloud providers.
+### The Hub Layer (Persistence & Logic)
+- **Local Host (Python MCP)**: The primary peer for human interaction. It bridges local data (Obsidian vault, filesystem) and handles direct database operations for the narrator context.
+- **Cloud Hub (Fermyon/Akamai)**: The high-availability failover and mobile bridge. It provides the "always-on" logic for the Android app and native crons for autonomous nagging.
+- **WASM Brain**: Shared business logic (Review Pump, Budget Governor) that runs identically across both Hubs.
 
-### The Host Layer (Local & Mobile)
+### The Host Layer (Sensors & Interfaces)
 - **Mobile Host (Android)**: Captures high-fidelity physical data (steps, exercise) and provides the primary UI for "The Majesty Cake."
-- **Local Host (Python MCP)**: Bridges the global cloud state with private local data (Obsidian vault, filesystem). 
-- **Narrator Interface**: Directly consumes the `get_narrator_context` tool to provide strategic guidance to the human.
+- **Narrator Interface**: Agents (Gemini, Claude) consume the "Standard Bus" via the Local MCP to provide strategic guidance.
+- **CI Triggers**: External automation (GitHub Actions) pokes the Cloud Hub to force periodic reconciliation.
 
 ### Observability: State over Streams
 Per the **Observability Mandate**, Mecris rejects the "log-searching hole" of unstructured CloudWatch streams.

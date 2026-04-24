@@ -30,46 +30,41 @@ curl http://127.0.0.1:8000/health
 
 ## Architecture Overview
 
-Mecris is a **cloud-coordinated, local-first** accountability system built on a language-neutral **Standard Bus**.
+Mecris is a **cloud-coordinated, local-first** accountability system. It is designed for **maximum resilience**: the local MCP server maintains a direct line to the database and can survive a total loss of the cloud APIs.
 
 ```text
                                ┌─────────────────┐
                                │   NEON DB       │
                                │ (Central State) │
-                               └────────┬────────┘
-                                        │
-                ┌───────────────────────┴───────────────────────┐
-                │        THE PERSISTENCE HUB (WASM API)         │
-                ├───────────────────────┬───────────────────────┤
-                │   FREE: FERMYON       │   PRO: AKAMAI CRON    │
-                │  (Event-Driven)       │  (Scheduled Logic)    │
-                └───────────┬───────────┴───────────┬───────────┘
-                            │                       │
-           ┌────────────────┴───────────────────────┴────────────────┐
-           │             THE STANDARD BUS (JSON / WIT)               │
+                               └─┬─────────────┬─┘
+                  (Cloud Path)   │             │   (Local Path)
+                ┌────────────────┴──────┐      ▼────────────────┐
+                │   CLOUD HUB (WASM API)│      │   LOCAL MCP    │
+                ├───────────────────────┤      │ (Python / SQL) │
+                │   FREE: FERMYON       │      └──────┬─────────┘
+                │   PRO: AKAMAI CRON    │             │
+                └───────────┬───────────┘             │
+                            │                         │
+           ┌────────────────┴─────────────────────────┴──────────────┐
+           │              THE STANDARD BUS (JSON / WIT)              │
            └────┬───────────────┬─────────────────┬─────────────┬────┘
                 ▼               ▼                 ▼             ▼
          ┌────────────┐  ┌─────────────┐  ┌───────────────┐  ┌─────────────┐
-         │ MOBILE GO  │  │  LOCAL MCP  │  │ AGENTS/BOTS   │  │ CI TRIGGERS │
-         │ (Sensors)  │  │ (RAG / FS)  │  │ (Narrators)   │  │ (GHA/Hooks) │
-         └─────┬──────┘  └──────┬──────┘  └───────────────┘  └─────────────┘
-               │                │
-        ┌──────┴──────┐  ┌──────┴──────┐
-        │ GOOGLE FIT  │  │ OBSIDIAN    │
-        │ HEALTH CONN │  │ FILESYSTEM  │
-        └─────────────┘  └─────────────┘
+         │ MOBILE GO  │  │ AGENTS/BOTS  │  │ HUMAN / CLI   │  │ CI TRIGGERS │
+         │ (Sensors)  │  │ (Narrators)  │  │ (Gemini/Term) │  │ (GHA/Hooks) │
+         └────────────┘  └─────────────┘  └───────────────┘  └─────────────┘
 ```
 
 ### Core Components
 
-*   **The Hub**: A centralized WASM API (hosted on Fermyon or Akamai) that manages the system's "Knowledge" (Neon DB) and "Actions" (Twilio/Beeminder).
-    *   **Fermyon (Event-Driven)**: High-availability reactive API for on-demand sync.
-    *   **Akamai (Time-Driven)**: Enterprise-grade scheduled compute for autonomous nagging and failover.
+*   **The Hubs**: Distributed logic centers that manage "Knowledge" (Neon DB) and "Actions" (Twilio/Beeminder).
+    *   **Local MCP (Primary)**: Your local Python server. It bridges local data (Obsidian) and maintains a direct connection to Neon. It is the primary interface for humans and narrators.
+    *   **Cloud Hub (Failover/Mobile)**: Hosted on Fermyon or Akamai. It provides high-availability API endpoints for the Android app and scheduled cron triggers for autonomous nagging.
 *   **The Bus**: All components interact via a language-neutral Standard Bus (JSON/WIT), ensuring that your Android app and your terminal see the same reality.
-*   **The Spokes**: Lightweight "Hosts" (Mobile, CLI, and MCP) provide sensors and interfaces, syncing status back to the hub.
+*   **The Spokes**: Lightweight "Hosts" (Mobile, CLI, and Bots) provide sensors and interfaces to the human.
     *   **Mobile Go**: Android client bridging physical sensors (Google Fit/Health Connect).
-    *   **Local MCP**: Python server bridging your local knowledge base (Obsidian) and file system.
     *   **Agents/Bots**: Gemini and Claude narrators that interpret the state and guide the human.
+    *   **CI Triggers**: GitHub Actions and webhooks that drive periodic cloud synchronization.
 - **Robust startup/shutdown** with process management
 - **Enhanced error handling** and logging
 - **Industry-Leading Toolset**: Features **30 distinct MCP tools**—a larger specialized toolset than even the standard [GitHub MCP server](https://github.com/modelcontextprotocol/servers/tree/main/src/github) (which provides 20+).
