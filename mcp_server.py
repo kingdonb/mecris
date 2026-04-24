@@ -1007,8 +1007,32 @@ async def get_language_velocity_stats(user_id: str = None) -> Dict[str, Any]:
                 # Moussaka Hour baseline goal: 100 points
                 min_target = 100
 
-            pump = ReviewPump(multiplier=multiplier)
-            pump_status = pump.get_status(current_debt, tomorrow_liability, daily_done, unit=unit, min_target=min_target)
+            import httpx
+            try:
+                def _fetch_pump():
+                    with httpx.Client(timeout=5.0) as client:
+                        resp = client.post(
+                            "https://mecris-sync.fermyon.app/internal/review-pump-status-py",
+                            json={
+                                "debt": current_debt,
+                                "tomorrow_liability": tomorrow_liability,
+                                "daily_completions": daily_done,
+                                "multiplier_x10": int(multiplier * 10),
+                                "unit": unit
+                            }
+                        )
+                        resp.raise_for_status()
+                        return resp.json()
+                pump_status = await asyncio.to_thread(_fetch_pump)
+                if min_target > 0 and pump_status.get("target_flow_rate", 0) < min_target and current_debt == 0:
+                    pump_status["target_flow_rate"] = min_target - daily_done
+                    if pump_status["target_flow_rate"] < 0:
+                        pump_status["target_flow_rate"] = 0
+                    pump_status["goal_met"] = daily_done >= min_target
+            except Exception as e:
+                logger.error(f"Failed to fetch review pump status from cloud for {lang}: {e}")
+                pump = ReviewPump(multiplier=multiplier)
+                pump_status = pump.get_status(current_debt, tomorrow_liability, daily_done, unit=unit, min_target=min_target)
             
             # Surface additional fields from DB for the endpoint
             pump_status["safebuf"] = stats.get("safebuf", 0)
@@ -1196,6 +1220,7 @@ reminder_service = ReminderService(get_narrator_context, get_coaching_insight, g
 # ---------------------------------------------------------------------------
 # Budget Governor MCP tool (Plan: yebyen/mecris#26)
 # ---------------------------------------------------------------------------
+import httpx
 from services.budget_governor import BudgetGovernor as _BudgetGovernor
 
 _budget_governor = _BudgetGovernor(spend_log_path="mecris_spend_log.json")
@@ -1203,7 +1228,19 @@ _budget_governor = _BudgetGovernor(spend_log_path="mecris_spend_log.json")
 @mcp.tool(description="Get per-bucket LLM spend envelope status and routing recommendation (Budget Governor).")
 def get_budget_governor_status() -> Dict[str, Any]:
     """Returns per-bucket consumption, envelope status, and a routing recommendation."""
-    return _budget_governor.get_status()
+    try:
+        response = httpx.post(
+            "https://mecris-sync.fermyon.app/internal/budget-governor-py",
+            json={"action": "status"},
+            timeout=5.0
+        )
+        response.raise_for_status()
+        return response.json()
+    except Exception as e:
+        logger.error(f"Failed to fetch BudgetGovernor status from cloud: {e}")
+        from services.budget_governor import BudgetGovernor as _BudgetGovernor
+        _budget_governor = _BudgetGovernor(spend_log_path="mecris_spend_log.json")
+        return _budget_governor.get_status()
 
 def get_modality_status(role: str, mins: float) -> str:
     """Determine healthy/degraded/offline status based on heartbeat age (minutes)."""

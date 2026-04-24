@@ -1,3 +1,13 @@
+"""
+WARNING: DEPRECATED LEGACY FILE
+
+This local logic has been vacuumed into the Fermyon Cloud.
+The single source of truth for the Review Pump is now the WASM
+component located in `poc/wasm/review-pump-py/`. 
+
+DO NOT MODIFY this file for logic updates. It is kept only for
+historical reference until the local MCP server finishes the transition.
+"""
 from typing import Dict, Any, Optional
 
 # Max points awarded per correctly answered Arabic hard card.

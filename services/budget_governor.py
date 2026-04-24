@@ -1,4 +1,14 @@
 """
+WARNING: DEPRECATED LEGACY FILE
+
+This local logic has been vacuumed into the Fermyon Cloud.
+The single source of truth for the Budget Governor is now the WASM
+component located in `poc/wasm/budget-governor-py/`. 
+
+DO NOT MODIFY this file for logic updates. It is kept only for
+historical reference until the local MCP server finishes the transition.
+"""
+"""
 Budget Governor — Fiscal Intelligence layer for Mecris.
 
 Manages multi-bucket LLM quotas with:
