@@ -1,14 +1,14 @@
-# Next Session: Observability — Log Android Notifications to message_log (kingdonb/mecris#213)
+# Next Session: Android NagNotificationManager.kt — call POST /internal/log-message on showNag (kingdonb/mecris#213)
 
-## Current Status (2026-04-24, post-session #40)
-- **Human Yield Presence Detection COMPLETE (session #40)**: `ghost/presence.py` extended with `SYSTEM_LOCK_PATH` (`/tmp/mecris_presence.lock`), `is_mecris_cli_active()` (pgrep-based, self-PID filtered), and `is_human_present()` (OR of fresh lock + active CLI process). `MecrisScheduler._start_leader_jobs()` now guards on `is_human_present()` before registering autonomous jobs. 16 new tests in `tests/test_presence_scheduler.py`, all green. Committed `e5100cf`. Closes yebyen/mecris#266, refs kingdonb/mecris#211.
-- **HCAT Sandbox Dockerfile COMPLETE (session #39)**: `docker/hcat.Dockerfile` created with Alpine 3.21 pinned at `@sha256:48b0309ca019d89d40f670aa1bc06e426dc0931948452e8491e3d65087abc07d`. Non-root `mecris` user. Installs python3 3.12.13, git 2.47.3, uv 0.11.7. Smoke-tested at build time. `scripts/build_hcat.sh` builds and verifies the image. Committed `9ef6800`.
-- **Deployment COMPLETE (beta.3)**: Android app and Spin apps (Fermyon & Akamai) fully deployed at `beta.3` tag. Synchronizes backend WASM logic with front-end indicators.
-- **budget-governor-py wired into spin.toml (Phase 1.7.2 COMPLETE)**: `mecris-go-spin/sync-service/spin.toml` has `[[trigger.http]]` for `/internal/budget-governor-py`, `[component.budget-governor-py]` with `key_value_stores = ["default"]`. 61/61 pytest tests green. Committed `01783da`.
-- **The WASM componentize-py pattern is fully established**: both ReviewPump and BudgetGovernor are in `spin.toml`. Next bot-tractable work: Observability — Log Local Notifications (#213) or Dual-Widget UI (#160).
+## Current Status (2026-04-24, post-session #41)
+- **log-message-py WASM endpoint COMPLETE (session #41)**: `poc/wasm/log-message-py/app.py` implements `POST /internal/log-message` (fields: `type`, `channel`, `sent_at`) with Spin KV persistence (1000-entry rolling cap) and `GET /internal/log-message` for audit retrieval. `[[trigger.http]]` and `[component.log-message-py]` wired in `mecris-go-spin/sync-service/spin.toml`. 40/40 pytest tests green. Committed `5addf51`. Plan yebyen/mecris#267 closed.
+- **Human Yield Presence Detection COMPLETE (session #40)**: `ghost/presence.py` extended with `SYSTEM_LOCK_PATH`, `is_mecris_cli_active()`, `is_human_present()`. `MecrisScheduler._start_leader_jobs()` guards on `is_human_present()`. 16 new tests. Committed `e5100cf`.
+- **HCAT Sandbox Dockerfile COMPLETE (session #39)**: `docker/hcat.Dockerfile` — SHA-pinned Alpine 3.21. `scripts/build_hcat.sh`. Committed `9ef6800`.
+- **Deployment COMPLETE (beta.3)**: Android app and Spin apps (Fermyon & Akamai) at `beta.3` tag.
+- **budget-governor-py wired into spin.toml (Phase 1.7.2 COMPLETE)**: 61/61 pytest tests green.
 
 ## Verified This Session
-- [x] **Human Yield Presence Detection (yebyen/mecris#266 / kingdonb/mecris#211)**: `SYSTEM_LOCK_PATH`, `is_mecris_cli_active()`, `is_human_present()` added to `ghost/presence.py`. `MecrisScheduler._start_leader_jobs()` guard added. 16/16 tests pass (`tests/test_presence_scheduler.py`). Committed `e5100cf`.
+- [x] **log-message-py WASM component (yebyen/mecris#267 / kingdonb/mecris#213)**: `poc/wasm/log-message-py/app.py` — `validate_entry`, `make_log_entry`, `append_entry`, `_parse_request`, KV round-trip all tested. `spin.toml` wired at `/internal/log-message`. 40/40 pytest tests pass (`tests/test_log_message_py_component.py`). Committed `5addf51`.
 
 ## Pending Verification
 
@@ -18,11 +18,12 @@
 - [ ] **Configure internal_api_key in Fermyon Cloud**: Postponed. Prioritizing feature work.
 - [ ] **Verify ask_mecris answer quality**: With a real `ANTHROPIC_API_KEY` in the MCP server env, call `ask_mecris("what is mecris?")` and confirm the `answer` field is prose (not None).
 - [ ] **Verify poc/wasm/review-pump-py/ builds**: Run `pip install -r requirements.txt && spin py2wasm app -o review-pump-py.wasm` in a `spin`-enabled environment.
-- [ ] **Verify poc/wasm/budget-governor-py/ builds**: Run `pip install -r requirements.txt && spin py2wasm app -o budget-governor-py.wasm` in a `spin`-enabled environment.
+- [ ] **Verify poc/wasm/budget-governor-py/ builds**: Same as above.
+- [ ] **Verify poc/wasm/log-message-py/ builds**: `cd poc/wasm/log-message-py && pip install -r requirements.txt && spin py2wasm app -o log-message-py.wasm`.
 
 ### 🤖 Bot-actionable (can be resolved in future sessions)
-- [ ] **Observability: Log Local Notifications (Issue #213)**: Implement `POST /internal/log-message` WASM endpoint in sync-service + update `NagNotificationManager.kt` to call it on every `showNag`. Includes `type`, `channel`, `sent_at` metadata. Requires Android Kotlin + WASM changes.
-- [ ] **Dual-Widget "Debt vs. Flow" UI (kingdonb/mecris#160)**: Android UI Epic. Build a secondary gauge indicator to visualize long-term debt vs daily flow. Consumes `goal_met`, `target_flow_rate`, `outstanding_debt` fields already in Python/Rust APIs.
+- [ ] **Android: NagNotificationManager.kt — call POST /internal/log-message on showNag (kingdonb/mecris#213)**: Update `NagNotificationManager.kt` to POST `{"type": <category>, "channel": "android_native", "sent_at": <ISO timestamp>}` to `/internal/log-message` every time `showNag` is successfully executed. This is the second deliverable in #213; the WASM endpoint (first deliverable) is now complete. Requires access to Android Kotlin source.
+- [ ] **Dual-Widget "Debt vs. Flow" UI (kingdonb/mecris#160)**: Android UI Epic. Build a secondary gauge indicator to visualize long-term debt vs daily flow. Consumes `goal_met`, `target_flow_rate`, `outstanding_debt` fields.
 - [ ] **Port Twilio to WASM Brain (Issue #167)**: Move SMS/WhatsApp dispatch logic from Python/boris-fiona-walker into the `sync-service` Rust module.
 - [ ] **Rust Reminder Engine (Issue #169)**: Implement the 2000-step threshold, sleep window heuristics, and weather checks natively in Rust.
 - [ ] **Contextual Awareness: Chrome Bookmarks (Issue #201)**: Build a local Chrome bookmarks parser and MCP endpoint.
@@ -31,25 +32,24 @@
 - [ ] **AI Framework Evaluation (Issue #205)**: Formalize evaluation matrix and run POC tests.
 - [ ] **Headless Loopback for gh copilot (Issue #206)**: Subprocess wrapper for `gh copilot`.
 - [ ] **Semantic Search: Bookmark Embeddings (Issue #208)**: Generate vector index for Chrome bookmarks.
-- [ ] **Budget Governor: WASM Port (Issue #214)**: POC complete and wired into spin.toml. Remaining: Fermyon Cloud variable config (helix_api_url, budget limits) — human-required for deployment.
+- [ ] **Budget Governor: WASM Port (Issue #214)**: POC complete and wired into spin.toml. Remaining: Fermyon Cloud variable config — human-required for deployment.
 
 ## Infrastructure Notes (carried forward)
+- **log-message-py component API**: `POST /internal/log-message` with `{"type": str, "channel": str, "sent_at": ISO|optional}`. Returns `{"logged": true, "entry_count": int, "logged_at": ISO}`. `GET` returns `{"entries": [...], "entry_count": int}`. Spin KV key: `"message_log"`, rolling cap 1000 entries. Source: `poc/wasm/log-message-py/app.py`.
+- **spin.toml component pattern**: Use `workdir = "../../poc/wasm/<component>/"` for Python WASM components. Build command: `python3 -m pip install --user --break-system-packages -r requirements.txt && spin py2wasm app -o <component>.wasm`. See `arabic-skip-counter`, `review-pump-py`, `budget-governor-py`, and `log-message-py` in `mecris-go-spin/sync-service/spin.toml`.
 - **Human Yield Presence**: `ghost/presence.py` — `is_human_present(lock_path=None, ttl=PRESENCE_TTL_SECONDS)` checks `SYSTEM_LOCK_PATH` (`/tmp/mecris_presence.lock`) first, then `pgrep -f cli.main`. `MecrisScheduler._start_leader_jobs()` calls this before registering jobs. CLI: `bin/mecris presence take` acquires the lock; `release` drops it.
-- **HCAT sandbox image**: `docker/hcat.Dockerfile` — Alpine 3.21 `@sha256:48b0309...`, non-root user `mecris`, python3/git/uv installed. Build: `bash scripts/build_hcat.sh`. Runtime: `docker run --network=mecris-egress-only --user=mecris --read-only --tmpfs /tmp mecris-hcat:latest bash -c '<cmd>'`. LAN isolation is runtime-enforced, not Dockerfile-enforced.
-- **To refresh Alpine digest**: `docker pull alpine:3.21 && docker inspect --format='{{index .RepoDigests 0}}' alpine:3.21`
-- **spin.toml component pattern**: Use `workdir = "../../poc/wasm/<component>/"` for Python WASM components. Build command: `python3 -m pip install --user --break-system-packages -r requirements.txt && spin py2wasm app -o <component>.wasm`. See `arabic-skip-counter`, `review-pump-py`, and `budget-governor-py` in `mecris-go-spin/sync-service/spin.toml`.
+- **HCAT sandbox image**: `docker/hcat.Dockerfile` — Alpine 3.21 `@sha256:48b0309...`, non-root user `mecris`, python3/git/uv installed. Build: `bash scripts/build_hcat.sh`.
 - **poc/wasm/ pattern**: Use `importlib.util.spec_from_file_location("unique_name", path)` when loading WASM component `app.py` files in tests to avoid `sys.modules['app']` collision.
-- **componentize-py class naming**: Function-export world → `class WitWorld`. HTTP trigger world → `class IncomingHandler(spin_sdk.http.IncomingHandler)`. See `LOGIC_VACUUMING_CANDIDATES.md` for full details.
+- **componentize-py class naming**: Function-export world → `class WitWorld`. HTTP trigger world → `class IncomingHandler(spin_sdk.http.IncomingHandler)`.
 - **BudgetGovernor WASM action API**: POST `/internal/budget-governor-py` with `{"action": "status"|"check"|"record"|"recommend"|"gate", "bucket": str, "cost": float}`.
 - **ask_mecris corpus**: `_rag_retriever` is module-level in `mcp_server.py`. Corpus loaded lazily on first `ask_mecris` call. Force re-index: `_rag_retriever.reset()`. Covers docs/ (95 files) + attic/session-chunks/ (17 files) = 112 documents.
-- **ask_mecris result shape**: `{query, result_count, answer, results, note}`. `answer` is `Optional[str]` — prose when `ANTHROPIC_API_KEY` is set and API succeeds, `None` otherwise.
 - **rag_generator model**: `claude-haiku-4-5-20251001` by default. Override via `model=` kwarg if needed.
-- **smart_nag integration complete**: `ReminderService` receives `walk_history_provider=get_walk_history` (mcp_server.py). SQL: `SELECT start_time FROM walk_inferences WHERE user_id = %s AND start_time >= %s ORDER BY start_time ASC` (last 30 days).
+- **smart_nag integration complete**: `ReminderService` receives `walk_history_provider=get_walk_history` (mcp_server.py).
 - **phone_verified column**: `ALTER TABLE users ADD COLUMN IF NOT EXISTS phone_verified BOOLEAN DEFAULT FALSE` — Apply migrate_v6 to production Neon.
 - **aggregate_step_count ordering contract**: SQL at `lib.rs:1309` uses `ORDER BY start_time ASC`; `.last()` relies on this.
 - **Moussaka Exception**: `last_greek_nag_timestamp` → 1.5h cooldown. All others: 4h.
 - **MECRIS_MODE=standalone** bypasses JWKS; `MECRIS_MODE=cloud` enforces RSA verification.
 - **DelayedNagWorker time guards**: Arabic 08:00–20:00; Walk 08:00–20:00; Sovereign Fallback 08:00–20:00; GREEK 17:00–22:30.
-- **Token Bank**: `TokenBankService` is fail-open — without `NEON_DB_URL`, `check_and_debit` returns 0 and logs a warning. Safe to import without a live DB.
+- **Token Bank**: `TokenBankService` is fail-open — without `NEON_DB_URL`, `check_and_debit` returns 0 and logs a warning.
 - **Post-Mortem Generator**: `PostMortemGenerator` in `ghost/post_mortem.py` — fail-open, returns None without NEON_DB_URL.
 - **mecris pulse**: `render_pulse(context)` is a pure function — safe to call with any dict. `run_pulse(user_id)` is the async entrypoint importing `get_narrator_context` at call time.

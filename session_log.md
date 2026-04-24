@@ -2251,3 +2251,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: Nothing — plan fully executed. Note: pre-existing `test_presence_neon.py` failures (13 tests) are unrelated to this work — they fail because `psycopg2` is not installed in the CI environment; confirmed pre-existing via `git stash` baseline check.
 
 **Next**: Observability — Log Android Notifications to message_log (kingdonb/mecris#213). Requires WASM `POST /internal/log-message` endpoint + `NagNotificationManager.kt` update. Both bot-tractable if Android source is accessible.
+
+## 🏛️ 2026-04-24 — log-message-py WASM notification audit endpoint (session #41, yebyen/mecris#267, complete)
+
+**Planned**: Create `poc/wasm/log-message-py/` Python WASM component for `POST /internal/log-message`, wire into `spin.toml`, write pytest tests — following the `budget-governor-py` pattern. (Plan: yebyen/mecris#267, upstream: kingdonb/mecris#213)
+
+**Done**: `poc/wasm/log-message-py/app.py` — `POST /internal/log-message` accepts `{"type", "channel", "sent_at"}`, validates required fields, persists to Spin KV with 1000-entry rolling cap, returns `{"logged": true, "entry_count": int, "logged_at": ISO}`. `GET /internal/log-message` returns full audit log. `requirements.txt` mirrors other Python WASM components. `[[trigger.http]]` + `[component.log-message-py]` added to `mecris-go-spin/sync-service/spin.toml`. `tests/test_log_message_py_component.py` — 40/40 pytest tests green covering validate_entry, make_log_entry, append_entry (rolling cap), _parse_request, KV round-trip, end-to-end integration. Committed `5addf51`. Plan yebyen/mecris#267 closed.
+
+**Skipped**: Android `NagNotificationManager.kt` changes (requires Android build env — deferred as remaining deliverable for #213). Neon DB direct writes deferred (Spin KV used for now, matching budget-governor-py pattern). Fermyon Cloud deployment deferred (human-required).
+
+**Next**: Android — update `NagNotificationManager.kt` to POST `{"type", "channel": "android_native", "sent_at"}` to `/internal/log-message` on every `showNag`. This is the second and final deliverable for kingdonb/mecris#213.
