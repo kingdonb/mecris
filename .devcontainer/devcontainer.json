@@ -1,6 +1,6 @@
 {
   "name": "Mecris Build Env",
-  "image": "mcr.microsoft.com/devcontainers/universal:2",
+  "image": "mcr.microsoft.com/devcontainers/universal:6",
   "features": {
     "ghcr.io/devcontainers/features/java:1": {
       "version": "17",
