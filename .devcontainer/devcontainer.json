@@ -10,7 +10,7 @@
       "version": "latest"
     },
     "ghcr.io/devcontainers/features/python:1": {
-      "version": "3.13"
+      "version": "3.14"
     }
   },
   "postCreateCommand": "curl -fsSL https://developer.fermyon.com/downloads/install.sh | bash && sudo mv spin /usr/local/bin/ && spin plugins update && spin plugins install py2wasm --yes && rustup target add wasm32-wasip1",
