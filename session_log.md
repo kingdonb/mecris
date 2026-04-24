@@ -2231,3 +2231,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: Nothing — plan fully executed. `spin py2wasm` build validation requires a wasm32-wasi toolchain not in CI; Fermyon Cloud variable config (helix_api_url, budget limits) requires deployment environment — both deferred to human verification.
 
 **Next**: HCAT Sandbox Dockerfile (#210) — create a hardened, SHA-pinned container for autonomous agent execution. Or Dual-Widget "Debt vs. Flow" UI (#160) for the Android app.
+
+## 🏛️ 2026-04-24 — HCAT Sandbox Dockerfile (session #39, yebyen/mecris#265, complete)
+
+**Planned**: Create `docker/hcat.Dockerfile` (SHA-pinned Alpine, non-root user, Python+uv+Git) and `scripts/build_hcat.sh` to provide a hardened execution sandbox for autonomous agent turns (kingdonb/mecris#210).
+
+**Done**: `docker/hcat.Dockerfile` — Alpine 3.21 pinned at `@sha256:48b0309ca019d89d40f670aa1bc06e426dc0931948452e8491e3d65087abc07d` (digest fetched live from Docker Hub). Installs python3 3.12.13, git 2.47.3, curl, ca-certificates, bash, and uv 0.11.7 to `/usr/local/bin`. Creates non-root `mecris` user; `/workspace` owned by that user. Smoke-test at build time passes (`python3 --version && git --version && uv --version`). `scripts/build_hcat.sh` — builds image, runs `--network=none` smoke test confirming `whoami` → `mecris`, prints runtime invocation pattern with LAN-isolated bridge network. Committed `9ef6800`. Plan yebyen/mecris#265 closed.
+
+**Skipped**: Nothing — plan fully executed. LAN isolation via custom `--internal` Docker bridge network is documented in the build script but not exercised in CI (no `docker network create` step added to CI workflow this session).
+
+**Next**: Dual-Widget "Debt vs. Flow" UI (kingdonb/mecris#160) — Android UI Epic building the secondary gauge indicator. Consumes `goal_met`, `target_flow_rate`, `outstanding_debt` fields already in the Python/Rust APIs.

@@ -1,8 +1,9 @@
-# Next Session: HCAT Sandbox Dockerfile (#210) or Dual-Widget UI (#160)
+# Next Session: Dual-Widget "Debt vs. Flow" UI (kingdonb/mecris#160)
 
-## Current Status (2026-04-24, post-session #38)
-- **Deployment COMPLETE (beta.3)**: Android app and Spin apps (Fermyon & Akamai) have been fully deployed and updated to the `beta.3` (unreleased revision) tag. Synchronizes backend WASM logic with front-end indicators.
-- **budget-governor-py wired into spin.toml (Phase 1.7.2 COMPLETE)**: `mecris-go-spin/sync-service/spin.toml` now has a `[[trigger.http]]` for `/internal/budget-governor-py` and a `[component.budget-governor-py]` stanza with `key_value_stores = ["default"]` and `workdir = "../../poc/wasm/budget-governor-py"`. `LOGIC_VACUUMING_CANDIDATES.md` updated with Phase 1.7.2 entry. 61/61 pytest tests green. Committed `01783da`.
+## Current Status (2026-04-24, post-session #39)
+- **HCAT Sandbox Dockerfile COMPLETE (session #39)**: `docker/hcat.Dockerfile` created with Alpine 3.21 pinned at `@sha256:48b0309ca019d89d40f670aa1bc06e426dc0931948452e8491e3d65087abc07d`. Non-root `mecris` user. Installs python3 3.12.13, git 2.47.3, uv 0.11.7. Smoke-tested at build time. `scripts/build_hcat.sh` builds and verifies the image. Committed `9ef6800`.
+- **Deployment COMPLETE (beta.3)**: Android app and Spin apps (Fermyon & Akamai) fully deployed at `beta.3` tag. Synchronizes backend WASM logic with front-end indicators.
+- **budget-governor-py wired into spin.toml (Phase 1.7.2 COMPLETE)**: `mecris-go-spin/sync-service/spin.toml` has `[[trigger.http]]` for `/internal/budget-governor-py`, `[component.budget-governor-py]` with `key_value_stores = ["default"]`. 61/61 pytest tests green. Committed `01783da`.
 - **review-pump-py wired into spin.toml (Phase 1.7.1 COMPLETE)**: `mecris-go-spin/sync-service/spin.toml` has `[[trigger.http]]` for `/internal/review-pump-status-py` + `[component.review-pump-py]`. Committed `c3a03bc` + `fa446bb`.
 - **BudgetGovernor Python-native WASM POC COMPLETE**: `poc/wasm/budget-governor-py/` — 61/61 tests green. `IncomingHandler` with 5 actions (status, check, record, recommend, gate). Spin KV for persistence; Spin variables for limits; `spin_sdk` outbound HTTP for Helix balance. Committed `4fd02ab`.
 - **ReviewPump Python-native WASM POC COMPLETE**: `poc/wasm/review-pump-py/` — 34 tests, parity with Rust review-pump. `LOGIC_VACUUMING_CANDIDATES.md` updated (Phase 1.7).
@@ -10,8 +11,9 @@
 - **The WASM componentize-py pattern is fully established**: both ReviewPump and BudgetGovernor are in `spin.toml`. Next logical work: HCAT Sandbox Dockerfile (#210) or one of the larger backlog items.
 
 ## Verified This Session
+- [x] **HCAT Sandbox Dockerfile (yebyen/mecris#265)**: `docker/hcat.Dockerfile` built successfully. `docker run --rm --network=none mecris-hcat:test bash -c "whoami"` → `mecris` (non-root). All tools (python3, git, uv) confirmed present. Committed `9ef6800`.
 - [x] **Full Deployment (beta.3)**: `make deploy-all` executed successfully. Android client and cloud sync service (Fermyon/Akamai) are at parity.
-- [x] **budget-governor-py wired into spin.toml (yebyen/mecris#264)**: `mecris-go-spin/sync-service/spin.toml` — `[[trigger.http]]` at `/internal/budget-governor-py`, `[component.budget-governor-py]` stanza with `key_value_stores = ["default"]` and `workdir = "../../poc/wasm/budget-governor-py"`. TOML validated syntactically. `LOGIC_VACUUMING_CANDIDATES.md` Phase 1.7.2 recorded. 61/61 pytest green. Committed `01783da`.
+- [x] **budget-governor-py wired into spin.toml (yebyen/mecris#264)**: `mecris-go-spin/sync-service/spin.toml` — `[[trigger.http]]` at `/internal/budget-governor-py`, `[component.budget-governor-py]` stanza with `key_value_stores = ["default"]`. TOML validated syntactically. 61/61 pytest green. Committed `01783da`.
 - [x] **Android test count investigation**: Fixed `PocketIdAuthTest` pre-existing failure (`ExceptionInInitializerError` at line 35) by injecting `AuthorizationService` to avoid Android framework static initialization.
 - [x] **Renovate app install**: Confirmed installed. Renovate bot has created the Dependency Dashboard issue (#218) and is scheduling updates.
 
@@ -26,8 +28,7 @@
 - [ ] **Verify poc/wasm/budget-governor-py/ builds**: Run `pip install -r requirements.txt && spin py2wasm app -o budget-governor-py.wasm` in a `spin`-enabled environment.
 
 ### 🤖 Bot-actionable (can be resolved in future sessions)
-- [ ] **HCAT Sandbox Dockerfile (Issue #210)**: Create a hardened, SHA-pinned Dockerfile for executing autonomous agents securely.
-- [ ] **Dual-Widget "Debt vs. Flow" UI (Issue #160)**: Android UI Epic. Build a secondary gauge indicator to visualize long-term debt vs daily flow.
+- [ ] **Dual-Widget "Debt vs. Flow" UI (kingdonb/mecris#160)**: Android UI Epic. Build a secondary gauge indicator to visualize long-term debt vs daily flow. Consumes `goal_met`, `target_flow_rate`, `outstanding_debt` fields already in Python/Rust APIs.
 - [ ] **Port Twilio to WASM Brain (Issue #167)**: Move SMS/WhatsApp dispatch logic from Python/boris-fiona-walker into the `sync-service` Rust module.
 - [ ] **Rust Reminder Engine (Issue #169)**: Implement the 2000-step threshold, sleep window heuristics, and weather checks natively in Rust.
 - [ ] **Contextual Awareness: Chrome Bookmarks (Issue #201)**: Build a local Chrome bookmarks parser and MCP endpoint.
@@ -41,6 +42,8 @@
 - [ ] **Budget Governor: WASM Port (Issue #214)**: POC complete and wired into spin.toml. Remaining: Fermyon Cloud variable config (helix_api_url, budget limits) — human-required for deployment.
 
 ## Infrastructure Notes (carried forward)
+- **HCAT sandbox image**: `docker/hcat.Dockerfile` — Alpine 3.21 `@sha256:48b0309...`, non-root user `mecris`, python3/git/uv installed. Build: `bash scripts/build_hcat.sh`. Runtime: `docker run --network=mecris-egress-only --user=mecris --read-only --tmpfs /tmp mecris-hcat:latest bash -c '<cmd>'`. LAN isolation is runtime-enforced, not Dockerfile-enforced.
+- **To refresh Alpine digest**: `docker pull alpine:3.21 && docker inspect --format='{{index .RepoDigests 0}}' alpine:3.21`
 - **spin.toml component pattern**: Use `workdir = "../../poc/wasm/<component>/"` for Python WASM components. Build command: `python3 -m pip install --user --break-system-packages -r requirements.txt && spin py2wasm app -o <component>.wasm`. See `arabic-skip-counter`, `review-pump-py`, and `budget-governor-py` in `mecris-go-spin/sync-service/spin.toml`.
 - **poc/wasm/ pattern**: Use `importlib.util.spec_from_file_location("unique_name", path)` when loading WASM component `app.py` files in tests to avoid `sys.modules['app']` collision.
 - **componentize-py class naming**: Function-export world → `class WitWorld`. HTTP trigger world → `class IncomingHandler(spin_sdk.http.IncomingHandler)`. See `LOGIC_VACUUMING_CANDIDATES.md` for full details.
