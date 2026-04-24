@@ -35,8 +35,8 @@ The architecture follows a **Peer Persistence** model. Both the Local Host (Pyth
            └────┬───────────────┬─────────────────┬─────────────┬────┘
                 ▼               ▼                 ▼             ▼
          ┌────────────┐  ┌─────────────┐  ┌───────────────┐  ┌─────────────┐
-         │ MOBILE GO  │  │ AGENTS/BOTS  │  │ HUMAN / CLI   │  │ CI TRIGGERS │
-         │ (Sensors)  │  │ (Narrators)  │  │ (Gemini/Term) │  │ (GHA/Hooks) │
+         │ MOBILE GO  │  │ AGENTS/BOTS │  │ HUMAN / CLI   │  │ CI TRIGGERS │
+         │ (Sensors)  │  │ (Narrators) │  │ (Gemini/Term) │  │ (GHA/Hooks) │
          └────────────┘  └─────────────┘  └───────────────┘  └─────────────┘
 ```
 
