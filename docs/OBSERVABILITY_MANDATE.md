@@ -2,6 +2,8 @@
 
 > **Mecris Strategic Mandate**  
 > *Philosophy: "If you need a log to know what happened, your system is opaque. If your system is observable, the state tells the story."*
+>
+> **The Auditor's Corollary**: *"If you can't tell what happened from the log, your system is inscrutable to auditors. They will always use the logs."*
 
 ## 1. The "CloudWatch Lesson" (Anti-Pattern)
 In large-scale production environments, unstructured, high-volume logging is a financial and cognitive liability.
@@ -14,7 +16,12 @@ Mecris adopts the Kubernetes model of observability: **Describe, don't grep.**
 *   **Events over Logs**: High-signal event records (like `kubectl get events`) are superior to unstructured stdout/stderr streams.
 *   **The 4-Minute Rule**: If a system is in a degraded state, it should emit/update a structured event frequently enough that a "Describe" operation reveals the failure without needing to open a log viewer.
 
-## 3. Implementation in Mecris
+## 3. The Role of Persistence (Auditability)
+While real-time operation relies on structured state, the system must maintain a persistent, immutable record of significant events.
+*   **The Log as Evidence**: Per the Auditor's Corollary, the log (or event stream) must be rich enough to reconstruct history for a third party (human or machine) who was not present during execution.
+*   **Converged Records**: In Mecris, the "Log" and the "State" should converge in the `message_log` and `autonomous_turns` tables, ensuring that the evidence is structured, queryable, and complete.
+
+## 4. Implementation in Mecris
 
 ### A. The Heartbeat Evolution
 Heartbeats in the `scheduler_election` table must transition from "I am alive" (timestamp only) to "I am doing X" (intent + status).
@@ -27,7 +34,7 @@ The `message_log` and `autonomous_turns` tables are the primary observability to
 ### C. The "Describe" Tool
 The `get_system_health` and `get_narrator_context` MCP tools are the Mecris equivalent of `kubectl describe`. They must aggregate these structured events to provide a high-fidelity summary of system behavior.
 
-## 4. Conclusion
+## 5. Conclusion
 We will not fail-closed because of a lack of logs. We will fail-open by ensuring that every "Silent Decision" (skipping a nag, choosing a model, yielding presence) leaves a permanent, queryable footprint in the Neon database. 
 
-**Logs are for developers in a lab. State is for agents in the field.**
+**Logs are for developers in a lab. State is for agents in the field. Structured events are for the auditors of the future.**
