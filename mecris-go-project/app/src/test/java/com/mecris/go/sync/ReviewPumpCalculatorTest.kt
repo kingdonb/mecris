@@ -54,4 +54,36 @@ class ReviewPumpCalculatorTest {
         assertEquals("Target should be half of 1000 plus liability", 520, target)
         assertEquals("The Blitz", ReviewPumpCalculator.getLeverName(7.0))
     }
+
+    @Test
+    fun `debt coverage ratio is zero when no work done`() {
+        val ratio = ReviewPumpCalculator.calculateDebtCoverageRatio(completedToday = 0, outstandingDebt = 500)
+        assertEquals("No work done should be 0.0 coverage", 0.0f, ratio, 0.001f)
+    }
+
+    @Test
+    fun `debt coverage ratio low progress typical session`() {
+        // Arabic session: 50 cards completed, 2600 cards outstanding
+        val ratio = ReviewPumpCalculator.calculateDebtCoverageRatio(completedToday = 50, outstandingDebt = 2600)
+        assertEquals("50/2600 = ~0.019", 0.01923f, ratio, 0.001f)
+    }
+
+    @Test
+    fun `debt coverage ratio debt cleared today`() {
+        // Greek session: 80 cards completed, 80 outstanding
+        val ratio = ReviewPumpCalculator.calculateDebtCoverageRatio(completedToday = 80, outstandingDebt = 80)
+        assertEquals("Debt fully cleared should be 1.0", 1.0f, ratio, 0.001f)
+    }
+
+    @Test
+    fun `debt coverage ratio exceeds one when over-cleared`() {
+        val ratio = ReviewPumpCalculator.calculateDebtCoverageRatio(completedToday = 150, outstandingDebt = 80)
+        assertEquals("Over-cleared ratio is 150/80 = 1.875", 1.875f, ratio, 0.001f)
+    }
+
+    @Test
+    fun `debt coverage ratio is zero when outstanding debt is zero`() {
+        val ratio = ReviewPumpCalculator.calculateDebtCoverageRatio(completedToday = 100, outstandingDebt = 0)
+        assertEquals("Zero debt means 0.0 ratio (nothing to cover)", 0.0f, ratio, 0.001f)
+    }
 }

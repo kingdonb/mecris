@@ -1052,7 +1052,9 @@ fun ReviewPumpWidget(
     val remainingToday = stat.target_flow_rate
         ?: com.mecris.go.sync.ReviewPumpCalculator.calculateTargetFlowRate(currentDisplayMultiplier, stat.current, stat.tomorrow)
     val goalMet = stat.goal_met || (stat.target_flow_rate != null && stat.target_flow_rate <= 0.0)
-    
+    val outstandingDebt = stat.outstanding_debt ?: stat.current
+    val debtCoverageRatio = com.mecris.go.sync.ReviewPumpCalculator.calculateDebtCoverageRatio(stat.daily_completions, outstandingDebt)
+
     val accentColor = if (stat.name.equals("ARABIC", ignoreCase = true)) Color(0xFFFFD600) 
                       else if (stat.name.equals("GREEK", ignoreCase = true)) Color(0xFF00E5FF) 
                       else Color.White
@@ -1167,6 +1169,19 @@ fun ReviewPumpWidget(
                         end = Offset(x, size.height),
                         strokeWidth = 4f
                     )
+
+                    // Secondary Debt Coverage Indicator — thin line on bottom edge
+                    // Amber = debt not cleared; Green = debt fully cleared today
+                    val debtLineEnd = size.width * debtCoverageRatio.coerceAtMost(1.0f)
+                    val debtLineColor = if (debtCoverageRatio >= 1.0f) Color(0xFF00C853) else Color(0xFFFFB300)
+                    if (debtLineEnd > 0f) {
+                        drawLine(
+                            color = debtLineColor,
+                            start = Offset(0f, size.height - 3f),
+                            end = Offset(debtLineEnd, size.height - 3f),
+                            strokeWidth = 6f
+                        )
+                    }
                 }
 
                 Row(

@@ -34,4 +34,14 @@ object ReviewPumpCalculator {
         val backlogPortion = if (clearanceDays != null) currentDebt.toDouble() / clearanceDays else 0.0
         return (tomorrowLiability + backlogPortion).toInt()
     }
+
+    /**
+     * Returns the fraction of outstanding debt covered by today's completions.
+     * 0.0 = no work done, 1.0+ = debt fully cleared.
+     * Returns 0.0 if outstandingDebt is zero (nothing to cover).
+     */
+    fun calculateDebtCoverageRatio(completedToday: Int, outstandingDebt: Int): Float {
+        if (outstandingDebt <= 0) return 0.0f
+        return (completedToday.toFloat() / outstandingDebt.toFloat()).coerceAtLeast(0.0f)
+    }
 }

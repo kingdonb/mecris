@@ -142,7 +142,8 @@ data class LanguageStatDto(
     val daily_completions: Int = 0,
     val target_flow_rate: Double? = null,
     val absolute_target: Int? = null,
-    val goal_met: Boolean = false
+    val goal_met: Boolean = false,
+    val outstanding_debt: Int? = null
 )
 
 data class HealthResponseDto(
