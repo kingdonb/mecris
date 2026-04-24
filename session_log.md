@@ -2221,3 +2221,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: Nothing — plan fully executed. `spin py2wasm` build validation requires a wasm32-wasi toolchain not present in CI; deferred to human verification as before.
 
 **Next**: Wire `poc/wasm/budget-governor-py/` into `spin.toml` as `/internal/budget-governor-py` (same pattern, adds `key_value_stores = ["default"]`). Advances kingdonb/mecris#214.
+
+## 🏛️ 2026-04-24 — budget-governor-py wired into spin.toml (session #38, yebyen/mecris#264, complete)
+
+**Planned**: Add `[[trigger.http]]` route and `[component.budget-governor-py]` stanza to `mecris-go-spin/sync-service/spin.toml`, wiring the Python-native BudgetGovernor WASM component at `/internal/budget-governor-py` with `key_value_stores = ["default"]`. (Plan: yebyen/mecris#264, upstream: kingdonb/mecris#214)
+
+**Done**: `mecris-go-spin/sync-service/spin.toml` — `[[trigger.http]]` for `/internal/budget-governor-py` → `budget-governor-py` component added. `[component.budget-governor-py]` stanza: `source = "../../poc/wasm/budget-governor-py/budget-governor-py.wasm"`, `key_value_stores = ["default"]`, build command mirrors review-pump-py. TOML validated syntactically — 5 HTTP triggers confirmed. `docs/LOGIC_VACUUMING_CANDIDATES.md` updated with Phase 1.7.2 entry. 61/61 pytest tests green. Committed `01783da`. Plan yebyen/mecris#264 closed.
+
+**Skipped**: Nothing — plan fully executed. `spin py2wasm` build validation requires a wasm32-wasi toolchain not in CI; Fermyon Cloud variable config (helix_api_url, budget limits) requires deployment environment — both deferred to human verification.
+
+**Next**: HCAT Sandbox Dockerfile (#210) — create a hardened, SHA-pinned container for autonomous agent execution. Or Dual-Widget "Debt vs. Flow" UI (#160) for the Android app.
