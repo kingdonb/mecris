@@ -2281,3 +2281,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: Phase 2 (primary flow fill bar for daily_completions vs target_flow_rate) and Phase 3 (behavioral nudge / Beckon signal) remain. Backend `/languages` API does not yet return `outstanding_debt` — fallback to `stat.current` active until backend is updated.
 
 **Next**: Dual-Widget Phase 2 — add a filled bar to the gauge representing `daily_completions` / `target_flow_rate` progress (distinct state when `goal_met` is true). kingdonb/mecris#160 Phase 2.
+
+## 🏛️ 2026-04-24 — Flow fill bar for ReviewPumpWidget primary gauge (session #44, yebyen/mecris#271, complete)
+
+**Planned**: Add a vertical fill bar to each language gauge in `ReviewPumpWidget` representing `daily_completions` vs `target_flow_rate`, with a distinct green color state when `goal_met` is true. (Plan: yebyen/mecris#271, upstream: kingdonb/mecris#160 Phase 2)
+
+**Done**: `ReviewPumpCalculator.kt` — `calculateFlowFillRatio(completedToday: Int, targetFlowRate: Int): Float` added, capped at 1.0 for UI bar, returns 0.0 when targetFlowRate ≤ 0. `ReviewPumpCalculatorTest.kt` — 5 new test cases (no-work, partial, exact, over-achieved, zero-target); 24 total tests green. `MainActivity.kt` — `ReviewPumpWidget` computes `flowFillRatio` and draws an amber/green fill Box overlaying the pressure gauge track (between background track Box and Canvas), proportional to `daily_completions/target_flow_rate.toInt()`; turns solid green when `goalMet` is true. `testDebugUnitTest` exits 0. Committed `bfc77b4`. Plan yebyen/mecris#271 closed.
+
+**Skipped**: Upstream sync had no gap (yebyen/mecris was already up to date with kingdonb/mecris). Phase 3 (Behavioral Nudge / Beckon signal) and device deployment verification remain human-gated.
+
+**Next**: Dual-Widget Phase 3 — Behavioral Nudge (kingdonb/mecris#160): visually prioritize "Play mode" when debt is high; Beckon signal when backlog warrants a new `reviewstack` goal.
