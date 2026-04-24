@@ -2291,3 +2291,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: Upstream sync had no gap (yebyen/mecris was already up to date with kingdonb/mecris). Phase 3 (Behavioral Nudge / Beckon signal) and device deployment verification remain human-gated.
 
 **Next**: Dual-Widget Phase 3 — Behavioral Nudge (kingdonb/mecris#160): visually prioritize "Play mode" when debt is high; Beckon signal when backlog warrants a new `reviewstack` goal.
+
+## 🏛️ 2026-04-24 — Phase 3 Behavioral Nudge for ReviewPumpWidget (session #45, yebyen/mecris#273, complete)
+
+**Planned**: Add `calculateIsPlayMode` and `calculateBeckonSignal` to `ReviewPumpCalculator`, surface as "PLAY MODE" amber badge and "BECKON ✦" purple pill in `ReviewPumpWidget`, ≥6 unit tests, `testDebugUnitTest` exits 0 with ≥30 total. (Plan: yebyen/mecris#273, upstream: kingdonb/mecris#160 Phase 3)
+
+**Done**: `ReviewPumpCalculator.kt` — `calculateIsPlayMode(outstandingDebt: Int, targetFlowRate: Int): Boolean` (true when debt > 7× flow target; false when target ≤ 0) and `calculateBeckonSignal(outstandingDebt: Int): Boolean` (true when debt ≥ 300). `MainActivity.kt` — `ReviewPumpWidget` computes both values; amber "PLAY MODE" badge added next to language name (styled like "NO GOAL" badge); purple "BECKON ✦" pill added above the lever-name badge in top-right column. `ReviewPumpCalculatorTest.kt` — 7 new tests: 4 for `calculateIsPlayMode` (below threshold, exactly at threshold, well above threshold, zero-target guard) and 3 for `calculateBeckonSignal` (below, at, above 300). `testDebugUnitTest` exits 0 — 21 in ReviewPumpCalculatorTest, 57 total across full suite, `failures="0"`. Committed `d7d86eb`. PR: kingdonb/mecris#246. Plan yebyen/mecris#273 closed.
+
+**Skipped**: Nothing — plan fully executed. Device deployment verification remains human-gated (need to deploy APK and confirm visual rendering on device for all three new UI elements).
+
+**Next**: Backport "REMAINING TODAY" counter (kingdonb/mecris#194) — `LanguageStatDto` already has the needed fields; this is additive UI work on the existing widget. Alternatively, Majesty Cake Momentum Visualizer (kingdonb/mecris#195) for a higher-impact visual.
