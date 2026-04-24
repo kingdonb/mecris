@@ -1,15 +1,15 @@
-# Next Session: Wire review-pump-py into spin.toml (Holy Grail #157) or HCAT Sandbox Dockerfile (#210)
+# Next Session: HCAT Sandbox Dockerfile (#210) or Dual-Widget UI (#160)
 
-## Current Status (2026-04-23, post-session #36)
+## Current Status (2026-04-24, post-session #38)
+- **budget-governor-py wired into spin.toml (Phase 1.7.2 COMPLETE)**: `mecris-go-spin/sync-service/spin.toml` now has a `[[trigger.http]]` for `/internal/budget-governor-py` and a `[component.budget-governor-py]` stanza with `key_value_stores = ["default"]` and `workdir = "../../poc/wasm/budget-governor-py"`. `LOGIC_VACUUMING_CANDIDATES.md` updated with Phase 1.7.2 entry. 61/61 pytest tests green. Committed `01783da`.
+- **review-pump-py wired into spin.toml (Phase 1.7.1 COMPLETE)**: `mecris-go-spin/sync-service/spin.toml` has `[[trigger.http]]` for `/internal/review-pump-status-py` + `[component.review-pump-py]`. Committed `c3a03bc` + `fa446bb`.
 - **BudgetGovernor Python-native WASM POC COMPLETE**: `poc/wasm/budget-governor-py/` — 61/61 tests green. `IncomingHandler` with 5 actions (status, check, record, recommend, gate). Spin KV for persistence; Spin variables for limits; `spin_sdk` outbound HTTP for Helix balance. Committed `4fd02ab`.
 - **ReviewPump Python-native WASM POC COMPLETE**: `poc/wasm/review-pump-py/` — 34 tests, parity with Rust review-pump. `LOGIC_VACUUMING_CANDIDATES.md` updated (Phase 1.7).
 - **ask_mecris RAG pipeline COMPLETE**: BM25 retrieval + LLM generation (claude-haiku-4-5-20251001). 39 tests pass.
-- **Two WASM POCs validated**: The componentize-py + `IncomingHandler` pattern is now established for both ReviewPump and BudgetGovernor. The next step is wiring one into `spin.toml`.
+- **The WASM componentize-py pattern is fully established**: both ReviewPump and BudgetGovernor are in `spin.toml`. Next logical work: HCAT Sandbox Dockerfile (#210) or one of the larger backlog items.
 
 ## Verified This Session
-- [x] **BudgetGovernor Python-native WASM POC (yebyen/mecris#262)**: `poc/wasm/budget-governor-py/app.py` — componentize-py HTTP trigger. 61/61 tests green (`tests/test_budget_governor_py_component.py`). Committed `4fd02ab`.
-- [x] **5%/5% envelope logic portable**: `check_envelope`, `recommend_bucket`, `get_status`, `budget_gate`, `_calc_total_spent`, `_calc_window_spent` all importable without WASM runtime. Logic contract matches `services/budget_governor.py`.
-- [x] **Spend log KV serialization**: `_load_spend_log_from_json`, `_dump_spend_log_to_json` round-trip verified in tests. Replaces file I/O from original `BudgetGovernor` class.
+- [x] **budget-governor-py wired into spin.toml (yebyen/mecris#264)**: `mecris-go-spin/sync-service/spin.toml` — `[[trigger.http]]` at `/internal/budget-governor-py`, `[component.budget-governor-py]` stanza with `key_value_stores = ["default"]` and `workdir = "../../poc/wasm/budget-governor-py"`. TOML validated syntactically. `LOGIC_VACUUMING_CANDIDATES.md` Phase 1.7.2 recorded. 61/61 pytest green. Committed `01783da`.
 
 ## Pending Verification
 
@@ -24,8 +24,6 @@
 - [ ] **Verify poc/wasm/budget-governor-py/ builds**: Run `pip install -r requirements.txt && spin py2wasm app -o budget-governor-py.wasm` in a `spin`-enabled environment.
 
 ### 🤖 Bot-actionable (can be resolved in future sessions)
-- [ ] **The Holy Grail: Python-Native WASM Migration (Issue #157)**: Wire `poc/wasm/review-pump-py/` into `spin.toml` as an HTTP route (`/internal/review-pump-status-py`) alongside the Rust version. Demonstrate side-by-side parity. Pattern is established — just needs the `spin.toml` stanza and CI wiring.
-- [ ] **Wire BudgetGovernor WASM into spin.toml**: Add `poc/wasm/budget-governor-py/` as `/internal/budget-governor-py` route. Second integration target after ReviewPump.
 - [ ] **HCAT Sandbox Dockerfile (Issue #210)**: Create a hardened, SHA-pinned Dockerfile for executing autonomous agents securely.
 - [ ] **Dual-Widget "Debt vs. Flow" UI (Issue #160)**: Android UI Epic. Build a secondary gauge indicator to visualize long-term debt vs daily flow.
 - [ ] **Port Twilio to WASM Brain (Issue #167)**: Move SMS/WhatsApp dispatch logic from Python/boris-fiona-walker into the `sync-service` Rust module.
@@ -38,12 +36,13 @@
 - [ ] **Semantic Search: Bookmark Embeddings (Issue #208)**: Generate vector index for Chrome bookmarks.
 - [ ] **Human Yield Presence Detection (Issue #211)**: Add logic to detect human workstation activity and manage the `presence.lock` safely.
 - [ ] **Observability: Log Local Notifications (Issue #213)**: Implement remote logging for local Android notifications.
-- [ ] **Budget Governor: WASM Port (Issue #214)**: PARTIALLY COMPLETE — POC in `poc/wasm/budget-governor-py/`. Remaining: wire into `spin.toml`, add KV schema init, add Helix balance variable config in Fermyon.
+- [ ] **Budget Governor: WASM Port (Issue #214)**: POC complete and wired into spin.toml. Remaining: Fermyon Cloud variable config (helix_api_url, budget limits) — human-required for deployment.
 
 ## Infrastructure Notes (carried forward)
+- **spin.toml component pattern**: Use `workdir = "../../poc/wasm/<component>/"` for Python WASM components. Build command: `python3 -m pip install --user --break-system-packages -r requirements.txt && spin py2wasm app -o <component>.wasm`. See `arabic-skip-counter`, `review-pump-py`, and `budget-governor-py` in `mecris-go-spin/sync-service/spin.toml`.
 - **poc/wasm/ pattern**: Use `importlib.util.spec_from_file_location("unique_name", path)` when loading WASM component `app.py` files in tests to avoid `sys.modules['app']` collision.
 - **componentize-py class naming**: Function-export world → `class WitWorld`. HTTP trigger world → `class IncomingHandler(spin_sdk.http.IncomingHandler)`. See `LOGIC_VACUUMING_CANDIDATES.md` for full details.
-- **BudgetGovernor WASM action API**: POST `/internal/budget-governor` with `{"action": "status"|"check"|"record"|"recommend"|"gate", "bucket": str, "cost": float}`.
+- **BudgetGovernor WASM action API**: POST `/internal/budget-governor-py` with `{"action": "status"|"check"|"record"|"recommend"|"gate", "bucket": str, "cost": float}`.
 - **ask_mecris corpus**: `_rag_retriever` is module-level in `mcp_server.py`. Corpus loaded lazily on first `ask_mecris` call. Force re-index: `_rag_retriever.reset()`. Covers docs/ (95 files) + attic/session-chunks/ (17 files) = 112 documents.
 - **ask_mecris result shape**: `{query, result_count, answer, results, note}`. `answer` is `Optional[str]` — prose when `ANTHROPIC_API_KEY` is set and API succeeds, `None` otherwise.
 - **rag_generator model**: `claude-haiku-4-5-20251001` by default. Override via `model=` kwarg if needed.

@@ -345,6 +345,17 @@ Phase 1.7 (done)     — ReviewPump Python-native WASM POC (kingdonb/mecris#157)
                         demonstrated. 34 Python pytest tests. Validates the pattern for
                         pure-logic services: calculate_target, get_status, _parse_request.
                         Parity with Rust review-pump confirmed test-by-test.
+Phase 1.7.1 (done)  — review-pump-py wired into spin.toml (yebyen/mecris#263).
+                        mecris-go-spin/sync-service/spin.toml: [[trigger.http]] at
+                        /internal/review-pump-status-py + [component.review-pump-py]
+                        stanza. Python and Rust review-pump registered side by side.
+                        Build: spin py2wasm app -o review-pump-py.wasm (same as arabic-skip-counter).
+Phase 1.7.2 (done)  — budget-governor-py wired into spin.toml (yebyen/mecris#264).
+                        mecris-go-spin/sync-service/spin.toml: [[trigger.http]] at
+                        /internal/budget-governor-py + [component.budget-governor-py]
+                        stanza with key_value_stores = ["default"]. 5%/5% spend envelope
+                        logic available as Spin HTTP endpoint. 61 pytest tests green.
+                        Advances kingdonb/mecris#214.
 Phase 2  (next)      — Port BudgetGovernor core envelope (Python-native via componentize-py).
                         KV store spend log, outbound HTTP for Helix balance.
                         Python MCP server becomes a thin wrapper calling the WASM component.
