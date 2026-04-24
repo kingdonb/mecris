@@ -2271,3 +2271,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: End-to-end device verification (requires deploying updated APK and live Fermyon endpoint — human-required). Third deliverable of #213 ("Verified audit logs in Neon") remains human-gated.
 
 **Next**: Dual-Widget "Debt vs. Flow" UI (kingdonb/mecris#160) — secondary gauge indicator in Android app consuming `goal_met`, `target_flow_rate`, `outstanding_debt` fields.
+
+## 🏛️ 2026-04-24 — Debt-coverage ratio indicator for ReviewPumpWidget (session #43, yebyen/mecris#270, complete)
+
+**Planned**: Add `outstanding_debt` to `LanguageStatDto`, implement `calculateDebtCoverageRatio` in `ReviewPumpCalculator`, draw thin debt-coverage line on bottom edge of gauge Canvas with amber/green coloring, 5 unit tests. (Plan: yebyen/mecris#270, upstream: kingdonb/mecris#160)
+
+**Done**: `SyncServiceApi.kt` — `outstanding_debt: Int? = null` added to `LanguageStatDto` (back-compat default). `ReviewPumpCalculator.kt` — `calculateDebtCoverageRatio(completedToday: Int, outstandingDebt: Int): Float` added (returns 0.0f if debt ≤ 0, raw ratio otherwise). `MainActivity.kt` — `ReviewPumpWidget` computes `outstandingDebt = stat.outstanding_debt ?: stat.current` and `debtCoverageRatio`; Canvas now draws a 6px bottom-edge line spanning `width * ratio.coerceAtMost(1.0)` — amber (`0xFFFFB300`) when coverage < 1.0, green (`0xFF00C853`) when cleared. `ReviewPumpCalculatorTest.kt` — 5 new test cases (no-work, low-progress/typical-Arabic, debt-cleared/Greek, over-cleared, zero-debt). `testDebugUnitTest` exits 0. Committed `cdaa79c`.
+
+**Skipped**: Phase 2 (primary flow fill bar for daily_completions vs target_flow_rate) and Phase 3 (behavioral nudge / Beckon signal) remain. Backend `/languages` API does not yet return `outstanding_debt` — fallback to `stat.current` active until backend is updated.
+
+**Next**: Dual-Widget Phase 2 — add a filled bar to the gauge representing `daily_completions` / `target_flow_rate` progress (distinct state when `goal_met` is true). kingdonb/mecris#160 Phase 2.
