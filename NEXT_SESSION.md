@@ -1,6 +1,7 @@
 # Next Session: HCAT Sandbox Dockerfile (#210) or Dual-Widget UI (#160)
 
 ## Current Status (2026-04-24, post-session #38)
+- **Deployment COMPLETE (beta.3)**: Android app and Spin apps (Fermyon & Akamai) have been fully deployed and updated to the `beta.3` (unreleased revision) tag. Synchronizes backend WASM logic with front-end indicators.
 - **budget-governor-py wired into spin.toml (Phase 1.7.2 COMPLETE)**: `mecris-go-spin/sync-service/spin.toml` now has a `[[trigger.http]]` for `/internal/budget-governor-py` and a `[component.budget-governor-py]` stanza with `key_value_stores = ["default"]` and `workdir = "../../poc/wasm/budget-governor-py"`. `LOGIC_VACUUMING_CANDIDATES.md` updated with Phase 1.7.2 entry. 61/61 pytest tests green. Committed `01783da`.
 - **review-pump-py wired into spin.toml (Phase 1.7.1 COMPLETE)**: `mecris-go-spin/sync-service/spin.toml` has `[[trigger.http]]` for `/internal/review-pump-status-py` + `[component.review-pump-py]`. Committed `c3a03bc` + `fa446bb`.
 - **BudgetGovernor Python-native WASM POC COMPLETE**: `poc/wasm/budget-governor-py/` — 61/61 tests green. `IncomingHandler` with 5 actions (status, check, record, recommend, gate). Spin KV for persistence; Spin variables for limits; `spin_sdk` outbound HTTP for Helix balance. Committed `4fd02ab`.
@@ -9,6 +10,7 @@
 - **The WASM componentize-py pattern is fully established**: both ReviewPump and BudgetGovernor are in `spin.toml`. Next logical work: HCAT Sandbox Dockerfile (#210) or one of the larger backlog items.
 
 ## Verified This Session
+- [x] **Full Deployment (beta.3)**: `make deploy-all` executed successfully. Android client and cloud sync service (Fermyon/Akamai) are at parity.
 - [x] **budget-governor-py wired into spin.toml (yebyen/mecris#264)**: `mecris-go-spin/sync-service/spin.toml` — `[[trigger.http]]` at `/internal/budget-governor-py`, `[component.budget-governor-py]` stanza with `key_value_stores = ["default"]` and `workdir = "../../poc/wasm/budget-governor-py"`. TOML validated syntactically. `LOGIC_VACUUMING_CANDIDATES.md` Phase 1.7.2 recorded. 61/61 pytest green. Committed `01783da`.
 
 ## Pending Verification
