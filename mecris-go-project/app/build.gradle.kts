@@ -39,7 +39,7 @@ android {
     packaging {
         jniLibs {
             // Support 16 KB page sizes for Android 15+
-            useLegacyPackaging = false
+            // useLegacyPackaging = false
         }
     }
 }
