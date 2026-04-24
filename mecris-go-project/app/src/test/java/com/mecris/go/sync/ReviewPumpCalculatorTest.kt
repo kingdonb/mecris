@@ -86,4 +86,34 @@ class ReviewPumpCalculatorTest {
         val ratio = ReviewPumpCalculator.calculateDebtCoverageRatio(completedToday = 100, outstandingDebt = 0)
         assertEquals("Zero debt means 0.0 ratio (nothing to cover)", 0.0f, ratio, 0.001f)
     }
+
+    @Test
+    fun `flow fill ratio is zero when no work done`() {
+        val ratio = ReviewPumpCalculator.calculateFlowFillRatio(completedToday = 0, targetFlowRate = 100)
+        assertEquals("No work done should be 0.0 fill", 0.0f, ratio, 0.001f)
+    }
+
+    @Test
+    fun `flow fill ratio is proportional when partially done`() {
+        val ratio = ReviewPumpCalculator.calculateFlowFillRatio(completedToday = 50, targetFlowRate = 100)
+        assertEquals("50/100 = 0.5 fill", 0.5f, ratio, 0.001f)
+    }
+
+    @Test
+    fun `flow fill ratio is 1 when target exactly met`() {
+        val ratio = ReviewPumpCalculator.calculateFlowFillRatio(completedToday = 150, targetFlowRate = 150)
+        assertEquals("Target exactly met should be 1.0", 1.0f, ratio, 0.001f)
+    }
+
+    @Test
+    fun `flow fill ratio caps at 1 when over-achieved`() {
+        val ratio = ReviewPumpCalculator.calculateFlowFillRatio(completedToday = 200, targetFlowRate = 100)
+        assertEquals("Over-achieved caps at 1.0 for UI bar", 1.0f, ratio, 0.001f)
+    }
+
+    @Test
+    fun `flow fill ratio is zero when target is zero`() {
+        val ratio = ReviewPumpCalculator.calculateFlowFillRatio(completedToday = 50, targetFlowRate = 0)
+        assertEquals("Zero target means 0.0 ratio (nothing to fill)", 0.0f, ratio, 0.001f)
+    }
 }

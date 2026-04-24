@@ -1054,6 +1054,7 @@ fun ReviewPumpWidget(
     val goalMet = stat.goal_met || (stat.target_flow_rate != null && stat.target_flow_rate <= 0.0)
     val outstandingDebt = stat.outstanding_debt ?: stat.current
     val debtCoverageRatio = com.mecris.go.sync.ReviewPumpCalculator.calculateDebtCoverageRatio(stat.daily_completions, outstandingDebt)
+    val flowFillRatio = com.mecris.go.sync.ReviewPumpCalculator.calculateFlowFillRatio(stat.daily_completions, remainingToday.toInt())
 
     val accentColor = if (stat.name.equals("ARABIC", ignoreCase = true)) Color(0xFFFFD600) 
                       else if (stat.name.equals("GREEK", ignoreCase = true)) Color(0xFF00E5FF) 
@@ -1156,7 +1157,20 @@ fun ReviewPumpWidget(
                         .height(8.dp)
                         .background(Color(0xFF333333), RoundedCornerShape(4.dp))
                 )
-                
+
+                // Flow Fill Bar — daily_completions progress toward target_flow_rate
+                if (flowFillRatio > 0f) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth(fraction = flowFillRatio)
+                            .height(8.dp)
+                            .background(
+                                if (goalMet) Color(0xFF00C853) else Color(0xFFFFB300),
+                                RoundedCornerShape(4.dp)
+                            )
+                    )
+                }
+
                 // The Target Marker
                 val maxScale = 1000.0
                 val targetPos = (remainingToday.toDouble() / maxScale).coerceIn(0.1, 0.9).toFloat()

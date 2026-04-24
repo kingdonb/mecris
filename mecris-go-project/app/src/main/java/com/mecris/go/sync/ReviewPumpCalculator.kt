@@ -44,4 +44,14 @@ object ReviewPumpCalculator {
         if (outstandingDebt <= 0) return 0.0f
         return (completedToday.toFloat() / outstandingDebt.toFloat()).coerceAtLeast(0.0f)
     }
+
+    /**
+     * Returns the fraction of today's flow target covered by completions, capped at 1.0.
+     * 0.0 = no work done, 1.0 = target met or exceeded.
+     * Returns 0.0 if targetFlowRate is zero or negative.
+     */
+    fun calculateFlowFillRatio(completedToday: Int, targetFlowRate: Int): Float {
+        if (targetFlowRate <= 0) return 0.0f
+        return (completedToday.toFloat() / targetFlowRate.toFloat()).coerceIn(0.0f, 1.0f)
+    }
 }
