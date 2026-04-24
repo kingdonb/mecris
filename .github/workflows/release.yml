@@ -139,7 +139,7 @@ jobs:
           subject-path: "release-assets/*"
 
       - name: Create Release
-        uses: softprops/action-gh-release@4dd30955cca228da305ffee6fbc3fc1f95d447c2 # v2+ latest master
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2+ latest master
         with:
           files: release-assets/*
           generate_release_notes: true
