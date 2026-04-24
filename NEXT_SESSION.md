@@ -12,13 +12,13 @@
 ## Verified This Session
 - [x] **Full Deployment (beta.3)**: `make deploy-all` executed successfully. Android client and cloud sync service (Fermyon/Akamai) are at parity.
 - [x] **budget-governor-py wired into spin.toml (yebyen/mecris#264)**: `mecris-go-spin/sync-service/spin.toml` — `[[trigger.http]]` at `/internal/budget-governor-py`, `[component.budget-governor-py]` stanza with `key_value_stores = ["default"]` and `workdir = "../../poc/wasm/budget-governor-py"`. TOML validated syntactically. `LOGIC_VACUUMING_CANDIDATES.md` Phase 1.7.2 recorded. 61/61 pytest green. Committed `01783da`.
+- [x] **Android test count investigation**: Fixed `PocketIdAuthTest` pre-existing failure (`ExceptionInInitializerError` at line 35) by injecting `AuthorizationService` to avoid Android framework static initialization.
 
 ## Pending Verification
 
 ### 👤 Human-required (cannot be resolved by bot)
 - [ ] **Apply migrate_v7 to production Neon**: `token_bank` and `autonomous_turns` tables. Run `python scripts/migrate_v7_autonomous_tracking.py`.
 - [ ] **Apply migrate_v6 to production Neon**: `phone_verified`, `phone_verifications`, `scheduler_election` multi-user, `vacation_mode_until` changes.
-- [ ] **Android test count investigation**: `PocketIdAuthTest` pre-existing failure (`ExceptionInInitializerError` at line 35) — out of bot scope.
 - [ ] **Configure internal_api_key in Fermyon Cloud**: Postponed. Prioritizing feature work.
 - [ ] **Renovate app install**: `renovate.json` is committed but Renovate bot must be installed on the GitHub repo to take effect. Install from https://github.com/apps/renovate.
 - [ ] **Verify ask_mecris answer quality**: With a real `ANTHROPIC_API_KEY` in the MCP server env, call `ask_mecris("what is mecris?")` and confirm the `answer` field is prose (not None).
