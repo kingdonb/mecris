@@ -116,4 +116,53 @@ class ReviewPumpCalculatorTest {
         val ratio = ReviewPumpCalculator.calculateFlowFillRatio(completedToday = 50, targetFlowRate = 0)
         assertEquals("Zero target means 0.0 ratio (nothing to fill)", 0.0f, ratio, 0.001f)
     }
+
+    // --- calculateIsPlayMode ---
+
+    @Test
+    fun `play mode is false when debt is below threshold`() {
+        // 100 cards debt, target 100/day -> 100 * 7 = 700; 100 < 700 -> not play mode
+        val result = ReviewPumpCalculator.calculateIsPlayMode(outstandingDebt = 100, targetFlowRate = 100)
+        assertEquals("Debt well below 7x target should not be play mode", false, result)
+    }
+
+    @Test
+    fun `play mode is false when debt equals threshold exactly`() {
+        // 700 debt, target 100/day -> 700 == 700; not strictly greater -> false
+        val result = ReviewPumpCalculator.calculateIsPlayMode(outstandingDebt = 700, targetFlowRate = 100)
+        assertEquals("Debt exactly at 7x threshold should not be play mode", false, result)
+    }
+
+    @Test
+    fun `play mode is true when debt exceeds threshold`() {
+        // Arabic: 2600 cards debt, target 100/day -> 2600 > 700 -> play mode
+        val result = ReviewPumpCalculator.calculateIsPlayMode(outstandingDebt = 2600, targetFlowRate = 100)
+        assertEquals("Large Arabic backlog should trigger play mode", true, result)
+    }
+
+    @Test
+    fun `play mode is false when target flow rate is zero`() {
+        val result = ReviewPumpCalculator.calculateIsPlayMode(outstandingDebt = 2600, targetFlowRate = 0)
+        assertEquals("Zero target flow rate should not trigger play mode", false, result)
+    }
+
+    // --- calculateBeckonSignal ---
+
+    @Test
+    fun `beckon signal is false when debt is below threshold`() {
+        val result = ReviewPumpCalculator.calculateBeckonSignal(outstandingDebt = 50)
+        assertEquals("Small debt should not trigger beckon", false, result)
+    }
+
+    @Test
+    fun `beckon signal is true when debt meets threshold exactly`() {
+        val result = ReviewPumpCalculator.calculateBeckonSignal(outstandingDebt = 300)
+        assertEquals("300 cards outstanding should trigger beckon at threshold", true, result)
+    }
+
+    @Test
+    fun `beckon signal is true when debt exceeds threshold`() {
+        val result = ReviewPumpCalculator.calculateBeckonSignal(outstandingDebt = 2600)
+        assertEquals("2600 cards outstanding should strongly trigger beckon", true, result)
+    }
 }

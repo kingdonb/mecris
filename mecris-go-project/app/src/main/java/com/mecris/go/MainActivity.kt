@@ -1055,6 +1055,8 @@ fun ReviewPumpWidget(
     val outstandingDebt = stat.outstanding_debt ?: stat.current
     val debtCoverageRatio = com.mecris.go.sync.ReviewPumpCalculator.calculateDebtCoverageRatio(stat.daily_completions, outstandingDebt)
     val flowFillRatio = com.mecris.go.sync.ReviewPumpCalculator.calculateFlowFillRatio(stat.daily_completions, remainingToday.toInt())
+    val isPlayMode = com.mecris.go.sync.ReviewPumpCalculator.calculateIsPlayMode(outstandingDebt, remainingToday.toInt())
+    val beckonSignal = com.mecris.go.sync.ReviewPumpCalculator.calculateBeckonSignal(outstandingDebt)
 
     val accentColor = if (stat.name.equals("ARABIC", ignoreCase = true)) Color(0xFFFFD600) 
                       else if (stat.name.equals("GREEK", ignoreCase = true)) Color(0xFF00E5FF) 
@@ -1098,6 +1100,22 @@ fun ReviewPumpWidget(
                                 )
                             }
                         }
+                        if (isPlayMode) {
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Surface(
+                                color = Color(0xFFFFB300).copy(alpha = 0.15f),
+                                shape = RoundedCornerShape(4.dp)
+                            ) {
+                                Text(
+                                    text = "PLAY MODE",
+                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = Color(0xFFFFB300),
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 8.sp
+                                )
+                            }
+                        }
                     }
                     Text(
                         text = "DEBT: ${stat.current} CARDS",
@@ -1107,6 +1125,22 @@ fun ReviewPumpWidget(
                 }
                 
                 Column(horizontalAlignment = Alignment.End) {
+                    if (beckonSignal) {
+                        Surface(
+                            color = Color(0xFFE040FB).copy(alpha = 0.15f),
+                            shape = RoundedCornerShape(4.dp)
+                        ) {
+                            Text(
+                                text = "BECKON ✦",
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = Color(0xFFE040FB),
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 8.sp
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(4.dp))
+                    }
                     Surface(
                         color = accentColor.copy(alpha = 0.1f),
                         shape = RoundedCornerShape(4.dp)

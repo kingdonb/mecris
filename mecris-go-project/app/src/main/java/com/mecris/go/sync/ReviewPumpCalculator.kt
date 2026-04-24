@@ -54,4 +54,23 @@ object ReviewPumpCalculator {
         if (targetFlowRate <= 0) return 0.0f
         return (completedToday.toFloat() / targetFlowRate.toFloat()).coerceIn(0.0f, 1.0f)
     }
+
+    /**
+     * Returns true when outstanding debt is large relative to the daily flow target,
+     * signaling the user should "play" extra cards beyond the daily minimum.
+     * Threshold: outstandingDebt > targetFlowRate * 7 (more than one week of daily work remaining).
+     * Returns false if targetFlowRate is zero or negative.
+     */
+    fun calculateIsPlayMode(outstandingDebt: Int, targetFlowRate: Int): Boolean {
+        if (targetFlowRate <= 0) return false
+        return outstandingDebt > targetFlowRate * 7
+    }
+
+    /**
+     * Returns true when outstanding debt is large enough to warrant creating a new
+     * Beeminder reviewstack goal (≥ 300 cards outstanding).
+     */
+    fun calculateBeckonSignal(outstandingDebt: Int): Boolean {
+        return outstandingDebt >= 300
+    }
 }
