@@ -36,6 +36,10 @@ route = "/internal/review-pump-status-py"
 component = "review-pump-py"
 
 [[trigger.http]]
+route = "/internal/budget-governor-py"
+component = "budget-governor-py"
+
+[[trigger.http]]
 route = "/internal/arabic-skip-count"
 component = "arabic-skip-counter"
 
@@ -90,6 +94,19 @@ source = "../../poc/wasm/review-pump-py/review-pump-py.wasm"
 [component.review-pump-py.build]
 command = "python3 -m pip install --user --break-system-packages -r requirements.txt && spin py2wasm app -o review-pump-py.wasm"
 workdir = "../../poc/wasm/review-pump-py"
+watch = ["app.py", "wit/*.wit"]
+
+# budget-governor-py: Python-native WASM component (componentize-py + spin_sdk, Phase 1.7.2 / kingdonb/mecris#214).
+# HTTP trigger: POST /internal/budget-governor-py
+# Body JSON: {"action": "status"|"check"|"record"|"recommend"|"gate", "bucket": <str>, "cost": <float>}
+# Returns JSON: action-specific response dict — ports 5%/5% spend envelope logic from services/budget_governor.py.
+# Reads budget limits from Spin variables; persists spend log via Spin KV; fetches Helix balance via outbound HTTP.
+[component.budget-governor-py]
+source = "../../poc/wasm/budget-governor-py/budget-governor-py.wasm"
+key_value_stores = ["default"]
+[component.budget-governor-py.build]
+command = "python3 -m pip install --user --break-system-packages -r requirements.txt && spin py2wasm app -o budget-governor-py.wasm"
+workdir = "../../poc/wasm/budget-governor-py"
 watch = ["app.py", "wit/*.wit"]
 
 # arabic-skip-counter: Python WASM component (componentize-py + spin_sdk, Phase 1.6).
