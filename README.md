@@ -30,24 +30,46 @@ curl http://127.0.0.1:8000/health
 
 ## Architecture Overview
 
-```
-┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
-│   Claude Code   │◄──►│  FastAPI MCP     │◄──►│  Data Sources   │
-│   (Narrator)    │    │   Server         │    │                 │
-└─────────────────┘    └──────────────────┘    └─────────────────┘
-                              │                         │
-                              ▼                         ├─ Obsidian Vault
-                       ┌──────────────┐                 ├─ Beeminder API  ✅
-                       │   Twilio     │                 ├─ Claude Monitor ✅
-                       │   Alerts     │                 └─ Usage Tracker  ✅
-                       └──────────────┘
+Mecris is a **cloud-coordinated, local-first** accountability system built on a language-neutral **Standard Bus**.
+
+```text
+                               ┌─────────────────┐
+                               │   NEON DB       │
+                               │ (Central State) │
+                               └────────┬────────┘
+                                        │
+                ┌───────────────────────┴───────────────────────┐
+                │        THE PERSISTENCE HUB (WASM API)         │
+                ├───────────────────────┬───────────────────────┤
+                │   FREE: FERMYON       │   PRO: AKAMAI CRON    │
+                │  (Event-Driven)       │  (Scheduled Logic)    │
+                └───────────┬───────────┴───────────┬───────────┘
+                            │                       │
+           ┌────────────────┴───────────────────────┴────────────────┐
+           │             THE STANDARD BUS (JSON / WIT)               │
+           └────┬───────────────┬─────────────────┬─────────────┬────┘
+                ▼               ▼                 ▼             ▼
+         ┌────────────┐  ┌─────────────┐  ┌───────────────┐  ┌─────────────┐
+         │ MOBILE GO  │  │  LOCAL MCP  │  │ AGENTS/BOTS   │  │ CI TRIGGERS │
+         │ (Sensors)  │  │ (RAG / FS)  │  │ (Narrators)   │  │ (GHA/Hooks) │
+         └─────┬──────┘  └──────┬──────┘  └───────────────┘  └─────────────┘
+               │                │
+        ┌──────┴──────┐  ┌──────┴──────┐
+        │ GOOGLE FIT  │  │ OBSIDIAN    │
+        │ HEALTH CONN │  │ FILESYSTEM  │
+        └─────────────┘  └─────────────┘
 ```
 
-## Core Components
+### Core Components
 
-### 1. FastAPI MCP Server ✅ **PRODUCTION READY**
-- **Health endpoint** with service status monitoring
-- **Secure localhost binding** (127.0.0.1 only)
+*   **The Hub**: A centralized WASM API (hosted on Fermyon or Akamai) that manages the system's "Knowledge" (Neon DB) and "Actions" (Twilio/Beeminder).
+    *   **Fermyon (Event-Driven)**: High-availability reactive API for on-demand sync.
+    *   **Akamai (Time-Driven)**: Enterprise-grade scheduled compute for autonomous nagging and failover.
+*   **The Bus**: All components interact via a language-neutral Standard Bus (JSON/WIT), ensuring that your Android app and your terminal see the same reality.
+*   **The Spokes**: Lightweight "Hosts" (Mobile, CLI, and MCP) provide sensors and interfaces, syncing status back to the hub.
+    *   **Mobile Go**: Android client bridging physical sensors (Google Fit/Health Connect).
+    *   **Local MCP**: Python server bridging your local knowledge base (Obsidian) and file system.
+    *   **Agents/Bots**: Gemini and Claude narrators that interpret the state and guide the human.
 - **Robust startup/shutdown** with process management
 - **Enhanced error handling** and logging
 - **Industry-Leading Toolset**: Features **30 distinct MCP tools**—a larger specialized toolset than even the standard [GitHub MCP server](https://github.com/modelcontextprotocol/servers/tree/main/src/github) (which provides 20+).

@@ -6,45 +6,59 @@
 
 ## Overview
 
-Mecris is a production-grade accountability system featuring a 29-tool MCP server and a WASM-based cloud brain that:
-- Processes messages through persistent message queues
-- Runs autonomously without manual intervention  
-- Provides intelligent, context-aware responses
-- Integrates seamlessly with personal data sources
-- Operates within budget constraints through intelligent decision making
+Mecris is a production-grade accountability system featuring a 30-tool MCP server and a WASM-based cloud brain that:
+- Acts as a **Persistence Hub** managing a central Neon Postgres database.
+- Runs **Time-Driven** logic (Akamai Cron) for autonomous nagging and failover.
+- Provides **Event-Driven** endpoints (Fermyon) for on-demand synchronization.
+- Integrates seamlessly with personal data sources (Health Connect, Google Fit, Obsidian).
+- Operates under a **State-over-Streams** observability mandate.
 
 ## System Architecture
 
-```
-SMS Interface → Message Queue → Mecris Core → Data Sources
-     ↓              ↓              ↓             ↓
-Text Messages   Async Processing  Decision Engine  Beeminder
-WhatsApp        Priority Queue    Budget Tracker   Obsidian
-Voice Messages  Rate Limiting     Context Memory   Usage APIs
+The architecture follows a **Hub-and-Spoke** model. The Hub (WASM API) serves as the "source of truth," while diverse Hosts (Mobile, Python, Agents) act as sensors and interfaces.
+
+```text
+                               ┌─────────────────┐
+                               │   NEON DB       │
+                               │ (Central State) │
+                               └────────┬────────┘
+                                        │
+                ┌───────────────────────┴───────────────────────┐
+                │        THE PERSISTENCE HUB (WASM API)         │
+                ├───────────────────────┬───────────────────────┤
+                │   FREE: FERMYON       │   PRO: AKAMAI CRON    │
+                │  (Event-Driven)       │  (Scheduled Logic)    │
+                └───────────┬───────────┴───────────┬───────────┘
+                            │                       │
+           ┌────────────────┴───────────────────────┴────────────────┐
+           │             THE STANDARD BUS (JSON / WIT)               │
+           └────┬───────────────┬─────────────────┬─────────────┬────┘
+                ▼               ▼                 ▼             ▼
+         ┌────────────┐  ┌─────────────┐  ┌───────────────┐  ┌─────────────┐
+         │ MOBILE GO  │  │  LOCAL MCP  │  │ AGENTS/BOTS   │  │ CI TRIGGERS │
+         │ (Sensors)  │  │ (RAG / FS)  │  │ (Narrators)   │  │ (GHA/Hooks) │
+         └─────┬──────┘  └──────┬──────┘  └───────────────┘  └─────────────┘
 ```
 
 ## Core Components
 
-### SMS Interface Layer
-- **Twilio Integration**: SMS and WhatsApp message processing
-- **Message Queue**: Asynchronous processing with priority handling
-- **Conversation State**: Context preservation across interactions
-- **Rate Limiting**: Intelligent throttling and escalation
+### The Persistence Hub (Cloud Layer)
+- **Fermyon Cloud**: The primary reactive layer. Handles HTTP triggers from the Android app, Python MCP, and Narrators.
+- **Akamai Functions**: The proactive layer. Implements native `spin aka cron` triggers to check goal status and send reminders when local devices are offline.
+- **WASM Brain**: Core business logic (Review Pump, Budget Governor) is vacuumed into language-neutral WASM components to ensure identical execution across all cloud providers.
 
-### Decision Engine
-- **Heuristic Processing**: Rule-based decision making without Claude API
-- **Budget Awareness**: Intelligent feature degradation when budget is low
-- **Context Integration**: Unified narrator context from all data sources
-- **Priority Management**: Urgent vs routine message handling
+### The Host Layer (Local & Mobile)
+- **Mobile Host (Android)**: Captures high-fidelity physical data (steps, exercise) and provides the primary UI for "The Majesty Cake."
+- **Local Host (Python MCP)**: Bridges the global cloud state with private local data (Obsidian vault, filesystem). 
+- **Narrator Interface**: Directly consumes the `get_narrator_context` tool to provide strategic guidance to the human.
 
-### Data Integration Layer
-- **Beeminder**: Goal tracking and beemergency detection
-- **Usage Tracking**: Budget monitoring and API cost management
-- **Obsidian**: Personal knowledge base and daily notes
-- **External APIs**: Weather, calendar, and other contextual data
+### Observability: State over Streams
+Per the **Observability Mandate**, Mecris rejects the "log-searching hole" of unstructured CloudWatch streams.
+- **Structured Events**: Every decision (skipping a nag, choosing a model) must be recorded as a queryable database event.
+- **Heartbeat Reports**: Heartbeats in `scheduler_election` must include `last_status` and `last_error` to enable `kubectl describe`-style system inspections.
 
 ## Deployment Architecture
-
+...
 ### Production Environment
 - **Multi-Cloud/Hybrid Deployment**:
   - **Daily EC2 (Legacy/Heavy)**: Daily 5-hour operational window for heavy processing and archival.
