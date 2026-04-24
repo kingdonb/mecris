@@ -8,9 +8,11 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import net.openid.appauth.*
 
-class PocketIdAuth(private val context: Context) {
-
+class PocketIdAuth(
+    private val context: Context,
     private val authService: AuthorizationService = AuthorizationService(context)
+) {
+
     private val prefs = context.getSharedPreferences("auth_prefs", Context.MODE_PRIVATE)
     
     // Replace with your actual Pocket ID domain
