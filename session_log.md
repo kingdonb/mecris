@@ -2261,3 +2261,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: Android `NagNotificationManager.kt` changes (requires Android build env — deferred as remaining deliverable for #213). Neon DB direct writes deferred (Spin KV used for now, matching budget-governor-py pattern). Fermyon Cloud deployment deferred (human-required).
 
 **Next**: Android — update `NagNotificationManager.kt` to POST `{"type", "channel": "android_native", "sent_at"}` to `/internal/log-message` on every `showNag`. This is the second and final deliverable for kingdonb/mecris#213.
+
+## 🏛️ 2026-04-24 — Android NagNotificationManager HTTP audit logging (session #42, yebyen/mecris#269, complete)
+
+**Planned**: Add HTTP fire-and-forget logging to `NagNotificationManager.kt` so every successful `showNag()` call POSTs `{"type", "channel": "android_native", "sent_at"}` to the Spin `POST /internal/log-message` endpoint. (Plan: yebyen/mecris#269, upstream: kingdonb/mecris#213)
+
+**Done**: `SyncServiceApi.kt` — added `logMessage` Retrofit endpoint + `LogMessageRequestDto(type, channel, sent_at?)` DTO. `NagNotificationManager.kt` — `api: SyncServiceApi? = null` constructor param; `type: String = "unknown"` added to `showNag`; `GlobalScope.launch(Dispatchers.IO)` fires after `notificationManager.notify()` calling `syncApi.logMessage(...)` with fail-silent catch. `DelayedNagWorker.kt` — passes `syncApi` to `NagNotificationManager` constructor; derives `nagType` from `prefKey` (`arabic_pressure`/`walk_reminder`/`greek_reminder`); sovereign fallback uses `walk_reminder`. `LogMessageRequestDtoTest.kt` — 4 unit tests covering DTO fields and type mapping exhaustiveness. Committed `ed6692b`. Plan yebyen/mecris#269 closed.
+
+**Skipped**: End-to-end device verification (requires deploying updated APK and live Fermyon endpoint — human-required). Third deliverable of #213 ("Verified audit logs in Neon") remains human-gated.
+
+**Next**: Dual-Widget "Debt vs. Flow" UI (kingdonb/mecris#160) — secondary gauge indicator in Android app consuming `goal_met`, `target_flow_rate`, `outstanding_debt` fields.
