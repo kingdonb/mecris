@@ -89,6 +89,15 @@ client-groq:
 	@cd $(TALKTYPE_REPO) && \
 	../$(VENV_PYTHON) $(TALKTYPE_PY) --api $(GROQ_API_URL) --api-model $(GROQ_MODEL) --minimal
 
+client-groq-ar:
+	@echo "$(GREEN)Running TalkType client using Groq cloud API...$(RESET)"
+	@if [ -z "$$GROQ_API_KEY" ]; then \
+		echo "$(RED)Error: GROQ_API_KEY is not set.$(RESET)"; \
+		exit 1; \
+	fi
+	@cd $(TALKTYPE_REPO) && \
+	../$(VENV_PYTHON) $(TALKTYPE_PY) -l ar --api $(GROQ_API_URL) --api-model $(GROQ_MODEL) --minimal
+
 sync-upstream:
 	@echo "$(YELLOW)Syncing talktype-repo with upstream...$(RESET)"
 	@cd $(TALKTYPE_REPO) && git fetch upstream && git checkout main && git reset --hard upstream/main
