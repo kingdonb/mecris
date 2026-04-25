@@ -1,19 +1,21 @@
-# Next Session: Backport "Majesty Cake" Momentum Visualizer to Android (kingdonb/mecris#195)
+# Next Session: PR Spin SDK v4 migration to kingdonb/mecris (GITHUB_CLASSIC_PAT expired — human-required)
 
-## Current Status (2026-04-25, post-session #46)
-- **calculateGoalMet extraction COMPLETE (session #46)**: `calculateGoalMet(goalMetFromServer, targetFlowRate)` added to `ReviewPumpCalculator`. Extracts inline boolean from `ReviewPumpWidget`. 6 new tests; 27 in `ReviewPumpCalculatorTest`, 63 total — all passing. Committed `a1d3f97`. Plan yebyen/mecris#274 closed. Appended to PR: kingdonb/mecris#246.
-- **Phase 3 Behavioral Nudge COMPLETE (session #45)**: `calculateIsPlayMode` (debt > 7× daily flow target → amber "PLAY MODE" badge) and `calculateBeckonSignal` (debt ≥ 300 → purple "BECKON ✦" pill) added to `ReviewPumpCalculator`. `ReviewPumpWidget` surfaces both. 7 new tests; 21 in `ReviewPumpCalculatorTest`, 57 total — all passing. Committed `d7d86eb`. Plan yebyen/mecris#273 closed. PR: kingdonb/mecris#246.
-- **REMAINING TODAY counter / GOAL MET badge COMPLETE**: `ReviewPumpWidget` already uses `stat.target_flow_rate` as `remainingToday` and renders "GOAL MET" badge when satisfied. `LanguageStatDto` already has `target_flow_rate`, `absolute_target`, `goal_met`. kingdonb/mecris#194 is functionally complete.
-- **Flow fill bar COMPLETE (session #44)**: `calculateFlowFillRatio` — capped at 1.0. Amber/green fill Box in pressure gauge track. Committed `bfc77b4`.
-- **Debt-coverage ratio indicator COMPLETE (session #43)**: `outstanding_debt: Int?` in `LanguageStatDto`. Thin bottom-edge line amber/green. Committed `cdaa79c`.
+## Current Status (2026-04-25, post-session #47)
+- **Majesty Cake Momentum Visualizer COMPLETE (pre-session #47)**: `MomentumOrbState` enum and `momentumOrbState()` function implemented in `MainActivity.kt` (commit `96a3fb5`), full `MomentumVisualizer` composable (pulsing orb + Majesty Rings) wired in at `MainActivity.kt:838`. All 9 `MomentumVisualizerTest` tests pass as part of the 63-test baseline. kingdonb/mecris#195 is **DONE**.
+- **Spin SDK v4 migration on yebyen/mecris only**: `e6a0bb4` (Spin SDK v4 migration, Observant Presence, log-message-py) is on yebyen/mecris main but has NOT been PRed to kingdonb/mecris. `tests/test_presence_scheduler.py` — 16 passed. PR creation is **blocked** — `GITHUB_CLASSIC_PAT` returns 401 (expired). yebyen/mecris#276 open, awaiting human action.
+- **calculateGoalMet extraction COMPLETE (session #46)**: `calculateGoalMet(goalMetFromServer, targetFlowRate)` in `ReviewPumpCalculator`. 63 total Android tests, `failures="0"`. PR kingdonb/mecris#246 merged at `811936f`.
+- **Phase 3 Behavioral Nudge COMPLETE (session #45)**: `calculateIsPlayMode` and `calculateBeckonSignal` in `ReviewPumpCalculator`. `ReviewPumpWidget` surfaces PLAY MODE badge and BECKON pill. All merged via PR #246.
 
 ## Verified This Session
-- [x] **calculateGoalMet (yebyen/mecris#274 / kingdonb/mecris#194)**: 6 new tests green — server flag true, zero targetFlowRate, negative targetFlowRate, positive remaining, null+false, null+true. `ReviewPumpWidget` uses `ReviewPumpCalculator.calculateGoalMet()`. 63 total tests, `failures="0"`. Committed `a1d3f97`. PR kingdonb/mecris#246.
-- [x] **Phase 3 Behavioral Nudge (yebyen/mecris#273 / kingdonb/mecris#160 Phase 3)**: `calculateIsPlayMode` and `calculateBeckonSignal` green (7 new tests). `ReviewPumpWidget` shows PLAY MODE badge and BECKON pill. `testDebugUnitTest` exits 0 (57 total). Committed `d7d86eb`. PR kingdonb/mecris#246.
+- [x] **kingdonb/mecris#195 (Majesty Cake)**: `MomentumOrbState` + `momentumOrbState()` already in `MainActivity.kt:1516`. `MomentumVisualizerTest.kt` — 9 tests already passing in the 63 baseline. `MomentumVisualizer` composable wired at `MainActivity.kt:838` with `aggregateStatus?.all_clear`. **COMPLETE** — no new work needed.
+- [x] **Android testDebugUnitTest baseline**: 63 tests, 0 failures, all passing.
+- [x] **tests/test_presence_scheduler.py**: 16 passed — Spin SDK v4 migration code is clean.
 
 ## Pending Verification
 
 ### 👤 Human-required (cannot be resolved by bot)
+- [ ] **URGENT: Refresh GITHUB_CLASSIC_PAT** — returns 401. Bot cannot create PRs to kingdonb/mecris without it. Renew the PAT in GitHub → Settings → Developer Settings → Personal access tokens (classic) with `repo` scope, update the workflow secret `GITHUB_CLASSIC_PAT`.
+- [ ] **Open PR yebyen:main → kingdonb:main for `e6a0bb4`** (Spin SDK v4 migration) — bot was blocked by expired PAT. Closes yebyen/mecris#276 and kingdonb/mecris#213. Tests green. Body: see yebyen/mecris#276 for details.
 - [ ] **Verify kingdonb/mecris#213 end-to-end**: Deploy updated APK and confirm audit logs appear in Spin KV via `GET /internal/log-message` after a real notification fires on device.
 - [ ] **Apply migrate_v7 to production Neon**: `token_bank` and `autonomous_turns` tables. Run `python scripts/migrate_v7_autonomous_tracking.py`.
 - [ ] **Apply migrate_v6 to production Neon**: `phone_verified`, `phone_verifications`, `scheduler_election` multi-user, `vacation_mode_until` changes.
@@ -28,7 +30,6 @@
 - [ ] **Verify GOAL MET badge renders on device**: Deploy APK with `a1d3f97`; confirm green "GOAL MET" badge appears in the pressure gauge when goal is satisfied for a language.
 
 ### 🤖 Bot-actionable (can be resolved in future sessions)
-- [ ] **Backport "Majesty Cake" Momentum Visualizer (kingdonb/mecris#195)**: Pulsing orb with "Majesty Rings" when `all_clear` is true (all languages `goal_met`). Reference: `web/src/components/MomentumVisualizer.tsx`. Requires new Compose component + `AggregateStatusResponseDto` data.
 - [ ] **Port Twilio to WASM Brain (Issue #167)**: Move SMS/WhatsApp dispatch logic from Python/boris-fiona-walker into the `sync-service` Rust module.
 - [ ] **Rust Reminder Engine (Issue #169)**: Implement the 2000-step threshold, sleep window heuristics, and weather checks natively in Rust.
 - [ ] **Contextual Awareness: Chrome Bookmarks (Issue #201)**: Build a local Chrome bookmarks parser and MCP endpoint.
@@ -40,6 +41,7 @@
 - [ ] **Budget Governor: WASM Port (Issue #214)**: POC complete and wired into spin.toml. Remaining: Fermyon Cloud variable config — human-required for deployment.
 
 ## Infrastructure Notes (carried forward)
+- **GITHUB_CLASSIC_PAT is expired**: Bot cannot create PRs to kingdonb/mecris. Renew immediately.
 - **calculateGoalMet**: `goalMetFromServer || (targetFlowRate != null && targetFlowRate <= 0.0)`. Used in `ReviewPumpWidget` to render GOAL MET badge and control flow fill bar color.
 - **PLAY MODE threshold**: `outstandingDebt > targetFlowRate * 7` — more than one week of daily work remaining. Arabic (2600 debt, ~100/day) will almost always show PLAY MODE. Greek clears quickly, typically will not.
 - **BECKON threshold**: `outstandingDebt >= 300` — signals user should consider a new Beeminder reviewstack goal.

@@ -2311,3 +2311,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: Could not open a separate PR for #194 — yebyen/mecris:main already has an open PR (#246) to kingdonb/mecris:main; the commit was appended there instead. kingdonb/mecris#194 remains open pending merge.
 
 **Next**: Backport "Majesty Cake" Momentum Visualizer (kingdonb/mecris#195) — pulsing orb with Majesty Rings when `all_clear` is true. Reference: `web/src/components/MomentumVisualizer.tsx`. Requires new Compose component in `MainActivity.kt` + `AggregateStatusResponseDto` data already available.
+
+## 🏛️ 2026-04-25 — Investigation: Majesty Cake already done; Spin SDK PR blocked by expired PAT (session #47, yebyen/mecris#276, partial)
+
+**Planned**: Backport "Majesty Cake" Momentum Visualizer (kingdonb/mecris#195) — implement `MomentumOrbState` + `momentumOrbState()` in Android, make existing tests green. (Plan: yebyen/mecris#275, pivoted to yebyen/mecris#276)
+
+**Done**: Investigation revealed kingdonb/mecris#195 was already complete — `MomentumOrbState` enum and `momentumOrbState()` implemented in `MainActivity.kt:1516` (commit `96a3fb5`), full `MomentumVisualizer` composable wired in at `MainActivity.kt:838`. All 9 `MomentumVisualizerTest` tests already passing in the 63-test baseline. Plan yebyen/mecris#275 closed as no-op with findings documented. Discovered `e6a0bb4` (Spin SDK v4 migration) on yebyen/mecris has never been PRed to kingdonb/mecris. `tests/test_presence_scheduler.py` — 16 passed. Opened plan yebyen/mecris#276 for PR creation.
+
+**Skipped**: PR to kingdonb/mecris for `e6a0bb4` blocked — `GITHUB_CLASSIC_PAT` returns 401 (expired). Cannot create PRs on kingdonb/mecris with available tokens. yebyen/mecris#276 left open as human-required action.
+
+**Next**: Renew `GITHUB_CLASSIC_PAT` in GitHub settings (classic, `repo` scope), update workflow secret. Then open PR `yebyen:main` → `kingdonb:main` for `e6a0bb4` (closes kingdonb/mecris#213, yebyen/mecris#276).
