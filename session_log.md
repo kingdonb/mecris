@@ -2341,3 +2341,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: PR to kingdonb/mecris#206 — blocked by expired GITHUB_CLASSIC_PAT (same blocker as previous sessions). Implementation is complete on yebyen/mecris.
 
 **Next**: Renew `GITHUB_CLASSIC_PAT` (classic, `repo` scope) and open PRs for `e6a0bb4` (Spin SDK v4) and `139d67f` (CopilotLoopback) to kingdonb/mecris. Both are human-required. Bot-actionable next: Port Twilio to WASM Brain (#167) or Chrome Bookmarks parser (#201).
+
+## 🏛️ 2026-04-25 — Implement Chrome Bookmarks parser and get_bookmarks_by_topic MCP endpoint (session #50, yebyen/mecris#279, complete)
+
+**Planned**: Build `tools/chrome_bookmarks.py` with flat bookmark parser and wire it into the MCP server as `get_bookmarks_by_topic(keyword)`. ≥8 unit tests covering parse, flatten, and keyword filter. (Plan: yebyen/mecris#279, upstream: kingdonb/mecris#201)
+
+**Done**: Orient found no needs-test/pr-review/bug issues on kingdonb/mecris; yebyen/mecris#279 (plan issue from prior session) had never been executed. Picked it up. Created `tools/__init__.py` (makes tools a Python package). Created `tools/chrome_bookmarks.py` — `load_bookmarks` (JSON file loader, fail-safe), `flatten_bookmarks` (recursive tree → flat list with folder paths), `filter_by_keyword` (case-insensitive title/url/folder match), `get_bookmarks_by_topic` (top-level entry point). Chrome WebKit timestamp (µs since 1601-01-01) converted to ISO 8601 UTC. Platform-aware path defaults (macOS `~/Library/...`, Linux `~/.config/...`). Wired `get_bookmarks_by_topic` into `mcp_server.py` as `@mcp.tool`. Created `tests/test_chrome_bookmarks.py` — 23 unit tests across all functions. All 23 pass. Committed `0a29cc7`. yebyen/mecris#279 closed.
+
+**Skipped**: PR to kingdonb/mecris — blocked by expired GITHUB_CLASSIC_PAT (persistent blocker). Semantic Search / Bookmark Embeddings (kingdonb/mecris#208) is the natural follow-on but deferred to a future session.
+
+**Next**: Renew `GITHUB_CLASSIC_PAT` (human-required) and open PRs for Chrome Bookmarks (`0a29cc7`), CopilotLoopback (`139d67f`), and Spin SDK v4 (`e6a0bb4`) to kingdonb/mecris. Bot-actionable next: Port Twilio to WASM Brain (#167) or Semantic Search: Bookmark Embeddings (#208).
