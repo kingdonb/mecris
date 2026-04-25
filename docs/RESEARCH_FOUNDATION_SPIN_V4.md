@@ -38,15 +38,15 @@ The WASM Component Model (WASI 0.2.0) is not just a technical upgrade; it is a c
 
 ### A. Bridging Language Silos
 The target audience includes:
-- **The "Zero-Rewrite" Python Developer**: Devs who want to contribute complex logic to high-performance systems without learning Rust or JS.
-- **The WASM Architect**: Professionals building language-agnostic systems that move beyond simple FFI.
-- **Goal**: Show that these two groups can work together on the same artifacts, using WASM as the universal "Handshake."
+- **The "Zero-Rewrite" Python Developer**: Devs who want to contribute complex logic to high-performance systems without feeling intimidated by or needing to learn Rust or JS.
+- **The WASM Architect**: Professionals building language-agnostic systems who can explain *why* this is different from traditional approaches.
+- **Goal**: Show that these two groups can work together on the same system to do amazing things. WebAssembly is very special—it's not just a Foreign Function Interface (FFI) where languages awkwardly call each other; it's a true, shared, immutable artifact.
 
 ### B. Double-Down on Hermeticity (SLSA)
-A core Mecris goal is achieving **SLSA Build Levels**.
-- **Hermeticity**: The ability to produce identical artifacts in an **air-gapped environment** using internal mirrors.
-- **Supply Chain Confidence**: By hosting our own mirrors, we ensure dependencies are reviewed and untampered with.
-- **Verification**: WASM binaries provide the "WASM Suit" that makes Python logic reproducible and verifiable.
+A core Mecris goal is achieving **SLSA Build Levels** to guarantee accountability in our supply chain.
+- **Hermeticity & Air-Gapped Environments**: The ability to produce identical artifacts in an air-gapped environment using internal mirrors for all languages we use.
+- **Supply Chain Confidence**: By hosting our own dependencies, we ensure they haven't been tampered with and that the exact versions we install have been explicitly reviewed by a human.
+- **Verification**: WASM binaries provide the "WASM Suit" that makes Python logic reproducible and verifiable, directly advancing our SLSA goals.
 
 ## 4. The Cloud Readiness Gap
 As of April 25, 2026, there is a divergence between local verified success and cloud production.

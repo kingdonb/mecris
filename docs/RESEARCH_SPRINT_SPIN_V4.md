@@ -3,7 +3,7 @@
 ## 🎙️ Episode Objective
 Synthesize the technical shift from "Legacy WASM" to the "Component Model" (WASI 0.2.0) using the Mecris Beta 4 migration as a high-stakes case study. 
 
-**Mission**: Show how WebAssembly enables cross-language collaboration that moves beyond simple FFI, allowing Python and Rust devs to share the same immutable artifacts.
+**Mission**: Mark the occasion! Spin 4.0.0 is out, and Mecris Beta 4 is right here at the right time. We want to show everyone what we've built, how special WebAssembly is (it's *not* just FFI!), and how it enables people using different programming languages to work together to do amazing things.
 
 ## 📄 Prerequisites
 Before starting this sprint, the researcher MUST internalize:
@@ -14,11 +14,12 @@ Before starting this sprint, the researcher MUST internalize:
 ## 1. The Component Model deep-dive
 *   **The "World" Standard**: Research the `spin:up/http-trigger@4.0.0` world. What changed between this and the legacy triggers?
 *   **WASI 0.2.0 Verification**: Confirm the exact specification of WASI HTTP 0.2.0. Is the `incoming-handler` export the definitive standard for all future WASM clouds?
-*   **Changelog Audit**: Review the Spin releases from **v1.0 to v4.0**. Identify the specific "tipping points" where the Component Model became the primary focus. Summarize the major breaking changes in each leap (1->2, 2->3, 3->4).
+*   **Changelog Audit**: Review the Spin releases from **v1.0 to v4.0**. Identify the specific "tipping points" where the Component Model became the primary focus, and understand the major breaking changes that led us to this "first non-beta" moment for the Python component model.
 
-## 2. The Hermeticity Challenge (SLSA)
-*   **Air-Gapped Reproducibility**: Research tooling for creating **internal mirrors** of WASM dependencies. How can we produce the same Beta 4 artifacts without an internet connection?
-*   **The "WASM Suit"**: Analyze how bundling the Python interpreter *inside* the WASM component creates a supply-chain-confident artifact compared to traditional container layering.
+## 2. The Hermeticity Challenge (SLSA & Accountability)
+*   **Air-Gapped Reproducibility**: Research tooling for creating **internal mirrors** for all the languages we use. How can we ensure we produce the exact same Beta 4 artifacts in an air-gapped environment?
+*   **Supply Chain Confidence**: How do we guarantee that the dependencies we pull haven't been tampered with, and ensure we only install versions reviewed by a human?
+*   **The "WASM Suit"**: Analyze how bundling the Python interpreter *inside* the WASM component directly advances our SLSA build level goals.
 
 ## 3. The Cloud Readiness Gap (The Friction)
 *   **Runtime Lag**: Investigate the release cycle of the Fermyon Cloud runtime. Is there a documented delay between SDK releases and runtime support?
@@ -28,13 +29,14 @@ Before starting this sprint, the researcher MUST internalize:
 Prepare talking points for these two distinct audiences:
 
 ### A. The "Zero-Rewrite" Python Developer
-*   How does this enable a Python dev to contribute to a high-performance system without learning Rust?
-*   Why is this different/better than old-school FFI?
-*   Is the "WASM Tax" (the complex build command) worth the benefit?
+*   How does this empower a Python dev who doesn't feel capable of working with Rust to contribute to a high-performance, polyglot system?
+*   Why is the Component Model fundamentally different—and better—than old-school Foreign Function Interfaces (FFI)?
+*   Is the "WASM Tax" (the complex build command) worth the benefit of true collaboration without silos?
 
 ### B. The WASM Architect
+*   You're the ones building the system to do what we want. Can you explain *how* WebAssembly makes this unique artifact sharing possible?
 *   How do we prove our Beta 4 artifacts are now 100% reproducible and SLSA-verifiable?
-*   What is the significance of the 4.0.0 release being the "first non-beta" moment for the component model in Python?
+*   Why is Spin 4.0.0 a watershed moment to celebrate?
 
 ---
 *Prompt Version: 1.1 (2026-04-25)*
