@@ -1,7 +1,7 @@
 # Makefile for TalkType
 # Located in mecris/tools/talktype/
 
-.PHONY: all server client client-groq stop-server status help setup logs clean check-deps sync-upstream
+.PHONY: do all server client client-groq stop-server status help setup logs clean check-deps sync-upstream
 
 # Variables
 TALKTYPE_REPO := talktype-repo
@@ -30,6 +30,9 @@ RESET := \033[39m
 
 # Default target
 all: help
+
+do:
+	./do.sh
 
 help:
 	@echo "$(BLUE)TalkType Management Commands$(RESET)"
