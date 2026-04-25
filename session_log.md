@@ -2331,3 +2331,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: Actual Aider invocation — Aider is not installed in the bot workflow environment. The `--dry-run` flag enables recording without a real run. Human must install `aider-chat` and run `scripts/evaluate_aider.py --model gpt-4o-mini` to populate real results.
 
 **Next**: Renew `GITHUB_CLASSIC_PAT` (classic, `repo` scope) and open PR `yebyen:main` → `kingdonb:main` for `e6a0bb4` (Spin SDK v4 migration). Closes kingdonb/mecris#213. Human action required.
+
+## 🏛️ 2026-04-25 — Implement CopilotLoopback subprocess wrapper for gh copilot (session #49, yebyen/mecris#278, complete)
+
+**Planned**: Create `ghost/copilot_loopback.py` with `CopilotLoopback` class wrapping `gh copilot -- -p "<prompt>"` in non-interactive mode, plus unit tests covering output capture, timeout, and spawn errors. (Plan: yebyen/mecris#278, upstream: kingdonb/mecris#206)
+
+**Done**: Orient found no needs-test/pr-review/bug issues; GITHUB_CLASSIC_PAT still expired (human-required). Confirmed `gh copilot` available in-environment and supports `-p/--prompt` for headless scripting. Created `ghost/copilot_loopback.py` — `CopilotLoopback` class with `suggest(prompt)` and `explain(command)` methods, each building `["gh", "copilot", "--", "-p", full_prompt]` and executing via `HeadlessLoopback` (timeout 120s). Created `tests/test_copilot_loopback.py` — 21 unit tests in 5 groups: output capture, command construction, prompt prefixing, timeout enforcement, spawn errors. All 21 pass. Committed `139d67f`. Plan yebyen/mecris#278 closed.
+
+**Skipped**: PR to kingdonb/mecris#206 — blocked by expired GITHUB_CLASSIC_PAT (same blocker as previous sessions). Implementation is complete on yebyen/mecris.
+
+**Next**: Renew `GITHUB_CLASSIC_PAT` (classic, `repo` scope) and open PRs for `e6a0bb4` (Spin SDK v4) and `139d67f` (CopilotLoopback) to kingdonb/mecris. Both are human-required. Bot-actionable next: Port Twilio to WASM Brain (#167) or Chrome Bookmarks parser (#201).
