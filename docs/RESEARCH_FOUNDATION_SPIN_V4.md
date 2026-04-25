@@ -32,16 +32,27 @@ The 4.0.0 release (April 2026) introduced major breaking changes to the Python S
 - **Finding**: The tool incorrectly scans parent directories for virtual environments or `componentize-py.toml` files, leading to `AssertionError: multiple componentize-py.toml files found`.
 - **Fix**: Implemented the **Universal Clean Build** strategy—recursively nuking `.venv` and `__pycache__` before every build and using `uv venv --clear`.
 
-## 3. The Cloud Readiness Gap
+## 3. Strategic Vision: Collaboration without Silos
+
+The WASM Component Model (WASI 0.2.0) is not just a technical upgrade; it is a collaborative breakthrough.
+
+### A. Bridging Language Silos
+The target audience includes:
+- **The "Zero-Rewrite" Python Developer**: Devs who want to contribute complex logic to high-performance systems without learning Rust or JS.
+- **The WASM Architect**: Professionals building language-agnostic systems that move beyond simple FFI.
+- **Goal**: Show that these two groups can work together on the same artifacts, using WASM as the universal "Handshake."
+
+### B. Double-Down on Hermeticity (SLSA)
+A core Mecris goal is achieving **SLSA Build Levels**.
+- **Hermeticity**: The ability to produce identical artifacts in an **air-gapped environment** using internal mirrors.
+- **Supply Chain Confidence**: By hosting our own mirrors, we ensure dependencies are reviewed and untampered with.
+- **Verification**: WASM binaries provide the "WASM Suit" that makes Python logic reproducible and verifiable.
+
+## 4. The Cloud Readiness Gap
 As of April 25, 2026, there is a divergence between local verified success and cloud production.
 - **Fermyon Cloud**: Consistently returns `NotImplementedError` for SDK v4 binaries.
 - **Akamai Functions**: Returns `500 Internal Server Error (guest not invoked)`.
-- **Hypothesis**: The cloud runtimes may lag the SDK release (which was ~19 hours old at the time of testing) or require specific `runtime-class-executor` configurations (e.g., CA certificate paths) that were not present in our k3d/local environments.
-
-## 4. Driver Evolution: DB Connectivity
-The migration proved that native C-extension drivers (like `psycopg2`) are incompatible with the WASM runtime.
-- **Success**: Swapped `psycopg2` for `spin_sdk.postgres`.
-- **Constraint**: Requires explicitly passing `ParameterValue_Str` or similar variants to the `query` method.
+- **Hypothesis**: The cloud runtimes may lag the SDK release (~19 hours old) or require specific `runtime-class-executor` configurations (e.g., CA certificate paths).
 
 ---
 *Created: 2026-04-24 | Updated: 2026-04-25*

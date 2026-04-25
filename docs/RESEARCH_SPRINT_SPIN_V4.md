@@ -1,7 +1,9 @@
 # Sunkworks Research Sprint: Spin 4.0 & The Bleeding Edge
 
 ## 🎙️ Episode Objective
-Synthesize the technical shift from "Legacy WASM" to the "Component Model" (WASI 0.2.0) using the Mecris Beta 4 migration as a high-stakes case study.
+Synthesize the technical shift from "Legacy WASM" to the "Component Model" (WASI 0.2.0) using the Mecris Beta 4 migration as a high-stakes case study. 
+
+**Mission**: Show how WebAssembly enables cross-language collaboration that moves beyond simple FFI, allowing Python and Rust devs to share the same immutable artifacts.
 
 ## 📄 Prerequisites
 Before starting this sprint, the researcher MUST internalize:
@@ -10,23 +12,29 @@ Before starting this sprint, the researcher MUST internalize:
 ---
 
 ## 1. The Component Model deep-dive
-*   **The "World" Standard**: Research the `spin:up/http-trigger@4.0.0` world. What changed between this and the legacy triggers? Why did our build require explicit WIT directory provision?
+*   **The "World" Standard**: Research the `spin:up/http-trigger@4.0.0` world. What changed between this and the legacy triggers?
 *   **WASI 0.2.0 Verification**: Confirm the exact specification of WASI HTTP 0.2.0. Is the `incoming-handler` export the definitive standard for all future WASM clouds?
+*   **Changelog Audit**: Review the Spin releases from **v1.0 to v4.0**. Identify the specific "tipping points" where the Component Model became the primary focus. Summarize the major breaking changes in each leap (1->2, 2->3, 3->4).
 
-## 2. The Cloud Readiness Gap (The Friction)
+## 2. The Hermeticity Challenge (SLSA)
+*   **Air-Gapped Reproducibility**: Research tooling for creating **internal mirrors** of WASM dependencies. How can we produce the same Beta 4 artifacts without an internet connection?
+*   **The "WASM Suit"**: Analyze how bundling the Python interpreter *inside* the WASM component creates a supply-chain-confident artifact compared to traditional container layering.
+
+## 3. The Cloud Readiness Gap (The Friction)
 *   **Runtime Lag**: Investigate the release cycle of the Fermyon Cloud runtime. Is there a documented delay between SDK releases and runtime support?
-*   **Runtime Class Executors**: Research the `runtime-class-executor` configuration mentioned by Fermyon/Akamai engineers. Could missing CA certificate paths or executor fields explain our cloud-only `500` and `NotImplementedError`?
-*   **Cross-Cloud Audit**: Compare Akamai Functions' "Edge" runtime against Fermyon's "Legacy" cloud. Which platform is closer to the WASI 0.2.0 baseline?
+*   **Runtime Class Executors**: Research the `runtime-class-executor` configuration. Could specific CA certificate paths or executor fields explain our cloud-only `500` and `NotImplementedError`?
 
-## 3. Hermeticity & SLSA
-*   **The "WASM Suit" Theory**: Re-evaluate the hermeticity of Python in WASM. Is a memory-snapshotted WASM binary truly "SLSA Level 3" reproducible? 
-*   **Dependency Injection**: How does the "Universal Clean Build" (nuking environments before building) affect our build integrity scores?
+## 4. Final Show Grill (Audience Profiles)
+Prepare talking points for these two distinct audiences:
 
-## 4. Final Show Grill
-To prepare for the Sunkworks recording, answer these:
-1.  **Field Report vs. Victory Lap**: How do we balance the "Holy Grail" success of moving Python logic into WASM with the "Brutal Reality" of cloud failure?
-2.  **The "Stupid Mistake" Hypothesis**: Identify potential configuration gaps in our `spin.toml` or `Makefile` that might be perfectly legal locally but illegal in a hardened cloud executor.
-3.  **The "Zero-Rewrite" Dream**: Is this actually achievable for the average Python dev, or is the "WASM Component Model" tax still too high for mainstream adoption?
+### A. The "Zero-Rewrite" Python Developer
+*   How does this enable a Python dev to contribute to a high-performance system without learning Rust?
+*   Why is this different/better than old-school FFI?
+*   Is the "WASM Tax" (the complex build command) worth the benefit?
+
+### B. The WASM Architect
+*   How do we prove our Beta 4 artifacts are now 100% reproducible and SLSA-verifiable?
+*   What is the significance of the 4.0.0 release being the "first non-beta" moment for the component model in Python?
 
 ---
-*Prompt Version: 1.0 (2026-04-25)*
+*Prompt Version: 1.1 (2026-04-25)*
