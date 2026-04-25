@@ -2301,3 +2301,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: Nothing — plan fully executed. Device deployment verification remains human-gated (need to deploy APK and confirm visual rendering on device for all three new UI elements).
 
 **Next**: Backport "REMAINING TODAY" counter (kingdonb/mecris#194) — `LanguageStatDto` already has the needed fields; this is additive UI work on the existing widget. Alternatively, Majesty Cake Momentum Visualizer (kingdonb/mecris#195) for a higher-impact visual.
+
+## 🏛️ 2026-04-25 — Extract calculateGoalMet and complete REMAINING TODAY counter (session #46, yebyen/mecris#274, complete)
+
+**Planned**: Add `target_flow_rate`, `absolute_target`, and `goal_met` to `LanguageStatDto`; update `ReviewPumpWidget` to show "REMAINING TODAY" and "GOAL SATISFIED" badge. (Plan: yebyen/mecris#274, upstream: kingdonb/mecris#194)
+
+**Done**: Orient revealed that `LanguageStatDto` already had all three fields and `ReviewPumpWidget` was already rendering "REMAINING TODAY" with the server count and "GOAL MET" badge — the UI was complete from prior sessions. The actual gap was the `goalMet` boolean computed inline in the widget with no unit test coverage. `ReviewPumpCalculator.kt` — `calculateGoalMet(goalMetFromServer: Boolean, targetFlowRate: Double?): Boolean` extracted; returns true when server flag is set or `targetFlowRate != null && targetFlowRate <= 0`. `MainActivity.kt` — `ReviewPumpWidget` updated to call `ReviewPumpCalculator.calculateGoalMet()` instead of inline expression. `ReviewPumpCalculatorTest.kt` — 6 new tests: server true with positive remaining, zero target, negative target, positive remaining+false, null+false, null+true. `testDebugUnitTest` exits 0 — 27 in ReviewPumpCalculatorTest, 63 total across full suite, `failures="0"`. Committed `a1d3f97`. PR appended to kingdonb/mecris#246 (comment). Plan yebyen/mecris#274 closed.
+
+**Skipped**: Could not open a separate PR for #194 — yebyen/mecris:main already has an open PR (#246) to kingdonb/mecris:main; the commit was appended there instead. kingdonb/mecris#194 remains open pending merge.
+
+**Next**: Backport "Majesty Cake" Momentum Visualizer (kingdonb/mecris#195) — pulsing orb with Majesty Rings when `all_clear` is true. Reference: `web/src/components/MomentumVisualizer.tsx`. Requires new Compose component in `MainActivity.kt` + `AggregateStatusResponseDto` data already available.
