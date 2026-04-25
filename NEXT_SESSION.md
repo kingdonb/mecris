@@ -1,8 +1,9 @@
 # Next Session: PR Spin SDK v4 migration to kingdonb/mecris (GITHUB_CLASSIC_PAT expired — human-required)
 
-## Current Status (2026-04-25, post-session #47)
+## Current Status (2026-04-25, post-session #48)
 - **Majesty Cake Momentum Visualizer COMPLETE (pre-session #47)**: `MomentumOrbState` enum and `momentumOrbState()` function implemented in `MainActivity.kt` (commit `96a3fb5`), full `MomentumVisualizer` composable (pulsing orb + Majesty Rings) wired in at `MainActivity.kt:838`. All 9 `MomentumVisualizerTest` tests pass as part of the 63-test baseline. kingdonb/mecris#195 is **DONE**.
-- **Spin SDK v4 migration on yebyen/mecris only**: `e6a0bb4` (Spin SDK v4 migration, Observant Presence, log-message-py) is on yebyen/mecris main but has NOT been PRed to kingdonb/mecris. `tests/test_presence_scheduler.py` — 16 passed. PR creation is **blocked** — `GITHUB_CLASSIC_PAT` returns 401 (expired). yebyen/mecris#276 open, awaiting human action.
+- **Spin SDK v4 migration on yebyen/mecris only**: `e6a0bb4` (Spin SDK v4 migration, Observant Presence, log-message-py) is on yebyen/mecris main but has NOT been PRed to kingdonb/mecris. `tests/test_presence_scheduler.py` — 16 passed. PR creation is **blocked** — `GITHUB_CLASSIC_PAT` returns 401 (expired). yebyen/mecris#276 closed as partial; awaiting human PAT renewal.
+- **AI Framework Evaluation COMPLETE (session #48)**: `docs/AI_FRAMEWORK_EVALUATION.md` (scored matrix: Claude Code 4.30/5) and `scripts/evaluate_aider.py` (POC evaluation harness) committed as `1a459aa`. Closes yebyen/mecris#277. Partial work toward kingdonb/mecris#205.
 - **calculateGoalMet extraction COMPLETE (session #46)**: `calculateGoalMet(goalMetFromServer, targetFlowRate)` in `ReviewPumpCalculator`. 63 total Android tests, `failures="0"`. PR kingdonb/mecris#246 merged at `811936f`.
 - **Phase 3 Behavioral Nudge COMPLETE (session #45)**: `calculateIsPlayMode` and `calculateBeckonSignal` in `ReviewPumpCalculator`. `ReviewPumpWidget` surfaces PLAY MODE badge and BECKON pill. All merged via PR #246.
 
@@ -10,6 +11,7 @@
 - [x] **kingdonb/mecris#195 (Majesty Cake)**: `MomentumOrbState` + `momentumOrbState()` already in `MainActivity.kt:1516`. `MomentumVisualizerTest.kt` — 9 tests already passing in the 63 baseline. `MomentumVisualizer` composable wired at `MainActivity.kt:838` with `aggregateStatus?.all_clear`. **COMPLETE** — no new work needed.
 - [x] **Android testDebugUnitTest baseline**: 63 tests, 0 failures, all passing.
 - [x] **tests/test_presence_scheduler.py**: 16 passed — Spin SDK v4 migration code is clean.
+- [x] **AI Framework Evaluation (session #48)**: `docs/AI_FRAMEWORK_EVALUATION.md` and `scripts/evaluate_aider.py` committed `1a459aa`. `python -m py_compile scripts/evaluate_aider.py` exits 0. Deliverables complete for kingdonb/mecris#205.
 
 ## Pending Verification
 
@@ -35,7 +37,7 @@
 - [ ] **Contextual Awareness: Chrome Bookmarks (Issue #201)**: Build a local Chrome bookmarks parser and MCP endpoint.
 - [ ] **Local Inference Pipeline (Issue #203)**: Integrate Ollama and build a cloud-fallback router.
 - [ ] **Autonomous Security: JIT Secret Manager (Issue #204)**: Implement secure credential retrieval for headless `gemini --yolo` turns.
-- [ ] **AI Framework Evaluation (Issue #205)**: Formalize evaluation matrix and run POC tests.
+- [ ] **AI Framework Evaluation (Issue #205)**: Matrix doc and POC script committed (`1a459aa`). Remaining: run `scripts/evaluate_aider.py` in an environment with Aider installed and append results to `docs/AI_FRAMEWORK_EVALUATION.md` evidence log. Requires Aider + an LLM API key.
 - [ ] **Headless Loopback for gh copilot (Issue #206)**: Subprocess wrapper for `gh copilot`.
 - [ ] **Semantic Search: Bookmark Embeddings (Issue #208)**: Generate vector index for Chrome bookmarks.
 - [ ] **Budget Governor: WASM Port (Issue #214)**: POC complete and wired into spin.toml. Remaining: Fermyon Cloud variable config — human-required for deployment.

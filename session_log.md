@@ -2321,3 +2321,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: PR to kingdonb/mecris for `e6a0bb4` blocked — `GITHUB_CLASSIC_PAT` returns 401 (expired). Cannot create PRs on kingdonb/mecris with available tokens. yebyen/mecris#276 left open as human-required action.
 
 **Next**: Renew `GITHUB_CLASSIC_PAT` in GitHub settings (classic, `repo` scope), update workflow secret. Then open PR `yebyen:main` → `kingdonb:main` for `e6a0bb4` (closes kingdonb/mecris#213, yebyen/mecris#276).
+
+## 🏛️ 2026-04-25 — AI Framework Evaluation matrix and POC script (session #48, yebyen/mecris#277, complete)
+
+**Planned**: Create `docs/AI_FRAMEWORK_EVALUATION.md` with scored evaluation matrix (Cost, Speed, Context Management, Autonomy) comparing Claude Code vs Aider vs Open Interpreter, and `scripts/evaluate_aider.py` as a controlled POC evaluation harness. (Plan: yebyen/mecris#277, upstream: kingdonb/mecris#205)
+
+**Done**: Orient found no needs-test/pr-review/bug issues and GITHUB_CLASSIC_PAT still expired (human-required). Picked kingdonb/mecris#205 as highest-feasibility bot-actionable task. Created `docs/AI_FRAMEWORK_EVALUATION.md` — weighted scoring matrix (Claude Code 4.30/5, Aider 3.20/5, Open Interpreter 3.00/5), baseline metrics table from 47 prior bot sessions, strategic recommendations (keep Claude Code for bot sessions; pilot Aider for bounded human single-file edits). Created `scripts/evaluate_aider.py` — controlled harness that invokes Aider with a stable refactoring prompt, records timing + exit code + changed files to `experiments/ai_eval/results.jsonl`, supports `--dry-run` for environments without Aider. Syntax verified (`python -m py_compile` exits 0). Both files committed as `1a459aa`.
+
+**Skipped**: Actual Aider invocation — Aider is not installed in the bot workflow environment. The `--dry-run` flag enables recording without a real run. Human must install `aider-chat` and run `scripts/evaluate_aider.py --model gpt-4o-mini` to populate real results.
+
+**Next**: Renew `GITHUB_CLASSIC_PAT` (classic, `repo` scope) and open PR `yebyen:main` → `kingdonb:main` for `e6a0bb4` (Spin SDK v4 migration). Closes kingdonb/mecris#213. Human action required.
