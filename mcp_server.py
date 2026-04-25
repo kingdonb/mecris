@@ -34,6 +34,7 @@ from services.credentials_manager import credentials_manager
 from ghost.presence import get_neon_store, StatusType
 from services.rag_retriever import RAGRetriever
 from services.rag_generator import generate_answer as _rag_generate
+from tools.chrome_bookmarks import get_bookmarks_by_topic as _get_bookmarks_by_topic
 
 # Load environment variables
 load_dotenv()
@@ -1578,6 +1579,20 @@ def ask_mecris(query: str) -> Dict[str, Any]:
         "results": results,
         "note": note,
     }
+
+
+@mcp.tool(
+    description=(
+        "Search the user's local Chrome bookmarks by keyword. "
+        "Returns bookmarks whose title, URL, or folder path match the keyword (case-insensitive). "
+        "Useful for finding forgotten resources related to a current task or goal. "
+        "Reads the Bookmarks JSON file from the default Chrome profile on macOS or Linux; "
+        "returns an empty result if the file is not present (e.g. in CI or non-Chrome environments)."
+    )
+)
+def get_bookmarks_by_topic(keyword: str) -> Dict[str, Any]:
+    """Search Chrome bookmarks by keyword across title, URL, and folder."""
+    return _get_bookmarks_by_topic(keyword)
 
 
 if __name__ == "__main__":
