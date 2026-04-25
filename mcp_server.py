@@ -57,16 +57,39 @@ async def _record_presence(user_id: str) -> None:
         logger.warning(f"Presence record failed (non-fatal): {e}")
 
 
-async def _get_presence_status(user_id: str) -> Optional[str]:
-    """Return current presence status_type string for user_id, or None if unavailable."""
+async def _get_presence_summary(user_id: str) -> Dict[str, Any]:
+    """Return a summary of presence data for user_id, including heartbeat info."""
     store = get_neon_store()
     if store is None:
-        return None
+        return {"status": "unknown", "error": "Neon store unavailable"}
     try:
         record = await asyncio.to_thread(store.get, user_id)
-        return record.status_type.value if record else None
-    except Exception:
-        return None
+        if not record:
+            return {"status": "none"}
+        
+        now = datetime.now(timezone.utc)
+        
+        # Calculate human age if possible
+        human_age = None
+        if record.last_human_activity:
+            human_age = (now - record.last_human_activity.replace(tzinfo=timezone.utc)).total_seconds()
+            
+        # Calculate ghost age if possible
+        ghost_age = None
+        if record.last_ghost_activity:
+            ghost_age = (now - record.last_ghost_activity.replace(tzinfo=timezone.utc)).total_seconds()
+
+        return {
+            "status": record.status_type.value,
+            "source": record.source,
+            "last_active": record.last_active.isoformat() if record.last_active else None,
+            "last_human_activity": record.last_human_activity.isoformat() if record.last_human_activity else None,
+            "last_ghost_activity": record.last_ghost_activity.isoformat() if record.last_ghost_activity else None,
+            "human_age_seconds": human_age,
+            "ghost_age_seconds": ghost_age
+        }
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
 
 
 # Initialize the MCP Server
@@ -513,6 +536,14 @@ async def get_narrator_context(user_id: str = None) -> Dict[str, Any]:
                 urgent_items.append(f"GROQ: {groq_urgent}")
                 recommendations.append(groq_urgent)
 
+        presence_info = await _get_presence_summary(target_user_id)
+        if presence_info.get("ghost_age_seconds") is not None:
+            ghost_age_min = presence_info["ghost_age_seconds"] / 60
+            if ghost_age_min < 120:
+                recommendations.insert(0, f"👻 Ghost Heartbeat: Bot was active {ghost_age_min:.0f}m ago.")
+            else:
+                recommendations.insert(0, f"👻 Ghost Heartbeat: Bot hasn't been seen for {ghost_age_min/60:.1f}h.")
+
         return {
             "summary": summary, "goals_status": {"total": len(active_goals)},
             "urgent_items": urgent_items, "beeminder_alerts": [e.get("message", "") for e in emergencies[:5]],
@@ -531,7 +562,7 @@ async def get_narrator_context(user_id: str = None) -> Dict[str, Any]:
             "greek_backlog_boost": greek_backlog_boost,
             "greek_backlog_cards": greek_backlog_cards,
             "budget_governor": _budget_governor.get_narrator_summary(),
-            "presence_status": await _get_presence_status(target_user_id),
+            "presence": presence_info,
             "last_updated": datetime.now().isoformat()
         }
     except Exception as e:

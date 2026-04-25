@@ -250,35 +250,36 @@ async def run_nag_trigger(args):
 
 def run_presence(args):
     """Check for or take the presence lock."""
-    from ghost.presence import acquire_lock, release_lock, check_presence
+    from ghost.presence import acquire_lock, release_lock, check_presence, SYSTEM_LOCK_PATH
     import os
 
-    lock_path = os.path.join(os.getcwd(), "presence.lock")
+    # Default to system-wide lock unless --local is specified
+    lock_path = os.path.join(os.getcwd(), "presence.lock") if args.local else SYSTEM_LOCK_PATH
 
     if args.action == "take":
         acquire_lock(lock_path)
-        print("✅ Presence lock taken.")
+        print(f"✅ Presence lock taken at {lock_path}")
         return 0
 
     if args.action == "release":
         removed = release_lock(lock_path)
         if removed:
-            print("✅ Presence lock released.")
+            print(f"✅ Presence lock released at {lock_path}")
         else:
-            print("ℹ️ No presence lock to release.")
+            print(f"ℹ️ No presence lock to release at {lock_path}")
         return 0
 
     # Default: check
     status = check_presence(lock_path)
     if not status.lock_exists:
-        print("✅ NO human presence detected (no lock file).")
+        print(f"✅ NO human presence detected at {lock_path} (no lock file).")
         return 0
 
     if status.human_present:
-        print(f"⚠️ Human presence detected ({int(status.age_seconds)}s ago).")
+        print(f"⚠️ Human presence detected at {lock_path} ({int(status.age_seconds)}s ago).")
         return 1
     else:
-        print(f"✅ Stale presence lock found ({int(status.age_seconds)}s old). Assuming human is gone.")
+        print(f"✅ Stale presence lock found at {lock_path} ({int(status.age_seconds)}s old). Assuming human is gone.")
         return 0
 
 async def run_internal_presence(args):
@@ -312,6 +313,7 @@ def _actual_main():
     # --- Presence Subcommand ---
     presence_parser = subparsers.add_parser("presence", help="Manage human presence lock for ghost sessions")
     presence_parser.add_argument("action", choices=["check", "take", "release"], default="check", nargs="?", help="Action to perform")
+    presence_parser.add_argument("--local", action="store_true", help="Use a CWD-relative lock file instead of the system-wide one")
     
     # --- Internal Subcommands ---
     internal_parser = subparsers.add_parser("internal", help="Internal system maintenance handles")

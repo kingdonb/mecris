@@ -133,7 +133,7 @@ def render_pulse(context: Dict[str, Any]) -> None:
             console.print(f"  [bold red]![/bold red] {item}")
 
     # ── Recommendations ───────────────────────────────────────────────────────
-    top_recs = recommendations[:3]
+    top_recs = recommendations[:5]
     if top_recs:
         console.print()
         console.rule("[dim]Recommendations[/dim]")

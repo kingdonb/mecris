@@ -10,7 +10,7 @@ Covers:
 - is_human_present() returns True when presence lock is fresh
 - is_human_present() returns True when CLI process is active (no lock)
 - is_human_present() returns False with stale lock and no active process
-- MecrisScheduler._start_leader_jobs() skips registration when human present
+- MecrisScheduler._start_leader_jobs() registers jobs even when human present (observant mode)
 """
 
 import os
@@ -190,14 +190,15 @@ def _make_minimal_scheduler():
 
 
 class TestSchedulerPresenceGuard:
-    """Verify that _start_leader_jobs exits early when human is present."""
+    """Verify that _start_leader_jobs registers jobs even when human is present (observant mode)."""
 
     @pytest.mark.asyncio
-    async def test_skips_jobs_when_human_present(self):
+    async def test_registers_jobs_even_when_human_present(self):
         s = _make_minimal_scheduler()
         with patch("ghost.presence.is_human_present", return_value=True):
             await s._start_leader_jobs()
-        s.scheduler.add_job.assert_not_called()
+        # Should now be called, even with human present
+        assert s.scheduler.add_job.call_count >= 1
 
     @pytest.mark.asyncio
     async def test_registers_jobs_when_no_human(self):

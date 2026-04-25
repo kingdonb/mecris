@@ -21,7 +21,7 @@ Part of the Observability Mandate (kingdonb/mecris#245, kingdonb/mecris#213).
 Follows the componentize-py / Spin KV pattern established in budget-governor-py.
 
 Build:
-    pip install -r requirements.txt && spin py2wasm app -o log-message-py.wasm
+    uv run componentize-py -w spin:up/http-trigger@4.0.0 componentize app -o log-message-py.wasm
 
 Plan: yebyen/mecris#267
 """
@@ -30,6 +30,10 @@ import json
 import logging
 from datetime import datetime
 from typing import Any, Dict, List, Optional
+
+from spin_sdk import http
+from spin_sdk.http import Request, Response
+import spin_sdk.key_value as kv
 
 logger = logging.getLogger("mecris.log_message_component")
 
@@ -156,19 +160,13 @@ def _dump_log_to_json(log: List[Dict[str, Any]]) -> bytes:
 
 # ---------------------------------------------------------------------------
 # HTTP handler — operational inside the WASM runtime only.
-# All pure logic above is importable in tests without the WASM runtime.
 # ---------------------------------------------------------------------------
-try:
-    from spin_sdk.http import IncomingHandler as _SpinHandler, Request, Response
-    import spin_sdk.key_value as kv
 
-    class IncomingHandler(_SpinHandler):
-        """Spin HTTP handler for /internal/log-message."""
-
-        def handle(self, request: Request) -> Response:
-            try:
-                store = kv.open_default()
-                raw = store.get(_KV_MESSAGE_LOG_KEY)
+class HttpHandler(http.Handler):
+    async def handle_request(self, request: Request) -> Response:
+        try:
+            with (await kv.open_default()) as store:
+                raw = await store.get(_KV_MESSAGE_LOG_KEY)
                 log = _load_log_from_json(raw)
 
                 method = getattr(request, "method", "POST").upper()
@@ -192,7 +190,7 @@ try:
 
                 entry = make_log_entry(params["type"], params["channel"], params["sent_at"])
                 log = append_entry(log, entry)
-                store.set(_KV_MESSAGE_LOG_KEY, _dump_log_to_json(log))
+                await store.set(_KV_MESSAGE_LOG_KEY, _dump_log_to_json(log))
 
                 return Response(
                     200,
@@ -204,19 +202,13 @@ try:
                     }),
                 )
 
-            except Exception as exc:
-                logger.error(f"log_message_py component error: {exc}")
-                return Response(
-                    500,
-                    {"content-type": "application/json"},
-                    _error_json("internal error"),
-                )
+        except Exception as exc:
+            print(f"log_message_py component error: {exc}")
+            return Response(
+                500,
+                {"content-type": "application/json"},
+                _error_json("internal error"),
+            )
 
-    def handle_request(request):
-        """Top-level entry point for spin py2wasm."""
-        return IncomingHandler().handle(request)
-
-except ImportError:
-    # Fail gracefully outside WASM runtime
-    def handle_request(request):
-        raise NotImplementedError("handle_request requires WASM runtime (spin_sdk)")
+# Mandatory export for spin-sdk v4
+incoming_handler = HttpHandler()
