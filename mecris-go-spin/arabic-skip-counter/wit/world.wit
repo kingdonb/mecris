@@ -1,0 +1,5 @@
+package mecris:arabic-skip-counter@0.1.0;
+
+world arabic-skip-counter {
+    include spin:up/http-trigger@4.0.0;
+}

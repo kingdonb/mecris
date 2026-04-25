@@ -1,0 +1,5 @@
+package mecris:review-pump-py@0.1.0;
+
+world review-pump-py {
+    include spin:up/http-trigger@4.0.0;
+}

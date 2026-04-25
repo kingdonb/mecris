@@ -1,0 +1,5 @@
+package mecris:budget-governor-py@0.1.0;
+
+world budget-governor-py {
+    include spin:up/http-trigger@4.0.0;
+}

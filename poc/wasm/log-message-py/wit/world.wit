@@ -1,0 +1,5 @@
+package mecris:log-message-py@0.1.0;
+
+world log-message-py {
+    include spin:up/http-trigger@4.0.0;
+}

@@ -96,7 +96,7 @@ watch = ["src/**/*.rs", "Cargo.toml"]
 [component.review-pump-py]
 source = "../../poc/wasm/review-pump-py/review-pump-py.wasm"
 [component.review-pump-py.build]
-command = "uv run --no-project --python 3.13 --with componentize-py==0.23.0 --with spin-sdk==4.0.0 componentize-py -w spin:up/http-trigger@4.0.0 componentize app -o review-pump-py.wasm"
+command = "find . -name '.venv*' -type d -exec rm -rf {} + && find . -name '__pycache__' -type d -exec rm -rf {} + && uv venv .venv_build --clear --python 3.13 && . .venv_build/bin/activate && uv pip install componentize-py==0.23.0 spin-sdk==4.0.0 && componentize-py -w spin:up/http-trigger@4.0.0 componentize -p . -p .venv_build/lib/python3.13/site-packages app -o review-pump-py.wasm"
 workdir = "../../poc/wasm/review-pump-py"
 watch = ["app.py", "wit/*.wit"]
 
@@ -109,22 +109,8 @@ watch = ["app.py", "wit/*.wit"]
 source = "../../poc/wasm/budget-governor-py/budget-governor-py.wasm"
 key_value_stores = ["default"]
 [component.budget-governor-py.build]
-command = "uv run --no-project --python 3.13 --with componentize-py==0.23.0 --with spin-sdk==4.0.0 componentize-py -w spin:up/http-trigger@4.0.0 componentize app -o budget-governor-py.wasm"
+command = "find . -name '.venv*' -type d -exec rm -rf {} + && find . -name '__pycache__' -type d -exec rm -rf {} + && uv venv .venv_build --clear --python 3.13 && . .venv_build/bin/activate && uv pip install componentize-py==0.23.0 spin-sdk==4.0.0 && componentize-py -w spin:up/http-trigger@4.0.0 componentize -p . -p .venv_build/lib/python3.13/site-packages app -o budget-governor-py.wasm"
 workdir = "../../poc/wasm/budget-governor-py"
-watch = ["app.py", "wit/*.wit"]
-
-# log-message-py: Python WASM component (componentize-py + spin_sdk, kingdonb/mecris#213).
-# HTTP trigger: POST /internal/log-message
-# Body JSON: {"type": <str>, "channel": <str>, "sent_at": <ISO 8601, optional>}
-# Returns JSON: {"logged": true, "entry_count": <int>, "logged_at": <ISO 8601>}
-# GET /internal/log-message returns {"entries": [...], "entry_count": <int>}
-# Persists notification audit log via Spin KV. Part of Observability Mandate (#245).
-[component.log-message-py]
-source = "../../poc/wasm/log-message-py/log-message-py.wasm"
-key_value_stores = ["default"]
-[component.log-message-py.build]
-command = "python3 -m pip install --user --break-system-packages -r requirements.txt && spin py2wasm app -o log-message-py.wasm"
-workdir = "../../poc/wasm/log-message-py"
 watch = ["app.py", "wit/*.wit"]
 
 # arabic-skip-counter: Python WASM component (componentize-py + spin_sdk, Phase 1.6).
@@ -137,7 +123,7 @@ allowed_outbound_hosts = ["https://*.neon.tech"]
 [component.arabic-skip-counter.variables]
 neon_db_url = "{{ neon_db_url }}"
 [component.arabic-skip-counter.build]
-command = "uv run --no-project --python 3.13 --with componentize-py==0.23.0 --with spin-sdk==4.0.0 componentize-py -w spin:up/http-trigger@4.0.0 componentize app -o arabic-skip-counter.wasm"
+command = "find . -name '.venv*' -type d -exec rm -rf {} + && find . -name '__pycache__' -type d -exec rm -rf {} + && uv venv .venv_build --clear --python 3.13 && . .venv_build/bin/activate && uv pip install componentize-py==0.23.0 spin-sdk==4.0.0 psycopg2-binary httpx && componentize-py -w spin:up/http-trigger@4.0.0 componentize -p . -p .venv_build/lib/python3.13/site-packages app -o arabic-skip-counter.wasm"
 workdir = "../arabic-skip-counter"
 watch = ["app.py", "wit/*.wit"]
 
@@ -149,6 +135,6 @@ watch = ["app.py", "wit/*.wit"]
 source = "../../poc/wasm/log-message-py/log-message-py.wasm"
 key_value_stores = ["default"]
 [component.log-message-py.build]
-command = "uv run --no-project --python 3.13 --with componentize-py==0.23.0 --with spin-sdk==4.0.0 componentize-py -w spin:up/http-trigger@4.0.0 componentize app -o log-message-py.wasm"
+command = "find . -name '.venv*' -type d -exec rm -rf {} + && find . -name '__pycache__' -type d -exec rm -rf {} + && uv venv .venv_build --clear --python 3.13 && . .venv_build/bin/activate && uv pip install componentize-py==0.23.0 spin-sdk==4.0.0 && componentize-py -w spin:up/http-trigger@4.0.0 componentize -p . -p .venv_build/lib/python3.13/site-packages app -o log-message-py.wasm"
 workdir = "../../poc/wasm/log-message-py"
 watch = ["app.py", "wit/*.wit"]
