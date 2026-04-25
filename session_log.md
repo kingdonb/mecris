@@ -2311,3 +2311,33 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: Could not open a separate PR for #194 — yebyen/mecris:main already has an open PR (#246) to kingdonb/mecris:main; the commit was appended there instead. kingdonb/mecris#194 remains open pending merge.
 
 **Next**: Backport "Majesty Cake" Momentum Visualizer (kingdonb/mecris#195) — pulsing orb with Majesty Rings when `all_clear` is true. Reference: `web/src/components/MomentumVisualizer.tsx`. Requires new Compose component in `MainActivity.kt` + `AggregateStatusResponseDto` data already available.
+
+## 🏛️ 2026-04-25 — Investigation: Majesty Cake already done; Spin SDK PR blocked by expired PAT (session #47, yebyen/mecris#276, partial)
+
+**Planned**: Backport "Majesty Cake" Momentum Visualizer (kingdonb/mecris#195) — implement `MomentumOrbState` + `momentumOrbState()` in Android, make existing tests green. (Plan: yebyen/mecris#275, pivoted to yebyen/mecris#276)
+
+**Done**: Investigation revealed kingdonb/mecris#195 was already complete — `MomentumOrbState` enum and `momentumOrbState()` implemented in `MainActivity.kt:1516` (commit `96a3fb5`), full `MomentumVisualizer` composable wired in at `MainActivity.kt:838`. All 9 `MomentumVisualizerTest` tests already passing in the 63-test baseline. Plan yebyen/mecris#275 closed as no-op with findings documented. Discovered `e6a0bb4` (Spin SDK v4 migration) on yebyen/mecris has never been PRed to kingdonb/mecris. `tests/test_presence_scheduler.py` — 16 passed. Opened plan yebyen/mecris#276 for PR creation.
+
+**Skipped**: PR to kingdonb/mecris for `e6a0bb4` blocked — `GITHUB_CLASSIC_PAT` returns 401 (expired). Cannot create PRs on kingdonb/mecris with available tokens. yebyen/mecris#276 left open as human-required action.
+
+**Next**: Renew `GITHUB_CLASSIC_PAT` in GitHub settings (classic, `repo` scope), update workflow secret. Then open PR `yebyen:main` → `kingdonb:main` for `e6a0bb4` (closes kingdonb/mecris#213, yebyen/mecris#276).
+
+## 🏛️ 2026-04-25 — AI Framework Evaluation matrix and POC script (session #48, yebyen/mecris#277, complete)
+
+**Planned**: Create `docs/AI_FRAMEWORK_EVALUATION.md` with scored evaluation matrix (Cost, Speed, Context Management, Autonomy) comparing Claude Code vs Aider vs Open Interpreter, and `scripts/evaluate_aider.py` as a controlled POC evaluation harness. (Plan: yebyen/mecris#277, upstream: kingdonb/mecris#205)
+
+**Done**: Orient found no needs-test/pr-review/bug issues and GITHUB_CLASSIC_PAT still expired (human-required). Picked kingdonb/mecris#205 as highest-feasibility bot-actionable task. Created `docs/AI_FRAMEWORK_EVALUATION.md` — weighted scoring matrix (Claude Code 4.30/5, Aider 3.20/5, Open Interpreter 3.00/5), baseline metrics table from 47 prior bot sessions, strategic recommendations (keep Claude Code for bot sessions; pilot Aider for bounded human single-file edits). Created `scripts/evaluate_aider.py` — controlled harness that invokes Aider with a stable refactoring prompt, records timing + exit code + changed files to `experiments/ai_eval/results.jsonl`, supports `--dry-run` for environments without Aider. Syntax verified (`python -m py_compile` exits 0). Both files committed as `1a459aa`.
+
+**Skipped**: Actual Aider invocation — Aider is not installed in the bot workflow environment. The `--dry-run` flag enables recording without a real run. Human must install `aider-chat` and run `scripts/evaluate_aider.py --model gpt-4o-mini` to populate real results.
+
+**Next**: Renew `GITHUB_CLASSIC_PAT` (classic, `repo` scope) and open PR `yebyen:main` → `kingdonb:main` for `e6a0bb4` (Spin SDK v4 migration). Closes kingdonb/mecris#213. Human action required.
+
+## 🏛️ 2026-04-25 — Implement CopilotLoopback subprocess wrapper for gh copilot (session #49, yebyen/mecris#278, complete)
+
+**Planned**: Create `ghost/copilot_loopback.py` with `CopilotLoopback` class wrapping `gh copilot -- -p "<prompt>"` in non-interactive mode, plus unit tests covering output capture, timeout, and spawn errors. (Plan: yebyen/mecris#278, upstream: kingdonb/mecris#206)
+
+**Done**: Orient found no needs-test/pr-review/bug issues; GITHUB_CLASSIC_PAT still expired (human-required). Confirmed `gh copilot` available in-environment and supports `-p/--prompt` for headless scripting. Created `ghost/copilot_loopback.py` — `CopilotLoopback` class with `suggest(prompt)` and `explain(command)` methods, each building `["gh", "copilot", "--", "-p", full_prompt]` and executing via `HeadlessLoopback` (timeout 120s). Created `tests/test_copilot_loopback.py` — 21 unit tests in 5 groups: output capture, command construction, prompt prefixing, timeout enforcement, spawn errors. All 21 pass. Committed `139d67f`. Plan yebyen/mecris#278 closed.
+
+**Skipped**: PR to kingdonb/mecris#206 — blocked by expired GITHUB_CLASSIC_PAT (same blocker as previous sessions). Implementation is complete on yebyen/mecris.
+
+**Next**: Renew `GITHUB_CLASSIC_PAT` (classic, `repo` scope) and open PRs for `e6a0bb4` (Spin SDK v4) and `139d67f` (CopilotLoopback) to kingdonb/mecris. Both are human-required. Bot-actionable next: Port Twilio to WASM Brain (#167) or Chrome Bookmarks parser (#201).
