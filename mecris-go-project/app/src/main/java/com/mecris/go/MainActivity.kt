@@ -1051,7 +1051,7 @@ fun ReviewPumpWidget(
     val leverName = com.mecris.go.sync.ReviewPumpCalculator.getLeverName(currentDisplayMultiplier)
     val remainingToday = stat.target_flow_rate
         ?: com.mecris.go.sync.ReviewPumpCalculator.calculateTargetFlowRate(currentDisplayMultiplier, stat.current, stat.tomorrow)
-    val goalMet = stat.goal_met || (stat.target_flow_rate != null && stat.target_flow_rate <= 0.0)
+    val goalMet = com.mecris.go.sync.ReviewPumpCalculator.calculateGoalMet(stat.goal_met, stat.target_flow_rate)
     val outstandingDebt = stat.outstanding_debt ?: stat.current
     val debtCoverageRatio = com.mecris.go.sync.ReviewPumpCalculator.calculateDebtCoverageRatio(stat.daily_completions, outstandingDebt)
     val flowFillRatio = com.mecris.go.sync.ReviewPumpCalculator.calculateFlowFillRatio(stat.daily_completions, remainingToday.toInt())

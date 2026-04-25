@@ -165,4 +165,42 @@ class ReviewPumpCalculatorTest {
         val result = ReviewPumpCalculator.calculateBeckonSignal(outstandingDebt = 2600)
         assertEquals("2600 cards outstanding should strongly trigger beckon", true, result)
     }
+
+    // --- calculateGoalMet ---
+
+    @Test
+    fun `goal met when server flag is true regardless of target flow rate`() {
+        val result = ReviewPumpCalculator.calculateGoalMet(goalMetFromServer = true, targetFlowRate = 50.0)
+        assertEquals("Server goal_met flag should take precedence", true, result)
+    }
+
+    @Test
+    fun `goal met when target flow rate is zero (nothing remaining)`() {
+        val result = ReviewPumpCalculator.calculateGoalMet(goalMetFromServer = false, targetFlowRate = 0.0)
+        assertEquals("Zero target_flow_rate means nothing left to do today", true, result)
+    }
+
+    @Test
+    fun `goal met when target flow rate is negative (overachieved)`() {
+        val result = ReviewPumpCalculator.calculateGoalMet(goalMetFromServer = false, targetFlowRate = -10.0)
+        assertEquals("Negative target_flow_rate means goal overachieved", true, result)
+    }
+
+    @Test
+    fun `goal not met when server flag is false and target flow rate is positive`() {
+        val result = ReviewPumpCalculator.calculateGoalMet(goalMetFromServer = false, targetFlowRate = 80.0)
+        assertEquals("Cards remaining and server says not done", false, result)
+    }
+
+    @Test
+    fun `goal not met when server flag is false and target flow rate is null (local calc mode)`() {
+        val result = ReviewPumpCalculator.calculateGoalMet(goalMetFromServer = false, targetFlowRate = null)
+        assertEquals("Null target_flow_rate with server false means not done", false, result)
+    }
+
+    @Test
+    fun `goal met when both server flag is true and target flow rate is null`() {
+        val result = ReviewPumpCalculator.calculateGoalMet(goalMetFromServer = true, targetFlowRate = null)
+        assertEquals("Server flag true is sufficient even without target_flow_rate", true, result)
+    }
 }

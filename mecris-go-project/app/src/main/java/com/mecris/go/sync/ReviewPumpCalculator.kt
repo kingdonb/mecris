@@ -73,4 +73,13 @@ object ReviewPumpCalculator {
     fun calculateBeckonSignal(outstandingDebt: Int): Boolean {
         return outstandingDebt >= 300
     }
+
+    /**
+     * Returns true when the language goal is satisfied for today.
+     * Mirrors the server-side semantics: goal_met flag from the API takes precedence;
+     * a non-null target_flow_rate <= 0 also signals completion (nothing left to do).
+     */
+    fun calculateGoalMet(goalMetFromServer: Boolean, targetFlowRate: Double?): Boolean {
+        return goalMetFromServer || (targetFlowRate != null && targetFlowRate <= 0.0)
+    }
 }
