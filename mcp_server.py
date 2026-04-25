@@ -828,8 +828,10 @@ async def record_groq_reading(value: float, notes: str = "", month: Optional[str
             
             result["beeminder_sync"] = "success"
         except Exception as e:
-            logger.error(f"Failed to sync Groq reading to Beeminder: {e}")
-            result["beeminder_sync"] = f"failed: {str(e)}"
+            import traceback
+            tb = traceback.format_exc()
+            logger.error(f"Failed to sync Groq reading to Beeminder:\n{tb}")
+            result["beeminder_sync"] = f"failed: {str(e)}\nTraceback: {tb}"
             
     return result
 
