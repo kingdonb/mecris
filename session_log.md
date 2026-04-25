@@ -2351,3 +2351,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: PR to kingdonb/mecris — blocked by expired GITHUB_CLASSIC_PAT (persistent blocker). Semantic Search / Bookmark Embeddings (kingdonb/mecris#208) is the natural follow-on but deferred to a future session.
 
 **Next**: Renew `GITHUB_CLASSIC_PAT` (human-required) and open PRs for Chrome Bookmarks (`0a29cc7`), CopilotLoopback (`139d67f`), and Spin SDK v4 (`e6a0bb4`) to kingdonb/mecris. Bot-actionable next: Port Twilio to WASM Brain (#167) or Semantic Search: Bookmark Embeddings (#208).
+
+## 🏛️ 2026-04-25 — Implement TF-IDF semantic bookmark search and search_bookmarks MCP tool (session #51, yebyen/mecris#280, complete)
+
+**Planned**: Create `services/semantic_index.py` with a TF-IDF vector index over Chrome bookmarks, exposing `search_bookmarks(query, top_k=3)` via cosine similarity, wired into `mcp_server.py` as a new `@mcp.tool`. 32+ unit tests. (Plan: yebyen/mecris#280, upstream: kingdonb/mecris#208)
+
+**Done**: Orient found kingdonb had merged yebyen's Chrome Bookmarks work (`71ae7da`); no open tagged issues. Picked Semantic Bookmark Embeddings (#208) as the natural continuation. Created `services/semantic_index.py` — `BookmarkIndex` class with pure-Python TF-IDF (smoothed IDF, L2-normalised vectors, cosine similarity), `_tokenize`, `_doc_text`, and `search_bookmarks` convenience wrapper. No new dependencies (stdlib only). Wired `search_bookmarks` into `mcp_server.py` as `@mcp.tool`. Created `tests/test_semantic_index.py` — 32 unit tests across tokeniser, doc_text, fit, search ranking, and convenience function. All 32 pass. Committed `5be5a79`. yebyen/mecris#280 closed.
+
+**Skipped**: Narrator integration (auto-surface bookmarks from active goal titles in `get_narrator_context`) — deferred as phase 2 of #208. PR to kingdonb/mecris — still blocked by expired GITHUB_CLASSIC_PAT (persistent human-required blocker).
+
+**Next**: Narrator integration for semantic bookmark search (kingdonb/mecris#208 phase 2) — wire `search_bookmarks` into `get_narrator_context` using current goal titles as queries. Or: renew GITHUB_CLASSIC_PAT and open PRs (human-required).

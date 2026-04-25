@@ -1,36 +1,38 @@
-# Next Session: Open PR for Chrome Bookmarks parser to kingdonb/mecris (or take next bot-actionable task)
+# Next Session: Narrator integration for semantic bookmark search, or next bot-actionable task
 
-## Current Status (2026-04-25, post-session #50)
-- **Chrome Bookmarks parser COMPLETE**: `tools/chrome_bookmarks.py` implements `load_bookmarks`, `flatten_bookmarks`, `filter_by_keyword`, and `get_bookmarks_by_topic`. Wired into `mcp_server.py` as `@mcp.tool`. 23 unit tests in `tests/test_chrome_bookmarks.py`, all passing. Committed `0a29cc7`. Toward kingdonb/mecris#201.
-- **GITHUB_CLASSIC_PAT still expired**: Bot cannot create PRs to kingdonb/mecris. Renew immediately (human-required). Blocks PR for Chrome Bookmarks, CopilotLoopback (#206), and Spin SDK v4 migration.
-- **yebyen/mecris up to date with kingdonb/mecris**: Both at `18f4576` before this session's commit `0a29cc7`.
+## Current Status (2026-04-25, post-session #51)
+- **Semantic bookmark search COMPLETE**: `services/semantic_index.py` implements `BookmarkIndex` (TF-IDF cosine similarity) and `search_bookmarks`. Wired into `mcp_server.py` as `@mcp.tool`. 32 unit tests in `tests/test_semantic_index.py`, all passing. Committed `5be5a79`. Toward kingdonb/mecris#208.
+- **GITHUB_CLASSIC_PAT still expired**: Bot cannot create PRs to kingdonb/mecris. Renew immediately (human-required). Blocks PR for Chrome Bookmarks, CopilotLoopback, and Spin SDK v4 migration.
+- **yebyen/mecris up to date with kingdonb/mecris**: Both at `71ae7da` before this session's commit `5be5a79`.
 - **CopilotLoopback COMPLETE (session #49)**: `ghost/copilot_loopback.py` with `suggest()` and `explain()`. 21 tests. Committed `139d67f`. Toward kingdonb/mecris#206. PR blocked by expired PAT.
 - **Spin SDK v4 migration on yebyen/mecris only**: `e6a0bb4` not yet PRed to kingdonb/mecris. Blocked by expired PAT.
 
 ## Verified This Session
-- [x] **Chrome Bookmarks parser (session #50)**: `tools/chrome_bookmarks.py` + `tests/test_chrome_bookmarks.py` committed `0a29cc7`. `PYTHONPATH=. python3 -m pytest tests/test_chrome_bookmarks.py -v` → 23 passed, 0 failures. **COMPLETE** — toward kingdonb/mecris#201.
-- [x] **get_bookmarks_by_topic MCP tool**: Wired in `mcp_server.py` with `@mcp.tool(description=...)`. Import from `tools.chrome_bookmarks`. Tool returns `{keyword, total_bookmarks, match_count, matches, source}`.
-- [x] **yebyen/mecris#279 closed**: Plan issue closed with completion comment.
+- [x] **Semantic bookmark search (session #51)**: `services/semantic_index.py` + `tests/test_semantic_index.py` committed `5be5a79`. `PYTHONPATH=. python3 -m pytest tests/test_semantic_index.py -v` → 32 passed, 0 failures. **COMPLETE** — toward kingdonb/mecris#208.
+- [x] **search_bookmarks MCP tool**: Wired in `mcp_server.py` with `@mcp.tool(description=...)`. Import from `services.semantic_index`. Returns `{query, total_bookmarks, match_count, matches, source}` with per-match `score` field.
+- [x] **yebyen/mecris#280 closed**: Plan issue closed with completion comment.
 
 ## Pending Verification
 
 ### 👤 Human-required (cannot be resolved by bot)
 - [ ] **URGENT: Refresh GITHUB_CLASSIC_PAT** — returns 401. Bot cannot create PRs to kingdonb/mecris. Renew in GitHub → Settings → Developer Settings → Personal access tokens (classic) with `repo` scope, update the workflow secret `GITHUB_CLASSIC_PAT`.
-- [ ] **Open PR yebyen:main → kingdonb:main** for `0a29cc7` (Chrome Bookmarks), `139d67f` (CopilotLoopback), and `e6a0bb4` (Spin SDK v4) — all blocked by expired PAT. Closes kingdonb/mecris#201 (Chrome), kingdonb/mecris#206 (CopilotLoopback), and kingdonb/mecris#213 (Spin SDK v4).
+- [ ] **Open PR yebyen:main → kingdonb:main** for `5be5a79` (Semantic Search), `0a29cc7` (Chrome Bookmarks), `139d67f` (CopilotLoopback), and `e6a0nb4` (Spin SDK v4) — all blocked by expired PAT. Closes kingdonb/mecris#208 (partial — Narrator integration deferred), #201 (Chrome), #206 (CopilotLoopback), and #213 (Spin SDK v4).
 - [ ] **Cloud Readiness Check**: Monitor Fermyon/Akamai for updates to their Python WASM runtimes. Test a simple SDK v4 "Hello World" to confirm when the platform has caught up.
 - [ ] **Align Release Management**: Determine if we should maintain a "Legacy Cloud" branch or implement a compatibility shim until the cloud catch-up is complete.
 - [ ] **Verify log-message-py in Cloud**: Once platforms are ready, confirm audit logs appear in cloud KV.
 
 ### 🤖 Bot-actionable (can be resolved in future sessions)
+- [ ] **Narrator integration for semantic_index (kingdonb/mecris#208 phase 2)**: Auto-run `search_bookmarks` using current active goal titles as queries, and surface results in `get_narrator_context` response. This is the deferred second half of #208.
 - [ ] **Port Twilio to WASM Brain (Issue #167)**: Move SMS/WhatsApp dispatch logic from Python/boris-fiona-walker into the `sync-service` Rust module.
 - [ ] **Rust Reminder Engine (Issue #169)**: Implement the 2000-step threshold, sleep window heuristics, and weather checks natively in Rust.
-- [ ] **Semantic Search: Bookmark Embeddings (Issue #208)**: Generate vector index for Chrome bookmarks using the new `get_bookmarks_by_topic` as the data source.
 - [ ] **AI Framework Evaluation (Issue #205)**: Matrix doc and POC script committed (`1a459aa`). Remaining: run `scripts/evaluate_aider.py` in an environment with Aider installed and append results to `docs/AI_FRAMEWORK_EVALUATION.md` evidence log. Requires Aider + an LLM API key.
 - [ ] **Budget Governor: WASM Port (Issue #214)**: POC complete and wired into spin.toml. Remaining: Fermyon Cloud variable config — human-required for deployment.
 - [ ] **Autonomous Security: JIT Secret Manager (Issue #204)**: Implement secure credential retrieval for headless `gemini --yolo` turns.
 - [ ] **Local Inference Pipeline (Issue #203)**: Integrate Ollama and build a cloud-fallback router.
 
 ## Infrastructure Notes (carried forward)
+- **TF-IDF index is in-memory only**: `BookmarkIndex` re-builds on each `search_bookmarks` call. Acceptable for small bookmark files; if performance becomes an issue, add caching to `mcp_server.py` module level.
+- **No new dependencies added**: `services/semantic_index.py` uses only stdlib + no imports from numpy/scipy. Pure Python TF-IDF.
 - **Chrome Bookmarks default paths**: macOS: `~/Library/Application Support/Google/Chrome/Default/Bookmarks`; Linux: `~/.config/google-chrome/Default/Bookmarks` or `~/.config/chromium/Default/Bookmarks`.
 - **get_bookmarks_by_topic behavior**: Returns `{"source": "not found"}` gracefully when the file doesn't exist (e.g., CI, non-Chrome environments). Safe to call anywhere.
 - **GITHUB_CLASSIC_PAT is expired**: Bot cannot create PRs to kingdonb/mecris. Renew immediately.
