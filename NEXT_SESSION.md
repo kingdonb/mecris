@@ -1,32 +1,34 @@
-# Next Session: Open PRs to kingdonb/mecris (human-required) or bot-actionable: Port Twilio to WASM Brain or Rust Reminder Engine
+# Next Session: Open PRs to kingdonb/mecris (human-required) or bot-actionable: AI Framework Evaluation or JIT Secret Manager
 
-## Current Status (2026-04-26, post-session #55)
-- **Observability Phase 2 (Rust WASM) COMPLETE**: `write_obs_status()` + `cloud_role()` + `obs_status_query()` added to `sync-service/src/lib.rs`. Ghost Nag stand-down, conditions-not-met stand-down, Twilio success, and Twilio error all write to `scheduler_election.last_status/intent/last_error`. 5 new unit tests, 127 total pass. Committed `a125430`. Closes yebyen/mecris#284. Toward kingdonb/mecris#245 req 3.
+## Current Status (2026-04-26, post-session #56)
+- **notification_prefs JSONB in Rust Reminder Engine COMPLETE**: `parse_notification_prefs()` + `NotificationPrefs` struct added to `sync-service/src/lib.rs`. `handle_trigger_reminders_post` now reads `notification_prefs` from `users` table and passes per-user step threshold, window hours, and rate limit to `should_dispatch_reminder`. 9 new tests; 136 total pass. Committed `18a0b14`. Closes yebyen/mecris#285. Toward kingdonb/mecris#169.
+- **kingdonb/mecris#169 (Rust Reminder Engine) is now FUNCTIONALLY COMPLETE** in yebyen/mecris: timezone-aware window, 2000-step threshold (now per-user via `notification_prefs`), weather check, rate limiting, ghost nag guard, multi-tenant dispatch, WhatsApp template dispatch — all implemented.
+- **kingdonb/mecris#167 (Twilio WASM Port) is also COMPLETE** in yebyen/mecris: `send_walk_reminder`, `build_sms_request_parts`, `build_twilio_body`, `encode_basic_auth`, `build_twilio_url` all in `sync-service/src/lib.rs`. Spin variables and allowed_outbound_hosts configured.
 - **GITHUB_CLASSIC_PAT still expired**: Bot cannot create PRs to kingdonb/mecris. Renew immediately (human-required). Blocks all PRs.
-- **yebyen/mecris ahead of kingdonb/mecris by 20+ commits**: Includes TF-IDF Search, Narrator enrichment, Observability Phase 1 (Python), Observability Phase 2 Python (last_error), and Observability Phase 2 Rust (write_obs_status). None yet PRed due to expired PAT.
+- **yebyen/mecris ahead of kingdonb/mecris by ~7 commits**: Includes TF-IDF Search, Narrator enrichment, Observability Phase 1 (Python), Observability Phase 2 Python (last_error), Observability Phase 2 Rust (write_obs_status), and now notification_prefs in reminder engine. None yet PRed due to expired PAT.
 
 ## Verified This Session
-- [x] **Observability Phase 2 — Rust WASM write_obs_status (session #55)**: `write_obs_status()` writes `last_status`, `intent`, `last_error` to `scheduler_election` for all 4 stand-down/dispatch paths in `handle_trigger_reminders_post`. Fail-safe: column-absent error → DEBUG log + silent return. `cargo test` in `mecris-go-spin/sync-service/` → 127 passed, 0 failures. **COMPLETE** — closes yebyen/mecris#284, toward kingdonb/mecris#245 req 3.
+- [x] **notification_prefs JSONB parsing (session #56)**: `NotificationPrefs` struct with `Default` impl; `parse_notification_prefs()` handles None, empty `{}`, partial JSON, and malformed input. `should_dispatch_reminder` updated to accept `&NotificationPrefs`. `handle_trigger_reminders_post` fetches column 5 (`COALESCE(notification_prefs::TEXT, '{}')`). 136 tests pass. **COMPLETE** — closes yebyen/mecris#285, toward kingdonb/mecris#169.
 
 ## Pending Verification
 
 ### 👤 Human-required (cannot be resolved by bot)
 - [ ] **URGENT: Refresh GITHUB_CLASSIC_PAT** — returns 401. Bot cannot create PRs to kingdonb/mecris. Renew in GitHub → Settings → Developer Settings → Personal access tokens (classic) with `repo` scope, update the workflow secret `GITHUB_CLASSIC_PAT`.
-- [ ] **Open PR yebyen:main → kingdonb:main** for all pending commits (TF-IDF Search, Narrator enrichment, Observability Phase 1+2 Python, Observability Phase 2 Rust) — blocked by expired PAT. Closes kingdonb/mecris#208 (complete), kingdonb/mecris#245 (Phase 1 + Phase 2 Python + Phase 2 Rust req 3).
+- [ ] **Open PR yebyen:main → kingdonb:main** for all pending commits (TF-IDF Search, Narrator enrichment, Observability Phase 1+2 Python, Observability Phase 2 Rust, notification_prefs) — blocked by expired PAT. Closes kingdonb/mecris#167, kingdonb/mecris#169, kingdonb/mecris#208 (complete), kingdonb/mecris#245 (Phase 1 + Phase 2 Python + Phase 2 Rust req 3).
 - [ ] **Apply migrate_v8_observability.py to production Neon**: Run `python scripts/migrate_v8_observability.py` in the production environment (with NEON_DB_URL set) to add `last_status`, `last_error`, `intent` columns to `scheduler_election`.
 - [ ] **Cloud Readiness Check**: Monitor Fermyon/Akamai for updates to their Python WASM runtimes. Test a simple SDK v4 "Hello World" to confirm when the platform has caught up.
 - [ ] **Align Release Management**: Determine if we should maintain a "Legacy Cloud" branch or implement a compatibility shim until the cloud catch-up is complete.
 - [ ] **Verify log-message-py in Cloud**: Once platforms are ready, confirm audit logs appear in cloud KV.
 
 ### 🤖 Bot-actionable (can be resolved in future sessions)
-- [ ] **Port Twilio to WASM Brain (Issue #167)**: Move SMS/WhatsApp dispatch logic from Python/boris-fiona-walker into the `sync-service` Rust module.
-- [ ] **Rust Reminder Engine (Issue #169)**: Implement the 2000-step threshold, sleep window heuristics, and weather checks natively in Rust.
 - [ ] **AI Framework Evaluation (Issue #205)**: Matrix doc and POC script committed (`1a459aa`). Remaining: run `scripts/evaluate_aider.py` in an environment with Aider installed and append results to `docs/AI_FRAMEWORK_EVALUATION.md` evidence log. Requires Aider + an LLM API key.
 - [ ] **Budget Governor: WASM Port (Issue #214)**: POC complete and wired into spin.toml. Remaining: Fermyon Cloud variable config — human-required for deployment.
 - [ ] **Autonomous Security: JIT Secret Manager (Issue #204)**: Implement secure credential retrieval for headless `gemini --yolo` turns.
 - [ ] **Local Inference Pipeline (Issue #203)**: Integrate Ollama and build a cloud-fallback router.
+- [ ] **Rust Reminder Engine — notification_prefs schema write path**: The `notification_prefs` column is read by the reminder engine but there is no endpoint to write/update it. Consider adding a `PATCH /profile` field or MCP tool to set per-user notification prefs.
 
 ## Infrastructure Notes (carried forward)
+- **`notification_prefs` JSONB keys**: `step_threshold` (u32), `window_start_hour` (u32), `window_end_hour` (u32), `rate_limit_minutes` (u64). All optional; any absent key falls back to default (2000 / 8 / 20 / 240). Empty `{}` or NULL → all defaults.
 - **`write_obs_status` signature (Rust)**: `(connection: &Connection, user_id: &str, role: &str, last_status: &str, intent: &str, last_error: Option<&str>)`. Uses `ParameterValue::DbNull` for `None` last_error. Fail-safe: on UPDATE error, logs `[DEBUG] write_obs_status: UPDATE failed (columns may be absent): ...` and returns silently.
 - **`cloud_role()` extracted**: Reads `cloud_provider` Spin variable; maps "akamai" → "akamai_functions", "fermyon" → "fermyon_cloud", else "unknown_cloud". Used by both `register_cloud_heartbeat` and `write_obs_status` call sites.
 - **`obs_status_query()` pure helper**: Returns the static SQL UPDATE string. Used in `write_obs_status`; tested independently without a DB connection.

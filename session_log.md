@@ -2401,3 +2401,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: PR to kingdonb/mecris — still blocked by expired GITHUB_CLASSIC_PAT (persistent human-required blocker). No new tasks started.
 
 **Next**: Renew `GITHUB_CLASSIC_PAT` (human-required) and open PRs for all pending commits to kingdonb/mecris. Bot-actionable: Port Twilio to WASM Brain (#167) or Rust Reminder Engine (#169).
+
+## 🏛️ 2026-04-26 — Rust Reminder Engine: per-user notification_prefs in should_dispatch_reminder (session #56, yebyen/mecris#285, complete)
+
+**Planned**: Parse the `notification_prefs` JSONB column from `users` and pass per-user step threshold, window hours, and rate-limit minutes to `should_dispatch_reminder`, replacing hardcoded defaults. (Plan: yebyen/mecris#285, toward: kingdonb/mecris#169)
+
+**Done**: Orient found both kingdonb/mecris#167 (Twilio WASM Port) and kingdonb/mecris#169 (Rust Reminder Engine) as bot-actionable but also substantially already implemented — the orient step discovered that both features were already built in prior sessions. Identified the actual gap: `notification_prefs JSONB DEFAULT '{}'` exists in `mecris-go-spin/schema.sql` but was never queried by the reminder engine, which used hardcoded 2000 / 8–20h / 240-min defaults for all users. Created plan yebyen/mecris#285. Added `NotificationPrefs` struct with `Default` impl. Added `parse_notification_prefs(Option<&str>) -> NotificationPrefs` — pure, falls back to defaults on None/empty/malformed. Updated `should_dispatch_reminder` signature to accept `&NotificationPrefs`. Updated the `users` query to include `COALESCE(notification_prefs::TEXT, '{}')` as a 6th column. Row destructuring now parses prefs and passes `&prefs` to `should_dispatch_reminder`. Updated 4 existing tests; added 9 new tests (3 for parse_notification_prefs covering defaults/overrides/malformed, 3 for should_dispatch_reminder with custom prefs, 1 confirming window override, 1 confirming rate-limit override). cargo test → 136 passed, 0 failed. Committed `18a0b14`. Closed yebyen/mecris#285.
+
+**Skipped**: Writing to `notification_prefs` — there's no endpoint or MCP tool to set per-user prefs yet. Noted as future bot-actionable item in NEXT_SESSION.md. PR to kingdonb/mecris — still blocked by expired GITHUB_CLASSIC_PAT.
+
+**Next**: Renew `GITHUB_CLASSIC_PAT` (human-required) and open PR for all pending commits. Bot-actionable: AI Framework Evaluation (#205) or JIT Secret Manager (#204) — the larger Rust/WASM epics (#167, #169) are now functionally complete in yebyen/mecris.
