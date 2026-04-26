@@ -2371,3 +2371,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: PR to kingdonb/mecris — still blocked by expired GITHUB_CLASSIC_PAT (persistent human-required blocker). No new bot-actionable tasks started.
 
 **Next**: Renew `GITHUB_CLASSIC_PAT` (human-required) and open PRs for all pending commits to kingdonb/mecris. Bot-actionable next: Port Twilio to WASM Brain (#167) or Rust Reminder Engine (#169).
+
+## 🏛️ 2026-04-26 — Observability Mandate Phase 1: last_status/last_error/intent in scheduler_election (session #53, yebyen/mecris#282, complete)
+
+**Planned**: Add `last_status`, `last_error`, `intent` columns to `scheduler_election` via migration script v8; update `HealthChecker` to return these fields; update `scheduler.py` heartbeat writes to populate them; add unit tests. (Plan: yebyen/mecris#282, upstream: kingdonb/mecris#245)
+
+**Done**: Orient found kingdonb/mecris#245 (Observability Mandate epic, open, no in-progress work) as the highest-value bot-actionable item. Created plan yebyen/mecris#282. Wrote `scripts/migrate_v8_observability.py` — idempotent `ALTER TABLE scheduler_election ADD COLUMN IF NOT EXISTS` for `last_status VARCHAR(255)`, `last_error TEXT`, `intent VARCHAR(255)`. Updated `services/health_checker.py` — detects obs columns via `information_schema.columns` on each connection; when present queries all 7 fields and returns them; when absent returns the 4-field shape with `last_status/last_error/intent = None` (backward-compat). Added `_write_obs_status(cur, last_status, intent)` to `scheduler.py` — uses a SAVEPOINT per write; on election claim sets "Elected as leader"/"claim leadership", on heartbeat maintenance sets "Heartbeat active"/"maintain leadership"; caches `_has_obs_columns` flag so column checks don't repeat. Updated `tests/test_health_checker.py` — 13 tests (up from 9): pre-migration fallback (obs fields = None), post-migration full field mapping, heartbeat ISO formatting with obs columns. All 13 pass. No regressions: 60 tests across narrator, ask_mecris, and health_checker all green. Committed `9020007`. Closed yebyen/mecris#282.
+
+**Skipped**: Observability Phase 2 (Rust WASM `sync-service` writes, `last_error` on exception paths in scheduler leader jobs) — scoped out of this session intentionally; Phase 1 is the Python foundation. PR to kingdonb/mecris — still blocked by expired GITHUB_CLASSIC_PAT.
+
+**Next**: Renew `GITHUB_CLASSIC_PAT` (human-required) and open PRs. Bot-actionable: Observability Phase 2 — write `last_error` on exception paths in scheduler jobs, or Port Twilio to WASM Brain (#167).
