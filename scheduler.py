@@ -265,20 +265,21 @@ class MecrisScheduler:
                 logger.error(f"Election error: {e}")
                 await asyncio.sleep(5)
 
-    def _write_obs_status(self, cur, last_status: str, intent: str) -> None:
-        """Write last_status and intent to scheduler_election (observability columns, migration v8+).
+    def _write_obs_status(self, cur, last_status: str, intent: str, error: str = None) -> None:
+        """Write last_status, intent, and optionally last_error to scheduler_election.
 
         Uses a SAVEPOINT so that a missing column does not abort the outer transaction.
         Sets self._has_obs_columns = False and logs at DEBUG if columns are absent.
+        Pass error=str(exc) to record the exception string in last_error; omit to write NULL.
         """
         if self._has_obs_columns is False:
             return
         try:
             cur.execute("SAVEPOINT obs_write")
             cur.execute(
-                "UPDATE scheduler_election SET last_status = %s, intent = %s "
+                "UPDATE scheduler_election SET last_status = %s, intent = %s, last_error = %s "
                 "WHERE user_id = %s AND role = 'leader' AND process_id = %s",
-                (last_status, intent, self.user_id, self.process_id),
+                (last_status, intent, error, self.user_id, self.process_id),
             )
             cur.execute("RELEASE SAVEPOINT obs_write")
             self._has_obs_columns = True
@@ -323,6 +324,8 @@ class MecrisScheduler:
                                 if not row or row[0] != self.process_id:
                                     logger.warning(f"🏳️ Process {self.process_id} LOST leadership for {self.user_id} (Neon). Current leader: {row[0] if row else 'None'}")
                                     self.is_leader = False
+                                    preempted_by = row[0] if row else "unknown"
+                                    self._write_obs_status(cur, "Lost leadership", "standby", error=f"preempted by {preempted_by}")
                                     self._stop_leader_jobs()
                                 else:
                                     # We are still leader, maintain heartbeat
