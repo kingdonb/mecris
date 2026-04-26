@@ -2381,3 +2381,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: Observability Phase 2 (Rust WASM `sync-service` writes, `last_error` on exception paths in scheduler leader jobs) — scoped out of this session intentionally; Phase 1 is the Python foundation. PR to kingdonb/mecris — still blocked by expired GITHUB_CLASSIC_PAT.
 
 **Next**: Renew `GITHUB_CLASSIC_PAT` (human-required) and open PRs. Bot-actionable: Observability Phase 2 — write `last_error` on exception paths in scheduler jobs, or Port Twilio to WASM Brain (#167).
+
+## 🏛️ 2026-04-26 — Observability Phase 2 (Python): write last_error on lost-leadership in scheduler (session #54, yebyen/mecris#283, complete)
+
+**Planned**: Extend `_write_obs_status()` in `scheduler.py` to accept an optional `error` argument and persist it to `scheduler_election.last_error` when exceptions occur during leader job execution; add ≥2 tests covering the write path. (Plan: yebyen/mecris#283, upstream: kingdonb/mecris#245 req 4)
+
+**Done**: Orient found yebyen/mecris#283 already written by session #53 — went straight to implementation. Extended `_write_obs_status(cur, last_status, intent, error=None)` — UPDATE now sets `last_error = %s` (NULL when omitted, clears stale errors). Added `_write_obs_status` call on lost-leadership path with `error="preempted by <process_id>"`. Added `TestWriteObsStatus` class in `tests/test_scheduler_election.py` with 4 new tests: error arg written to UPDATE, None written when omitted, early-return when columns absent, end-to-end demote path. `PYTHONPATH=. python3 -m pytest tests/test_health_checker.py tests/test_scheduler_election.py -v` → 19 passed, 0 failed. Committed `b703fdd`. Closed yebyen/mecris#283.
+
+**Skipped**: Tests placed in `test_scheduler_election.py` instead of `test_health_checker.py` as the issue spec suggested — read-path tests belong in health_checker, write-path tests belong in scheduler. Noted in issue comment. Rust WASM observability (kingdonb/mecris#245 req 3) — still pending, requires Rust/WASM work.
+
+**Next**: Renew `GITHUB_CLASSIC_PAT` (human-required) and open PRs for all pending commits. Bot-actionable: Observability Phase 2 Rust WASM Backend (update `sync-service/src/lib.rs` to write stand-downs to `last_status`), or Port Twilio to WASM Brain (#167).
