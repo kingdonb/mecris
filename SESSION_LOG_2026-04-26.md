@@ -37,6 +37,11 @@ As we move accountability logic into WASM via `componentize-py`, we are creating
 ### 3. Infrastructure Fragility (GCR Deprecation)
 Even official Helm charts are currently breaking due to the GCR -> `registry.k8s.io` migration. Always check for `ErrImagePull` on sidecars like `kube-rbac-proxy`.
 
+### 4. Stoic Synchronicity & The Midnight Mandate
+During the Groq spend emergency, we confronted the "Reality Gap" between our database (Neon) and Beeminder visualization.
+- **The Learning**: "Derailing NOW" is a call to action, not a cause for panic, as actual derailment happens at midnight. 
+- **The Practice**: Fulfill the intent via the MCP tool and trust the asynchronous "Fellas" (sync workers) to propagate the data. Manual "blasts" bypass the system's design and should be avoided. Formalized in `docs/BEEMINDER_ASYNC_LORE.md`.
+
 ## 📈 Status
 - **Beta 4**: Local validation complete. Local Kubernetes blueprint established.
 - **Cloud Blockers**: Fermyon/Akamai still lack Spin 4.0.0 host support. Spintainer is our path forward for private K8s hosting.
