@@ -2361,3 +2361,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: Narrator integration (auto-surface bookmarks from active goal titles in `get_narrator_context`) — deferred as phase 2 of #208. PR to kingdonb/mecris — still blocked by expired GITHUB_CLASSIC_PAT (persistent human-required blocker).
 
 **Next**: Narrator integration for semantic bookmark search (kingdonb/mecris#208 phase 2) — wire `search_bookmarks` into `get_narrator_context` using current goal titles as queries. Or: renew GITHUB_CLASSIC_PAT and open PRs (human-required).
+
+## 🏛️ 2026-04-26 — Narrator bookmark enrichment in get_narrator_context (session #52, yebyen/mecris#281, complete)
+
+**Planned**: Extend `get_narrator_context` to auto-call `search_bookmarks` using active Beeminder goal titles as queries and surface matches as `related_bookmarks` in the narrator response. (Plan: yebyen/mecris#281, upstream: kingdonb/mecris#208 phase 2)
+
+**Done**: Orient found no tagged issues in either repo. Top bot-actionable from NEXT_SESSION.md was Narrator integration for semantic_index (#208 phase 2). Created plan yebyen/mecris#281. Explored `get_narrator_context` (mcp_server.py:410) and `search_bookmarks` (services/semantic_index.py). Added `BookmarkIndex` to the import. Added module-level `_enrich_bookmarks_for_narrator(goals)` — builds TF-IDF index once, queries up to 5 goals CRITICAL-first, deduplicates by URL, caps at 5 total results. Wired into `get_narrator_context` via `asyncio.to_thread`; adds `related_bookmarks` field to the response. Fail-open: exception → `[]` with a warning log. Created `tests/test_narrator_bookmark_enrichment.py` — 8 unit tests covering: empty-file graceful return, match for known goal, URL deduplication, CRITICAL-first ordering, presence of `related_bookmarks` key in narrator context, empty-on-no-file, populated-from-mock, and failure-does-not-crash. All 8 pass. Also confirmed 32 semantic_index tests + 23 chrome_bookmarks tests still pass (55 total). Committed `f91710b`. Closed yebyen/mecris#281.
+
+**Skipped**: PR to kingdonb/mecris — still blocked by expired GITHUB_CLASSIC_PAT (persistent human-required blocker). No new bot-actionable tasks started.
+
+**Next**: Renew `GITHUB_CLASSIC_PAT` (human-required) and open PRs for all pending commits to kingdonb/mecris. Bot-actionable next: Port Twilio to WASM Brain (#167) or Rust Reminder Engine (#169).
