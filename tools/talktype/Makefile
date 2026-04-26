@@ -2,6 +2,7 @@
 # Located in mecris/tools/talktype/
 
 .PHONY: do all server client client-groq stop-server status help setup logs clean check-deps sync-upstream
+.PHONY: client-groq-ar client-groq-el client-groq-es client-groq-fr
 
 # Variables
 TALKTYPE_REPO := talktype-repo
@@ -97,6 +98,33 @@ client-groq-ar:
 	fi
 	@cd $(TALKTYPE_REPO) && \
 	../$(VENV_PYTHON) $(TALKTYPE_PY) -l ar --api $(GROQ_API_URL) --api-model $(GROQ_MODEL) --minimal
+
+client-groq-el:
+	@echo "$(GREEN)Running TalkType client using Groq cloud API...$(RESET)"
+	@if [ -z "$$GROQ_API_KEY" ]; then \
+		echo "$(RED)Error: GROQ_API_KEY is not set.$(RESET)"; \
+		exit 1; \
+	fi
+	@cd $(TALKTYPE_REPO) && \
+	../$(VENV_PYTHON) $(TALKTYPE_PY) -l el --api $(GROQ_API_URL) --api-model $(GROQ_MODEL) --minimal
+
+client-groq-es:
+	@echo "$(GREEN)Running TalkType client using Groq cloud API...$(RESET)"
+	@if [ -z "$$GROQ_API_KEY" ]; then \
+		echo "$(RED)Error: GROQ_API_KEY is not set.$(RESET)"; \
+		exit 1; \
+	fi
+	@cd $(TALKTYPE_REPO) && \
+	../$(VENV_PYTHON) $(TALKTYPE_PY) -l es --api $(GROQ_API_URL) --api-model $(GROQ_MODEL) --minimal
+
+client-groq-fr:
+	@echo "$(GREEN)Running TalkType client using Groq cloud API...$(RESET)"
+	@if [ -z "$$GROQ_API_KEY" ]; then \
+		echo "$(RED)Error: GROQ_API_KEY is not set.$(RESET)"; \
+		exit 1; \
+	fi
+	@cd $(TALKTYPE_REPO) && \
+	../$(VENV_PYTHON) $(TALKTYPE_PY) -l fr --api $(GROQ_API_URL) --api-model $(GROQ_MODEL) --minimal
 
 sync-upstream:
 	@echo "$(YELLOW)Syncing talktype-repo with upstream...$(RESET)"
