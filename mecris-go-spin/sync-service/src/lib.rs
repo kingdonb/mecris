@@ -1768,9 +1768,10 @@ async fn handle_trigger_reminders_post(_req: Request) -> anyhow::Result<Response
     let db_url = variables::get("db_url").or_else(|_| variables::get("neon_db_url"))?;
     let connection = Connection::open(&db_url)?;
 
-    // Include per-user location columns; COALESCE to empty string so absent values parse as None.
+    // Include per-user location and notification_prefs columns; COALESCE to empty string so absent values parse as None/defaults.
     let query = "SELECT pocket_id_sub, phone_number_encrypted, COALESCE(timezone, 'UTC'), \
-                 COALESCE(location_lat::TEXT, ''), COALESCE(location_lon::TEXT, '') \
+                 COALESCE(location_lat::TEXT, ''), COALESCE(location_lon::TEXT, ''), \
+                 COALESCE(notification_prefs::TEXT, '{}') \
                  FROM users WHERE phone_number_encrypted IS NOT NULL AND phone_number_encrypted != '' \
                  AND autonomous_sync_enabled = true";
     let row_set = connection.query(query, &[])?;
@@ -1796,6 +1797,8 @@ async fn handle_trigger_reminders_post(_req: Request) -> anyhow::Result<Response
         let timezone = match &row[2] { DbValue::Str(s) => s.clone(), _ => "UTC".to_string() };
         let user_lat_str = match &row[3] { DbValue::Str(s) if !s.is_empty() => Some(s.as_str()), _ => None };
         let user_lon_str = match &row[4] { DbValue::Str(s) if !s.is_empty() => Some(s.as_str()), _ => None };
+        let prefs_json = match &row[5] { DbValue::Str(s) if !s.is_empty() => Some(s.as_str()), _ => None };
+        let prefs = parse_notification_prefs(prefs_json);
 
         // Phase 3: timezone-aware local hour
         let local_hour = local_hour_from_timezone(&timezone, &now_utc);
@@ -1823,7 +1826,7 @@ async fn handle_trigger_reminders_post(_req: Request) -> anyhow::Result<Response
         };
         let minutes_since_last = minutes_since_last_reminder(last_sent_at.as_deref(), now_epoch_secs);
 
-        if !should_dispatch_reminder(local_hour, step_count, minutes_since_last) {
+        if !should_dispatch_reminder(local_hour, step_count, minutes_since_last, &prefs) {
             println!("Skipping reminder for user {} (hour={}, steps={}, mins_since_last={:?})", user_id, local_hour, step_count, minutes_since_last);
             write_obs_status(&connection, &user_id, &cloud_role(), "Stood down (conditions not met)", "Send Walk Reminder", None);
             continue;
@@ -2317,14 +2320,67 @@ fn is_autonomous_sync_allowed(enabled: bool, minutes_since_last: Option<u64>) ->
     }
 }
 
+/// Per-user notification preferences parsed from the `notification_prefs` JSONB column.
+/// All fields fall back to system-wide defaults when absent or unparseable.
+#[derive(Debug, PartialEq)]
+struct NotificationPrefs {
+    step_threshold: u32,     // steps goal; dispatch suppressed when met
+    window_start_hour: u32,  // local hour (0–23) at which reminders begin
+    window_end_hour: u32,    // local hour (0–23) at which reminders stop (exclusive)
+    rate_limit_minutes: u64, // minimum minutes between consecutive reminders
+}
+
+impl Default for NotificationPrefs {
+    fn default() -> Self {
+        NotificationPrefs {
+            step_threshold: 2000,
+            window_start_hour: 8,
+            window_end_hour: 20,
+            rate_limit_minutes: 240,
+        }
+    }
+}
+
+/// Parse `notification_prefs` JSONB (as a text string) into `NotificationPrefs`.
+/// Returns `NotificationPrefs::default()` for None, empty, or malformed JSON.
+fn parse_notification_prefs(json_str: Option<&str>) -> NotificationPrefs {
+    let defaults = NotificationPrefs::default();
+    let s = match json_str {
+        Some(s) if !s.is_empty() && s.trim() != "{}" => s,
+        _ => return defaults,
+    };
+    let v: serde_json::Value = match serde_json::from_str(s) {
+        Ok(v) => v,
+        Err(_) => return defaults,
+    };
+    NotificationPrefs {
+        step_threshold: v.get("step_threshold")
+            .and_then(|x| x.as_u64()).map(|x| x as u32)
+            .unwrap_or(defaults.step_threshold),
+        window_start_hour: v.get("window_start_hour")
+            .and_then(|x| x.as_u64()).map(|x| x as u32)
+            .unwrap_or(defaults.window_start_hour),
+        window_end_hour: v.get("window_end_hour")
+            .and_then(|x| x.as_u64()).map(|x| x as u32)
+            .unwrap_or(defaults.window_end_hour),
+        rate_limit_minutes: v.get("rate_limit_minutes")
+            .and_then(|x| x.as_u64())
+            .unwrap_or(defaults.rate_limit_minutes),
+    }
+}
+
 /// Combined heuristic: returns true only when all three conditions are satisfied.
-/// - Local hour is within the active reminder window (8 AM–8 PM)
-/// - Step count is below the 2000-step threshold
-/// - Rate limit allows sending (≥30 min since last, or no prior message)
-fn should_dispatch_reminder(local_hour: u32, step_count: u32, minutes_since_last: Option<u64>) -> bool {
-    is_within_reminder_window(local_hour)
-        && is_below_step_threshold(step_count, 2000)
-        && is_rate_limit_ok(minutes_since_last)
+/// - Local hour is within the per-user active reminder window (default 8 AM–8 PM)
+/// - Step count is below the per-user step threshold (default 2000)
+/// - Rate limit allows sending (≥ per-user rate_limit_minutes since last, or no prior message)
+fn should_dispatch_reminder(local_hour: u32, step_count: u32, minutes_since_last: Option<u64>, prefs: &NotificationPrefs) -> bool {
+    let in_window = local_hour >= prefs.window_start_hour && local_hour < prefs.window_end_hour;
+    let below_threshold = step_count < prefs.step_threshold;
+    let rate_ok = match minutes_since_last {
+        None => true,
+        Some(m) => m >= prefs.rate_limit_minutes,
+    };
+    in_window && below_threshold && rate_ok
 }
 
 /// Returns true if the Android client has a fresh heartbeat within the past 4 hours.
@@ -2838,25 +2894,94 @@ mod tests {
     #[test]
     fn test_should_dispatch_all_conditions_met() {
         // Active hour, low steps, no prior message → dispatch
-        assert!(should_dispatch_reminder(10, 500, None));
+        assert!(should_dispatch_reminder(10, 500, None, &NotificationPrefs::default()));
     }
 
     #[test]
     fn test_should_dispatch_wrong_hour_blocks() {
         // Sleep window: suppress even with low steps and no prior message
-        assert!(!should_dispatch_reminder(2, 500, None));
+        assert!(!should_dispatch_reminder(2, 500, None, &NotificationPrefs::default()));
     }
 
     #[test]
     fn test_should_dispatch_goal_met_blocks() {
         // Step goal reached: suppress even in active window
-        assert!(!should_dispatch_reminder(10, 2000, None));
+        assert!(!should_dispatch_reminder(10, 2000, None, &NotificationPrefs::default()));
     }
 
     #[test]
     fn test_should_dispatch_rate_limited_blocks() {
         // Too recent: suppress even with low steps in active window
-        assert!(!should_dispatch_reminder(10, 500, Some(15)));
+        assert!(!should_dispatch_reminder(10, 500, Some(15), &NotificationPrefs::default()));
+    }
+
+    // --- parse_notification_prefs ---
+
+    #[test]
+    fn test_parse_notification_prefs_empty_uses_defaults() {
+        let p = parse_notification_prefs(None);
+        assert_eq!(p, NotificationPrefs::default());
+    }
+
+    #[test]
+    fn test_parse_notification_prefs_empty_string_uses_defaults() {
+        let p = parse_notification_prefs(Some("{}"));
+        assert_eq!(p, NotificationPrefs::default());
+    }
+
+    #[test]
+    fn test_parse_notification_prefs_step_threshold_override() {
+        let p = parse_notification_prefs(Some(r#"{"step_threshold": 5000}"#));
+        assert_eq!(p.step_threshold, 5000);
+        assert_eq!(p.window_start_hour, 8);  // default unchanged
+        assert_eq!(p.rate_limit_minutes, 240); // default unchanged
+    }
+
+    #[test]
+    fn test_parse_notification_prefs_window_override() {
+        let p = parse_notification_prefs(Some(r#"{"window_start_hour": 6, "window_end_hour": 22}"#));
+        assert_eq!(p.window_start_hour, 6);
+        assert_eq!(p.window_end_hour, 22);
+        assert_eq!(p.step_threshold, 2000); // default unchanged
+    }
+
+    #[test]
+    fn test_parse_notification_prefs_rate_limit_override() {
+        let p = parse_notification_prefs(Some(r#"{"rate_limit_minutes": 60}"#));
+        assert_eq!(p.rate_limit_minutes, 60);
+    }
+
+    #[test]
+    fn test_parse_notification_prefs_malformed_json_uses_defaults() {
+        let p = parse_notification_prefs(Some("not-json"));
+        assert_eq!(p, NotificationPrefs::default());
+    }
+
+    #[test]
+    fn test_should_dispatch_respects_custom_step_threshold() {
+        // Custom threshold of 1000 — 800 steps should NOT dispatch (would with default 2000)
+        let prefs = NotificationPrefs { step_threshold: 800, ..NotificationPrefs::default() };
+        assert!(!should_dispatch_reminder(10, 800, None, &prefs));
+    }
+
+    #[test]
+    fn test_should_dispatch_respects_custom_window() {
+        // Extended window: start at 6 AM — hour 7 should dispatch
+        let prefs = NotificationPrefs { window_start_hour: 6, ..NotificationPrefs::default() };
+        assert!(should_dispatch_reminder(7, 100, None, &prefs));
+        // Original default window: hour 7 should NOT dispatch
+        assert!(!should_dispatch_reminder(7, 100, None, &NotificationPrefs::default()));
+    }
+
+    #[test]
+    fn test_should_dispatch_respects_custom_rate_limit() {
+        // Tighter rate limit of 60 min — 30 min since last should block
+        let prefs = NotificationPrefs { rate_limit_minutes: 60, ..NotificationPrefs::default() };
+        assert!(!should_dispatch_reminder(10, 100, Some(30), &prefs));
+        // 250 min since last: passes default 240-min limit but fails 300-min strict limit
+        let strict_prefs = NotificationPrefs { rate_limit_minutes: 300, ..NotificationPrefs::default() };
+        assert!(!should_dispatch_reminder(10, 100, Some(250), &strict_prefs));
+        assert!(should_dispatch_reminder(10, 100, Some(250), &NotificationPrefs::default()));
     }
 
     // --- is_weather_ok_for_walk ---
