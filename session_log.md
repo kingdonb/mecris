@@ -2391,3 +2391,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: Tests placed in `test_scheduler_election.py` instead of `test_health_checker.py` as the issue spec suggested — read-path tests belong in health_checker, write-path tests belong in scheduler. Noted in issue comment. Rust WASM observability (kingdonb/mecris#245 req 3) — still pending, requires Rust/WASM work.
 
 **Next**: Renew `GITHUB_CLASSIC_PAT` (human-required) and open PRs for all pending commits. Bot-actionable: Observability Phase 2 Rust WASM Backend (update `sync-service/src/lib.rs` to write stand-downs to `last_status`), or Port Twilio to WASM Brain (#167).
+
+## 🏛️ 2026-04-26 — Observability Phase 2 (Rust WASM): write_obs_status in sync-service (session #55, yebyen/mecris#284, complete)
+
+**Planned**: Update `sync-service/src/lib.rs` to record every "Silent Decision" (stand-downs, reminder dispatches, Twilio errors) into `scheduler_election.last_status/intent/last_error` by adding a fail-safe `write_obs_status()` helper. (Plan: yebyen/mecris#284, upstream: kingdonb/mecris#245 req 3)
+
+**Done**: Orient found yebyen/mecris#284 as the only open plan issue and the top bot-actionable item in NEXT_SESSION.md. Read `sync-service/src/lib.rs` (3356 lines). Extracted `cloud_role() -> String` from `register_cloud_heartbeat` to eliminate role-computation duplication. Added `obs_status_query() -> &'static str` pure helper returning the UPDATE SQL (testable without DB). Added `write_obs_status(connection, user_id, role, last_status, intent, last_error: Option<&str>)` — fail-safe: uses `ParameterValue::DbNull` for None last_error; on UPDATE failure logs `[DEBUG]` and returns silently. Added 4 call sites in `handle_trigger_reminders_post`: (1) `should_dispatch_reminder` stand-down → `"Stood down (conditions not met)"`, (2) Ghost Nag guard → `"Stood down (Android client active Nmin ago)"`, (3) Twilio success → `"Sent Walk Reminder"`, (4) Twilio error → `"Reminder failed"` + error string. Wrote 5 unit tests for `obs_status_query()` SQL string assertions. `cargo test` → 127 passed, 0 failures. Committed `a125430`. Closed yebyen/mecris#284.
+
+**Skipped**: PR to kingdonb/mecris — still blocked by expired GITHUB_CLASSIC_PAT (persistent human-required blocker). No new tasks started.
+
+**Next**: Renew `GITHUB_CLASSIC_PAT` (human-required) and open PRs for all pending commits to kingdonb/mecris. Bot-actionable: Port Twilio to WASM Brain (#167) or Rust Reminder Engine (#169).
