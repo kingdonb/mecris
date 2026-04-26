@@ -35,5 +35,9 @@ This catalog tracks important documentation slugs found in the `doc.beeminder.co
 - **Topic:** Blog drafting and internal wiki structure.
 - **Lore:** General internal wiki documentation.
 
+### 6. `Stoic Synchronicity` (Mecris Local Lore)
+- **Topic:** Asynchronous Data Handling.
+- **Lore:** Formalized in `docs/BEEMINDER_ASYNC_LORE.md`. Explains that "Derailing NOW" is a midnight deadline and emphasizes trusting the asynchronous "Fellas" (sync processes) over manual workarounds.
+
 ## 🧠 Architectural Meta-Lore: ExPost
 The system itself is a lesson in **Dogfooding**. Instead of using a heavy CMS, they use a tool (Etherpad) that supports real-time collaboration and render it directly. This mirrors our own "Progressive Delivery" approach: we build tools that solve our immediate problems (like the Clozemaster Scraper) and integrate them directly into our daily narrative.
