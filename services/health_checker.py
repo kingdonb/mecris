@@ -26,6 +26,9 @@ class HealthChecker:
         """
         Fetch all rows from scheduler_election for user_id (or global rows where user_id IS NULL).
         Returns a list sorted by role.
+
+        Includes last_status, last_error, and intent columns when present (migration v8+).
+        Falls back gracefully if columns don't exist yet (pre-migration environments).
         """
         if not self.neon_url:
             return []
@@ -34,23 +37,57 @@ class HealthChecker:
             import psycopg2
             with psycopg2.connect(self.neon_url) as conn:
                 with conn.cursor() as cur:
+                    # Detect whether observability columns exist (migration v8).
                     cur.execute("""
-                        SELECT role, process_id, heartbeat,
-                               heartbeat > NOW() - INTERVAL '90 seconds' AS is_active
-                        FROM scheduler_election
-                        WHERE user_id = %s OR user_id IS NULL
-                        ORDER BY role
-                    """, (user_id,))
-                    rows = cur.fetchall()
+                        SELECT column_name
+                        FROM information_schema.columns
+                        WHERE table_name = 'scheduler_election'
+                          AND column_name IN ('last_status', 'last_error', 'intent')
+                    """)
+                    obs_cols = {row[0] for row in cur.fetchall()}
+                    has_obs = obs_cols >= {"last_status", "last_error", "intent"}
 
-            processes = []
-            for role, process_id, heartbeat, is_active in rows:
-                processes.append({
-                    "role": role,
-                    "process_id": process_id,
-                    "last_heartbeat": heartbeat.isoformat() if heartbeat else None,
-                    "is_active": bool(is_active),
-                })
+                    if has_obs:
+                        cur.execute("""
+                            SELECT role, process_id, heartbeat,
+                                   heartbeat > NOW() - INTERVAL '90 seconds' AS is_active,
+                                   last_status, last_error, intent
+                            FROM scheduler_election
+                            WHERE user_id = %s OR user_id IS NULL
+                            ORDER BY role
+                        """, (user_id,))
+                        rows = cur.fetchall()
+                        processes = []
+                        for role, process_id, heartbeat, is_active, last_status, last_error, intent in rows:
+                            processes.append({
+                                "role": role,
+                                "process_id": process_id,
+                                "last_heartbeat": heartbeat.isoformat() if heartbeat else None,
+                                "is_active": bool(is_active),
+                                "last_status": last_status,
+                                "last_error": last_error,
+                                "intent": intent,
+                            })
+                    else:
+                        cur.execute("""
+                            SELECT role, process_id, heartbeat,
+                                   heartbeat > NOW() - INTERVAL '90 seconds' AS is_active
+                            FROM scheduler_election
+                            WHERE user_id = %s OR user_id IS NULL
+                            ORDER BY role
+                        """, (user_id,))
+                        rows = cur.fetchall()
+                        processes = []
+                        for role, process_id, heartbeat, is_active in rows:
+                            processes.append({
+                                "role": role,
+                                "process_id": process_id,
+                                "last_heartbeat": heartbeat.isoformat() if heartbeat else None,
+                                "is_active": bool(is_active),
+                                "last_status": None,
+                                "last_error": None,
+                                "intent": None,
+                            })
             return processes
 
         except Exception as e:
