@@ -555,7 +555,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "69d83b0086dc8ecf3ce9ae2874b2d1290252e2a30720bea58a5c6639b0092873"
 dependencies = [
  "libc",
- "wasi",
+ "wasi 0.11.1+wasi-snapshot-preview1",
  "windows-sys 0.61.2",
 ]
 
@@ -974,20 +974,20 @@ dependencies = [
 
 [[package]]
 name = "spin-executor"
-version = "3.1.1"
+version = "4.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8d11baf86ca52100e8742ea43d2c342cf4d75b94f8a85454cf44fd108cdd71d5"
+checksum = "f3fd5c317f89c040f882f3260e8ef933ca0c9a7b1b169ea5793dae3e552e8873"
 dependencies = [
  "futures",
  "once_cell",
- "wit-bindgen 0.16.0",
+ "wasi 0.13.1+wasi-0.2.0",
 ]
 
 [[package]]
 name = "spin-macro"
-version = "3.1.1"
+version = "4.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "988ffe27470862bf28fe9b4f0268361040d4732cd86bcaebe45aa3d3b3e3d896"
+checksum = "07524b07786d812f7360ff81dc7e0a055d946aa87afea9cdbd19142b795bd440"
 dependencies = [
  "anyhow",
  "bytes",
@@ -998,9 +998,9 @@ dependencies = [
 
 [[package]]
 name = "spin-sdk"
-version = "3.1.1"
+version = "4.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f845e889d8431740806e04704ac5aa619466dfaef626f3c15952ecf823913e01"
+checksum = "48ce1128f028feca1cbbedb19f867328e172765dc94750a6b094ddc5e09acb3c"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1016,6 +1016,7 @@ dependencies = [
  "spin-executor",
  "spin-macro",
  "thiserror",
+ "wasi 0.13.1+wasi-0.2.0",
  "wit-bindgen 0.16.0",
 ]
 
@@ -1198,6 +1199,15 @@ name = "wasi"
 version = "0.11.1+wasi-snapshot-preview1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ccf3ec651a847eb01de73ccad15eb7d99f80485de043efb2f370cd654f4ea44b"
+
+[[package]]
+name = "wasi"
+version = "0.13.1+wasi-0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2f43d1c36145feb89a3e61aa0ba3e582d976a8ab77f1474aa0adb80800fe0cf8"
+dependencies = [
+ "wit-bindgen-rt",
+]
 
 [[package]]
 name = "wasip2"
@@ -1562,6 +1572,15 @@ dependencies = [
  "anyhow",
  "wit-component",
  "wit-parser",
+]
+
+[[package]]
+name = "wit-bindgen-rt"
+version = "0.24.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3b0780cf7046630ed70f689a098cd8d56c5c3b22f2a7379bbdb088879963ff96"
+dependencies = [
+ "bitflags",
 ]
 
 [[package]]
