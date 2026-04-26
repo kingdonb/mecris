@@ -184,14 +184,49 @@ fn add_cors(resp: Response) -> Response {
     builder.body(resp.into_body()).build()
 }
 
+fn cloud_role() -> String {
+    let provider = variables::get("cloud_provider").unwrap_or_else(|_| "unknown_cloud".to_string());
+    match provider.as_str() {
+        "akamai" => "akamai_functions".to_string(),
+        "fermyon" => "fermyon_cloud".to_string(),
+        _ => "unknown_cloud".to_string(),
+    }
+}
+
+/// Returns the SQL UPDATE query used by write_obs_status. Pure function — testable.
+fn obs_status_query() -> &'static str {
+    "UPDATE scheduler_election SET last_status = $3, intent = $4, last_error = $5 \
+     WHERE user_id = $1 AND role = $2"
+}
+
+/// Write observability status to scheduler_election. Fail-safe: if the UPDATE fails
+/// (e.g. columns absent pre-migration), logs at DEBUG and returns without error.
+fn write_obs_status(
+    connection: &Connection,
+    user_id: &str,
+    role: &str,
+    last_status: &str,
+    intent: &str,
+    last_error: Option<&str>,
+) {
+    let error_param = match last_error {
+        Some(e) => ParameterValue::Str(e.to_string()),
+        None => ParameterValue::DbNull,
+    };
+    if let Err(e) = connection.execute(obs_status_query(), &[
+        ParameterValue::Str(user_id.to_string()),
+        ParameterValue::Str(role.to_string()),
+        ParameterValue::Str(last_status.to_string()),
+        ParameterValue::Str(intent.to_string()),
+        error_param,
+    ]) {
+        println!("[DEBUG] write_obs_status: UPDATE failed (columns may be absent): {}", e);
+    }
+}
+
 async fn register_cloud_heartbeat(connection: &Connection, user_id: &str) -> anyhow::Result<()> {
     let provider = variables::get("cloud_provider").unwrap_or_else(|_| "unknown_cloud".to_string());
-    
-    let role = match provider.as_str() {
-        "akamai" => "akamai_functions",
-        "fermyon" => "fermyon_cloud",
-        _ => "unknown_cloud",
-    };
+    let role = cloud_role();
 
     println!("REGISTERING HEARTBEAT: user={} role={} provider={}", user_id, role, provider);
 
@@ -199,7 +234,7 @@ async fn register_cloud_heartbeat(connection: &Connection, user_id: &str) -> any
                  VALUES ($1, $2, $3, CURRENT_TIMESTAMP) \
                  ON CONFLICT (user_id, role) DO UPDATE SET \
                  heartbeat = EXCLUDED.heartbeat, process_id = EXCLUDED.process_id";
-    
+
     connection.execute(query, &[
         ParameterValue::Str(user_id.to_string()),
         ParameterValue::Str(role.to_string()),
@@ -1790,6 +1825,7 @@ async fn handle_trigger_reminders_post(_req: Request) -> anyhow::Result<Response
 
         if !should_dispatch_reminder(local_hour, step_count, minutes_since_last) {
             println!("Skipping reminder for user {} (hour={}, steps={}, mins_since_last={:?})", user_id, local_hour, step_count, minutes_since_last);
+            write_obs_status(&connection, &user_id, &cloud_role(), "Stood down (conditions not met)", "Send Walk Reminder", None);
             continue;
         }
 
@@ -1810,6 +1846,8 @@ async fn handle_trigger_reminders_post(_req: Request) -> anyhow::Result<Response
         };
         if android_client_is_active(android_heartbeat_minutes) {
             println!("Ghost Nag guard: skipping cloud reminder for user {} — Android heartbeat {}min ago", user_id, android_heartbeat_minutes.unwrap_or(0));
+            let stand_down_status = format!("Stood down (Android client active {}min ago)", android_heartbeat_minutes.unwrap_or(0));
+            write_obs_status(&connection, &user_id, &cloud_role(), &stand_down_status, "Send Walk Reminder", None);
             continue;
         }
 
@@ -1865,10 +1903,12 @@ async fn handle_trigger_reminders_post(_req: Request) -> anyhow::Result<Response
                             "INSERT INTO message_log (user_id, type, channel) VALUES ($1, 'walk_reminder', 'sms')",
                             &[ParameterValue::Str(user_id.clone())],
                         );
+                        write_obs_status(&connection, &user_id, &cloud_role(), "Sent Walk Reminder", "Send Walk Reminder", None);
                         sent += 1;
                     }
                     Err(e) => {
                         eprintln!("Failed to send reminder to user {}: {}", user_id, e);
+                        write_obs_status(&connection, &user_id, &cloud_role(), "Reminder failed", "Send Walk Reminder", Some(&e.to_string()));
                         errors += 1;
                     }
                 }
@@ -3329,6 +3369,42 @@ mod tests {
         assert_eq!(target, 20);
         assert_eq!(flow_rate, 5);
         assert!(!goal_met);
+    }
+
+    // --- obs_status_query ---
+
+    #[test]
+    fn test_obs_status_query_updates_scheduler_election() {
+        let q = obs_status_query();
+        assert!(q.contains("UPDATE scheduler_election"), "query must UPDATE scheduler_election");
+    }
+
+    #[test]
+    fn test_obs_status_query_sets_last_status() {
+        let q = obs_status_query();
+        assert!(q.contains("last_status"), "query must set last_status");
+    }
+
+    #[test]
+    fn test_obs_status_query_sets_intent() {
+        let q = obs_status_query();
+        assert!(q.contains("intent"), "query must set intent");
+    }
+
+    #[test]
+    fn test_obs_status_query_sets_last_error() {
+        let q = obs_status_query();
+        assert!(q.contains("last_error"), "query must set last_error");
+    }
+
+    #[test]
+    fn test_obs_status_query_filters_by_user_id_and_role() {
+        let q = obs_status_query();
+        assert!(q.contains("user_id"), "query must filter by user_id");
+        assert!(q.contains("role"), "query must filter by role");
+        // $1 = user_id, $2 = role (positional params)
+        assert!(q.contains("$1"), "user_id should be $1");
+        assert!(q.contains("$2"), "role should be $2");
     }
 
     // --- add_cors ---
