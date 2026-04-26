@@ -216,6 +216,9 @@ class MecrisScheduler:
         self.is_leader = False
         self.running = False
         self._election_task = None
+        # Cached flag: True if scheduler_election has observability columns (migration v8+).
+        # None = unknown (check on first write). False = columns absent (pre-migration).
+        self._has_obs_columns: Optional[bool] = None
 
     def start(self):
         """Start the coordination engine."""
@@ -262,6 +265,32 @@ class MecrisScheduler:
                 logger.error(f"Election error: {e}")
                 await asyncio.sleep(5)
 
+    def _write_obs_status(self, cur, last_status: str, intent: str) -> None:
+        """Write last_status and intent to scheduler_election (observability columns, migration v8+).
+
+        Uses a SAVEPOINT so that a missing column does not abort the outer transaction.
+        Sets self._has_obs_columns = False and logs at DEBUG if columns are absent.
+        """
+        if self._has_obs_columns is False:
+            return
+        try:
+            cur.execute("SAVEPOINT obs_write")
+            cur.execute(
+                "UPDATE scheduler_election SET last_status = %s, intent = %s "
+                "WHERE user_id = %s AND role = 'leader' AND process_id = %s",
+                (last_status, intent, self.user_id, self.process_id),
+            )
+            cur.execute("RELEASE SAVEPOINT obs_write")
+            self._has_obs_columns = True
+        except Exception:
+            cur.execute("ROLLBACK TO SAVEPOINT obs_write")
+            cur.execute("RELEASE SAVEPOINT obs_write")
+            if self._has_obs_columns is None:
+                logger.debug(
+                    "Observability columns absent in scheduler_election — run migrate_v8_observability.py"
+                )
+            self._has_obs_columns = False
+
     async def _attempt_leadership(self):
         """Try to claim or maintain the leader role."""
         if not self.user_id:
@@ -285,6 +314,7 @@ class MecrisScheduler:
                             if not self.is_leader:
                                 logger.info(f"🏆 Process {self.process_id} ELECTED as Leader for {self.user_id} (Neon).")
                                 self.is_leader = True
+                            self._write_obs_status(cur, "Elected as leader", "claim leadership")
                         else:
                             # Check if WE are currently the leader
                             cur.execute("SELECT process_id, heartbeat FROM scheduler_election WHERE user_id = %s AND role = 'leader'", (self.user_id,))
@@ -297,6 +327,7 @@ class MecrisScheduler:
                                 else:
                                     # We are still leader, maintain heartbeat
                                     cur.execute("UPDATE scheduler_election SET heartbeat = %s WHERE user_id = %s AND role = 'leader' AND process_id = %s", (now, self.user_id, self.process_id))
+                                    self._write_obs_status(cur, "Heartbeat active", "maintain leadership")
                                     if attempt % 20 == 0: # Log roughly every 10 minutes
                                         logger.info(f"💓 Leader {self.process_id} heartbeat active.")
                 if self.is_leader:

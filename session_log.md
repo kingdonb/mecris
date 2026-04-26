@@ -2351,3 +2351,33 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: PR to kingdonb/mecris — blocked by expired GITHUB_CLASSIC_PAT (persistent blocker). Semantic Search / Bookmark Embeddings (kingdonb/mecris#208) is the natural follow-on but deferred to a future session.
 
 **Next**: Renew `GITHUB_CLASSIC_PAT` (human-required) and open PRs for Chrome Bookmarks (`0a29cc7`), CopilotLoopback (`139d67f`), and Spin SDK v4 (`e6a0bb4`) to kingdonb/mecris. Bot-actionable next: Port Twilio to WASM Brain (#167) or Semantic Search: Bookmark Embeddings (#208).
+
+## 🏛️ 2026-04-25 — Implement TF-IDF semantic bookmark search and search_bookmarks MCP tool (session #51, yebyen/mecris#280, complete)
+
+**Planned**: Create `services/semantic_index.py` with a TF-IDF vector index over Chrome bookmarks, exposing `search_bookmarks(query, top_k=3)` via cosine similarity, wired into `mcp_server.py` as a new `@mcp.tool`. 32+ unit tests. (Plan: yebyen/mecris#280, upstream: kingdonb/mecris#208)
+
+**Done**: Orient found kingdonb had merged yebyen's Chrome Bookmarks work (`71ae7da`); no open tagged issues. Picked Semantic Bookmark Embeddings (#208) as the natural continuation. Created `services/semantic_index.py` — `BookmarkIndex` class with pure-Python TF-IDF (smoothed IDF, L2-normalised vectors, cosine similarity), `_tokenize`, `_doc_text`, and `search_bookmarks` convenience wrapper. No new dependencies (stdlib only). Wired `search_bookmarks` into `mcp_server.py` as `@mcp.tool`. Created `tests/test_semantic_index.py` — 32 unit tests across tokeniser, doc_text, fit, search ranking, and convenience function. All 32 pass. Committed `5be5a79`. yebyen/mecris#280 closed.
+
+**Skipped**: Narrator integration (auto-surface bookmarks from active goal titles in `get_narrator_context`) — deferred as phase 2 of #208. PR to kingdonb/mecris — still blocked by expired GITHUB_CLASSIC_PAT (persistent human-required blocker).
+
+**Next**: Narrator integration for semantic bookmark search (kingdonb/mecris#208 phase 2) — wire `search_bookmarks` into `get_narrator_context` using current goal titles as queries. Or: renew GITHUB_CLASSIC_PAT and open PRs (human-required).
+
+## 🏛️ 2026-04-26 — Narrator bookmark enrichment in get_narrator_context (session #52, yebyen/mecris#281, complete)
+
+**Planned**: Extend `get_narrator_context` to auto-call `search_bookmarks` using active Beeminder goal titles as queries and surface matches as `related_bookmarks` in the narrator response. (Plan: yebyen/mecris#281, upstream: kingdonb/mecris#208 phase 2)
+
+**Done**: Orient found no tagged issues in either repo. Top bot-actionable from NEXT_SESSION.md was Narrator integration for semantic_index (#208 phase 2). Created plan yebyen/mecris#281. Explored `get_narrator_context` (mcp_server.py:410) and `search_bookmarks` (services/semantic_index.py). Added `BookmarkIndex` to the import. Added module-level `_enrich_bookmarks_for_narrator(goals)` — builds TF-IDF index once, queries up to 5 goals CRITICAL-first, deduplicates by URL, caps at 5 total results. Wired into `get_narrator_context` via `asyncio.to_thread`; adds `related_bookmarks` field to the response. Fail-open: exception → `[]` with a warning log. Created `tests/test_narrator_bookmark_enrichment.py` — 8 unit tests covering: empty-file graceful return, match for known goal, URL deduplication, CRITICAL-first ordering, presence of `related_bookmarks` key in narrator context, empty-on-no-file, populated-from-mock, and failure-does-not-crash. All 8 pass. Also confirmed 32 semantic_index tests + 23 chrome_bookmarks tests still pass (55 total). Committed `f91710b`. Closed yebyen/mecris#281.
+
+**Skipped**: PR to kingdonb/mecris — still blocked by expired GITHUB_CLASSIC_PAT (persistent human-required blocker). No new bot-actionable tasks started.
+
+**Next**: Renew `GITHUB_CLASSIC_PAT` (human-required) and open PRs for all pending commits to kingdonb/mecris. Bot-actionable next: Port Twilio to WASM Brain (#167) or Rust Reminder Engine (#169).
+
+## 🏛️ 2026-04-26 — Observability Mandate Phase 1: last_status/last_error/intent in scheduler_election (session #53, yebyen/mecris#282, complete)
+
+**Planned**: Add `last_status`, `last_error`, `intent` columns to `scheduler_election` via migration script v8; update `HealthChecker` to return these fields; update `scheduler.py` heartbeat writes to populate them; add unit tests. (Plan: yebyen/mecris#282, upstream: kingdonb/mecris#245)
+
+**Done**: Orient found kingdonb/mecris#245 (Observability Mandate epic, open, no in-progress work) as the highest-value bot-actionable item. Created plan yebyen/mecris#282. Wrote `scripts/migrate_v8_observability.py` — idempotent `ALTER TABLE scheduler_election ADD COLUMN IF NOT EXISTS` for `last_status VARCHAR(255)`, `last_error TEXT`, `intent VARCHAR(255)`. Updated `services/health_checker.py` — detects obs columns via `information_schema.columns` on each connection; when present queries all 7 fields and returns them; when absent returns the 4-field shape with `last_status/last_error/intent = None` (backward-compat). Added `_write_obs_status(cur, last_status, intent)` to `scheduler.py` — uses a SAVEPOINT per write; on election claim sets "Elected as leader"/"claim leadership", on heartbeat maintenance sets "Heartbeat active"/"maintain leadership"; caches `_has_obs_columns` flag so column checks don't repeat. Updated `tests/test_health_checker.py` — 13 tests (up from 9): pre-migration fallback (obs fields = None), post-migration full field mapping, heartbeat ISO formatting with obs columns. All 13 pass. No regressions: 60 tests across narrator, ask_mecris, and health_checker all green. Committed `9020007`. Closed yebyen/mecris#282.
+
+**Skipped**: Observability Phase 2 (Rust WASM `sync-service` writes, `last_error` on exception paths in scheduler leader jobs) — scoped out of this session intentionally; Phase 1 is the Python foundation. PR to kingdonb/mecris — still blocked by expired GITHUB_CLASSIC_PAT.
+
+**Next**: Renew `GITHUB_CLASSIC_PAT` (human-required) and open PRs. Bot-actionable: Observability Phase 2 — write `last_error` on exception paths in scheduler jobs, or Port Twilio to WASM Brain (#167).

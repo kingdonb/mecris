@@ -35,6 +35,7 @@ from ghost.presence import get_neon_store, StatusType
 from services.rag_retriever import RAGRetriever
 from services.rag_generator import generate_answer as _rag_generate
 from tools.chrome_bookmarks import get_bookmarks_by_topic as _get_bookmarks_by_topic
+from services.semantic_index import BookmarkIndex, search_bookmarks as _search_bookmarks
 
 # Load environment variables
 load_dotenv()
@@ -405,6 +406,48 @@ async def get_cached_daily_activity(goal_slug: str = "bike", user_id: str = None
 
 # --- Tool Implementations ---
 
+
+def _enrich_bookmarks_for_narrator(goals: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Build a BookmarkIndex once and search using active goal titles (sync, run via to_thread).
+
+    Returns up to 5 deduplicated bookmark matches annotated with which goal_slug triggered them.
+    Returns an empty list gracefully when no bookmarks file is present (e.g. CI).
+
+    Plan: yebyen/mecris#281 / kingdonb/mecris#208
+    """
+    from tools.chrome_bookmarks import _default_bookmarks_path, flatten_bookmarks, load_bookmarks
+
+    path = _default_bookmarks_path()
+    raw = load_bookmarks(path)
+    if not raw:
+        return []
+
+    all_bm = flatten_bookmarks(raw)
+    index = BookmarkIndex()
+    index.fit(all_bm)
+
+    # Query most at-risk goals first
+    sorted_goals = sorted(goals, key=lambda g: (
+        0 if g.get("derail_risk") == "CRITICAL" else
+        1 if g.get("derail_risk") in ("WARNING", "CAUTION") else 2
+    ))
+
+    seen_urls: set = set()
+    results: List[Dict[str, Any]] = []
+    for goal in sorted_goals[:5]:
+        query = goal.get("title") or goal.get("slug", "")
+        if not query:
+            continue
+        for match in index.search(query, top_k=2):
+            url = match.get("url", "")
+            if url and url not in seen_urls:
+                seen_urls.add(url)
+                results.append({**match, "goal_slug": goal.get("slug")})
+                if len(results) >= 5:
+                    return results
+    return results
+
+
 @mcp.tool(description="Get unified strategic context with goals, budget, and recommendations.")
 async def get_narrator_context(user_id: str = None) -> Dict[str, Any]:
     """Get unified strategic context with goals, budget, and recommendations."""
@@ -545,6 +588,13 @@ async def get_narrator_context(user_id: str = None) -> Dict[str, Any]:
             else:
                 recommendations.insert(0, f"👻 Ghost Heartbeat: Bot hasn't been seen for {ghost_age_min/60:.1f}h.")
 
+        # Narrator bookmark enrichment (kingdonb/mecris#208 phase 2 / yebyen/mecris#281)
+        related_bookmarks = []
+        try:
+            related_bookmarks = await asyncio.to_thread(_enrich_bookmarks_for_narrator, beeminder_goals)
+        except Exception as e:
+            logger.warning(f"get_narrator_context: bookmark enrichment failed: {e}")
+
         return {
             "summary": summary, "goals_status": {"total": len(active_goals)},
             "urgent_items": urgent_items, "beeminder_alerts": [e.get("message", "") for e in emergencies[:5]],
@@ -564,6 +614,7 @@ async def get_narrator_context(user_id: str = None) -> Dict[str, Any]:
             "greek_backlog_cards": greek_backlog_cards,
             "budget_governor": _budget_governor.get_narrator_summary(),
             "presence": presence_info,
+            "related_bookmarks": related_bookmarks,
             "last_updated": datetime.now().isoformat()
         }
     except Exception as e:
@@ -1595,6 +1646,21 @@ def ask_mecris(query: str) -> Dict[str, Any]:
 def get_bookmarks_by_topic(keyword: str) -> Dict[str, Any]:
     """Search Chrome bookmarks by keyword across title, URL, and folder."""
     return _get_bookmarks_by_topic(keyword)
+
+
+@mcp.tool(
+    description=(
+        "Semantic search over Chrome bookmarks using TF-IDF cosine similarity. "
+        "Ranks bookmarks by relevance to a natural-language query rather than exact keyword match. "
+        "Returns up to top_k results with a relevance score. "
+        "Reads the Bookmarks JSON file from the default Chrome profile on macOS or Linux; "
+        "returns an empty result if the file is not present (e.g. in CI or non-Chrome environments). "
+        "Toward kingdonb/mecris#208."
+    )
+)
+def search_bookmarks(query: str, top_k: int = 3) -> Dict[str, Any]:
+    """Semantic search over Chrome bookmarks using TF-IDF cosine similarity."""
+    return _search_bookmarks(query, top_k=top_k)
 
 
 if __name__ == "__main__":
