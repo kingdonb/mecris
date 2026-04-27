@@ -2451,3 +2451,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: Fixing the 54 pre-existing test-implementation mismatches (budget-governor-py API renamed, arabic-skip-counter uses spin_sdk.postgres vs httpx) — tracked as yebyen/mecris#290 for a future session. All primary bot-actionable tasks from NEXT_SESSION.md (AI Framework Eval #205, Local Inference #203) remain blocked by environment requirements (Aider, Ollama not available).
 
 **Next**: Renew `GITHUB_CLASSIC_PAT` (human-required, urgent) and open PRs for ~13 pending commits. Bot-actionable: yebyen/mecris#290 (align WASM test-implementation skew, 54 tests would flip from fail to pass with API alias additions).
+
+## 🏛️ 2026-04-27 — Align WASM test-implementation skew (session #61, yebyen/mecris#291, complete)
+
+**Planned**: Fix 54 failing tests in `budget-governor-py` and `arabic-skip-counter` by aligning app.py implementations with the test specs (plan: yebyen/mecris#291, tracked as yebyen/mecris#290).
+
+**Done**: Rewrote `poc/wasm/budget-governor-py/app.py` pure-logic section to match the test spec: `make_bucket_config(limits=None)` with 4-bucket defaults and type field (spend/guard); `_calc_total_spent` (all-time sum); `_calc_window_spent` (39-min rolling window, datetime-aware, skips invalid ts); `check_envelope` → allow/defer/deny with ValueError for unknown bucket; `recommend_bucket` prefers spend type then least-used guard; `get_status` with envelope_status/window_minutes/envelope_spend_pct/recommendation/spent_total/remaining/live_balance; `budget_gate` with budget_halted/envelope/message/routing_recommendation; `_parse_request` default cost 0.01; `_dump_spend_log_to_json` with datetime-aware encoder. Rewrote `mecris-go-spin/arabic-skip-counter/app.py` `_count_reminders` from async `spin_sdk.postgres` to synchronous `httpx.post` against Neon HTTP SQL API; added None guard to `_parse_query_params`. All 77 tests in these two files pass (49 + 5 = 54 previously failing, now fixed). Committed `ddac3b0`. Closed yebyen/mecris#290 and yebyen/mecris#291.
+
+**Skipped**: Nothing — the full scope was completed.
+
+**Next**: Renew `GITHUB_CLASSIC_PAT` (human-required, urgent) to unblock ~14 pending commits. Bot-actionable: AI Framework Evaluation (kingdonb/mecris#205, needs Aider) or Local Inference Pipeline (kingdonb/mecris#203, needs Ollama).
