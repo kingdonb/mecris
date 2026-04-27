@@ -2471,3 +2471,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: Nothing — scope was contained and fully completed in one increment.
 
 **Next**: Renew `GITHUB_CLASSIC_PAT` (human-required, urgent) and open PRs for ~15 pending commits. Bot-actionable: AI Framework Evaluation (kingdonb/mecris#205, needs Aider) or Local Inference Pipeline (kingdonb/mecris#203, needs Ollama) — both require tools not available in this environment.
+
+## 🏛️ 2026-04-27 — Fix ghost.archivist check_presence test-implementation skew (session #63, yebyen/mecris#293, complete)
+
+**Planned**: Fix 8 failing tests in `tests/test_archivist.py::TestRun` caused by `ghost/archivist.py` using `is_human_present()` (bool) while tests patch `ghost.archivist.check_presence` (returns `PresenceStatus`). (Plan: yebyen/mecris#293)
+
+**Done**: Orient ran the full test suite and discovered a real test-implementation skew: `ghost/archivist.py` imported and called `is_human_present` (returns bool) but the test suite patches `ghost.archivist.check_presence` — which wasn't in the module namespace, causing `AttributeError` on all 8 `TestRun` tests. Fixed by importing `check_presence` and `is_mecris_cli_active` directly into `ghost/archivist.py`, replacing `is_human_present()` with a composite check (`status.human_present OR is_mecris_cli_active()`), and updating the YIELD log detail to include `human_present={status.human_present}` with "yielding" in stdout. `PYTHONPATH=. pytest tests/test_archivist.py` → **14 passed, 0 failed**. Full verified suite: 194 tests pass (4 WASM components + archivist + token_bank + pii_encryption + post_mortem). Committed `8f7125d`. Closed yebyen/mecris#293. Also confirmed during orient: kingdonb/mecris#213 (log-message-py WASM + Android) and kingdonb/mecris#210 (HCAT Dockerfile) are both fully done in prior commits.
+
+**Skipped**: Nothing — scope was contained and fully completed.
+
+**Next**: Renew `GITHUB_CLASSIC_PAT` (human-required, urgent) and open PRs for ~9 pending commits. Bot-actionable: AI Framework Evaluation (kingdonb/mecris#205, needs Aider) or Local Inference Pipeline (kingdonb/mecris#203, needs Ollama) — both require tools not available in this environment.
