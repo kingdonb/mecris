@@ -11,13 +11,31 @@ from datetime import datetime, timedelta
 from typing import Dict, Optional, List
 from urllib.parse import urlparse, parse_qs
 
-from spin_sdk import http, variables as _spin_variables, postgres
-from spin_sdk.http import Request, Response
-from spin_sdk.wit.imports.spin_postgres_postgres_4_2_0 import (
-    ParameterValue_Str, 
-    DbValue_Int64,
-    DbValue_Int32
-)
+try:
+    from spin_sdk import http, variables as _spin_variables, postgres
+    from spin_sdk.http import Request, Response
+    from spin_sdk.wit.imports.spin_postgres_postgres_4_2_0 import (
+        ParameterValue_Str,
+        DbValue_Int64,
+        DbValue_Int32
+    )
+    _SPIN_AVAILABLE = True
+except ImportError:
+    _SPIN_AVAILABLE = False
+    class _FakeHttp:
+        class Handler:
+            pass
+    http = _FakeHttp()  # type: ignore[assignment]
+    class Request:  # type: ignore[no-redef]
+        pass
+    class Response:  # type: ignore[no-redef]
+        pass
+    class ParameterValue_Str:  # type: ignore[no-redef]
+        def __init__(self, value=None): self.value = value
+    class DbValue_Int64:  # type: ignore[no-redef]
+        def __init__(self, value=0): self.value = value
+    class DbValue_Int32:  # type: ignore[no-redef]
+        def __init__(self, value=0): self.value = value
 
 # Setup logging
 logger = logging.getLogger("mecris.arabic_skip_counter")
@@ -101,4 +119,5 @@ class HttpHandler(http.Handler):
             )
 
 # Mandatory export for spin-sdk v4
-incoming_handler = HttpHandler()
+if _SPIN_AVAILABLE:
+    incoming_handler = HttpHandler()
