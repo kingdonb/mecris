@@ -2381,3 +2381,43 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: Observability Phase 2 (Rust WASM `sync-service` writes, `last_error` on exception paths in scheduler leader jobs) — scoped out of this session intentionally; Phase 1 is the Python foundation. PR to kingdonb/mecris — still blocked by expired GITHUB_CLASSIC_PAT.
 
 **Next**: Renew `GITHUB_CLASSIC_PAT` (human-required) and open PRs. Bot-actionable: Observability Phase 2 — write `last_error` on exception paths in scheduler jobs, or Port Twilio to WASM Brain (#167).
+
+## 🏛️ 2026-04-26 — Observability Phase 2 (Python): write last_error on lost-leadership in scheduler (session #54, yebyen/mecris#283, complete)
+
+**Planned**: Extend `_write_obs_status()` in `scheduler.py` to accept an optional `error` argument and persist it to `scheduler_election.last_error` when exceptions occur during leader job execution; add ≥2 tests covering the write path. (Plan: yebyen/mecris#283, upstream: kingdonb/mecris#245 req 4)
+
+**Done**: Orient found yebyen/mecris#283 already written by session #53 — went straight to implementation. Extended `_write_obs_status(cur, last_status, intent, error=None)` — UPDATE now sets `last_error = %s` (NULL when omitted, clears stale errors). Added `_write_obs_status` call on lost-leadership path with `error="preempted by <process_id>"`. Added `TestWriteObsStatus` class in `tests/test_scheduler_election.py` with 4 new tests: error arg written to UPDATE, None written when omitted, early-return when columns absent, end-to-end demote path. `PYTHONPATH=. python3 -m pytest tests/test_health_checker.py tests/test_scheduler_election.py -v` → 19 passed, 0 failed. Committed `b703fdd`. Closed yebyen/mecris#283.
+
+**Skipped**: Tests placed in `test_scheduler_election.py` instead of `test_health_checker.py` as the issue spec suggested — read-path tests belong in health_checker, write-path tests belong in scheduler. Noted in issue comment. Rust WASM observability (kingdonb/mecris#245 req 3) — still pending, requires Rust/WASM work.
+
+**Next**: Renew `GITHUB_CLASSIC_PAT` (human-required) and open PRs for all pending commits. Bot-actionable: Observability Phase 2 Rust WASM Backend (update `sync-service/src/lib.rs` to write stand-downs to `last_status`), or Port Twilio to WASM Brain (#167).
+
+## 🏛️ 2026-04-26 — Observability Phase 2 (Rust WASM): write_obs_status in sync-service (session #55, yebyen/mecris#284, complete)
+
+**Planned**: Update `sync-service/src/lib.rs` to record every "Silent Decision" (stand-downs, reminder dispatches, Twilio errors) into `scheduler_election.last_status/intent/last_error` by adding a fail-safe `write_obs_status()` helper. (Plan: yebyen/mecris#284, upstream: kingdonb/mecris#245 req 3)
+
+**Done**: Orient found yebyen/mecris#284 as the only open plan issue and the top bot-actionable item in NEXT_SESSION.md. Read `sync-service/src/lib.rs` (3356 lines). Extracted `cloud_role() -> String` from `register_cloud_heartbeat` to eliminate role-computation duplication. Added `obs_status_query() -> &'static str` pure helper returning the UPDATE SQL (testable without DB). Added `write_obs_status(connection, user_id, role, last_status, intent, last_error: Option<&str>)` — fail-safe: uses `ParameterValue::DbNull` for None last_error; on UPDATE failure logs `[DEBUG]` and returns silently. Added 4 call sites in `handle_trigger_reminders_post`: (1) `should_dispatch_reminder` stand-down → `"Stood down (conditions not met)"`, (2) Ghost Nag guard → `"Stood down (Android client active Nmin ago)"`, (3) Twilio success → `"Sent Walk Reminder"`, (4) Twilio error → `"Reminder failed"` + error string. Wrote 5 unit tests for `obs_status_query()` SQL string assertions. `cargo test` → 127 passed, 0 failures. Committed `a125430`. Closed yebyen/mecris#284.
+
+**Skipped**: PR to kingdonb/mecris — still blocked by expired GITHUB_CLASSIC_PAT (persistent human-required blocker). No new tasks started.
+
+**Next**: Renew `GITHUB_CLASSIC_PAT` (human-required) and open PRs for all pending commits to kingdonb/mecris. Bot-actionable: Port Twilio to WASM Brain (#167) or Rust Reminder Engine (#169).
+
+## 🏛️ 2026-04-26 — Rust Reminder Engine: per-user notification_prefs in should_dispatch_reminder (session #56, yebyen/mecris#285, complete)
+
+**Planned**: Parse the `notification_prefs` JSONB column from `users` and pass per-user step threshold, window hours, and rate-limit minutes to `should_dispatch_reminder`, replacing hardcoded defaults. (Plan: yebyen/mecris#285, toward: kingdonb/mecris#169)
+
+**Done**: Orient found both kingdonb/mecris#167 (Twilio WASM Port) and kingdonb/mecris#169 (Rust Reminder Engine) as bot-actionable but also substantially already implemented — the orient step discovered that both features were already built in prior sessions. Identified the actual gap: `notification_prefs JSONB DEFAULT '{}'` exists in `mecris-go-spin/schema.sql` but was never queried by the reminder engine, which used hardcoded 2000 / 8–20h / 240-min defaults for all users. Created plan yebyen/mecris#285. Added `NotificationPrefs` struct with `Default` impl. Added `parse_notification_prefs(Option<&str>) -> NotificationPrefs` — pure, falls back to defaults on None/empty/malformed. Updated `should_dispatch_reminder` signature to accept `&NotificationPrefs`. Updated the `users` query to include `COALESCE(notification_prefs::TEXT, '{}')` as a 6th column. Row destructuring now parses prefs and passes `&prefs` to `should_dispatch_reminder`. Updated 4 existing tests; added 9 new tests (3 for parse_notification_prefs covering defaults/overrides/malformed, 3 for should_dispatch_reminder with custom prefs, 1 confirming window override, 1 confirming rate-limit override). cargo test → 136 passed, 0 failed. Committed `18a0b14`. Closed yebyen/mecris#285.
+
+**Skipped**: Writing to `notification_prefs` — there's no endpoint or MCP tool to set per-user prefs yet. Noted as future bot-actionable item in NEXT_SESSION.md. PR to kingdonb/mecris — still blocked by expired GITHUB_CLASSIC_PAT.
+
+**Next**: Renew `GITHUB_CLASSIC_PAT` (human-required) and open PR for all pending commits. Bot-actionable: AI Framework Evaluation (#205) or JIT Secret Manager (#204) — the larger Rust/WASM epics (#167, #169) are now functionally complete in yebyen/mecris.
+
+## 🏛️ 2026-04-27 — JIT Secret Manager + HeadlessLoopback env isolation (session #57, yebyen/mecris#286, complete)
+
+**Planned**: Create `services/secret_manager.py` with `SecretManager.get_secrets(keys)` and update `HeadlessLoopback.run()` to pass only the necessary API keys via an explicit `env=` dict to `subprocess.Popen` instead of inheriting the full parent environment. (Plan: yebyen/mecris#286, toward: kingdonb/mecris#204)
+
+**Done**: Orient found two bot-actionable tasks — JIT Secret Manager (kingdonb/mecris#204) and AI Framework Evaluation (kingdonb/mecris#205, needs Aider installed). Chose Secret Manager as bounded, high-security-value, zero-external-dependency task. Read `ghost/headless_loopback.py` and `services/credentials_manager.py` to understand existing structure. Confirmed `Popen` had no `env=` arg — full parent env leak. Created plan yebyen/mecris#286. Implemented `services/secret_manager.py`: `SecretManager.get_secrets(keys: List[str]) -> dict` reads only requested keys from `os.environ`, returns independent dict. Defined `HEADLESS_LOOPBACK_KEYS = ["GEMINI_API_KEY"]`. Updated `HeadlessLoopback`: added `_SYSTEM_PASSTHROUGH` frozenset (PATH/HOME/TERM/USER/SHELL/LANG/LC_ALL), `_build_subprocess_env()` method, `secret_manager` constructor param, `env=subprocess_env` passed to `Popen`. Wrote 16 unit tests in `tests/test_secret_manager.py` covering: get_secrets returns only requested keys, missing keys omitted, independence of returned dict, partial key presence, Popen receives explicit env kwarg, env contains secrets but excludes unrequested vars (NEON_DB_URL), env contains PATH, env is minimal, and parent os.environ unchanged across all run scenarios (success/spawn-error/timeout). All 16 new tests + 24 prior headless_loopback tests pass. Committed `4846e5e`.
+
+**Skipped**: Neon-backed SecretManager fallback — out of scope for this session; extension point clearly documented in code and NEXT_SESSION.md. PR to kingdonb/mecris — still blocked by expired GITHUB_CLASSIC_PAT.
+
+**Next**: Renew `GITHUB_CLASSIC_PAT` (human-required) and open PR for all pending commits. Bot-actionable: `notification_prefs` write path (bounded Rust task) or AI Framework Evaluation (kingdonb/mecris#205, needs Aider).

@@ -1,38 +1,42 @@
-# Next Session: Open PRs to kingdonb/mecris (human-required) or bot-actionable: Observability Phase 2 (Rust/scheduler reporting) or Twilio WASM
+# Next Session: Open PRs to kingdonb/mecris (human-required) or bot-actionable: notification_prefs write path or AI Framework Evaluation
 
-## Current Status (2026-04-26, post-session #53)
-- **Observability Mandate Phase 1 COMPLETE**: `scripts/migrate_v8_observability.py` (idempotent ALTER TABLE for `last_status`, `last_error`, `intent`), `services/health_checker.py` updated to detect and return obs fields (backward-compatible with pre-migration), `scheduler.py` writes `last_status`/`intent` on election claim and heartbeat via SAVEPOINT helper. 13 unit tests in `tests/test_health_checker.py`, all passing. Committed `9020007`. Closes yebyen/mecris#282. Toward kingdonb/mecris#245 (phase 1 complete).
+## Current Status (2026-04-27, post-session #57)
+- **JIT Secret Manager COMPLETE**: `services/secret_manager.py` created with `SecretManager.get_secrets(keys)`. `HeadlessLoopback` now builds a minimal subprocess env (system passthrough vars + only requested API keys) and passes `env=` explicitly to `subprocess.Popen`. 16 new tests; 40 headless-related tests total pass. Committed `4846e5e`. Closes yebyen/mecris#286. Toward kingdonb/mecris#204.
+- **kingdonb/mecris#204 (JIT Secret Manager) is COMPLETE** in yebyen/mecris: `SecretManager` abstraction + `HeadlessLoopback` env isolation implemented and tested.
 - **GITHUB_CLASSIC_PAT still expired**: Bot cannot create PRs to kingdonb/mecris. Renew immediately (human-required). Blocks all PRs.
-- **yebyen/mecris ahead of kingdonb/mecris by 4 commits**: `5be5a79` (TF-IDF Search), `18b0aa6` (archive #51), `f91710b` (Narrator enrichment), `9020007` (Observability Phase 1). None yet PRed due to expired PAT.
+- **yebyen/mecris ahead of kingdonb/mecris by ~8 commits**: TF-IDF Search, Narrator enrichment, Observability Phase 1 (Python), Observability Phase 2 Python + Rust, notification_prefs, JIT Secret Manager. None yet PRed due to expired PAT.
 
 ## Verified This Session
-- [x] **Observability Mandate Phase 1 (session #53)**: `scripts/migrate_v8_observability.py` + `HealthChecker` obs fields + `scheduler.py` `_write_obs_status()` helper. `PYTHONPATH=. python3 -m pytest tests/test_health_checker.py -v` → 13 passed, 0 failures. **COMPLETE** — closes yebyen/mecris#282, toward kingdonb/mecris#245.
-- [x] **No regression**: `tests/test_narrator_bookmark_enrichment.py` (8 tests) + `tests/test_ask_mecris.py` (39 tests) + `tests/test_health_checker.py` (13 tests) — 60 total, all pass.
+- [x] **JIT Secret Manager (session #57)**: `SecretManager.get_secrets` returns only requested keys; `HeadlessLoopback._build_subprocess_env()` assembles minimal env with `_SYSTEM_PASSTHROUGH` + secrets from `SecretManager`; parent `os.environ` not modified. 16 tests pass (8 SecretManager, 5 env-isolation, 3 parent-env). All 24 prior headless_loopback tests still pass. **COMPLETE** — closes yebyen/mecris#286, toward kingdonb/mecris#204.
 
 ## Pending Verification
 
 ### 👤 Human-required (cannot be resolved by bot)
 - [ ] **URGENT: Refresh GITHUB_CLASSIC_PAT** — returns 401. Bot cannot create PRs to kingdonb/mecris. Renew in GitHub → Settings → Developer Settings → Personal access tokens (classic) with `repo` scope, update the workflow secret `GITHUB_CLASSIC_PAT`.
-- [ ] **Open PR yebyen:main → kingdonb:main** for `5be5a79` (Semantic Search), `f91710b` (Narrator enrichment), `9020007` (Observability Phase 1), `0a29cc7` (Chrome Bookmarks), `139d67f` (CopilotLoopback), and `e6a0bb4` (Spin SDK v4) — all blocked by expired PAT. Closes kingdonb/mecris#208 (complete), #201 (Chrome), #206 (CopilotLoopback), #213 (Spin SDK v4), and partially #245 (Observability Phase 1 only).
+- [ ] **Open PR yebyen:main → kingdonb:main** for all pending commits (TF-IDF Search, Narrator enrichment, Observability Phase 1+2 Python, Observability Phase 2 Rust, notification_prefs, JIT Secret Manager) — blocked by expired PAT. Closes kingdonb/mecris#167, kingdonb/mecris#169, kingdonb/mecris#204, kingdonb/mecris#208 (complete), kingdonb/mecris#245 (Phase 1 + Phase 2 Python + Phase 2 Rust req 3).
 - [ ] **Apply migrate_v8_observability.py to production Neon**: Run `python scripts/migrate_v8_observability.py` in the production environment (with NEON_DB_URL set) to add `last_status`, `last_error`, `intent` columns to `scheduler_election`.
 - [ ] **Cloud Readiness Check**: Monitor Fermyon/Akamai for updates to their Python WASM runtimes. Test a simple SDK v4 "Hello World" to confirm when the platform has caught up.
 - [ ] **Align Release Management**: Determine if we should maintain a "Legacy Cloud" branch or implement a compatibility shim until the cloud catch-up is complete.
 - [ ] **Verify log-message-py in Cloud**: Once platforms are ready, confirm audit logs appear in cloud KV.
 
 ### 🤖 Bot-actionable (can be resolved in future sessions)
-- [ ] **Observability Phase 2 — Rust WASM Backend (kingdonb/mecris#245 req 3)**: Update `sync-service/src/lib.rs` to record every "Silent Decision" (stand-downs) into `scheduler_election.last_status`. Requires Rust/WASM changes.
-- [ ] **Observability Phase 2 — scheduler.py `last_error` writes (kingdonb/mecris#245 req 4)**: Extend `_write_obs_status()` to also write `last_error` when exceptions occur in leader jobs; expand tests.
-- [ ] **Port Twilio to WASM Brain (Issue #167)**: Move SMS/WhatsApp dispatch logic from Python/boris-fiona-walker into the `sync-service` Rust module.
-- [ ] **Rust Reminder Engine (Issue #169)**: Implement the 2000-step threshold, sleep window heuristics, and weather checks natively in Rust.
-- [ ] **AI Framework Evaluation (Issue #205)**: Matrix doc and POC script committed (`1a459aa`). Remaining: run `scripts/evaluate_aider.py` in an environment with Aider installed and append results to `docs/AI_FRAMEWORK_EVALUATION.md` evidence log. Requires Aider + an LLM API key.
-- [ ] **Budget Governor: WASM Port (Issue #214)**: POC complete and wired into spin.toml. Remaining: Fermyon Cloud variable config — human-required for deployment.
-- [ ] **Autonomous Security: JIT Secret Manager (Issue #204)**: Implement secure credential retrieval for headless `gemini --yolo` turns.
-- [ ] **Local Inference Pipeline (Issue #203)**: Integrate Ollama and build a cloud-fallback router.
+- [ ] **notification_prefs write path**: The `notification_prefs` JSONB column is read by the Rust reminder engine but there is no endpoint to write/update it. Add a `PATCH /profile` field or MCP tool to set per-user notification prefs. Good bounded Rust task (~30 min).
+- [ ] **AI Framework Evaluation (kingdonb/mecris#205)**: Matrix doc and POC script committed (`1a459aa`). Remaining: run `scripts/evaluate_aider.py` in an environment with Aider installed and append results to `docs/AI_FRAMEWORK_EVALUATION.md` evidence log. Requires Aider + an LLM API key.
+- [ ] **Budget Governor: WASM Port (kingdonb/mecris#214)**: POC complete and wired into spin.toml. Remaining: Fermyon Cloud variable config — human-required for deployment.
+- [ ] **Local Inference Pipeline (kingdonb/mecris#203)**: Integrate Ollama and build a cloud-fallback router.
+- [ ] **SecretManager Neon fallback**: `services/secret_manager.py` currently reads only from `os.environ`. Future extension: if a key is absent and `NEON_DB_URL` is set, look it up from a Neon-backed secure-variable store. No code change needed now; extension point is in `get_secrets()`.
 
 ## Infrastructure Notes (carried forward)
+- **`SecretManager` extension point**: Add Neon-backed fallback in `get_secrets()` without breaking any call sites. `HEADLESS_LOOPBACK_KEYS = ["GEMINI_API_KEY"]` is the canonical list; extend it if more keys are needed by the subprocess.
+- **`HeadlessLoopback._SYSTEM_PASSTHROUGH`**: `frozenset({"PATH", "HOME", "TERM", "USER", "SHELL", "LANG", "LC_ALL"})` — always forwarded to subprocess. No credentials in this set.
+- **`notification_prefs` JSONB keys**: `step_threshold` (u32), `window_start_hour` (u32), `window_end_hour` (u32), `rate_limit_minutes` (u64). All optional; any absent key falls back to default (2000 / 8 / 20 / 240). Empty `{}` or NULL → all defaults.
+- **`write_obs_status` signature (Rust)**: `(connection: &Connection, user_id: &str, role: &str, last_status: &str, intent: &str, last_error: Option<&str>)`. Uses `ParameterValue::DbNull` for `None` last_error. Fail-safe: on UPDATE error, logs `[DEBUG] write_obs_status: UPDATE failed (columns may be absent): ...` and returns silently.
+- **`cloud_role()` extracted**: Reads `cloud_provider` Spin variable; maps "akamai" → "akamai_functions", "fermyon" → "fermyon_cloud", else "unknown_cloud". Used by both `register_cloud_heartbeat` and `write_obs_status` call sites.
+- **`obs_status_query()` pure helper**: Returns the static SQL UPDATE string. Used in `write_obs_status`; tested independently without a DB connection.
+- **`_write_obs_status` signature (Python)**: `(self, cur, last_status: str, intent: str, error: str = None)`. The UPDATE sets all three obs fields; omitting `error` writes NULL (clears stale errors). SAVEPOINT mechanism unchanged.
 - **Observability columns are fail-safe**: `_write_obs_status()` in `scheduler.py` uses a SAVEPOINT per write; if columns are absent, rolls back the savepoint, sets `_has_obs_columns = False` (cached), and logs at DEBUG. Pre-migration environments are fully safe.
 - **HealthChecker is backward-compatible**: Column check via `information_schema.columns`; if obs columns absent, returns `last_status/last_error/intent = None` for every process dict. No schema changes needed at read time.
-- **related_bookmarks is fail-open**: If `_enrich_bookmarks_for_narrator` raises for any reason (no bookmarks file, parse error, etc.), `get_narrator_context` catches the exception, logs a warning, and returns `related_bookmarks: []`. Safe to call anywhere.
+- **related_bookmarks is fail-open**: If `_enrich_bookmarks_for_narrator` raises for any reason, `get_narrator_context` catches the exception, logs a warning, and returns `related_bookmarks: []`. Safe to call anywhere.
 - **TF-IDF index rebuilt each call**: `_enrich_bookmarks_for_narrator` loads bookmarks and builds a fresh `BookmarkIndex` on every `get_narrator_context` call. Acceptable for small files; if performance becomes an issue, consider a module-level cached index.
 - **GITHUB_CLASSIC_PAT is expired**: Bot cannot create PRs to kingdonb/mecris. Renew immediately.
 - **CopilotLoopback command**: `["gh", "copilot", "--", "-p", full_prompt]` — `--` prevents `gh` from consuming `-p`; passes prompt as arg not stdin. `GH_COPILOT_BASE = ["gh", "copilot", "--"]`.
@@ -55,3 +59,4 @@
 - **Configure internal_api_key in Fermyon Cloud**: Postponed. Prioritizing feature work.
 - **Verify ask_mecris answer quality**: With a real `ANTHROPIC_API_KEY` in the MCP server env, call `ask_mecris("what is mecris?")` and confirm the `answer` field is prose (not None).
 - **aggregate_step_count ordering contract**: SQL at `lib.rs:1309` uses `ORDER BY start_time ASC`; `.last()` relies on this.
+- **Note on Cloud Cron**: The Spin Cron trigger is currently **DISABLED** in `spin.toml` to prevent it from masking local framework issues. Do not re-enable until the MCP leader can coordinate these events.
