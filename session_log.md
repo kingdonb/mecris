@@ -2421,3 +2421,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: Neon-backed SecretManager fallback — out of scope for this session; extension point clearly documented in code and NEXT_SESSION.md. PR to kingdonb/mecris — still blocked by expired GITHUB_CLASSIC_PAT.
 
 **Next**: Renew `GITHUB_CLASSIC_PAT` (human-required) and open PR for all pending commits. Bot-actionable: `notification_prefs` write path (bounded Rust task) or AI Framework Evaluation (kingdonb/mecris#205, needs Aider).
+
+## 🏛️ 2026-04-27 — notification_prefs write path via POST /profile (session #58, yebyen/mecris#287, complete)
+
+**Planned**: Add an MCP tool or `PATCH /profile` endpoint in the Rust reminder service to persist per-user `notification_prefs` JSONB fields (`step_threshold`, `window_start_hour`, `window_end_hour`, `rate_limit_minutes`) to the `users` table. (Plan: yebyen/mecris#287)
+
+**Done**: Orient found notification_prefs write path as the top bot-actionable item in NEXT_SESSION.md (read side implemented session #56, write side never done). Created plan yebyen/mecris#287. Read `handle_profile_post` and `handle_profile_get` in `mecris-go-spin/sync-service/src/lib.rs` — both already use a surgical field-by-field UPDATE pattern. Added `notification_prefs: Option<serde_json::Value>` to `ProfileRequest`; when provided, validates it's a JSON object (returns 400 for arrays/scalars), serializes to string, and executes `UPDATE users SET notification_prefs = $1::JSONB`. Added `notification_prefs: Option<serde_json::Value>` to `ProfileResponse`; GET query now includes `COALESCE(notification_prefs::TEXT, '')` and deserializes via `serde_json::from_str`. Updated CORS preflight to include `PATCH` in `access-control-allow-methods`. Wrote 4 new unit tests: round-trip all fields, partial write with defaults for absent fields, reject non-object input, unknown keys ignored on parse. All 140 sync-service tests pass. Committed `58803b8`. Closed yebyen/mecris#287.
+
+**Skipped**: PATCH-only endpoint — decided POST is sufficient since it already does surgical per-field updates. No HTTP method split needed. PR to kingdonb/mecris — still blocked by expired GITHUB_CLASSIC_PAT.
+
+**Next**: Renew `GITHUB_CLASSIC_PAT` (human-required) and open PRs for all pending commits. Bot-actionable: AI Framework Evaluation (kingdonb/mecris#205, needs Aider) or SecretManager Neon fallback.
