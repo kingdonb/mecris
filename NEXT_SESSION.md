@@ -1,33 +1,34 @@
-# Next Session: Open PRs to kingdonb/mecris (human-required) or bot-actionable: AI Framework Evaluation or JIT Secret Manager
+# Next Session: Open PRs to kingdonb/mecris (human-required) or bot-actionable: notification_prefs write path or AI Framework Evaluation
 
-## Current Status (2026-04-26, post-session #56)
-- **notification_prefs JSONB in Rust Reminder Engine COMPLETE**: `parse_notification_prefs()` + `NotificationPrefs` struct added to `sync-service/src/lib.rs`. `handle_trigger_reminders_post` now reads `notification_prefs` from `users` table and passes per-user step threshold, window hours, and rate limit to `should_dispatch_reminder`. 9 new tests; 136 total pass. Committed `18a0b14`. Closes yebyen/mecris#285. Toward kingdonb/mecris#169.
-- **kingdonb/mecris#169 (Rust Reminder Engine) is now FUNCTIONALLY COMPLETE** in yebyen/mecris: timezone-aware window, 2000-step threshold (now per-user via `notification_prefs`), weather check, rate limiting, ghost nag guard, multi-tenant dispatch, WhatsApp template dispatch — all implemented.
-- **kingdonb/mecris#167 (Twilio WASM Port) is also COMPLETE** in yebyen/mecris: `send_walk_reminder`, `build_sms_request_parts`, `build_twilio_body`, `encode_basic_auth`, `build_twilio_url` all in `sync-service/src/lib.rs`. Spin variables and allowed_outbound_hosts configured.
+## Current Status (2026-04-27, post-session #57)
+- **JIT Secret Manager COMPLETE**: `services/secret_manager.py` created with `SecretManager.get_secrets(keys)`. `HeadlessLoopback` now builds a minimal subprocess env (system passthrough vars + only requested API keys) and passes `env=` explicitly to `subprocess.Popen`. 16 new tests; 40 headless-related tests total pass. Committed `4846e5e`. Closes yebyen/mecris#286. Toward kingdonb/mecris#204.
+- **kingdonb/mecris#204 (JIT Secret Manager) is COMPLETE** in yebyen/mecris: `SecretManager` abstraction + `HeadlessLoopback` env isolation implemented and tested.
 - **GITHUB_CLASSIC_PAT still expired**: Bot cannot create PRs to kingdonb/mecris. Renew immediately (human-required). Blocks all PRs.
-- **yebyen/mecris ahead of kingdonb/mecris by ~7 commits**: Includes TF-IDF Search, Narrator enrichment, Observability Phase 1 (Python), Observability Phase 2 Python (last_error), Observability Phase 2 Rust (write_obs_status), and now notification_prefs in reminder engine. None yet PRed due to expired PAT.
+- **yebyen/mecris ahead of kingdonb/mecris by ~8 commits**: TF-IDF Search, Narrator enrichment, Observability Phase 1 (Python), Observability Phase 2 Python + Rust, notification_prefs, JIT Secret Manager. None yet PRed due to expired PAT.
 
 ## Verified This Session
-- [x] **notification_prefs JSONB parsing (session #56)**: `NotificationPrefs` struct with `Default` impl; `parse_notification_prefs()` handles None, empty `{}`, partial JSON, and malformed input. `should_dispatch_reminder` updated to accept `&NotificationPrefs`. `handle_trigger_reminders_post` fetches column 5 (`COALESCE(notification_prefs::TEXT, '{}')`). 136 tests pass. **COMPLETE** — closes yebyen/mecris#285, toward kingdonb/mecris#169.
+- [x] **JIT Secret Manager (session #57)**: `SecretManager.get_secrets` returns only requested keys; `HeadlessLoopback._build_subprocess_env()` assembles minimal env with `_SYSTEM_PASSTHROUGH` + secrets from `SecretManager`; parent `os.environ` not modified. 16 tests pass (8 SecretManager, 5 env-isolation, 3 parent-env). All 24 prior headless_loopback tests still pass. **COMPLETE** — closes yebyen/mecris#286, toward kingdonb/mecris#204.
 
 ## Pending Verification
 
 ### 👤 Human-required (cannot be resolved by bot)
 - [ ] **URGENT: Refresh GITHUB_CLASSIC_PAT** — returns 401. Bot cannot create PRs to kingdonb/mecris. Renew in GitHub → Settings → Developer Settings → Personal access tokens (classic) with `repo` scope, update the workflow secret `GITHUB_CLASSIC_PAT`.
-- [ ] **Open PR yebyen:main → kingdonb:main** for all pending commits (TF-IDF Search, Narrator enrichment, Observability Phase 1+2 Python, Observability Phase 2 Rust, notification_prefs) — blocked by expired PAT. Closes kingdonb/mecris#167, kingdonb/mecris#169, kingdonb/mecris#208 (complete), kingdonb/mecris#245 (Phase 1 + Phase 2 Python + Phase 2 Rust req 3).
+- [ ] **Open PR yebyen:main → kingdonb:main** for all pending commits (TF-IDF Search, Narrator enrichment, Observability Phase 1+2 Python, Observability Phase 2 Rust, notification_prefs, JIT Secret Manager) — blocked by expired PAT. Closes kingdonb/mecris#167, kingdonb/mecris#169, kingdonb/mecris#204, kingdonb/mecris#208 (complete), kingdonb/mecris#245 (Phase 1 + Phase 2 Python + Phase 2 Rust req 3).
 - [ ] **Apply migrate_v8_observability.py to production Neon**: Run `python scripts/migrate_v8_observability.py` in the production environment (with NEON_DB_URL set) to add `last_status`, `last_error`, `intent` columns to `scheduler_election`.
 - [ ] **Cloud Readiness Check**: Monitor Fermyon/Akamai for updates to their Python WASM runtimes. Test a simple SDK v4 "Hello World" to confirm when the platform has caught up.
 - [ ] **Align Release Management**: Determine if we should maintain a "Legacy Cloud" branch or implement a compatibility shim until the cloud catch-up is complete.
 - [ ] **Verify log-message-py in Cloud**: Once platforms are ready, confirm audit logs appear in cloud KV.
 
 ### 🤖 Bot-actionable (can be resolved in future sessions)
-- [ ] **AI Framework Evaluation (Issue #205)**: Matrix doc and POC script committed (`1a459aa`). Remaining: run `scripts/evaluate_aider.py` in an environment with Aider installed and append results to `docs/AI_FRAMEWORK_EVALUATION.md` evidence log. Requires Aider + an LLM API key.
-- [ ] **Budget Governor: WASM Port (Issue #214)**: POC complete and wired into spin.toml. Remaining: Fermyon Cloud variable config — human-required for deployment.
-- [ ] **Autonomous Security: JIT Secret Manager (Issue #204)**: Implement secure credential retrieval for headless `gemini --yolo` turns.
-- [ ] **Local Inference Pipeline (Issue #203)**: Integrate Ollama and build a cloud-fallback router.
-- [ ] **Rust Reminder Engine — notification_prefs schema write path**: The `notification_prefs` column is read by the reminder engine but there is no endpoint to write/update it. Consider adding a `PATCH /profile` field or MCP tool to set per-user notification prefs.
+- [ ] **notification_prefs write path**: The `notification_prefs` JSONB column is read by the Rust reminder engine but there is no endpoint to write/update it. Add a `PATCH /profile` field or MCP tool to set per-user notification prefs. Good bounded Rust task (~30 min).
+- [ ] **AI Framework Evaluation (kingdonb/mecris#205)**: Matrix doc and POC script committed (`1a459aa`). Remaining: run `scripts/evaluate_aider.py` in an environment with Aider installed and append results to `docs/AI_FRAMEWORK_EVALUATION.md` evidence log. Requires Aider + an LLM API key.
+- [ ] **Budget Governor: WASM Port (kingdonb/mecris#214)**: POC complete and wired into spin.toml. Remaining: Fermyon Cloud variable config — human-required for deployment.
+- [ ] **Local Inference Pipeline (kingdonb/mecris#203)**: Integrate Ollama and build a cloud-fallback router.
+- [ ] **SecretManager Neon fallback**: `services/secret_manager.py` currently reads only from `os.environ`. Future extension: if a key is absent and `NEON_DB_URL` is set, look it up from a Neon-backed secure-variable store. No code change needed now; extension point is in `get_secrets()`.
 
 ## Infrastructure Notes (carried forward)
+- **`SecretManager` extension point**: Add Neon-backed fallback in `get_secrets()` without breaking any call sites. `HEADLESS_LOOPBACK_KEYS = ["GEMINI_API_KEY"]` is the canonical list; extend it if more keys are needed by the subprocess.
+- **`HeadlessLoopback._SYSTEM_PASSTHROUGH`**: `frozenset({"PATH", "HOME", "TERM", "USER", "SHELL", "LANG", "LC_ALL"})` — always forwarded to subprocess. No credentials in this set.
 - **`notification_prefs` JSONB keys**: `step_threshold` (u32), `window_start_hour` (u32), `window_end_hour` (u32), `rate_limit_minutes` (u64). All optional; any absent key falls back to default (2000 / 8 / 20 / 240). Empty `{}` or NULL → all defaults.
 - **`write_obs_status` signature (Rust)**: `(connection: &Connection, user_id: &str, role: &str, last_status: &str, intent: &str, last_error: Option<&str>)`. Uses `ParameterValue::DbNull` for `None` last_error. Fail-safe: on UPDATE error, logs `[DEBUG] write_obs_status: UPDATE failed (columns may be absent): ...` and returns silently.
 - **`cloud_role()` extracted**: Reads `cloud_provider` Spin variable; maps "akamai" → "akamai_functions", "fermyon" → "fermyon_cloud", else "unknown_cloud". Used by both `register_cloud_heartbeat` and `write_obs_status` call sites.
