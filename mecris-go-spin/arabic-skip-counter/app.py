@@ -11,47 +11,62 @@ from datetime import datetime, timedelta
 from typing import Dict, Optional, List
 from urllib.parse import urlparse, parse_qs
 
-from spin_sdk import http, variables as _spin_variables, postgres
-from spin_sdk.http import Request, Response
-from spin_sdk.wit.imports.spin_postgres_postgres_4_2_0 import (
-    ParameterValue_Str, 
-    DbValue_Int64,
-    DbValue_Int32
-)
+import httpx
+
+try:
+    from spin_sdk import http, variables as _spin_variables
+    from spin_sdk.http import Request, Response
+    _SPIN_AVAILABLE = True
+except ImportError:
+    _SPIN_AVAILABLE = False
+    class _FakeHttp:
+        class Handler:
+            pass
+    http = _FakeHttp()  # type: ignore[assignment]
+    class Request:  # type: ignore[no-redef]
+        pass
+    class Response:  # type: ignore[no-redef]
+        pass
 
 # Setup logging
 logger = logging.getLogger("mecris.arabic_skip_counter")
 
-def _parse_query_params(uri: str) -> Dict[str, str]:
+
+def _parse_query_params(uri: Optional[str]) -> Dict[str, str]:
+    if not uri:
+        return {}
     parsed = urlparse(uri)
     return {k: v[0] for k, v in parse_qs(parsed.query).items()}
 
-async def _count_reminders(neon_url: str, user_id: str, hours: int) -> int:
+
+def _neon_http_url(postgres_url: str) -> str:
+    """Convert postgres://user:pass@host/db → https://host/sql"""
+    parsed = urlparse(postgres_url)
+    return f"https://{parsed.hostname}/sql"
+
+
+def _count_reminders(neon_url: str, user_id: str, hours: int) -> int:
+    """Query Neon HTTP SQL API and return the skip count. Returns 0 on any error."""
     if not neon_url:
         return 0
-
     try:
-        conn = await postgres.Connection.open(neon_url)
-        # Count entries in message_log that are "SKIP" within the last N hours
+        http_url = _neon_http_url(neon_url)
+        parsed = urlparse(neon_url)
         cutoff = (datetime.utcnow() - timedelta(hours=hours)).isoformat()
-        sql = "SELECT COUNT(*) FROM message_log WHERE user_id = $1 AND status = 'SKIP' AND created_at >= $2"
-        params = [
-            ParameterValue_Str(value=user_id),
-            ParameterValue_Str(value=cutoff)
-        ]
-        
-        columns, stream, future = await conn.query(sql, params)
-        count = 0
-        async for row in stream:
-            # row is List[DbValue]
-            val = row[0]
-            if isinstance(val, DbValue_Int64):
-                count = val.value
-            elif isinstance(val, DbValue_Int32):
-                count = val.value
-            break # Expecting only one row
-            
-        return int(count)
+        sql = (
+            "SELECT COUNT(*) as count FROM message_log "
+            "WHERE type IN ($1, $2) AND user_id = $3 AND created_at >= $4"
+        )
+        resp = httpx.post(
+            http_url,
+            json={"query": sql, "params": ["arabic_skip", "SKIP", user_id, cutoff]},
+            auth=(parsed.username, parsed.password) if parsed.username else None,
+        )
+        resp.raise_for_status()
+        rows = resp.json().get("rows", [])
+        if not rows:
+            return 0
+        return int(rows[0].get("count", 0))
     except Exception as e:
         print(f"Database error in arabic_skip_counter: {e}")
         return 0
@@ -86,7 +101,7 @@ class HttpHandler(http.Handler):
                 )
             
             neon_url = (await _spin_variables.get("neon_db_url")) or ""
-            count = await _count_reminders(neon_url, user_id, hours)
+            count = _count_reminders(neon_url, user_id, hours)
             return Response(
                 200,
                 {"content-type": "application/json"},
@@ -101,4 +116,5 @@ class HttpHandler(http.Handler):
             )
 
 # Mandatory export for spin-sdk v4
-incoming_handler = HttpHandler()
+if _SPIN_AVAILABLE:
+    incoming_handler = HttpHandler()

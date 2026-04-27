@@ -14,8 +14,12 @@ Returns JSON: PumpStatus object
 
 import json
 import logging
-from spin_sdk import http
-from spin_sdk.http import Request, Response
+try:
+    from spin_sdk import http
+    from spin_sdk.http import Request, Response
+    _SPIN_AVAILABLE = True
+except ImportError:
+    _SPIN_AVAILABLE = False
 
 logger = logging.getLogger("mecris.review_pump_component")
 
@@ -73,6 +77,14 @@ def get_status(debt: int, tomorrow_liability: int, daily_completions: int, multi
         "unit": unit,
     }
 
+def _json_ok(data: dict) -> bytes:
+    return json.dumps(data).encode()
+
+
+def _error_json(message: str) -> bytes:
+    return json.dumps({"error": message}).encode()
+
+
 def _parse_request(body_bytes: bytes) -> dict:
     try:
         data = json.loads(body_bytes or b"{}")
@@ -86,29 +98,22 @@ def _parse_request(body_bytes: bytes) -> dict:
         "unit": str(data.get("unit", "points")),
     }
 
-class HttpHandler(http.Handler):
-    async def handle_request(self, request: Request) -> Response:
-        try:
-            params = _parse_request(request.body)
-            result = get_status(
-                debt=params["debt"],
-                tomorrow_liability=params["tomorrow_liability"],
-                daily_completions=params["daily_completions"],
-                multiplier_x10=params["multiplier_x10"],
-                unit=params["unit"],
-            )
-            return Response(
-                200,
-                {"content-type": "application/json"},
-                json.dumps(result).encode(),
-            )
-        except Exception as exc:
-            print(f"review_pump_py component error: {exc}")
-            return Response(
-                500,
-                {"content-type": "application/json"},
-                json.dumps({"error": "internal error"}).encode(),
-            )
+if _SPIN_AVAILABLE:
+    class HttpHandler(http.Handler):
+        async def handle_request(self, request: Request) -> Response:
+            try:
+                params = _parse_request(request.body)
+                result = get_status(
+                    debt=params["debt"],
+                    tomorrow_liability=params["tomorrow_liability"],
+                    daily_completions=params["daily_completions"],
+                    multiplier_x10=params["multiplier_x10"],
+                    unit=params["unit"],
+                )
+                return Response(200, {"content-type": "application/json"}, _json_ok(result))
+            except Exception as exc:
+                print(f"review_pump_py component error: {exc}")
+                return Response(500, {"content-type": "application/json"}, _error_json("internal error"))
 
-# Mandatory export for spin-sdk v4
-incoming_handler = HttpHandler()
+    # Mandatory export for spin-sdk v4
+    incoming_handler = HttpHandler()

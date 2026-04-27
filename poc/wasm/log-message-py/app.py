@@ -31,9 +31,21 @@ import logging
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from spin_sdk import http
-from spin_sdk.http import Request, Response
-import spin_sdk.key_value as kv
+try:
+    from spin_sdk import http
+    from spin_sdk.http import Request, Response
+    import spin_sdk.key_value as kv
+    _SPIN_AVAILABLE = True
+except ImportError:
+    _SPIN_AVAILABLE = False
+    class _FakeHttp:
+        class Handler:
+            pass
+    http = _FakeHttp()  # type: ignore[assignment]
+    class Request:  # type: ignore[no-redef]
+        pass
+    class Response:  # type: ignore[no-redef]
+        pass
 
 logger = logging.getLogger("mecris.log_message_component")
 
@@ -211,4 +223,5 @@ class HttpHandler(http.Handler):
             )
 
 # Mandatory export for spin-sdk v4
-incoming_handler = HttpHandler()
+if _SPIN_AVAILABLE:
+    incoming_handler = HttpHandler()

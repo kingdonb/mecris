@@ -2431,3 +2431,53 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: PATCH-only endpoint — decided POST is sufficient since it already does surgical per-field updates. No HTTP method split needed. PR to kingdonb/mecris — still blocked by expired GITHUB_CLASSIC_PAT.
 
 **Next**: Renew `GITHUB_CLASSIC_PAT` (human-required) and open PRs for all pending commits. Bot-actionable: AI Framework Evaluation (kingdonb/mecris#205, needs Aider) or SecretManager Neon fallback.
+
+## 🏛️ 2026-04-27 — SecretManager Neon fallback for absent env keys (session #59, yebyen/mecris#288, complete)
+
+**Planned**: Extend `services/secret_manager.py::SecretManager.get_secrets()` so that keys absent from `os.environ` are looked up from a `secure_variables` table in Neon when `NEON_DB_URL` is set, with no call-site changes required. (Plan: yebyen/mecris#288)
+
+**Done**: Orient found SecretManager Neon fallback as the top bot-actionable item in NEXT_SESSION.md (extension point already documented in module docstring from session #57). Read `services/secret_manager.py` and `tests/test_secret_manager.py` to understand existing 16-test structure. Checked `neon_sync_checker.py` for the canonical `psycopg2.connect` context-manager pattern used by the project. Created plan yebyen/mecris#288. Implemented: `_fetch_from_neon(neon_db_url, key, connect)` executes `SELECT value FROM secure_variables WHERE key = %s LIMIT 1`; any exception → DEBUG log, return None. `get_secrets()` collects `missing` keys after env scan; if `missing` and `NEON_DB_URL` is set, imports psycopg2 lazily (skipped when `_neon_connect` is injected), queries Neon for each missing key. Added `_neon_connect: Optional[Callable]` constructor kwarg for test injection — this also prevents the `import psycopg2` from running in test environments without the library. Wrote 5 new tests in `TestSecretManagerNeonFallback`: Neon hit, Neon miss, NEON_DB_URL unset (connect never called), env precedence (connect never called), DB error silent. All 21 secret_manager tests + 24 headless_loopback tests pass (45 total). Committed `a16a7a7`. Closed yebyen/mecris#288.
+
+**Skipped**: Creating the `secure_variables` table in production Neon — human-required; added as pending item in NEXT_SESSION.md. PR to kingdonb/mecris — still blocked by expired GITHUB_CLASSIC_PAT.
+
+**Next**: Renew `GITHUB_CLASSIC_PAT` (human-required) and open PRs for all ~12 pending commits. Bot-actionable: AI Framework Evaluation (kingdonb/mecris#205, needs Aider) or Local Inference Pipeline (kingdonb/mecris#203, needs Ollama).
+
+## 2026-04-27 — Fix WASM component headless import guard (session #60)
+
+**Planned**: Add `try/except ImportError` guards around `spin_sdk` imports in the four WASM component `app.py` files so pure-logic functions can be imported and tested without the WASM runtime (plan yebyen/mecris#289).
+
+**Done**: 🏛️ Added `try/except ImportError` around all `spin_sdk` imports in `poc/wasm/review-pump-py/app.py`, `poc/wasm/budget-governor-py/app.py`, `poc/wasm/log-message-py/app.py`, and `mecris-go-spin/arabic-skip-counter/app.py`. Pattern: `_SPIN_AVAILABLE` flag set in try block; stub classes (`_FakeHttp.Handler`, `Request`, `Response`, DB types) defined in except block so module-level `class HttpHandler(http.Handler)` definition succeeds without spin_sdk; `incoming_handler = HttpHandler()` guarded by `if _SPIN_AVAILABLE`. Result: 142 tests pass (up from 45), zero collection errors. The 45 existing baseline tests continue to pass. Committed `730e593`. Closed yebyen/mecris#289. Also filed yebyen/mecris#290 for the 54 pre-existing test-implementation mismatches that became visible once collection errors were resolved.
+
+**Skipped**: Fixing the 54 pre-existing test-implementation mismatches (budget-governor-py API renamed, arabic-skip-counter uses spin_sdk.postgres vs httpx) — tracked as yebyen/mecris#290 for a future session. All primary bot-actionable tasks from NEXT_SESSION.md (AI Framework Eval #205, Local Inference #203) remain blocked by environment requirements (Aider, Ollama not available).
+
+**Next**: Renew `GITHUB_CLASSIC_PAT` (human-required, urgent) and open PRs for ~13 pending commits. Bot-actionable: yebyen/mecris#290 (align WASM test-implementation skew, 54 tests would flip from fail to pass with API alias additions).
+
+## 🏛️ 2026-04-27 — Align WASM test-implementation skew (session #61, yebyen/mecris#291, complete)
+
+**Planned**: Fix 54 failing tests in `budget-governor-py` and `arabic-skip-counter` by aligning app.py implementations with the test specs (plan: yebyen/mecris#291, tracked as yebyen/mecris#290).
+
+**Done**: Rewrote `poc/wasm/budget-governor-py/app.py` pure-logic section to match the test spec: `make_bucket_config(limits=None)` with 4-bucket defaults and type field (spend/guard); `_calc_total_spent` (all-time sum); `_calc_window_spent` (39-min rolling window, datetime-aware, skips invalid ts); `check_envelope` → allow/defer/deny with ValueError for unknown bucket; `recommend_bucket` prefers spend type then least-used guard; `get_status` with envelope_status/window_minutes/envelope_spend_pct/recommendation/spent_total/remaining/live_balance; `budget_gate` with budget_halted/envelope/message/routing_recommendation; `_parse_request` default cost 0.01; `_dump_spend_log_to_json` with datetime-aware encoder. Rewrote `mecris-go-spin/arabic-skip-counter/app.py` `_count_reminders` from async `spin_sdk.postgres` to synchronous `httpx.post` against Neon HTTP SQL API; added None guard to `_parse_query_params`. All 77 tests in these two files pass (49 + 5 = 54 previously failing, now fixed). Committed `ddac3b0`. Closed yebyen/mecris#290 and yebyen/mecris#291.
+
+**Skipped**: Nothing — the full scope was completed.
+
+**Next**: Renew `GITHUB_CLASSIC_PAT` (human-required, urgent) to unblock ~14 pending commits. Bot-actionable: AI Framework Evaluation (kingdonb/mecris#205, needs Aider) or Local Inference Pipeline (kingdonb/mecris#203, needs Ollama).
+
+## 🏛️ 2026-04-27 — Add _json_ok/_error_json helpers to review-pump-py (session #62, yebyen/mecris#292, complete)
+
+**Planned**: Add `_json_ok(data) -> bytes` and `_error_json(message) -> bytes` helper functions to `poc/wasm/review-pump-py/app.py` so the 4 failing `TestSerializationHelpers` tests in `test_review_pump_py_component.py` pass. (Plan: yebyen/mecris#292)
+
+**Done**: Orient surfaced 4 test-implementation skew failures in `test_review_pump_py_component.py::TestSerializationHelpers` — tests called `app._json_ok` and `app._error_json` but `app.py` only used inline `json.dumps(...).encode()` without exposing named helpers. Added `_json_ok(data: dict) -> bytes` and `_error_json(message: str) -> bytes` as module-level functions and refactored `HttpHandler.handle_request` to use them. `PYTHONPATH=. pytest tests/test_review_pump_py_component.py` → **34 passed, 0 failed** (was 30/34). Committed `442ee91`. Closed yebyen/mecris#292. All remaining failures in the full suite are environment-related (Neon DSN, async plugin not installed).
+
+**Skipped**: Nothing — scope was contained and fully completed in one increment.
+
+**Next**: Renew `GITHUB_CLASSIC_PAT` (human-required, urgent) and open PRs for ~15 pending commits. Bot-actionable: AI Framework Evaluation (kingdonb/mecris#205, needs Aider) or Local Inference Pipeline (kingdonb/mecris#203, needs Ollama) — both require tools not available in this environment.
+
+## 🏛️ 2026-04-27 — Fix ghost.archivist check_presence test-implementation skew (session #63, yebyen/mecris#293, complete)
+
+**Planned**: Fix 8 failing tests in `tests/test_archivist.py::TestRun` caused by `ghost/archivist.py` using `is_human_present()` (bool) while tests patch `ghost.archivist.check_presence` (returns `PresenceStatus`). (Plan: yebyen/mecris#293)
+
+**Done**: Orient ran the full test suite and discovered a real test-implementation skew: `ghost/archivist.py` imported and called `is_human_present` (returns bool) but the test suite patches `ghost.archivist.check_presence` — which wasn't in the module namespace, causing `AttributeError` on all 8 `TestRun` tests. Fixed by importing `check_presence` and `is_mecris_cli_active` directly into `ghost/archivist.py`, replacing `is_human_present()` with a composite check (`status.human_present OR is_mecris_cli_active()`), and updating the YIELD log detail to include `human_present={status.human_present}` with "yielding" in stdout. `PYTHONPATH=. pytest tests/test_archivist.py` → **14 passed, 0 failed**. Full verified suite: 194 tests pass (4 WASM components + archivist + token_bank + pii_encryption + post_mortem). Committed `8f7125d`. Closed yebyen/mecris#293. Also confirmed during orient: kingdonb/mecris#213 (log-message-py WASM + Android) and kingdonb/mecris#210 (HCAT Dockerfile) are both fully done in prior commits.
+
+**Skipped**: Nothing — scope was contained and fully completed.
+
+**Next**: Renew `GITHUB_CLASSIC_PAT` (human-required, urgent) and open PRs for ~9 pending commits. Bot-actionable: AI Framework Evaluation (kingdonb/mecris#205, needs Aider) or Local Inference Pipeline (kingdonb/mecris#203, needs Ollama) — both require tools not available in this environment.

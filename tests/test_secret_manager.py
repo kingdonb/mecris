@@ -6,6 +6,11 @@ Covers the three validation criteria from yebyen/mecris#286:
   1. SecretManager.get_secrets returns only the requested keys.
   2. HeadlessLoopback.run() passes a minimal env dict to subprocess.Popen.
   3. The parent os.environ is not modified after a run.
+
+Also covers the Neon fallback criteria from yebyen/mecris#288:
+  4. Key absent from env but present in Neon → returned in result.
+  5. Key absent from both env and Neon → omitted.
+  6. NEON_DB_URL unset → Neon lookup skipped entirely.
 """
 
 import os
@@ -148,6 +153,89 @@ class TestHeadlessLoopbackEnvIsolation:
                 HeadlessLoopback(secret_manager=self._sm_with({})).run("prompt")
         env = mock_popen.call_args.kwargs["env"]
         assert "MECRIS_SHOULD_NOT_LEAK" not in env
+
+
+# ---------------------------------------------------------------------------
+# 4. SecretManager Neon fallback (yebyen/mecris#288)
+# ---------------------------------------------------------------------------
+
+
+class TestSecretManagerNeonFallback:
+    """SecretManager.get_secrets falls back to Neon secure_variables when NEON_DB_URL is set."""
+
+    def _make_neon_connect(self, key_to_value: dict):
+        """Return a callable that simulates psycopg2.connect returning rows from key_to_value."""
+
+        def connect(url):
+            cur = MagicMock()
+            cur.__enter__.return_value = cur
+            cur._last_key = None
+
+            def execute(sql, params):
+                cur._last_key = params[0]
+
+            def fetchone():
+                val = key_to_value.get(cur._last_key)
+                return (val,) if val is not None else None
+
+            cur.execute = execute
+            cur.fetchone = fetchone
+
+            conn = MagicMock()
+            conn.__enter__.return_value = conn
+            conn.cursor.return_value = cur
+            return conn
+
+        return connect
+
+    def test_key_from_neon_when_absent_from_env(self):
+        """A key absent from env but present in Neon secure_variables is returned."""
+        connect = self._make_neon_connect({"GEMINI_API_KEY": "neon_tok"})
+        sm = SecretManager(_neon_connect=connect)
+        with patch.dict(os.environ, {"NEON_DB_URL": "postgres://test"}, clear=True):
+            result = sm.get_secrets(["GEMINI_API_KEY"])
+        assert result == {"GEMINI_API_KEY": "neon_tok"}
+
+    def test_key_absent_from_both_env_and_neon(self):
+        """A key absent from both env and Neon is omitted from the result."""
+        connect = self._make_neon_connect({})  # no keys in Neon
+        sm = SecretManager(_neon_connect=connect)
+        with patch.dict(os.environ, {"NEON_DB_URL": "postgres://test"}, clear=True):
+            result = sm.get_secrets(["MISSING_KEY"])
+        assert "MISSING_KEY" not in result
+
+    def test_neon_skipped_when_neon_db_url_unset(self):
+        """When NEON_DB_URL is absent, Neon is never queried."""
+        connect = MagicMock()
+        sm = SecretManager(_neon_connect=connect)
+        with patch.dict(os.environ, {}, clear=True):
+            result = sm.get_secrets(["SOME_KEY"])
+        connect.assert_not_called()
+        assert "SOME_KEY" not in result
+
+    def test_env_key_takes_precedence_and_neon_not_queried(self):
+        """When all requested keys are in env, Neon connect is never called."""
+        connect = MagicMock()
+        sm = SecretManager(_neon_connect=connect)
+        with patch.dict(
+            os.environ,
+            {"NEON_DB_URL": "postgres://test", "MY_KEY": "env_val"},
+            clear=True,
+        ):
+            result = sm.get_secrets(["MY_KEY"])
+        connect.assert_not_called()
+        assert result == {"MY_KEY": "env_val"}
+
+    def test_neon_error_is_silent_key_omitted(self):
+        """If Neon raises, the key is silently omitted (fail-safe)."""
+
+        def bad_connect(url):
+            raise RuntimeError("connection refused")
+
+        sm = SecretManager(_neon_connect=bad_connect)
+        with patch.dict(os.environ, {"NEON_DB_URL": "postgres://test"}, clear=True):
+            result = sm.get_secrets(["FRAGILE_KEY"])
+        assert "FRAGILE_KEY" not in result
 
 
 # ---------------------------------------------------------------------------
