@@ -77,6 +77,14 @@ def get_status(debt: int, tomorrow_liability: int, daily_completions: int, multi
         "unit": unit,
     }
 
+def _json_ok(data: dict) -> bytes:
+    return json.dumps(data).encode()
+
+
+def _error_json(message: str) -> bytes:
+    return json.dumps({"error": message}).encode()
+
+
 def _parse_request(body_bytes: bytes) -> dict:
     try:
         data = json.loads(body_bytes or b"{}")
@@ -102,18 +110,10 @@ if _SPIN_AVAILABLE:
                     multiplier_x10=params["multiplier_x10"],
                     unit=params["unit"],
                 )
-                return Response(
-                    200,
-                    {"content-type": "application/json"},
-                    json.dumps(result).encode(),
-                )
+                return Response(200, {"content-type": "application/json"}, _json_ok(result))
             except Exception as exc:
                 print(f"review_pump_py component error: {exc}")
-                return Response(
-                    500,
-                    {"content-type": "application/json"},
-                    json.dumps({"error": "internal error"}).encode(),
-                )
+                return Response(500, {"content-type": "application/json"}, _error_json("internal error"))
 
     # Mandatory export for spin-sdk v4
     incoming_handler = HttpHandler()
