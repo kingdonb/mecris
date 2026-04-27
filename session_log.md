@@ -2461,3 +2461,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: Nothing — the full scope was completed.
 
 **Next**: Renew `GITHUB_CLASSIC_PAT` (human-required, urgent) to unblock ~14 pending commits. Bot-actionable: AI Framework Evaluation (kingdonb/mecris#205, needs Aider) or Local Inference Pipeline (kingdonb/mecris#203, needs Ollama).
+
+## 🏛️ 2026-04-27 — Add _json_ok/_error_json helpers to review-pump-py (session #62, yebyen/mecris#292, complete)
+
+**Planned**: Add `_json_ok(data) -> bytes` and `_error_json(message) -> bytes` helper functions to `poc/wasm/review-pump-py/app.py` so the 4 failing `TestSerializationHelpers` tests in `test_review_pump_py_component.py` pass. (Plan: yebyen/mecris#292)
+
+**Done**: Orient surfaced 4 test-implementation skew failures in `test_review_pump_py_component.py::TestSerializationHelpers` — tests called `app._json_ok` and `app._error_json` but `app.py` only used inline `json.dumps(...).encode()` without exposing named helpers. Added `_json_ok(data: dict) -> bytes` and `_error_json(message: str) -> bytes` as module-level functions and refactored `HttpHandler.handle_request` to use them. `PYTHONPATH=. pytest tests/test_review_pump_py_component.py` → **34 passed, 0 failed** (was 30/34). Committed `442ee91`. Closed yebyen/mecris#292. All remaining failures in the full suite are environment-related (Neon DSN, async plugin not installed).
+
+**Skipped**: Nothing — scope was contained and fully completed in one increment.
+
+**Next**: Renew `GITHUB_CLASSIC_PAT` (human-required, urgent) and open PRs for ~15 pending commits. Bot-actionable: AI Framework Evaluation (kingdonb/mecris#205, needs Aider) or Local Inference Pipeline (kingdonb/mecris#203, needs Ollama) — both require tools not available in this environment.
