@@ -26,7 +26,7 @@ import json
 import asyncio
 from typing import Optional
 
-from ghost.presence import is_human_present, get_neon_store, SYSTEM_LOCK_PATH
+from ghost.presence import check_presence, is_mecris_cli_active, get_neon_store, SYSTEM_LOCK_PATH
 from ghost.archivist_logic import perform_archival_sync, should_ghost_wake_up, archivists_round_robin
 
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -68,16 +68,17 @@ async def run(
     """
     _log_path = log_path or os.environ.get("GHOST_LOG_PATH", DEFAULT_LOG_PATH)
     _mcp_url = mcp_url or os.environ.get("MECRIS_MCP_URL", DEFAULT_MCP_URL)
-    _lock_path = lock_path or os.environ.get("GHOST_LOCK_PATH") or None
+    _lock_path = lock_path or os.environ.get("GHOST_LOCK_PATH") or SYSTEM_LOCK_PATH
 
     timestamp = datetime.datetime.now(datetime.timezone.utc).isoformat()
 
-    # 1. Presence check — yield if human is active (composite: lock + process)
-    _lock_path = lock_path or os.environ.get("GHOST_LOCK_PATH") or SYSTEM_LOCK_PATH
-    if is_human_present(_lock_path):
-        msg = "Human presence detected (observant yield) — archiving deferred"
-        print(f"[ghost.archivist] {msg}")
-        _write_log(_log_path, timestamp, "YIELD", msg)
+    # 1. Presence check — yield if human is active (composite: lock file OR active CLI).
+    #    check_presence is imported explicitly so tests can patch it as ghost.archivist.check_presence.
+    status = check_presence(_lock_path)
+    if status.human_present or is_mecris_cli_active():
+        detail = f"human_present={status.human_present} age_seconds={status.age_seconds}"
+        print(f"[ghost.archivist] yielding — {detail}")
+        _write_log(_log_path, timestamp, "YIELD", detail)
         return 0
 
     # 2. Pulse the MCP server
