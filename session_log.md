@@ -2431,3 +2431,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: PATCH-only endpoint — decided POST is sufficient since it already does surgical per-field updates. No HTTP method split needed. PR to kingdonb/mecris — still blocked by expired GITHUB_CLASSIC_PAT.
 
 **Next**: Renew `GITHUB_CLASSIC_PAT` (human-required) and open PRs for all pending commits. Bot-actionable: AI Framework Evaluation (kingdonb/mecris#205, needs Aider) or SecretManager Neon fallback.
+
+## 🏛️ 2026-04-27 — SecretManager Neon fallback for absent env keys (session #59, yebyen/mecris#288, complete)
+
+**Planned**: Extend `services/secret_manager.py::SecretManager.get_secrets()` so that keys absent from `os.environ` are looked up from a `secure_variables` table in Neon when `NEON_DB_URL` is set, with no call-site changes required. (Plan: yebyen/mecris#288)
+
+**Done**: Orient found SecretManager Neon fallback as the top bot-actionable item in NEXT_SESSION.md (extension point already documented in module docstring from session #57). Read `services/secret_manager.py` and `tests/test_secret_manager.py` to understand existing 16-test structure. Checked `neon_sync_checker.py` for the canonical `psycopg2.connect` context-manager pattern used by the project. Created plan yebyen/mecris#288. Implemented: `_fetch_from_neon(neon_db_url, key, connect)` executes `SELECT value FROM secure_variables WHERE key = %s LIMIT 1`; any exception → DEBUG log, return None. `get_secrets()` collects `missing` keys after env scan; if `missing` and `NEON_DB_URL` is set, imports psycopg2 lazily (skipped when `_neon_connect` is injected), queries Neon for each missing key. Added `_neon_connect: Optional[Callable]` constructor kwarg for test injection — this also prevents the `import psycopg2` from running in test environments without the library. Wrote 5 new tests in `TestSecretManagerNeonFallback`: Neon hit, Neon miss, NEON_DB_URL unset (connect never called), env precedence (connect never called), DB error silent. All 21 secret_manager tests + 24 headless_loopback tests pass (45 total). Committed `a16a7a7`. Closed yebyen/mecris#288.
+
+**Skipped**: Creating the `secure_variables` table in production Neon — human-required; added as pending item in NEXT_SESSION.md. PR to kingdonb/mecris — still blocked by expired GITHUB_CLASSIC_PAT.
+
+**Next**: Renew `GITHUB_CLASSIC_PAT` (human-required) and open PRs for all ~12 pending commits. Bot-actionable: AI Framework Evaluation (kingdonb/mecris#205, needs Aider) or Local Inference Pipeline (kingdonb/mecris#203, needs Ollama).

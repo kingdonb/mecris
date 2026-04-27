@@ -1,33 +1,34 @@
-# Next Session: Open PRs to kingdonb/mecris (human-required) or bot-actionable: AI Framework Evaluation or SecretManager Neon fallback
+# Next Session: Open PRs to kingdonb/mecris (human-required) or bot-actionable: AI Framework Evaluation
 
-## Current Status (2026-04-27, post-session #58)
-- **notification_prefs write path COMPLETE**: `POST /profile` now accepts `notification_prefs` JSON object and writes it to `users.notification_prefs::JSONB`. `GET /profile` returns the stored value. 4 new tests; 140 total pass. Committed `58803b8`. Closes yebyen/mecris#287.
+## Current Status (2026-04-27, post-session #59)
+- **SecretManager Neon fallback COMPLETE**: `get_secrets()` now queries `secure_variables` table in Neon when `NEON_DB_URL` is set and a key is absent from env. `psycopg2` is lazily imported only on the fallback path. `_neon_connect` kwarg injected in tests. 5 new tests; 21 total secret_manager tests pass. Committed `a16a7a7`. Closes yebyen/mecris#288.
 - **GITHUB_CLASSIC_PAT still expired**: Bot cannot create PRs to kingdonb/mecris. Renew immediately (human-required). Blocks all PRs.
-- **yebyen/mecris ahead of kingdonb/mecris by ~11 commits**: TF-IDF Search, Narrator enrichment, Observability Phase 1 (Python), Observability Phase 2 Python + Rust, notification_prefs read, JIT Secret Manager, notification_prefs write. None yet PRed due to expired PAT.
+- **yebyen/mecris ahead of kingdonb/mecris by ~12 commits**: TF-IDF Search, Narrator enrichment, Observability Phase 1 (Python), Observability Phase 2 Python + Rust, notification_prefs read, JIT Secret Manager, notification_prefs write, SecretManager Neon fallback. None yet PRed due to expired PAT.
 
 ## Verified This Session
-- [x] **notification_prefs write path (session #58)**: `POST /profile` with `{"notification_prefs": {"step_threshold": 3000}}` writes JSONB to `users` table via `$1::JSONB` parameterized UPDATE; `GET /profile` returns `notification_prefs` field. Input validation: non-object JSON (array, scalar) → 400. 4 new unit tests (round-trip all fields, partial write with defaults, reject non-object, unknown keys ignored). All 140 sync-service tests pass. **COMPLETE** — closes yebyen/mecris#287.
+- [x] **SecretManager Neon fallback (session #59)**: `get_secrets()` with `NEON_DB_URL` set queries `SELECT value FROM secure_variables WHERE key = %s LIMIT 1`; result merged into returned dict. Env keys take precedence (Neon not queried if all keys found in env). `NEON_DB_URL` unset → Neon path never entered. Any DB error → DEBUG log, key silently omitted. 5 new tests (Neon hit, Neon miss, URL unset, env precedence, DB error silent). All 21 secret_manager tests + 24 headless_loopback tests pass (45 total). Commit `a16a7a7`. **COMPLETE** — closes yebyen/mecris#288.
 
 ## Pending Verification
 
 ### 👤 Human-required (cannot be resolved by bot)
 - [ ] **URGENT: Refresh GITHUB_CLASSIC_PAT** — returns 401. Bot cannot create PRs to kingdonb/mecris. Renew in GitHub → Settings → Developer Settings → Personal access tokens (classic) with `repo` scope, update the workflow secret `GITHUB_CLASSIC_PAT`.
-- [ ] **Open PR yebyen:main → kingdonb:main** for all pending commits (TF-IDF Search, Narrator enrichment, Observability Phase 1+2 Python, Observability Phase 2 Rust, notification_prefs read+write, JIT Secret Manager) — blocked by expired PAT. Closes kingdonb/mecris#167, kingdonb/mecris#169, kingdonb/mecris#204, kingdonb/mecris#208 (complete), kingdonb/mecris#245 (Phase 1 + Phase 2 Python + Phase 2 Rust req 3).
+- [ ] **Open PR yebyen:main → kingdonb:main** for all pending commits (TF-IDF Search, Narrator enrichment, Observability Phase 1+2 Python, Observability Phase 2 Rust, notification_prefs read+write, JIT Secret Manager, SecretManager Neon fallback) — blocked by expired PAT. Closes kingdonb/mecris#167, kingdonb/mecris#169, kingdonb/mecris#204, kingdonb/mecris#208 (complete), kingdonb/mecris#245 (Phase 1 + Phase 2 Python + Phase 2 Rust req 3).
 - [ ] **Apply migrate_v8_observability.py to production Neon**: Run `python scripts/migrate_v8_observability.py` in the production environment (with NEON_DB_URL set) to add `last_status`, `last_error`, `intent` columns to `scheduler_election`.
+- [ ] **Apply secure_variables table to production Neon**: Run `CREATE TABLE IF NOT EXISTS secure_variables (key TEXT PRIMARY KEY, value TEXT NOT NULL);` before SecretManager Neon fallback can be used in production.
 - [ ] **Cloud Readiness Check**: Monitor Fermyon/Akamai for updates to their Python WASM runtimes. Test a simple SDK v4 "Hello World" to confirm when the platform has caught up.
 - [ ] **Align Release Management**: Determine if we should maintain a "Legacy Cloud" branch or implement a compatibility shim until the cloud catch-up is complete.
 - [ ] **Verify log-message-py in Cloud**: Once platforms are ready, confirm audit logs appear in cloud KV.
 
 ### 🤖 Bot-actionable (can be resolved in future sessions)
 - [ ] **AI Framework Evaluation (kingdonb/mecris#205)**: Matrix doc and POC script committed (`1a459aa`). Remaining: run `scripts/evaluate_aider.py` in an environment with Aider installed and append results to `docs/AI_FRAMEWORK_EVALUATION.md` evidence log. Requires Aider + an LLM API key.
-- [ ] **SecretManager Neon fallback**: `services/secret_manager.py` reads only from `os.environ`. Future extension: if a key is absent and `NEON_DB_URL` is set, look it up from a Neon-backed secure-variable store. Extension point is in `get_secrets()`. No call-site changes needed.
 - [ ] **Budget Governor: WASM Port (kingdonb/mecris#214)**: POC complete and wired into spin.toml. Remaining: Fermyon Cloud variable config — human-required for deployment.
 - [ ] **Local Inference Pipeline (kingdonb/mecris#203)**: Integrate Ollama and build a cloud-fallback router.
 
 ## Infrastructure Notes (carried forward)
+- **`secure_variables` table**: Expected schema: `CREATE TABLE IF NOT EXISTS secure_variables (key TEXT PRIMARY KEY, value TEXT NOT NULL);`. SecretManager reads this via `SELECT value FROM secure_variables WHERE key = %s LIMIT 1`. Table does NOT yet exist in production Neon — must be created before the fallback does anything useful.
 - **`notification_prefs` write path**: `POST /profile` with `{"notification_prefs": {…}}` writes JSONB to `users.notification_prefs`. Accepts any JSON object; unknown keys are stored and silently ignored on read (falls back to defaults). CORS preflight now includes `PATCH` in `access-control-allow-methods`.
 - **`notification_prefs` JSONB keys**: `step_threshold` (u32), `window_start_hour` (u32), `window_end_hour` (u32), `rate_limit_minutes` (u64). All optional; any absent key falls back to default (2000 / 8 / 20 / 240). Empty `{}` or NULL → all defaults.
-- **`SecretManager` extension point**: Add Neon-backed fallback in `get_secrets()` without breaking any call sites. `HEADLESS_LOOPBACK_KEYS = ["GEMINI_API_KEY"]` is the canonical list; extend it if more keys are needed by the subprocess.
+- **`SecretManager` Neon fallback**: `_neon_connect` kwarg overrides `psycopg2.connect` for test injection. `psycopg2` is lazily imported only when `NEON_DB_URL` is set AND no injected connect. `HEADLESS_LOOPBACK_KEYS = ["GEMINI_API_KEY"]` is the canonical list.
 - **`HeadlessLoopback._SYSTEM_PASSTHROUGH`**: `frozenset({"PATH", "HOME", "TERM", "USER", "SHELL", "LANG", "LC_ALL"})` — always forwarded to subprocess. No credentials in this set.
 - **`write_obs_status` signature (Rust)**: `(connection: &Connection, user_id: &str, role: &str, last_status: &str, intent: &str, last_error: Option<&str>)`. Uses `ParameterValue::DbNull` for `None` last_error. Fail-safe: on UPDATE error, logs `[DEBUG] write_obs_status: UPDATE failed (columns may be absent): ...` and returns silently.
 - **`cloud_role()` extracted**: Reads `cloud_provider` Spin variable; maps "akamai" → "akamai_functions", "fermyon" → "fermyon_cloud", else "unknown_cloud". Used by both `register_cloud_heartbeat` and `write_obs_status` call sites.
