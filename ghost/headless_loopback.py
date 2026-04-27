@@ -26,7 +26,9 @@ import os
 import signal
 import subprocess
 from dataclasses import dataclass, field
-from typing import List, Optional
+from typing import FrozenSet, List, Optional
+
+from services.secret_manager import HEADLESS_LOOPBACK_KEYS, SecretManager, secret_manager as _default_secret_manager
 
 logger = logging.getLogger("mecris.ghost.headless_loopback")
 
@@ -61,27 +63,59 @@ class HeadlessLoopback:
     process runs in its own session (``start_new_session=True``) so that
     the kill signal targets only the child process tree.
 
+    The subprocess receives a **minimal environment**: only the API keys
+    listed in :attr:`SECRET_KEYS` (fetched via :class:`SecretManager`) plus
+    a small set of system variables required for basic process usability
+    (``PATH``, ``HOME``, ``TERM``, ``USER``, ``SHELL``, ``LANG``,
+    ``LC_ALL``).  The parent ``os.environ`` is never modified.
+
     Always returns a :class:`LoopbackResult` — never raises.
     """
 
     DEFAULT_TIMEOUT: int = DEFAULT_TIMEOUT_SECONDS
     COMMAND: List[str] = ["gemini", "--yolo"]
 
+    # Secret keys fetched via SecretManager and injected into the subprocess env.
+    SECRET_KEYS: List[str] = HEADLESS_LOOPBACK_KEYS
+
+    # System variables always passed through so the subprocess can locate
+    # executables and handle basic I/O. These carry no credentials.
+    _SYSTEM_PASSTHROUGH: FrozenSet[str] = frozenset(
+        {"PATH", "HOME", "TERM", "USER", "SHELL", "LANG", "LC_ALL"}
+    )
+
     def __init__(
         self,
         command: Optional[List[str]] = None,
         timeout: int = DEFAULT_TIMEOUT_SECONDS,
         log_output: bool = True,
+        secret_manager: Optional[SecretManager] = None,
     ) -> None:
         """
         Args:
-            command:    Override the default ``gemini --yolo`` command list.
-            timeout:    Maximum seconds before the subprocess is forcibly killed.
-            log_output: If True, captured output is logged at DEBUG level.
+            command:        Override the default ``gemini --yolo`` command list.
+            timeout:        Maximum seconds before the subprocess is forcibly killed.
+            log_output:     If True, captured output is logged at DEBUG level.
+            secret_manager: Override the SecretManager instance (useful in tests).
         """
         self._command: List[str] = command if command is not None else list(self.COMMAND)
         self._timeout: int = timeout
         self._log_output: bool = log_output
+        self._secret_manager: SecretManager = secret_manager or _default_secret_manager
+
+    def _build_subprocess_env(self) -> dict:
+        """Build a minimal env dict containing only system pass-throughs and secrets.
+
+        Returns:
+            A new dict — modifying it does not affect ``os.environ``.
+        """
+        env: dict = {}
+        for key in self._SYSTEM_PASSTHROUGH:
+            val = os.environ.get(key)
+            if val is not None:
+                env[key] = val
+        env.update(self._secret_manager.get_secrets(self.SECRET_KEYS))
+        return env
 
     def run(self, prompt: str) -> LoopbackResult:
         """Spawn the subprocess, pipe *prompt* to stdin, and collect output.
@@ -97,8 +131,12 @@ class HeadlessLoopback:
             :class:`LoopbackResult` — never raises.
         """
         cmd = self._command
+        subprocess_env = self._build_subprocess_env()
         logger.debug(
-            "HeadlessLoopback: spawning %s (timeout=%ds)", cmd, self._timeout
+            "HeadlessLoopback: spawning %s (timeout=%ds, env_keys=%s)",
+            cmd,
+            self._timeout,
+            sorted(subprocess_env.keys()),
         )
 
         try:
@@ -108,6 +146,7 @@ class HeadlessLoopback:
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
+                env=subprocess_env,
                 # Isolate the child's process group so SIGKILL targets only
                 # the child tree, not the parent process.
                 start_new_session=True,
