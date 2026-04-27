@@ -255,7 +255,7 @@ async fn handle_sync_service(req: Request) -> anyhow::Result<Response> {
         return Ok(Response::builder()
             .status(204)
             .header("access-control-allow-origin", "*")
-            .header("access-control-allow-methods", "GET, POST, OPTIONS")
+            .header("access-control-allow-methods", "GET, POST, PATCH, OPTIONS")
             .header("access-control-allow-headers", "authorization, content-type, x-internal-api-key")
             .build());
     }
@@ -690,6 +690,7 @@ async fn handle_profile_post(req: Request) -> anyhow::Result<Response> {
         longitude: Option<f64>,
         vacation_mode_until: Option<String>,
         autonomous_sync_enabled: Option<bool>,
+        notification_prefs: Option<serde_json::Value>,
     }
 
     let body = req.body();
@@ -756,8 +757,19 @@ async fn handle_profile_post(req: Request) -> anyhow::Result<Response> {
     }
 
     if let Some(auto) = profile_req.autonomous_sync_enabled {
-        connection.execute("UPDATE users SET autonomous_sync_enabled = $1 WHERE pocket_id_sub = $2", 
+        connection.execute("UPDATE users SET autonomous_sync_enabled = $1 WHERE pocket_id_sub = $2",
             &[ParameterValue::Boolean(auto), ParameterValue::Str(user_id.clone())])?;
+    }
+
+    if let Some(prefs) = profile_req.notification_prefs {
+        // Only accept JSON objects; reject arrays, scalars, etc.
+        if !prefs.is_object() {
+            return Ok(Response::builder().status(400).body("notification_prefs must be a JSON object").build());
+        }
+        let prefs_json = serde_json::to_string(&prefs)
+            .unwrap_or_else(|_| "{}".to_string());
+        connection.execute("UPDATE users SET notification_prefs = $1::JSONB WHERE pocket_id_sub = $2",
+            &[ParameterValue::Str(prefs_json), ParameterValue::Str(user_id.clone())])?;
     }
 
     Ok(Response::builder()
@@ -782,13 +794,15 @@ async fn handle_profile_get(req: Request) -> anyhow::Result<Response> {
         longitude: Option<f64>,
         vacation_mode_until: Option<String>,
         autonomous_sync_enabled: bool,
+        notification_prefs: Option<serde_json::Value>,
     }
 
     let db_url = variables::get("db_url").or_else(|_| variables::get("neon_db_url"))?;
     let connection = Connection::open(&db_url)?;
 
     let query = "SELECT phone_number_encrypted, beeminder_user_encrypted, location_lat, location_lon, \
-                 vacation_mode_until::TEXT, autonomous_sync_enabled \
+                 vacation_mode_until::TEXT, autonomous_sync_enabled, \
+                 COALESCE(notification_prefs::TEXT, '') \
                  FROM users WHERE pocket_id_sub = $1";
     let rs = connection.query(query, &[ParameterValue::Str(user_id)])?;
 
@@ -803,6 +817,9 @@ async fn handle_profile_get(req: Request) -> anyhow::Result<Response> {
     let lon = match &row[3] { DbValue::Floating64(f) => Some(*f), _ => None };
     let vac = match &row[4] { DbValue::Str(s) => Some(s.clone()), _ => None };
     let auto = match &row[5] { DbValue::Boolean(b) => *b, _ => false };
+    let prefs_str = match &row[6] { DbValue::Str(s) if !s.is_empty() => Some(s.as_str()), _ => None };
+    let notification_prefs: Option<serde_json::Value> = prefs_str
+        .and_then(|s| serde_json::from_str(s).ok());
 
     let phone = if let Some(p) = phone_enc {
         decrypt_token(&p).await.ok()
@@ -819,6 +836,7 @@ async fn handle_profile_get(req: Request) -> anyhow::Result<Response> {
         longitude: lon,
         vacation_mode_until: vac,
         autonomous_sync_enabled: auto,
+        notification_prefs,
     };
 
     Ok(Response::builder()
@@ -2955,6 +2973,55 @@ mod tests {
     fn test_parse_notification_prefs_malformed_json_uses_defaults() {
         let p = parse_notification_prefs(Some("not-json"));
         assert_eq!(p, NotificationPrefs::default());
+    }
+
+    // --- notification_prefs write-path round-trip (no DB) ---
+
+    #[test]
+    fn test_notification_prefs_write_round_trip_all_fields() {
+        // Simulate: receive JSON from client → serialize to DB string → parse back
+        let json = r#"{"step_threshold": 3000, "window_start_hour": 6, "window_end_hour": 22, "rate_limit_minutes": 60}"#;
+        let v: serde_json::Value = serde_json::from_str(json).unwrap();
+        assert!(v.is_object(), "notification_prefs must be an object");
+        let db_string = serde_json::to_string(&v).unwrap();
+        let p = parse_notification_prefs(Some(&db_string));
+        assert_eq!(p.step_threshold, 3000);
+        assert_eq!(p.window_start_hour, 6);
+        assert_eq!(p.window_end_hour, 22);
+        assert_eq!(p.rate_limit_minutes, 60);
+    }
+
+    #[test]
+    fn test_notification_prefs_write_partial_keeps_defaults_for_missing() {
+        // Partial write: only step_threshold provided; other fields fall back to defaults on read
+        let json = r#"{"step_threshold": 5000}"#;
+        let v: serde_json::Value = serde_json::from_str(json).unwrap();
+        let db_string = serde_json::to_string(&v).unwrap();
+        let p = parse_notification_prefs(Some(&db_string));
+        assert_eq!(p.step_threshold, 5000);
+        assert_eq!(p.window_start_hour, 8);  // default
+        assert_eq!(p.window_end_hour, 20);   // default
+        assert_eq!(p.rate_limit_minutes, 240); // default
+    }
+
+    #[test]
+    fn test_notification_prefs_reject_non_object() {
+        // Arrays and scalars must not be accepted as notification_prefs
+        let arr: serde_json::Value = serde_json::from_str(r#"[1, 2, 3]"#).unwrap();
+        assert!(!arr.is_object());
+        let scalar: serde_json::Value = serde_json::from_str("42").unwrap();
+        assert!(!scalar.is_object());
+    }
+
+    #[test]
+    fn test_notification_prefs_unknown_keys_ignored_on_parse() {
+        // Extra keys in the stored JSONB are silently ignored by the parser
+        let json = r#"{"step_threshold": 1500, "unknown_future_field": true}"#;
+        let v: serde_json::Value = serde_json::from_str(json).unwrap();
+        let db_string = serde_json::to_string(&v).unwrap();
+        let p = parse_notification_prefs(Some(&db_string));
+        assert_eq!(p.step_threshold, 1500);
+        assert_eq!(p.window_start_hour, 8); // default
     }
 
     #[test]
