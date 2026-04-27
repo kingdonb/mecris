@@ -2441,3 +2441,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: Creating the `secure_variables` table in production Neon — human-required; added as pending item in NEXT_SESSION.md. PR to kingdonb/mecris — still blocked by expired GITHUB_CLASSIC_PAT.
 
 **Next**: Renew `GITHUB_CLASSIC_PAT` (human-required) and open PRs for all ~12 pending commits. Bot-actionable: AI Framework Evaluation (kingdonb/mecris#205, needs Aider) or Local Inference Pipeline (kingdonb/mecris#203, needs Ollama).
+
+## 2026-04-27 — Fix WASM component headless import guard (session #60)
+
+**Planned**: Add `try/except ImportError` guards around `spin_sdk` imports in the four WASM component `app.py` files so pure-logic functions can be imported and tested without the WASM runtime (plan yebyen/mecris#289).
+
+**Done**: 🏛️ Added `try/except ImportError` around all `spin_sdk` imports in `poc/wasm/review-pump-py/app.py`, `poc/wasm/budget-governor-py/app.py`, `poc/wasm/log-message-py/app.py`, and `mecris-go-spin/arabic-skip-counter/app.py`. Pattern: `_SPIN_AVAILABLE` flag set in try block; stub classes (`_FakeHttp.Handler`, `Request`, `Response`, DB types) defined in except block so module-level `class HttpHandler(http.Handler)` definition succeeds without spin_sdk; `incoming_handler = HttpHandler()` guarded by `if _SPIN_AVAILABLE`. Result: 142 tests pass (up from 45), zero collection errors. The 45 existing baseline tests continue to pass. Committed `730e593`. Closed yebyen/mecris#289. Also filed yebyen/mecris#290 for the 54 pre-existing test-implementation mismatches that became visible once collection errors were resolved.
+
+**Skipped**: Fixing the 54 pre-existing test-implementation mismatches (budget-governor-py API renamed, arabic-skip-counter uses spin_sdk.postgres vs httpx) — tracked as yebyen/mecris#290 for a future session. All primary bot-actionable tasks from NEXT_SESSION.md (AI Framework Eval #205, Local Inference #203) remain blocked by environment requirements (Aider, Ollama not available).
+
+**Next**: Renew `GITHUB_CLASSIC_PAT` (human-required, urgent) and open PRs for ~13 pending commits. Bot-actionable: yebyen/mecris#290 (align WASM test-implementation skew, 54 tests would flip from fail to pass with API alias additions).

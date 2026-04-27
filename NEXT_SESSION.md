@@ -1,18 +1,19 @@
-# Next Session: Open PRs to kingdonb/mecris (human-required) or bot-actionable: AI Framework Evaluation
+# Next Session: Open PRs to kingdonb/mecris (human-required) or bot-actionable: Align WASM test-implementation skew (#290)
 
-## Current Status (2026-04-27, post-session #59)
-- **SecretManager Neon fallback COMPLETE**: `get_secrets()` now queries `secure_variables` table in Neon when `NEON_DB_URL` is set and a key is absent from env. `psycopg2` is lazily imported only on the fallback path. `_neon_connect` kwarg injected in tests. 5 new tests; 21 total secret_manager tests pass. Committed `a16a7a7`. Closes yebyen/mecris#288.
+## Current Status (2026-04-27, post-session #60)
+- **WASM component headless import guard COMPLETE**: All 4 WASM component `app.py` files now guard `spin_sdk` imports with `try/except ImportError`. 142 tests pass (up from 45 before session #60). Zero collection errors. Committed `730e593`. Closes yebyen/mecris#289.
+- **54 pre-existing test-implementation mismatches now visible**: `budget-governor-py` tests expect `_calc_total_spent` / `_calc_window_spent` / 4-bucket `make_bucket_config` (API changed in app); `arabic-skip-counter` `TestCountReminders` tests mock `httpx.post` but app uses `spin_sdk.postgres` async. Tracked as yebyen/mecris#290.
 - **GITHUB_CLASSIC_PAT still expired**: Bot cannot create PRs to kingdonb/mecris. Renew immediately (human-required). Blocks all PRs.
-- **yebyen/mecris ahead of kingdonb/mecris by ~12 commits**: TF-IDF Search, Narrator enrichment, Observability Phase 1 (Python), Observability Phase 2 Python + Rust, notification_prefs read, JIT Secret Manager, notification_prefs write, SecretManager Neon fallback. None yet PRed due to expired PAT.
+- **yebyen/mecris ahead of kingdonb/mecris by ~13 commits**: TF-IDF Search, Narrator enrichment, Observability Phase 1 (Python), Observability Phase 2 Python + Rust, notification_prefs read, JIT Secret Manager, notification_prefs write, SecretManager Neon fallback, WASM headless import guards. None yet PRed due to expired PAT.
 
 ## Verified This Session
-- [x] **SecretManager Neon fallback (session #59)**: `get_secrets()` with `NEON_DB_URL` set queries `SELECT value FROM secure_variables WHERE key = %s LIMIT 1`; result merged into returned dict. Env keys take precedence (Neon not queried if all keys found in env). `NEON_DB_URL` unset → Neon path never entered. Any DB error → DEBUG log, key silently omitted. 5 new tests (Neon hit, Neon miss, URL unset, env precedence, DB error silent). All 21 secret_manager tests + 24 headless_loopback tests pass (45 total). Commit `a16a7a7`. **COMPLETE** — closes yebyen/mecris#288.
+- [x] **WASM component headless import guard (session #60)**: `try/except ImportError` around `spin_sdk` imports in `review-pump-py/app.py`, `budget-governor-py/app.py`, `log-message-py/app.py`, `arabic-skip-counter/app.py`. `_SPIN_AVAILABLE` flag guards `HttpHandler` class instantiation. Stub classes (`http.Handler`, `Request`, `Response`, DB types) in except block allow module-level class definition to succeed. 142 tests pass; 45 baseline unchanged. Commit `730e593`. **COMPLETE** — closes yebyen/mecris#289.
 
 ## Pending Verification
 
 ### 👤 Human-required (cannot be resolved by bot)
 - [ ] **URGENT: Refresh GITHUB_CLASSIC_PAT** — returns 401. Bot cannot create PRs to kingdonb/mecris. Renew in GitHub → Settings → Developer Settings → Personal access tokens (classic) with `repo` scope, update the workflow secret `GITHUB_CLASSIC_PAT`.
-- [ ] **Open PR yebyen:main → kingdonb:main** for all pending commits (TF-IDF Search, Narrator enrichment, Observability Phase 1+2 Python, Observability Phase 2 Rust, notification_prefs read+write, JIT Secret Manager, SecretManager Neon fallback) — blocked by expired PAT. Closes kingdonb/mecris#167, kingdonb/mecris#169, kingdonb/mecris#204, kingdonb/mecris#208 (complete), kingdonb/mecris#245 (Phase 1 + Phase 2 Python + Phase 2 Rust req 3).
+- [ ] **Open PR yebyen:main → kingdonb:main** for all pending commits (TF-IDF Search, Narrator enrichment, Observability Phase 1+2 Python, Observability Phase 2 Rust, notification_prefs read+write, JIT Secret Manager, SecretManager Neon fallback, WASM headless import guard) — blocked by expired PAT. Closes kingdonb/mecris#167, kingdonb/mecris#169, kingdonb/mecris#204, kingdonb/mecris#208 (complete), kingdonb/mecris#245 (Phase 1 + Phase 2 Python + Phase 2 Rust req 3).
 - [ ] **Apply migrate_v8_observability.py to production Neon**: Run `python scripts/migrate_v8_observability.py` in the production environment (with NEON_DB_URL set) to add `last_status`, `last_error`, `intent` columns to `scheduler_election`.
 - [ ] **Apply secure_variables table to production Neon**: Run `CREATE TABLE IF NOT EXISTS secure_variables (key TEXT PRIMARY KEY, value TEXT NOT NULL);` before SecretManager Neon fallback can be used in production.
 - [ ] **Cloud Readiness Check**: Monitor Fermyon/Akamai for updates to their Python WASM runtimes. Test a simple SDK v4 "Hello World" to confirm when the platform has caught up.
@@ -20,11 +21,14 @@
 - [ ] **Verify log-message-py in Cloud**: Once platforms are ready, confirm audit logs appear in cloud KV.
 
 ### 🤖 Bot-actionable (can be resolved in future sessions)
+- [ ] **Align WASM test-implementation skew (yebyen/mecris#290)**: `budget-governor-py` needs `_calc_total_spent(log, bucket)` / `_calc_window_spent(log, bucket)` aliases or tests updated to use `get_rolling_24h_spend`; `arabic-skip-counter` `TestCountReminders` tests need to match the current `spin_sdk.postgres` async interface. 54 tests would flip from fail to pass.
 - [ ] **AI Framework Evaluation (kingdonb/mecris#205)**: Matrix doc and POC script committed (`1a459aa`). Remaining: run `scripts/evaluate_aider.py` in an environment with Aider installed and append results to `docs/AI_FRAMEWORK_EVALUATION.md` evidence log. Requires Aider + an LLM API key.
 - [ ] **Budget Governor: WASM Port (kingdonb/mecris#214)**: POC complete and wired into spin.toml. Remaining: Fermyon Cloud variable config — human-required for deployment.
 - [ ] **Local Inference Pipeline (kingdonb/mecris#203)**: Integrate Ollama and build a cloud-fallback router.
 
 ## Infrastructure Notes (carried forward)
+- **WASM component headless test pattern**: `try/except ImportError` around `spin_sdk` imports; stub classes in except block; `if _SPIN_AVAILABLE: incoming_handler = HttpHandler()`. All four WASM component test suites now collect and run without WASM runtime.
+- **54 pre-existing test-implementation mismatches (yebyen/mecris#290)**: `budget-governor-py` app renamed `_calc_total_spent` → `get_rolling_24h_spend`; tests still use old names. `arabic-skip-counter` tests mock `httpx.post` but app uses `spin_sdk.postgres` async. Not regressions — pre-existing skew that was hidden by collection errors.
 - **`secure_variables` table**: Expected schema: `CREATE TABLE IF NOT EXISTS secure_variables (key TEXT PRIMARY KEY, value TEXT NOT NULL);`. SecretManager reads this via `SELECT value FROM secure_variables WHERE key = %s LIMIT 1`. Table does NOT yet exist in production Neon — must be created before the fallback does anything useful.
 - **`notification_prefs` write path**: `POST /profile` with `{"notification_prefs": {…}}` writes JSONB to `users.notification_prefs`. Accepts any JSON object; unknown keys are stored and silently ignored on read (falls back to defaults). CORS preflight now includes `PATCH` in `access-control-allow-methods`.
 - **`notification_prefs` JSONB keys**: `step_threshold` (u32), `window_start_hour` (u32), `window_end_hour` (u32), `rate_limit_minutes` (u64). All optional; any absent key falls back to default (2000 / 8 / 20 / 240). Empty `{}` or NULL → all defaults.
