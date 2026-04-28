@@ -11,12 +11,18 @@ from twilio_sender import smart_send_message
 
 class TestIssue52TemplateMapping(unittest.TestCase):
     def setUp(self):
+        self.tracker_patcher = patch('usage_tracker.get_tracker', return_value=MagicMock())
+        self.mock_tracker = self.tracker_patcher.start()
+        
         os.environ['TWILIO_WHATSAPP_TEMPLATE_SID'] = 'HXbb3327078f3e3361dad21f0a2dc6a8dd'
         os.environ['REMINDER_DELIVERY_METHOD'] = 'whatsapp'
         os.environ['TWILIO_ACCOUNT_SID'] = 'ACtest'
         os.environ['TWILIO_AUTH_TOKEN'] = 'test'
         os.environ['TWILIO_WHATSAPP_FROM'] = 'whatsapp:+14155238886'
         os.environ['TWILIO_TO_NUMBER'] = '+15555555555'
+
+    def tearDown(self):
+        self.tracker_patcher.stop()
 
     @patch('twilio_sender.send_whatsapp_template')
     @patch('usage_tracker.UsageTracker.get_user_preferences')

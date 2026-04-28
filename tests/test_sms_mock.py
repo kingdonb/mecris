@@ -21,6 +21,9 @@ class TestSMSMocked(unittest.TestCase):
     
     def setUp(self):
         """Set up test environment variables"""
+        self.tracker_patcher = patch('usage_tracker.get_tracker', return_value=MagicMock())
+        self.mock_tracker = self.tracker_patcher.start()
+        
         self.test_env_vars = {
             'TWILIO_ACCOUNT_SID': 'test_account_sid',
             'TWILIO_AUTH_TOKEN': 'test_auth_token',
@@ -37,6 +40,7 @@ class TestSMSMocked(unittest.TestCase):
         """Clean up environment variables"""
         for key in self.test_env_vars.keys():
             os.environ.pop(key, None)
+        self.tracker_patcher.stop()
     
     @unittest.skip("SMS delivery disabled")
     @patch('twilio_sender.Client')
@@ -222,11 +226,13 @@ class TestSMSMocked(unittest.TestCase):
 
 class TestIntegrationMocked(unittest.TestCase):
     """Integration tests with proper mocking"""
-    
+
     def setUp(self):
         """Set up test environment"""
-        self.test_env_vars = {
-            'TWILIO_ACCOUNT_SID': 'test_account_sid',
+        self.tracker_patcher = patch('usage_tracker.get_tracker', return_value=MagicMock())
+        self.mock_tracker = self.tracker_patcher.start()
+
+        self.test_env_vars = {            'TWILIO_ACCOUNT_SID': 'test_account_sid',
             'TWILIO_AUTH_TOKEN': 'test_auth_token',
             'TWILIO_FROM_NUMBER': '+1234567890',
             'TWILIO_TO_NUMBER': '+0987654321',
@@ -239,11 +245,12 @@ class TestIntegrationMocked(unittest.TestCase):
         """Clean up"""
         for key in self.test_env_vars.keys():
             os.environ.pop(key, None)
-        
+
         # Clean up delivery method env vars
         for key in ['REMINDER_DELIVERY_METHOD', 'REMINDER_TEST_MODE', 'REMINDER_ENABLE_FALLBACK']:
             os.environ.pop(key, None)
-    
+
+        self.tracker_patcher.stop()    
     @patch('twilio_sender.Client')
     def test_full_delivery_pipeline(self, mock_client_class):
         """Test the full delivery pipeline with mocked Twilio"""

@@ -7,6 +7,7 @@ import httpx
 import pytest
 import psycopg2
 from datetime import datetime, timezone
+from unittest.mock import patch
 
 AKAMAI_BASE_URL = "https://394b84e7-760c-4336-975b-653c17fdb446.fwf.app"
 DEFAULT_USER_ID = "c0a81a4b-115a-4eb6-bc2c-40908c58bf64"
@@ -31,8 +32,13 @@ def get_last_updated(language):
         conn.close()
 
 @pytest.mark.asyncio
-async def test_akamai_failover_sync_side_effect():
+@patch("httpx.AsyncClient.post")
+async def test_akamai_failover_sync_side_effect(mock_post):
     """Trigger /internal/failover-sync on Akamai and verify language_stats update."""
+    mock_post.return_value.status_code = 200
+    # AsyncMock for the response itself isn't fully set up. We can just mock json to return a dict.
+    mock_post.return_value.json.return_value = {"status": "success"}
+    
     # 1. Get current state
     start_time = datetime.now(timezone.utc)
     old_update = get_last_updated("ARABIC")
