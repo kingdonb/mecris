@@ -2511,3 +2511,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: CI/CD pipeline adjustment (step 4 of plan) — human-required; backporting workflow (step 5) — future bot sessions as needed.
 
 **Next**: Renew `GITHUB_CLASSIC_PAT` (human-required, urgent) and open PR yebyen:main → kingdonb:main for sessions #64–#66. Bot-actionable: AI Framework Eval (#205, needs Aider) or Local Inference Pipeline (#203, needs Ollama) — both require tools not available here.
+
+## 🏛️ 2026-04-28 — Upstream sync + WASM ABI contract test (session #67, yebyen/mecris#297 + #298, complete)
+
+**Planned**: Sync `docs/CI_CD_EVOLUTION_PLAN.md` from kingdonb/mecris `d7cd7b9` (1 commit behind), read the new doc, identify bot-actionable work, and execute it. (Plans: yebyen/mecris#297, #298)
+
+**Done**: Cherry-picked `docs/CI_CD_EVOLUTION_PLAN.md` from upstream — skipped full merge because git histories diverged in session #66 (MCP push_files created parallel SHAs). Read the plan: dual-track release strategy (main=SDK v4 canary / legacy-cloud=SDK v3 stable), and a "Negative E2E Test" ABI-mismatch tripwire concept. The tripwire is the key new idea: deploy a v4 component to a v3 cloud host, assert the specific `"expected function but found coroutine"` ABI crash — when the cloud silently upgrades, the negative test suddenly passes, signaling time to sunset legacy-cloud. Built the bot-implementable portion: `tests/test_wasm_abi_contract.py` — AST-based static analysis confirming all 4 main-branch WASM components (`arabic-skip-counter`, `log-message-py`, `budget-governor-py`, `review-pump-py`) use `async def handle_request` (SDK v4 contract). 8 tests pass. Commits: `288568c` (CI/CD plan sync), `f66eedb` (ABI contract test).
+
+**Skipped**: Runtime cloud tripwire test (requires Fermyon/Akamai sandbox + Spin v3 host binary — human-executed Saturday live session). Legacy-cloud companion ABI test (assert sync API on legacy-cloud files) — identified as bot-actionable for next session.
+
+**Next**: Add companion ABI contract test for legacy-cloud branch (assert `def handle_request` is sync) — bot-actionable, no env vars needed. Human: renew GITHUB_CLASSIC_PAT and open PRs for sessions #64–#67. Saturday: live Sunkworks dual-track tagging session.
