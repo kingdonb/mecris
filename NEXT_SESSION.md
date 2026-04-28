@@ -1,13 +1,14 @@
-# Next Session: Open PRs to kingdonb/mecris (human-required) or further CI/CD work
+# Next Session: Fix async test_narrator_context.py tests (yebyen/mecris#303) or open PRs to kingdonb
 
-## Current Status (2026-04-28, post-session #69)
-- **Dual-track ABI enforcement complete**: `tests/test_wasm_abi_contract.py` (main=async v4, 8 pass) + `tests/test_wasm_abi_contract_legacy.py` (legacy-cloud=sync v3, 8 pass). Both committed on main.
-- **AGENTS.md synced from upstream**: Cherry-picked from kingdonb/mecris commits `1caacce` + `f646174`. Comprehensive skill/MCP tool docs + `/mecris-pr-test` in The Loop section. Commit `a17bbc7`.
+## Current Status (2026-04-28, post-session #70)
+- **datetime.utcnow() deprecation fixed**: All 16 occurrences replaced with `datetime.now(timezone.utc)` across 8 files. Closes yebyen/mecris#302. Commit `0485340`.
+- **Test suite state**: **880 passed, 7 skipped, 0 failed** (unchanged, all baseline tests still green).
 - **GITHUB_CLASSIC_PAT still expired**: Bot cannot create PRs to kingdonb/mecris. Human must renew.
-- **Test suite state**: **880 passed, 7 skipped, 0 failed** (post-session #69 playwright lazy import fix, commit `c999983`).
-- **legacy-cloud branch**: `origin/legacy-cloud` (commit `51a5fc2`) — all 4 WASM components on SDK v3 (sync). main has all 4 on SDK v4 (async).
+- **Upstream sync**: yebyen/mecris is fully up to date with kingdonb/mecris (latest upstream commit `f646174` was cherry-picked in session #68).
+- **New latent bug filed**: yebyen/mecris#303 — `test_narrator_context.py` has 6 `async def test_*` methods in a `unittest.TestCase` subclass; they silently pass without running assertions.
 
 ## Verified This Session
+- [x] **utcnow() deprecation fix (session #70)**: `datetime.utcnow()` → `datetime.now(timezone.utc)` in 8 files (5 source + 3 test). No `utcnow()` remains in `**/*.py`. 880 passed, 0 failed. Commit `0485340`. Closes yebyen/mecris#302. **COMPLETE**.
 - [x] **playwright lazy import fix (session #69)**: Moved `from playwright.sync_api import sync_playwright` from module-level in `fetch_groq_usage.py` to inside `scrape_usage_data()`. Fixes cascade `mcp_server.py → billing_reconciliation.py → fetch_groq_usage.py` that broke 83 tests. 797 → **880 passed, 0 failed**. Commit `c999983`. Closes yebyen/mecris#300. **COMPLETE**.
 - [x] **Upstream sync (session #68)**: Cherry-picked AGENTS.md from kingdonb/mecris `1caacce` + `f646174`. Commit `a17bbc7`. Closes yebyen/mecris#299 (partial).
 - [x] **Legacy-cloud ABI contract test (session #68)**: `tests/test_wasm_abi_contract_legacy.py` created — reads all 4 WASM component sources from `origin/legacy-cloud` via `git show` (no checkout). Asserts `def handle_request` (sync, SDK v3). 8/8 tests pass. Commit `e13116e`. Closes yebyen/mecris#299.
@@ -25,7 +26,7 @@
 
 ### 👤 Human-required (cannot be resolved by bot)
 - [ ] **URGENT: Refresh GITHUB_CLASSIC_PAT** — returns 401. Bot cannot create PRs to kingdonb/mecris. Renew in GitHub → Settings → Developer Settings → Personal access tokens (classic) with `repo` scope, update the workflow secret `GITHUB_CLASSIC_PAT`.
-- [ ] **Open PR yebyen:main → kingdonb:main** for all pending commits from sessions #64–#68 (narrator presence fix, NEON_DB_URL fix, upstream merge + legacy-cloud setup, CI/CD plan sync, ABI contract test x2, AGENTS.md sync). Closes yebyen/mecris#294, #295, #296, #298, #299.
+- [ ] **Open PR yebyen:main → kingdonb:main** for all pending commits from sessions #64–#70 (narrator presence fix, NEON_DB_URL fix, upstream merge + legacy-cloud setup, CI/CD plan sync, ABI contract test x2, AGENTS.md sync, playwright fix, utcnow deprecation fix). Closes yebyen/mecris#294, #295, #296, #298, #299, #302.
 - [ ] **Live Sunkworks session (Saturday)**: Execute dual-track tagging — tag `v0.1.0-canary.*` on main, `v0.0.1` on legacy-cloud. Run the negative E2E ABI mismatch test against Fermyon/Akamai sandbox. See `docs/CI_CD_EVOLUTION_PLAN.md` for full context.
 - [ ] **CI/CD Pipeline for legacy-cloud (step 4)**: Update GitHub Actions deployment workflows to trigger Fermyon/Akamai deployments only from the `legacy-cloud` branch. `main` continues to deploy to local Kubernetes `spin-tainer`. Ref: `docs/SPIN_V3_COMPATIBILITY_PLAN.md` step 4.
 - [ ] **Cloud Readiness Check**: Monitor Fermyon/Akamai for updates to their Python WASM runtimes. Test a simple SDK v4 "Hello World" to confirm when the platform has caught up.
@@ -34,12 +35,15 @@
 - [ ] **Verify log-message-py in Cloud**: Once platforms are ready, confirm audit logs appear in cloud KV.
 
 ### 🤖 Bot-actionable (can be resolved in future sessions)
+- [ ] **Fix test_narrator_context.py async tests (yebyen/mecris#303)**: 6 `async def test_*` methods in `unittest.TestCase` silently run zero assertions. Convert to plain pytest classes, mock HTTP calls, remove `return data` from test methods. Detected via `pytest -W error::DeprecationWarning`.
 - [ ] **AI Framework Evaluation (kingdonb/mecris#205)**: Matrix doc and POC script committed (`1a459aa`). Remaining: run `scripts/evaluate_aider.py` in an environment with Aider installed and append results to `docs/AI_FRAMEWORK_EVALUATION.md` evidence log. Requires Aider + an LLM API key.
 - [ ] **Budget Governor: WASM Port (kingdonb/mecris#214)**: POC complete and wired into spin.toml. Remaining: Fermyon Cloud variable config — human-required for deployment.
 - [ ] **Local Inference Pipeline (kingdonb/mecris#203)**: Integrate Ollama and build a cloud-fallback router.
-- [ ] **Backporting workflow (legacy-cloud step 5)**: As bugs are fixed in main leading up to v0.0.1, cherry-pick to `legacy-cloud`. WASM component changes need manual async→sync adjustment during cherry-pick.
+- [ ] **Backporting workflow (legacy-cloud step 5)**: Backport `fetch_groq_usage.py` playwright lazy import fix (`c999983`) to `legacy-cloud` branch. WASM components differ (sync API) but this fix is Python-only. Cannot push legacy-cloud from bot workflow (workflow only pushes main).
 
 ## Infrastructure Notes (carried forward)
+- **test_narrator_context.py known broken (post-session #70)**: 6 async tests inside `unittest.TestCase` — they appear to pass but run zero assertions. `pytest.ini` globally suppresses `DeprecationWarning` which masks this. Filed yebyen/mecris#303.
+- **No utcnow() in Python source (post-session #70)**: All `datetime.utcnow()` calls replaced with `datetime.now(timezone.utc)`. If new code is written, use `timezone.utc` pattern.
 - **Dual-track ABI contract tests (post-session #68)**: `tests/test_wasm_abi_contract.py` (main=async v4, 8 tests) + `tests/test_wasm_abi_contract_legacy.py` (legacy-cloud=sync v3, 8 tests). Legacy test uses `git show origin/legacy-cloud:<path>` — no checkout needed, but requires `origin/legacy-cloud` to be fetchable. Skips gracefully if branch not found.
 - **ABI contract test (post-session #67)**: `tests/test_wasm_abi_contract.py` uses `ast.parse()` (no spin_sdk import needed). Checks `HttpHandler.handle_request` is `ast.AsyncFunctionDef`. 4 components × 2 tests = 8. Runs without any mocking or env vars.
 - **CI/CD evolution plan (post-session #67)**: `docs/CI_CD_EVOLUTION_PLAN.md` — dual-track: main=v4 canary, legacy-cloud=v3 stable. Negative E2E tripwire: deploy v4 component to v3 host, assert ABI crash `"import has the wrong type: expected function but found coroutine"`. When tripwire suddenly passes, cloud has upgraded to v4 → sunset legacy-cloud.

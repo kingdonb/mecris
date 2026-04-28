@@ -2541,3 +2541,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: Nothing — plan fully executed. No carry-forward items introduced.
 
 **Next**: Human: renew GITHUB_CLASSIC_PAT and open PR yebyen:main → kingdonb:main (sessions #64–#69). Bot-actionable: AI Framework Eval (#205, needs Aider) or Local Inference Pipeline (#203, needs Ollama) — both require tools not available in CI.
+
+## 2026-04-28 🏛️ — datetime.utcnow() deprecation fixed across 8 files (session #70)
+
+**Planned**: Fix `datetime.utcnow()` deprecation warnings — replace all 16 occurrences with `datetime.now(timezone.utc)` across source and test files (yebyen/mecris#302).
+
+**Done**: Discovered deprecation via `pytest -W error::DeprecationWarning`. Replaced all 16 `utcnow()` calls in 8 files: `services/budget_governor.py` (2), `poc/wasm/budget-governor-py/app.py` (2), `poc/wasm/log-message-py/app.py` (1), `mecris-go-spin/arabic-skip-counter/app.py` (1), `check_leadership.py` (1), `tests/test_budget_governor.py` (6), `tests/test_budget_governor_py_component.py` (3), `tests/test_log_message_py_component.py` (1). Added `from datetime import timezone` to each file. Baseline 880 tests still passing. Commit `0485340`. Closed yebyen/mecris#302.
+
+**Skipped**: Nothing planned was skipped. Bonus: filed yebyen/mecris#303 for pre-existing bug where 6 `async def test_*` methods in `test_narrator_context.py` run inside `unittest.TestCase` (which doesn't support async) — they silently pass zero assertions. Also found during orient that kingdonb/mecris#204, #206, #208, #211 are all already implemented in yebyen/mecris — awaiting PR once GITHUB_CLASSIC_PAT is renewed.
+
+**Next**: Bot-actionable: Fix yebyen/mecris#303 (rewrite 6 async TestCase tests as mocked pytest classes). Human-required: renew GITHUB_CLASSIC_PAT and open PR yebyen:main → kingdonb:main.
