@@ -75,13 +75,20 @@ If your queue is empty, you must aggressively seek productive work:
 4. **Zero-Change Abort:** If you genuinely cannot find *any* productive code or documentation work to do after 5 minutes of searching, **ABORT THE SESSION WITHOUT COMMITTING**. Do not create empty "steady state" commits that clutter the git history.
 
 
-## 4. Key MCP Functions
+## 4. Agent Skills & Key MCP Functions
 
+Mecris operates through a combination of **Agent Skills** (which provide procedural guidance and workflows) and **MCP Tools** (which provide direct system and API access).
+
+**Available Skills** include foundational loop commands (`/mecris-orient`, `/mecris-plan`, `/mecris-archive`, `/mecris-pr-test`), domain-specific expertise like `/follow-leader`, `/sdd`, `/atomic`, `/tdg`, and numerous infrastructure management skills (`/flux-status`, `/prometheus-observer`, etc.).
+
+**Key MCP Functions** include:
 - `get_narrator_context` - Overall strategic context.
 - `get_budget_status` - Current budget funds.
 - `get_beeminder_status` - Goal risk assessment.
 - `get_daily_activity` - Check for dog walks and other recurring goals.
 - `get_unified_cost_status` - Combined Gemini + Groq spend.
+
+*For the complete, exhaustive list of all 20+ Agent Skills and 50+ integrated GitHub and Mecris MCP tools, please refer to [AGENTS.md](AGENTS.md).*
 
 ---
 *For detailed technical architecture, see [ARCHITECTURE.md](ARCHITECTURE.md).*

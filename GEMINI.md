@@ -81,14 +81,21 @@ As the lead Gemini agent, you are the **keeper and critic** of the `mecris-bot` 
 11. **Release Management**: **NEVER** update version strings manually. There are 15+ locations across Android, Spin, Python, and Web components. Always use `make bump-version VERSION=x.y.z [VC=nn]` to ensure absolute consistency across the ecosystem.
 12. **Safe Force Pushing**: **NEVER** use `git push --force` or `git push -f`. ALWAYS use `git push --force-with-lease` instead to prevent accidentally overwriting upstream changes.
 
-## 4. Key MCP Functions
+## 4. Agent Skills & Key MCP Functions
 
+Mecris operates through a combination of **Agent Skills** (which provide procedural guidance and workflows) and **MCP Tools** (which provide direct system and API access).
+
+**Available Skills** include foundational loop commands (`/mecris-orient`, `/mecris-plan`, `/mecris-archive`, `/mecris-pr-test`), domain-specific expertise like `/follow-leader`, `/sdd`, `/atomic`, `/tdg`, and numerous infrastructure management skills (`/flux-status`, `/prometheus-observer`, etc.).
+
+**Key MCP Functions** include:
 - `get_narrator_context` - Overall strategic context (includes `system_pulse` for heartbeat).
 - `get_language_velocity_stats` - The **Review Pump**: Calculates daily clearance targets for Clozemaster to hit zero reviews.
 - `get_budget_status` - Current budget funds.
 - `get_beeminder_status` - Goal risk assessment.
 - `get_daily_activity` - Check for dog walks and other recurring goals.
 - `get_unified_cost_status` - Combined Gemini + Groq spend.
+
+*For the complete, exhaustive list of all 20+ Agent Skills and 50+ integrated GitHub and Mecris MCP tools, please refer to [AGENTS.md](AGENTS.md).*
 
 ---
 *For detailed technical architecture, see [ARCHITECTURE.md](ARCHITECTURE.md).*
