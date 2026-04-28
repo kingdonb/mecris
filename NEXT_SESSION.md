@@ -1,13 +1,15 @@
-# Next Session: Open PRs to kingdonb/mecris (human-required) or add legacy-cloud ABI contract test
+# Next Session: Open PRs to kingdonb/mecris (human-required) or further CI/CD work
 
-## Current Status (2026-04-28, post-session #67)
-- **legacy-cloud branch**: yebyen/mecris `legacy-cloud` (commit `51a5fc2`) has all 4 WASM components on SDK v3 (sync). Main has all 4 on SDK v4 (async).
-- **WASM ABI contract test**: `tests/test_wasm_abi_contract.py` (commit `f66eedb`) asserts all 4 main-branch components use `async def handle_request`. 8 tests pass.
-- **CI/CD evolution plan**: `docs/CI_CD_EVOLUTION_PLAN.md` synced from kingdonb/mecris `d7cd7b9`. Describes dual-track strategy and negative E2E tripwire concept. Live Sunkworks session Saturday.
+## Current Status (2026-04-28, post-session #68)
+- **Dual-track ABI enforcement complete**: `tests/test_wasm_abi_contract.py` (main=async v4, 8 pass) + `tests/test_wasm_abi_contract_legacy.py` (legacy-cloud=sync v3, 8 pass). Both committed on main.
+- **AGENTS.md synced from upstream**: Cherry-picked from kingdonb/mecris commits `1caacce` + `f646174`. Comprehensive skill/MCP tool docs + `/mecris-pr-test` in The Loop section. Commit `a17bbc7`.
 - **GITHUB_CLASSIC_PAT still expired**: Bot cannot create PRs to kingdonb/mecris. Human must renew.
-- **Test suite state**: 860 passed, 0 failed (pre-session #67 count; ABI contract test adds 8 more).
+- **Test suite state**: 860+ passed, 0 failed (ABI contract tests add 16 more: 8 main + 8 legacy-cloud).
+- **legacy-cloud branch**: `origin/legacy-cloud` (commit `51a5fc2`) — all 4 WASM components on SDK v3 (sync). main has all 4 on SDK v4 (async).
 
 ## Verified This Session
+- [x] **Upstream sync (session #68)**: Cherry-picked AGENTS.md from kingdonb/mecris `1caacce` + `f646174`. Commit `a17bbc7`. Closes yebyen/mecris#299 (partial).
+- [x] **Legacy-cloud ABI contract test (session #68)**: `tests/test_wasm_abi_contract_legacy.py` created — reads all 4 WASM component sources from `origin/legacy-cloud` via `git show` (no checkout). Asserts `def handle_request` (sync, SDK v3). 8/8 tests pass. Commit `e13116e`. Closes yebyen/mecris#299.
 - [x] **Upstream sync (session #67)**: Cherry-picked `docs/CI_CD_EVOLUTION_PLAN.md` from kingdonb/mecris `d7cd7b9` into yebyen/mecris main. Full merge skipped — histories diverged (session #66 used MCP push_files creating parallel SHAs). New file only, no conflicts. Commit `288568c`. Closes yebyen/mecris#297. **COMPLETE**.
 - [x] **WASM ABI contract test (session #67)**: `tests/test_wasm_abi_contract.py` created — AST-based static analysis verifying `HttpHandler.handle_request` is `async def` on all 4 main-branch WASM components. 8/8 tests pass. Commit `f66eedb`. Closes yebyen/mecris#298. **COMPLETE**.
 - [x] **Upstream sync (session #66)**: Merged 3 kingdonb/mecris commits (`17d4855`, `95c3564`, `0303d29`) into yebyen/mecris main. No conflicts. Merge commit `f967f2b`. **COMPLETE**.
@@ -22,7 +24,7 @@
 
 ### 👤 Human-required (cannot be resolved by bot)
 - [ ] **URGENT: Refresh GITHUB_CLASSIC_PAT** — returns 401. Bot cannot create PRs to kingdonb/mecris. Renew in GitHub → Settings → Developer Settings → Personal access tokens (classic) with `repo` scope, update the workflow secret `GITHUB_CLASSIC_PAT`.
-- [ ] **Open PR yebyen:main → kingdonb:main** for all pending commits from sessions #64–#67 (narrator presence fix, NEON_DB_URL fix, upstream merge + legacy-cloud setup, CI/CD plan sync, ABI contract test). Closes yebyen/mecris#294, #295, #296.
+- [ ] **Open PR yebyen:main → kingdonb:main** for all pending commits from sessions #64–#68 (narrator presence fix, NEON_DB_URL fix, upstream merge + legacy-cloud setup, CI/CD plan sync, ABI contract test x2, AGENTS.md sync). Closes yebyen/mecris#294, #295, #296, #298, #299.
 - [ ] **Live Sunkworks session (Saturday)**: Execute dual-track tagging — tag `v0.1.0-canary.*` on main, `v0.0.1` on legacy-cloud. Run the negative E2E ABI mismatch test against Fermyon/Akamai sandbox. See `docs/CI_CD_EVOLUTION_PLAN.md` for full context.
 - [ ] **CI/CD Pipeline for legacy-cloud (step 4)**: Update GitHub Actions deployment workflows to trigger Fermyon/Akamai deployments only from the `legacy-cloud` branch. `main` continues to deploy to local Kubernetes `spin-tainer`. Ref: `docs/SPIN_V3_COMPATIBILITY_PLAN.md` step 4.
 - [ ] **Cloud Readiness Check**: Monitor Fermyon/Akamai for updates to their Python WASM runtimes. Test a simple SDK v4 "Hello World" to confirm when the platform has caught up.
@@ -31,14 +33,14 @@
 - [ ] **Verify log-message-py in Cloud**: Once platforms are ready, confirm audit logs appear in cloud KV.
 
 ### 🤖 Bot-actionable (can be resolved in future sessions)
-- [ ] **legacy-cloud ABI contract test**: Add companion `tests/test_wasm_abi_contract_legacy.py` (or a parameterized mode) that checks `legacy-cloud` branch components use `def handle_request` (sync, v3). Requires checking out legacy-cloud branch or reading files from that branch via git show. Completes the dual-track ABI enforcement described in `docs/CI_CD_EVOLUTION_PLAN.md`.
 - [ ] **AI Framework Evaluation (kingdonb/mecris#205)**: Matrix doc and POC script committed (`1a459aa`). Remaining: run `scripts/evaluate_aider.py` in an environment with Aider installed and append results to `docs/AI_FRAMEWORK_EVALUATION.md` evidence log. Requires Aider + an LLM API key.
 - [ ] **Budget Governor: WASM Port (kingdonb/mecris#214)**: POC complete and wired into spin.toml. Remaining: Fermyon Cloud variable config — human-required for deployment.
 - [ ] **Local Inference Pipeline (kingdonb/mecris#203)**: Integrate Ollama and build a cloud-fallback router.
 - [ ] **Backporting workflow (legacy-cloud step 5)**: As bugs are fixed in main leading up to v0.0.1, cherry-pick to `legacy-cloud`. WASM component changes need manual async→sync adjustment during cherry-pick.
 
 ## Infrastructure Notes (carried forward)
-- **ABI contract test (post-session #67)**: `tests/test_wasm_abi_contract.py` uses `ast.parse()` (no spin_sdk import needed). Checks `HttpHandler.handle_request` is `ast.AsyncFunctionDef`. 4 components × 2 tests = 8. Runs without any mocking or env vars. Expected companion: same test against legacy-cloud files asserting `ast.FunctionDef` (sync).
+- **Dual-track ABI contract tests (post-session #68)**: `tests/test_wasm_abi_contract.py` (main=async v4, 8 tests) + `tests/test_wasm_abi_contract_legacy.py` (legacy-cloud=sync v3, 8 tests). Legacy test uses `git show origin/legacy-cloud:<path>` — no checkout needed, but requires `origin/legacy-cloud` to be fetchable. Skips gracefully if branch not found.
+- **ABI contract test (post-session #67)**: `tests/test_wasm_abi_contract.py` uses `ast.parse()` (no spin_sdk import needed). Checks `HttpHandler.handle_request` is `ast.AsyncFunctionDef`. 4 components × 2 tests = 8. Runs without any mocking or env vars.
 - **CI/CD evolution plan (post-session #67)**: `docs/CI_CD_EVOLUTION_PLAN.md` — dual-track: main=v4 canary, legacy-cloud=v3 stable. Negative E2E tripwire: deploy v4 component to v3 host, assert ABI crash `"import has the wrong type: expected function but found coroutine"`. When tripwire suddenly passes, cloud has upgraded to v4 → sunset legacy-cloud.
 - **Git history divergence note**: yebyen/mecris and kingdonb/mecris have diverged histories since session #66 used MCP push_files instead of git merge. Future upstream syncs should cherry-pick new files only, not attempt full merges, to avoid duplicate content in NEXT_SESSION.md and conftest.py.
 - **legacy-cloud WASM sync API (post-session #66)**: All 4 WASM components on `legacy-cloud` branch use sync `def handle_request` (SDK v3). Specific changes: `arabic-skip-counter`: `_spin_variables.get("neon_db_url")` (no await). `log-message-py`: `kv.open_default()`, `store.get()`, `store.set()` (no await). `budget-governor-py`: `_get_bucket_config_from_spin_vars()` and `_fetch_helix_balance_spin()` are sync; `variables.get()`, `kv.open_default()`, `store.get()`, `store.set()` (no await). `review-pump-py`: `def handle_request` only (no KV/vars calls). Build target for legacy-cloud: `componentize-py==0.13.0 spin-sdk==3.0.0`, `componentize-py -w spin:http-trigger@0.2.0`.

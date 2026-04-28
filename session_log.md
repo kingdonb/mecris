@@ -2521,3 +2521,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: Runtime cloud tripwire test (requires Fermyon/Akamai sandbox + Spin v3 host binary — human-executed Saturday live session). Legacy-cloud companion ABI test (assert sync API on legacy-cloud files) — identified as bot-actionable for next session.
 
 **Next**: Add companion ABI contract test for legacy-cloud branch (assert `def handle_request` is sync) — bot-actionable, no env vars needed. Human: renew GITHUB_CLASSIC_PAT and open PRs for sessions #64–#67. Saturday: live Sunkworks dual-track tagging session.
+
+## 🏛️ 2026-04-28 — Sync AGENTS.md from upstream + dual-track ABI enforcement complete (session #68, yebyen/mecris#299, complete)
+
+**Planned**: Cherry-pick 2 new kingdonb/mecris docs commits (AGENTS.md comprehensive rewrite + /mecris-pr-test in The Loop) into yebyen/mecris main; implement `tests/test_wasm_abi_contract_legacy.py` asserting legacy-cloud WASM components use sync `def handle_request` (SDK v3). (Plan: yebyen/mecris#299)
+
+**Done**: Synced AGENTS.md from upstream commits `1caacce` (comprehensive skill/MCP tool documentation) + `f646174` (/mecris-pr-test added to The Loop section) — commit `a17bbc7`. Created `tests/test_wasm_abi_contract_legacy.py` — reads all 4 WASM component sources from `origin/legacy-cloud` via `git show` (no checkout required). Asserts `def handle_request` is `ast.FunctionDef` (sync/v3) for all 4 components. 8/8 tests pass — commit `e13116e`. Dual-track ABI enforcement is now complete: main=async v4 (8 tests) + legacy-cloud=sync v3 (8 tests).
+
+**Skipped**: Nothing — plan fully executed.
+
+**Next**: Human: renew GITHUB_CLASSIC_PAT and open PR yebyen:main → kingdonb:main (sessions #64–#68). Bot-actionable: AI Framework Eval (#205, needs Aider) or Local Inference Pipeline (#203, needs Ollama) — both require tools not available in CI.
