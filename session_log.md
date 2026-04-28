@@ -2531,3 +2531,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: Nothing — plan fully executed.
 
 **Next**: Human: renew GITHUB_CLASSIC_PAT and open PR yebyen:main → kingdonb:main (sessions #64–#68). Bot-actionable: AI Framework Eval (#205, needs Aider) or Local Inference Pipeline (#203, needs Ollama) — both require tools not available in CI.
+
+## 🏛️ 2026-04-28 — Fix playwright top-level import breaking 83 tests (session #69, yebyen/mecris#300, complete)
+
+**Planned**: Move `from playwright.sync_api import sync_playwright` from module-level in `fetch_groq_usage.py` to a lazy import inside `scrape_usage_data()`, fixing a cascade import failure that broke 83 tests via `mcp_server.py → billing_reconciliation.py → fetch_groq_usage.py`. (Plan: yebyen/mecris#300)
+
+**Done**: Discovered bug during orient — ran full test suite and found 83 failures all reporting `ModuleNotFoundError: No module named 'playwright'`. Root cause traced to line 23 of `fetch_groq_usage.py`. One-line fix: removed top-level import, added `from playwright.sync_api import sync_playwright` inside the `try:` block at line 102 where `sync_playwright()` is actually called. Validation: `PYTHONPATH=. python3 -m pytest tests/` → **880 passed, 7 skipped, 0 failed** (up from 797 passed, 83 failed). Commit `c999983`. Closed yebyen/mecris#300.
+
+**Skipped**: Nothing — plan fully executed. No carry-forward items introduced.
+
+**Next**: Human: renew GITHUB_CLASSIC_PAT and open PR yebyen:main → kingdonb:main (sessions #64–#69). Bot-actionable: AI Framework Eval (#205, needs Aider) or Local Inference Pipeline (#203, needs Ollama) — both require tools not available in CI.

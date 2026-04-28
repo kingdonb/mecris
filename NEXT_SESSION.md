@@ -1,13 +1,14 @@
 # Next Session: Open PRs to kingdonb/mecris (human-required) or further CI/CD work
 
-## Current Status (2026-04-28, post-session #68)
+## Current Status (2026-04-28, post-session #69)
 - **Dual-track ABI enforcement complete**: `tests/test_wasm_abi_contract.py` (main=async v4, 8 pass) + `tests/test_wasm_abi_contract_legacy.py` (legacy-cloud=sync v3, 8 pass). Both committed on main.
 - **AGENTS.md synced from upstream**: Cherry-picked from kingdonb/mecris commits `1caacce` + `f646174`. Comprehensive skill/MCP tool docs + `/mecris-pr-test` in The Loop section. Commit `a17bbc7`.
 - **GITHUB_CLASSIC_PAT still expired**: Bot cannot create PRs to kingdonb/mecris. Human must renew.
-- **Test suite state**: 860+ passed, 0 failed (ABI contract tests add 16 more: 8 main + 8 legacy-cloud).
+- **Test suite state**: **880 passed, 7 skipped, 0 failed** (post-session #69 playwright lazy import fix, commit `c999983`).
 - **legacy-cloud branch**: `origin/legacy-cloud` (commit `51a5fc2`) — all 4 WASM components on SDK v3 (sync). main has all 4 on SDK v4 (async).
 
 ## Verified This Session
+- [x] **playwright lazy import fix (session #69)**: Moved `from playwright.sync_api import sync_playwright` from module-level in `fetch_groq_usage.py` to inside `scrape_usage_data()`. Fixes cascade `mcp_server.py → billing_reconciliation.py → fetch_groq_usage.py` that broke 83 tests. 797 → **880 passed, 0 failed**. Commit `c999983`. Closes yebyen/mecris#300. **COMPLETE**.
 - [x] **Upstream sync (session #68)**: Cherry-picked AGENTS.md from kingdonb/mecris `1caacce` + `f646174`. Commit `a17bbc7`. Closes yebyen/mecris#299 (partial).
 - [x] **Legacy-cloud ABI contract test (session #68)**: `tests/test_wasm_abi_contract_legacy.py` created — reads all 4 WASM component sources from `origin/legacy-cloud` via `git show` (no checkout). Asserts `def handle_request` (sync, SDK v3). 8/8 tests pass. Commit `e13116e`. Closes yebyen/mecris#299.
 - [x] **Upstream sync (session #67)**: Cherry-picked `docs/CI_CD_EVOLUTION_PLAN.md` from kingdonb/mecris `d7cd7b9` into yebyen/mecris main. Full merge skipped — histories diverged (session #66 used MCP push_files creating parallel SHAs). New file only, no conflicts. Commit `288568c`. Closes yebyen/mecris#297. **COMPLETE**.
