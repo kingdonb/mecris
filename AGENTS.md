@@ -56,10 +56,11 @@ Copy `.github/skills/` into your project's `.claude/skills/` directory.
 ## The Loop
 
 ```
-/mecris-orient  → situation report + recommended action
-/mecris-plan    → open a spec issue (intent, because, validation)
+/mecris-orient   → situation report + recommended action
+/mecris-plan     → open a spec issue (intent, because, validation)
 [do the work]
-/mecris-archive → close spec, update NEXT_SESSION.md, append SESSION_LOG
+/mecris-archive  → close spec, update NEXT_SESSION.md, append SESSION_LOG
+/mecris-pr-test  → dispatch and poll the test pipeline for validation
 ```
 
 ## Integrated MCP Tools
