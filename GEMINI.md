@@ -79,7 +79,7 @@ As the lead Gemini agent, you are the **keeper and critic** of the `mecris-bot` 
 9. **HCAT (Hardened Containerized Autonomous Turn)**: All autonomous work MUST run in ephemeral, isolated containers with SHA-pinned base images and strict `uv.lock` verification to limit blast radius and prevent supply chain attacks.
 10. **Deployment Mastery**: Always synchronize cloud logic by using `make deploy-all`. This ensures both Akamai and Fermyon environments are updated together.
 11. **Release Management**: **NEVER** update version strings manually. There are 15+ locations across Android, Spin, Python, and Web components. Always use `make bump-version VERSION=x.y.z [VC=nn]` to ensure absolute consistency across the ecosystem.
-12. **Safe Force Pushing**: **NEVER** use `git push --force` or `git push -f`. ALWAYS use `git push --force-with-lease` instead to prevent accidentally overwriting upstream changes.
+12. **Safe Force Pushing**: **NEVER** use `git push --force` or `git push -f`. ALWAYS use `git push --force-with-lease` instead to prevent accidentally overwriting upstream changes. Note: Force pushes and deletions are completely blocked by protection rules on the `main` branch (for both `kingdonb` and `yebyen` repositories) and on the permanent `legacy-cloud` branch (`yebyen` repository) which cannot be exploded.
 
 ## 4. Key MCP Functions
 
