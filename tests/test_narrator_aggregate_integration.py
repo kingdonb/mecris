@@ -92,7 +92,7 @@ async def _run_narrator_context_with_aggregate(aggregate_result):
                                                     with patch("mcp_server.weather_service", mocks["mock_weather"]):
                                                         with patch("mcp_server.scheduler", mocks["mock_scheduler"]):
                                                             with patch("mcp_server._budget_governor", mocks["mock_governor"]):
-                                                                with patch("mcp_server._get_presence_status", AsyncMock(return_value={})):
+                                                                with patch("mcp_server._get_presence_summary", AsyncMock(return_value={})):
                                                                     with patch("mcp_server.anthropic_cost_tracker", None):
                                                                         with patch("mcp_server.get_daily_aggregate_status", AsyncMock(return_value=aggregate_result)):
                                                                             from mcp_server import get_narrator_context

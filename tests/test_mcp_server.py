@@ -81,6 +81,9 @@ async def test_get_narrator_context_includes_presence_status():
     mock_store = MagicMock()
     mock_presence_record = MagicMock()
     mock_presence_record.status_type = StatusType.ACTIVE_HUMAN
+    mock_presence_record.last_human_activity = None
+    mock_presence_record.last_ghost_activity = None
+    mock_presence_record.last_active = None
     mock_store.upsert.return_value = mock_presence_record
     mock_store.get.return_value = mock_presence_record
 

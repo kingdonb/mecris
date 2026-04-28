@@ -614,6 +614,7 @@ async def get_narrator_context(user_id: str = None) -> Dict[str, Any]:
             "greek_backlog_cards": greek_backlog_cards,
             "budget_governor": _budget_governor.get_narrator_summary(),
             "presence": presence_info,
+            "presence_status": presence_info.get("status", "unknown"),
             "related_bookmarks": related_bookmarks,
             "last_updated": datetime.now().isoformat()
         }
