@@ -63,3 +63,18 @@ def pytest_ignore_collect(collection_path, config):
     """Skip test files that require a live NEON_DB_URL when the env var is absent."""
     if not os.environ.get("NEON_DB_URL") and collection_path.name in _NEON_REQUIRED:
         return True
+
+
+@pytest.fixture(autouse=True)
+def mock_usage_tracker_init(monkeypatch):
+    """When NEON_DB_URL is absent, prevent UsageTracker from raising at instantiation.
+
+    Resets the module-level singleton and mocks init_database to a no-op so that
+    get_tracker() succeeds without a live Neon connection. Tests that need specific
+    return values from tracker methods (e.g. get_user_preferences) already patch
+    those methods themselves; this fixture only removes the init-time barrier.
+    """
+    if not os.environ.get("NEON_DB_URL"):
+        import usage_tracker as _ut
+        monkeypatch.setattr(_ut, "_tracker_instance", None)
+        monkeypatch.setattr(_ut.UsageTracker, "init_database", lambda self: None)
