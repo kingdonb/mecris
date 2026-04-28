@@ -2491,3 +2491,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: The 9 remaining NEON_DB_URL failures (`test_sms_mock.py` x7, `test_issue_52_template_mapping.py` x2) — these fail at import time when a live Neon DB isn't configured. Fixing requires adding `NEON_DB_URL` mock at the conftest/module import level. Added to bot-actionable pending items in NEXT_SESSION.md.
 
 **Next**: Renew `GITHUB_CLASSIC_PAT` (human-required, urgent) and open PRs for pending commits (`10be85d` + any others). Bot-actionable: investigate NEON_DB_URL import-time failures (no env tools required) or wait for Aider/Ollama for AI Framework Eval (#205) / Local Inference (#203).
+
+## 🏛️ 2026-04-28 — Fix 9 NEON_DB_URL test failures via conftest autouse fixture (session #65, yebyen/mecris#295, complete)
+
+**Planned**: Add `mock_usage_tracker_init` autouse fixture to `tests/conftest.py` to prevent `UsageTracker.init_database` from raising `EnvironmentError` when `NEON_DB_URL` is absent, fixing 9 collection-time failures in `test_sms_mock.py` (7) and `test_issue_52_template_mapping.py` (2). (Plan: yebyen/mecris#295)
+
+**Done**: Traced the root cause: `smart_send_message()` in `twilio_sender.py` unconditionally calls `get_tracker()` at function scope, which lazily instantiates `UsageTracker()` → `init_database()` → raises `EnvironmentError("NEON_DB_URL must be set...")`. Tests in `test_sms_mock.py` never mock `get_tracker()`, and `test_issue_52_template_mapping.py` patches `UsageTracker.get_user_preferences` but not `get_tracker()` itself. Fix: added `@pytest.fixture(autouse=True) mock_usage_tracker_init` to `tests/conftest.py` — resets `_tracker_instance = None` and patches `UsageTracker.init_database = lambda self: None` when `NEON_DB_URL` absent. Zero blast radius: fixture is conditional on `NEON_DB_URL` absence; `test_usage_tracker.py` already patches `init_database` in its own fixture so no conflict. `PYTHONPATH=. python3 -m pytest tests/test_sms_mock.py tests/test_issue_52_template_mapping.py` → **11 passed, 3 skipped-by-decorator, 0 failed** (was 9 collection errors). Committed `7c58ec4`. Closed yebyen/mecris#295.
+
+**Skipped**: Nothing — plan was fully executed within the session.
+
+**Next**: Renew `GITHUB_CLASSIC_PAT` (human-required, urgent) and open PRs for `10be85d` (narrator presence skew, session #64) and `7c58ec4` (NEON_DB_URL fix, session #65). Bot-actionable: AI Framework Eval (#205, needs Aider) or Local Inference Pipeline (#203, needs Ollama).
