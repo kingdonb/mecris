@@ -2501,3 +2501,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: Nothing — plan was fully executed within the session.
 
 **Next**: Renew `GITHUB_CLASSIC_PAT` (human-required, urgent) and open PRs for `10be85d` (narrator presence skew, session #64) and `7c58ec4` (NEON_DB_URL fix, session #65). Bot-actionable: AI Framework Eval (#205, needs Aider) or Local Inference Pipeline (#203, needs Ollama).
+
+## 🏛️ 2026-04-28 — Sync upstream + create legacy-cloud branch with Spin SDK v3 WASM reversions (session #66, yebyen/mecris#296, complete)
+
+**Planned**: Sync yebyen/mecris from kingdonb/mecris (3 commits behind), then create `legacy-cloud` branch reverting all 4 Python WASM components from SDK v4 (async) to SDK v3 (sync). (Plan: yebyen/mecris#296)
+
+**Done**: Merged 3 upstream commits from kingdonb/mecris main (`17d4855` test fix, `95c3564` NEXT_SESSION.md update, `0303d29` Spin V3 compat plan) into yebyen/mecris main — no conflicts. Created `legacy-cloud` branch from yebyen/mecris main via GitHub MCP. Reverted all 4 WASM components to sync API: `arabic-skip-counter` (removed `await` from `_spin_variables.get`), `log-message-py` (removed `await` from `kv.open_default`, `store.get`, `store.set`), `budget-governor-py` (converted `_get_bucket_config_from_spin_vars` and `_fetch_helix_balance_spin` from async to sync; removed all `await` from KV and variables calls), `review-pump-py` (`async def handle_request` → `def handle_request`). All 151 WASM component headless tests pass. Committed `51a5fc2` on legacy-cloud. Implements step 3 of `docs/SPIN_V3_COMPATIBILITY_PLAN.md`. Closed yebyen/mecris#296.
+
+**Skipped**: CI/CD pipeline adjustment (step 4 of plan) — human-required; backporting workflow (step 5) — future bot sessions as needed.
+
+**Next**: Renew `GITHUB_CLASSIC_PAT` (human-required, urgent) and open PR yebyen:main → kingdonb:main for sessions #64–#66. Bot-actionable: AI Framework Eval (#205, needs Aider) or Local Inference Pipeline (#203, needs Ollama) — both require tools not available here.
