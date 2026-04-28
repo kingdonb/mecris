@@ -56,7 +56,7 @@ def mock_requests(monkeypatch):
     monkeypatch.setattr(requests, "get", mock_get)
 
 
-_NEON_REQUIRED = {"test_standalone_access.py", "test_unauthorized_access.py"}
+_NEON_REQUIRED = {"test_standalone_access.py", "test_unauthorized_access.py", "test_mcp_cors.py", "test_usage_tracker.py"}
 
 
 def pytest_ignore_collect(collection_path, config):
