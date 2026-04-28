@@ -15,7 +15,7 @@ implementations can be verified against the same logic contract.
 import importlib.util
 import json
 import os
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -45,7 +45,7 @@ def _recent_entry(bucket, cost):
     return {
         "bucket": bucket,
         "cost": cost,
-        "ts": (datetime.utcnow() - timedelta(minutes=1)).isoformat(),
+        "ts": (datetime.now(timezone.utc) - timedelta(minutes=1)).isoformat(),
     }
 
 
@@ -54,7 +54,7 @@ def _old_entry(bucket, cost):
     return {
         "bucket": bucket,
         "cost": cost,
-        "ts": (datetime.utcnow() - timedelta(hours=2)).isoformat(),
+        "ts": (datetime.now(timezone.utc) - timedelta(hours=2)).isoformat(),
     }
 
 
@@ -145,7 +145,7 @@ class TestCalcWindowSpent:
         assert app._calc_window_spent(log, "groq") == 0.0
 
     def test_accepts_datetime_object_as_ts(self):
-        log = [{"bucket": "groq", "cost": 2.0, "ts": datetime.utcnow() - timedelta(minutes=1)}]
+        log = [{"bucket": "groq", "cost": 2.0, "ts": datetime.now(timezone.utc) - timedelta(minutes=1)}]
         result = app._calc_window_spent(log, "groq")
         assert result == pytest.approx(2.0)
 
@@ -440,4 +440,4 @@ class TestMakeSpendEntry:
         assert isinstance(entry["ts"], str)
         dt = datetime.fromisoformat(entry["ts"])
         # Should be within the last few seconds
-        assert abs((datetime.utcnow() - dt).total_seconds()) < 5
+        assert abs((datetime.now(timezone.utc) - dt).total_seconds()) < 5

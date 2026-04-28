@@ -15,7 +15,7 @@ Covers: validate_entry, make_log_entry, append_entry, _parse_request,
 import importlib.util
 import json
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 
 import pytest
 
@@ -97,7 +97,7 @@ class TestMakeLogEntry:
     def test_logged_at_is_recent_iso_string(self):
         entry = app.make_log_entry("walk_reminder", "android_native")
         dt = datetime.fromisoformat(entry["logged_at"])
-        assert abs((datetime.utcnow() - dt).total_seconds()) < 5
+        assert abs((datetime.now(timezone.utc) - dt).total_seconds()) < 5
 
 
 # ---------------------------------------------------------------------------

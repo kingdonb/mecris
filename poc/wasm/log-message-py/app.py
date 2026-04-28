@@ -28,7 +28,7 @@ Plan: yebyen/mecris#267
 
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 try:
@@ -97,7 +97,7 @@ def make_log_entry(
     sent_at: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Create a normalized message log entry."""
-    logged_at = datetime.utcnow().isoformat()
+    logged_at = datetime.now(timezone.utc).isoformat()
     return {
         "type": entry_type,
         "channel": channel,
