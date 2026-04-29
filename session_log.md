@@ -2601,3 +2601,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: `billing_reconciliation.get_reconciliation_summary` RealDictCursor mock (deferred — #308 was the higher-priority gap).
 
 **Next**: Bot-actionable: `billing_reconciliation.get_reconciliation_summary` RealDictCursor mock path (~3-5 tests). Human-required: renew GITHUB_CLASSIC_PAT and open PR yebyen:main → kingdonb:main for sessions #64–#75.
+
+## 2026-04-29 🏛️ — billing_reconciliation.get_reconciliation_summary: 6 RealDictCursor mock tests (session #76)
+
+**Planned**: Write 3–5 unit tests for `billing_reconciliation.get_reconciliation_summary` RealDictCursor mock path — mocking `psycopg2.connect` with `cursor(cursor_factory=RealDictCursor)` returning row-dict mocks (yebyen/mecris#309).
+
+**Done**: Orient confirmed billing_reconciliation.get_reconciliation_summary as the sole bot-actionable task from NEXT_SESSION.md. Plan issue yebyen/mecris#309 created. Read source `billing_reconciliation.py:364–421` and existing test file (440 lines). Wrote 6 tests in `TestGetReconciliationSummary`: provider_summary_with_data (assert all dict keys + overall_accuracy), empty_results_zero_accuracy, multiple_providers_avg_drift, raises_when_no_neon_url (RuntimeError), reraises_on_db_exception, uses_override_user_id (verifies both SQL execute calls get the override). Two module-level helpers added: `_make_mock_cursor(provider_rows, recent_rows)` and `_make_mock_conn(mock_cursor)`. All 41 tests in billing_reconciliation suite pass. Commit `7a69b2d`. Closes yebyen/mecris#309.
+
+**Skipped**: Nothing — all planned tests delivered (exceeded plan by 1 test: 6 not 3–5).
+
+**Next**: Bot-actionable: Backport playwright lazy import fix to legacy-cloud branch (`git cherry-pick c999983`) or AI Framework Evaluation (kingdonb/mecris#205). Human-required: renew GITHUB_CLASSIC_PAT and open PR yebyen:main → kingdonb:main for sessions #64–#76.
