@@ -1,13 +1,14 @@
-# Next Session: claude_monitor.py async path coverage (record_usage, health_check)
+# Next Session: billing_reconciliation.get_reconciliation_summary RealDictCursor mock
 
-## Current Status (2026-04-29, post-session #74)
-- **billing_reconciliation.py test coverage added (session #74)**: 35 new unit tests across 11 test classes. Suite: **1003 passed** (+35 vs 968). Commit `d41a848`. Closes yebyen/mecris#307.
-- **Test suite state**: **1003 passed, 7 skipped, 0 failed** (full suite baseline).
+## Current Status (2026-04-29, post-session #75)
+- **claude_monitor.py async path tests added (session #75)**: 14 new tests — 4×TestHealthCheck + 10×TestRecordUsage. File I/O, 30-day pruning, alert gating all covered. Suite: **1017 passed** (+14 vs 1003). Commit `721bfd1`. Closes yebyen/mecris#308.
+- **Test suite state**: **1017 passed, 7 skipped, 0 failed** (full suite baseline in .venv; CI bare env shows 2 pre-existing unrelated failures in test_scheduler_election and test_sms_mock — not caused by new code).
 - **GITHUB_CLASSIC_PAT still expired**: Bot cannot create PRs to kingdonb/mecris. Human must renew.
 - **Upstream sync**: yebyen/mecris is ahead of kingdonb/mecris by many sessions; history has diverged since session #66. Future syncs must cherry-pick new files only.
-- **No open bot-actionable issues**: yebyen/mecris#307 is now closed. Next bot priority: `claude_monitor.py` async paths (record_usage, health_check) or `billing_reconciliation.get_reconciliation_summary` RealDictCursor mock.
+- **Next bot priority**: `billing_reconciliation.get_reconciliation_summary` RealDictCursor mock path (~3-5 tests).
 
 ## Verified This Session
+- [x] **claude_monitor.py async path tests (session #75)**: `tests/test_claude_monitor.py` now has 41 tests (27 existing + 14 new). TestHealthCheck (4): no_api_key→not_configured, api_key+usage→ok, api_key+no_usage→error, exception→error. TestRecordUsage (10): happy path, get_current_usage=None, save failure, credits_remaining/used updated, description stored, >30d pruned, recent entries kept, alerts on success, no alerts on failure, exception→False. `PYTHONPATH=. pytest tests/test_claude_monitor.py -v` → 41 passed. Commit `721bfd1`. Closes yebyen/mecris#308. **COMPLETE**.
 - [x] **billing_reconciliation.py test coverage (session #74)**: `tests/test_billing_reconciliation.py` (35 tests: 3×ReconciliationResult, 2×Init, 7×_calculate_drift_percentage, 4×_update_usage_records early-returns, 5×reconcile_anthropic, 4×reconcile_groq, 1×reconcile_all_providers, 2×daily_reconciliation, 4×_get_groq_actual_costs, 2×_get_estimated_costs DB, 1×_update_usage_records DB). `PYTHONPATH=. python3 -m pytest tests/test_billing_reconciliation.py -v` → 35 passed. Commit `d41a848`. Closes yebyen/mecris#307. **COMPLETE**.
 - [x] **claude_monitor.py test coverage (session #73)**: `tests/test_claude_monitor.py` (27 tests: 9×_calculate_daily_burn, 5×_days_until_expiry, 3×CreditUsage.to_dict, 2×BudgetAlert, 8×get_usage_summary status). Twilio stubbed via `sys.modules` at import time. `PYTHONPATH=. pytest tests/test_claude_monitor.py -v` → 27 passed. Commit `d4b9403`. Closes yebyen/mecris#306. **COMPLETE**.
 - [x] **RAG test coverage (session #72)**: `tests/test_rag_retriever.py` (46 tests) + `tests/test_rag_generator.py` (15 tests). Total suite: 941 passed, 7 skipped. BM25 is pure-Python — no external deps. Commit `bc27e78`. Closes yebyen/mecris#305. **COMPLETE**.
@@ -27,7 +28,7 @@
 
 ### 👤 Human-required (cannot be resolved by bot)
 - [ ] **URGENT: Refresh GITHUB_CLASSIC_PAT** — returns 401. Bot cannot create PRs to kingdonb/mecris. Renew in GitHub → Settings → Developer Settings → Personal access tokens (classic) with `repo` scope, update the workflow secret `GITHUB_CLASSIC_PAT`.
-- [ ] **Open PR yebyen:main → kingdonb:main** for all pending commits from sessions #64–#74 (narrator presence fix, NEON_DB_URL fix, upstream merge + legacy-cloud setup, CI/CD plan sync, ABI contract test x2, AGENTS.md sync, playwright fix, utcnow deprecation fix, async test fix, RAG test coverage, claude_monitor test coverage, billing_reconciliation test coverage). Closes yebyen/mecris#294, #295, #296, #298, #299, #302, #303, #305, #306, #307.
+- [ ] **Open PR yebyen:main → kingdonb:main** for all pending commits from sessions #64–#75 (narrator presence fix, NEON_DB_URL fix, upstream merge + legacy-cloud setup, CI/CD plan sync, ABI contract test x2, AGENTS.md sync, playwright fix, utcnow deprecation fix, async test fix, RAG test coverage, claude_monitor test coverage, billing_reconciliation test coverage, claude_monitor async path tests). Closes yebyen/mecris#294, #295, #296, #298, #299, #302, #303, #305, #306, #307, #308.
 - [ ] **Live Sunkworks session (Saturday)**: Execute dual-track tagging — tag `v0.1.0-canary.*` on main, `v0.0.1` on legacy-cloud. Run the negative E2E ABI mismatch test against Fermyon/Akamai sandbox. See `docs/CI_CD_EVOLUTION_PLAN.md` for full context.
 - [ ] **CI/CD Pipeline for legacy-cloud (step 4)**: Update GitHub Actions deployment workflows to trigger Fermyon/Akamai deployments only from the `legacy-cloud` branch.
 - [ ] **Cloud Readiness Check**: Monitor Fermyon/Akamai for updates to their Python WASM runtimes.
@@ -36,16 +37,15 @@
 - [ ] **Verify log-message-py in Cloud**: Once platforms are ready, confirm audit logs appear in cloud KV.
 
 ### 🤖 Bot-actionable (can be resolved in future sessions)
-- [ ] **claude_monitor.py async paths**: `record_usage` and `health_check` still untested — require file I/O mocking (usage file JSON) and httpx mock. Use `ClaudeMonitor.__new__` + manual attributes pattern. Bot-actionable next session.
-- [ ] **billing_reconciliation.get_reconciliation_summary**: RealDictCursor mock path not yet covered. Requires mocking `psycopg2.connect` + `cursor(cursor_factory=RealDictCursor)` returning row-dict mock. Would add ~3-5 tests.
+- [ ] **billing_reconciliation.get_reconciliation_summary**: RealDictCursor mock path not yet covered. Requires mocking `psycopg2.connect` + `cursor(cursor_factory=RealDictCursor)` returning row-dict mock. Would add ~3-5 tests. Use `BillingReconciliation.__new__` pattern.
 - [ ] **AI Framework Evaluation (kingdonb/mecris#205)**: Remaining: run `scripts/evaluate_aider.py` in an environment with Aider installed and append results to `docs/AI_FRAMEWORK_EVALUATION.md` evidence log. Requires Aider + an LLM API key.
 - [ ] **Budget Governor: WASM Port (kingdonb/mecris#214)**: POC complete and wired into spin.toml. Remaining: Fermyon Cloud variable config — human-required for deployment.
 - [ ] **Local Inference Pipeline (kingdonb/mecris#203)**: Integrate Ollama and build a cloud-fallback router.
 - [ ] **Backporting workflow (legacy-cloud step 5)**: Backport `fetch_groq_usage.py` playwright lazy import fix (`c999983`) to `legacy-cloud` branch.
 
 ## Infrastructure Notes (carried forward)
+- **claude_monitor.py test pattern (post-session #75)**: `ClaudeMonitor.__new__` + manual attrs (`api_key`, `usage_file`, `budget_limit`, `expiry_date`, `alerts=[]`, `client=MagicMock()`). Twilio stub at `sys.modules` level. For async paths: patch `_load_usage_history`, `get_current_usage`, `_save_usage_history`, `_check_budget_alerts` with `AsyncMock`. Call via `asyncio.run(m.record_usage(cost))`.
 - **billing_reconciliation.py test pattern (post-session #74)**: Use `BillingReconciliation.__new__(BillingReconciliation)` to bypass `__init__` (avoids NEON_DB_URL check + VirtualBudgetManager init). Set `r.budget_manager = MagicMock()`, `r.neon_url = "postgresql://fake/db"`, `r.user_id = "test_user"`. Patch `psycopg2.connect` for DB paths. Patch `billing_reconciliation.fetch_groq_usage` for Groq cost tests.
-- **claude_monitor.py test pattern (post-session #73)**: Twilio has no package in stripped CI env. Stub at `sys.modules` level in test file: `sys.modules.setdefault("twilio", types.ModuleType("twilio"))` + `sys.modules.setdefault("twilio.rest", _twilio_rest_stub)`. Use `ClaudeMonitor.__new__(ClaudeMonitor)` to bypass `__init__` (avoids env var reads and httpx client creation). Set `m.budget_limit`, `m.expiry_date`, `m.alerts = []`, `m.client = MagicMock()` manually.
 - **RAG test coverage (post-session #72)**: `tests/test_rag_retriever.py` (46 tests) + `tests/test_rag_generator.py` (15 tests). Total suite: 941 passed, 7 skipped. BM25 is pure-Python — no external deps. RAGRetriever lazy-loads on first `retrieve()`; `reset()` forces re-index. `generate_answer` is fail-open (returns None if ANTHROPIC_API_KEY absent or API raises).
 - **test_narrator_context.py fixed (post-session #71)**: 6 async tests inside `unittest.TestCase` rewritten as plain pytest classes with mocked httpx. `_make_mock_context` and `_make_httpx_mock` helpers added at top of file.
 - **No utcnow() in Python source (post-session #70)**: All `datetime.utcnow()` calls replaced with `datetime.now(timezone.utc)`. If new code is written, use `timezone.utc` pattern.

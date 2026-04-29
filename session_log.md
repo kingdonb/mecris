@@ -2591,3 +2591,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: `get_reconciliation_summary` RealDictCursor mock — would add 3-5 tests but time budget was consumed; left for next session. `claude_monitor.py` async paths (record_usage, health_check) also deferred.
 
 **Next**: Bot-actionable: `claude_monitor.py` async path coverage (record_usage, health_check — require file I/O mock) or `billing_reconciliation.get_reconciliation_summary` RealDictCursor mock. Human-required: renew GITHUB_CLASSIC_PAT and open PR yebyen:main → kingdonb:main for sessions #64–#74.
+
+## 2026-04-29 🏛️ — claude_monitor.py async path tests: health_check and record_usage (session #75)
+
+**Planned**: Add unit tests for `ClaudeMonitor.health_check` and `ClaudeMonitor.record_usage` async paths — file I/O mocking (usage JSON read/write) and httpx mock — using `ClaudeMonitor.__new__` and `sys.modules` Twilio stub (yebyen/mecris#308).
+
+**Done**: Orient confirmed no open issues anywhere, no upstream drift. Plan issue yebyen/mecris#308 created. Read `claude_monitor.py` and `tests/test_claude_monitor.py`. Added TestHealthCheck (4 tests: no_api_key→not_configured, api_key+usage→ok, api_key+no_usage→error, exception→error) and TestRecordUsage (10 tests: happy path, get_current_usage=None, save failure, credits_remaining/used updated correctly, description stored in entry, entries >30 days pruned, recent entries kept, alerts on save success, no alerts on save failure, exception→False). All 41 claude_monitor tests pass. Full suite: 1017 passed. Commit `721bfd1`. Closes yebyen/mecris#308.
+
+**Skipped**: `billing_reconciliation.get_reconciliation_summary` RealDictCursor mock (deferred — #308 was the higher-priority gap).
+
+**Next**: Bot-actionable: `billing_reconciliation.get_reconciliation_summary` RealDictCursor mock path (~3-5 tests). Human-required: renew GITHUB_CLASSIC_PAT and open PR yebyen:main → kingdonb:main for sessions #64–#75.
