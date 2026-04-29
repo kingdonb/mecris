@@ -2571,3 +2571,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: Nothing planned was skipped. No other bot-actionable issues were feasible this session (all remaining items blocked on Aider, Ollama, Fermyon, or legacy-cloud push).
 
 **Next**: Human-required: renew GITHUB_CLASSIC_PAT and open PR yebyen:main → kingdonb:main for sessions #64–#72. Bot-actionable next session: `claude_monitor.py` `_calculate_daily_burn` and `_days_until_expiry` have testable pure logic; `billing_reconciliation.py` has 0 tests and could be mocked.
+
+## 2026-04-29 🏛️ — claude_monitor.py test coverage: 27 new tests (session #73)
+
+**Planned**: Add unit tests for `_calculate_daily_burn` and `_days_until_expiry` (and other pure-logic functions) in `claude_monitor.py` — 351 lines with zero coverage (yebyen/mecris#306).
+
+**Done**: Orient confirmed no open issues anywhere, no upstream drift. Plan issue yebyen/mecris#306 created. Read `claude_monitor.py` — identified 5 testable surface areas: `_calculate_daily_burn` (sync, no I/O), `_days_until_expiry` (sync, reads `expiry_date`), `CreditUsage.to_dict` (pure dataclass), `BudgetAlert` (dataclass defaults), `get_usage_summary` (async, status threshold branches). Created `tests/test_claude_monitor.py` with 27 tests. Key technique: twilio not installed in stripped CI env → stubbed at `sys.modules` level; used `ClaudeMonitor.__new__` to bypass `__init__`. All 27 passed immediately. Commit `d4b9403`. Closes yebyen/mecris#306.
+
+**Skipped**: `billing_reconciliation.py` (442 lines, 0 tests) — left for next session; requires Neon/psycopg2 mock and is more complex to isolate.
+
+**Next**: Bot-actionable: `billing_reconciliation.py` test coverage (mock psycopg2). Human-required: renew GITHUB_CLASSIC_PAT and open PR yebyen:main → kingdonb:main for sessions #64–#73.
