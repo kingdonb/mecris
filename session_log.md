@@ -2551,3 +2551,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: Nothing planned was skipped. Bonus: filed yebyen/mecris#303 for pre-existing bug where 6 `async def test_*` methods in `test_narrator_context.py` run inside `unittest.TestCase` (which doesn't support async) — they silently pass zero assertions. Also found during orient that kingdonb/mecris#204, #206, #208, #211 are all already implemented in yebyen/mecris — awaiting PR once GITHUB_CLASSIC_PAT is renewed.
 
 **Next**: Bot-actionable: Fix yebyen/mecris#303 (rewrite 6 async TestCase tests as mocked pytest classes). Human-required: renew GITHUB_CLASSIC_PAT and open PR yebyen:main → kingdonb:main.
+
+## 2026-04-29 🏛️ — test_narrator_context.py async tests fixed (session #71)
+
+**Planned**: Rewrite 6 `async def test_*` methods in `unittest.TestCase` subclasses in `tests/test_narrator_context.py` as proper mocked pytest classes with no live HTTP calls (yebyen/mecris#304, closes yebyen/mecris#303).
+
+**Done**: Removed `unittest.TestCase` inheritance from `TestNarratorContext` and `TestClaudeNarratorIntegration`. Replaced `self.assert*` with plain `assert`. Added `_make_mock_context` and `_make_httpx_mock` helpers that build full mock httpx context managers. Converted live `localhost:8000` calls to mocked responses. Made `test_narrator_decision_making_scenarios` fully synchronous (pure logic, no HTTP needed). Removed all `return data` statements. Commit `b9f1bbb`. Full suite: 880 passed, 7 skipped, 0 failed. Closes yebyen/mecris#303.
+
+**Skipped**: Nothing planned was skipped. No other bot-actionable issues remain open.
+
+**Next**: Human-required: renew GITHUB_CLASSIC_PAT and open PR yebyen:main → kingdonb:main for all pending commits from sessions #64–#71. Bot: hunt for new bot-actionable issues or test coverage gaps.
