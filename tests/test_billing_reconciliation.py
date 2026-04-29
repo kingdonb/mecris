@@ -437,3 +437,113 @@ class TestUpdateUsageRecordsDB:
 
         assert count == 2
         assert mock_cursor.execute.call_count == 2
+
+
+# ---------------------------------------------------------------------------
+# get_reconciliation_summary: psycopg2 RealDictCursor mock
+# ---------------------------------------------------------------------------
+
+def _make_mock_cursor(provider_rows, recent_rows):
+    """Build a context-manager cursor with two sequential fetchall() returns."""
+    mock_cursor = MagicMock()
+    mock_cursor.__enter__ = lambda s: s
+    mock_cursor.__exit__ = MagicMock(return_value=False)
+    mock_cursor.fetchall.side_effect = [provider_rows, recent_rows]
+    return mock_cursor
+
+
+def _make_mock_conn(mock_cursor):
+    """Build a context-manager connection whose cursor() returns mock_cursor."""
+    mock_conn = MagicMock()
+    mock_conn.__enter__ = lambda s: s
+    mock_conn.__exit__ = MagicMock(return_value=False)
+    mock_conn.cursor.return_value = mock_cursor
+    return mock_conn
+
+
+class TestGetReconciliationSummary:
+    def test_returns_provider_summary_with_data(self):
+        r = _make_reconciler()
+        provider_rows = [
+            {"provider": "anthropic", "jobs_count": 3, "avg_abs_drift": 5.5,
+             "avg_drift": 2.0, "total_estimated": 1.2345, "total_actual": 1.1234},
+        ]
+        recent_rows = [
+            {"provider": "anthropic", "job_date": "2026-04-28",
+             "drift_percentage": 5.5, "records_reconciled": 10,
+             "reconciled_at": "2026-04-28T12:00:00"},
+        ]
+        mock_cursor = _make_mock_cursor(provider_rows, recent_rows)
+        mock_conn = _make_mock_conn(mock_cursor)
+
+        with patch("billing_reconciliation.psycopg2.connect", return_value=mock_conn):
+            result = r.get_reconciliation_summary(days=7)
+
+        assert result["period_days"] == 7
+        assert "anthropic" in result["provider_summary"]
+        ps = result["provider_summary"]["anthropic"]
+        assert ps["jobs_count"] == 3
+        assert ps["avg_abs_drift_pct"] == 5.5
+        assert ps["avg_drift_pct"] == 2.0
+        assert ps["total_estimated"] == 1.2345
+        assert ps["total_actual"] == 1.1234
+        assert len(result["recent_jobs"]) == 1
+        assert result["recent_jobs"][0]["job_date"] == "2026-04-28"
+        assert result["overall_accuracy"]["avg_abs_drift"] == 5.5
+
+    def test_empty_results_returns_zero_accuracy(self):
+        r = _make_reconciler()
+        mock_cursor = _make_mock_cursor([], [])
+        mock_conn = _make_mock_conn(mock_cursor)
+
+        with patch("billing_reconciliation.psycopg2.connect", return_value=mock_conn):
+            result = r.get_reconciliation_summary(days=3)
+
+        assert result["period_days"] == 3
+        assert result["provider_summary"] == {}
+        assert result["recent_jobs"] == []
+        assert result["overall_accuracy"]["avg_abs_drift"] == 0
+
+    def test_overall_accuracy_averages_multiple_providers(self):
+        r = _make_reconciler()
+        provider_rows = [
+            {"provider": "anthropic", "jobs_count": 2, "avg_abs_drift": 4.0,
+             "avg_drift": 1.0, "total_estimated": 1.0, "total_actual": 1.0},
+            {"provider": "groq", "jobs_count": 1, "avg_abs_drift": 6.0,
+             "avg_drift": -1.0, "total_estimated": 0.5, "total_actual": 0.5},
+        ]
+        mock_cursor = _make_mock_cursor(provider_rows, [])
+        mock_conn = _make_mock_conn(mock_cursor)
+
+        with patch("billing_reconciliation.psycopg2.connect", return_value=mock_conn):
+            result = r.get_reconciliation_summary(days=7)
+
+        assert set(result["provider_summary"]) == {"anthropic", "groq"}
+        assert result["overall_accuracy"]["avg_abs_drift"] == 5.0  # (4.0 + 6.0) / 2
+
+    def test_raises_when_no_neon_url(self):
+        r = _make_reconciler(neon_url=None)
+        with pytest.raises(RuntimeError, match="Neon connection not active"):
+            r.get_reconciliation_summary()
+
+    def test_reraises_on_db_exception(self):
+        r = _make_reconciler()
+        with patch("billing_reconciliation.psycopg2.connect", side_effect=Exception("conn refused")):
+            with pytest.raises(Exception, match="conn refused"):
+                r.get_reconciliation_summary()
+
+    def test_uses_override_user_id(self):
+        r = _make_reconciler(user_id="default_user")
+        provider_rows = []
+        recent_rows = []
+        mock_cursor = _make_mock_cursor(provider_rows, recent_rows)
+        mock_conn = _make_mock_conn(mock_cursor)
+
+        with patch("billing_reconciliation.psycopg2.connect", return_value=mock_conn):
+            r.get_reconciliation_summary(days=7, user_id="override_user")
+
+        # Both execute calls should use the override user_id
+        calls = mock_cursor.execute.call_args_list
+        assert len(calls) == 2
+        assert calls[0][0][1][1] == "override_user"
+        assert calls[1][0][1][1] == "override_user"
