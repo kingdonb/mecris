@@ -2611,3 +2611,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: Nothing — all planned tests delivered (exceeded plan by 1 test: 6 not 3–5).
 
 **Next**: Bot-actionable: Backport playwright lazy import fix to legacy-cloud branch (`git cherry-pick c999983`) or AI Framework Evaluation (kingdonb/mecris#205). Human-required: renew GITHUB_CLASSIC_PAT and open PR yebyen:main → kingdonb:main for sessions #64–#76.
+
+## 2026-04-29 🏛️ — legacy-cloud backport + groq_odometer_tracker test coverage (session #77)
+
+**Planned**: (1) Cherry-pick playwright lazy import fix (c999983) to legacy-cloud branch (yebyen/mecris#310). (2) Add unit tests for groq_odometer_tracker.py pure-logic and DB-mocked paths (yebyen/mecris#311).
+
+**Done**: (1) Backport: git cherry-pick c999983 onto legacy-cloud-backport branch, pushed as origin/legacy-cloud (HEAD=2beb598). Verified fetch_groq_usage.py imports cleanly; 40 tests passed in archivist/budget_governor suites. Closes yebyen/mecris#310. (2) Test coverage: wrote tests/test_groq_odometer_tracker.py with 24 tests — OdometerStatus (3), OdometerReading (3), _calculate_daily_usage (3), _days_until_month_end (4), check_reminder_needs (5), get_usage_for_virtual_budget (3), generate_narrator_context (3). PYTHONPATH=. python3 -m pytest tests/test_groq_odometer_tracker.py -v → 24 passed. Commit c60c78a. Closes yebyen/mecris#311.
+
+**Skipped**: AI Framework Evaluation (requires Aider + API key — not feasible in CI). Budget Governor WASM Port (requires Fermyon Cloud — human-required). Local Inference Pipeline (requires Ollama).
+
+**Next**: Test coverage for mcp_reconcile_budget.py (170 lines, no direct test file) using __new__ bypass pattern. Or claude_api_budget_scraper.py (308 lines). Human must renew GITHUB_CLASSIC_PAT and open PR yebyen:main → kingdonb:main for sessions #64–#77.
