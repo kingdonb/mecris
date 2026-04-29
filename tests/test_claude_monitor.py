@@ -267,3 +267,159 @@ class TestGetUsageSummaryStatus:
                           new=AsyncMock(return_value=_make_usage(10.0))):
             result = asyncio.run(m.get_usage_summary())
         assert result["budget_limit"] == 50.0
+
+
+# ---------------------------------------------------------------------------
+# health_check — async, mocked get_current_usage
+# ---------------------------------------------------------------------------
+
+class TestHealthCheck:
+    """Verify health_check returns correct status strings."""
+
+    def _run(self, m):
+        return asyncio.run(m.health_check())
+
+    def test_no_api_key_returns_not_configured(self):
+        m = _make_monitor()
+        m.api_key = None
+        assert self._run(m) == "not_configured"
+
+    def test_api_key_with_usage_returns_ok(self):
+        m = _make_monitor()
+        m.api_key = "sk-test-key"
+        with patch.object(m, "get_current_usage",
+                          new=AsyncMock(return_value=_make_usage(10.0))):
+            assert self._run(m) == "ok"
+
+    def test_api_key_with_no_usage_returns_error(self):
+        m = _make_monitor()
+        m.api_key = "sk-test-key"
+        with patch.object(m, "get_current_usage", new=AsyncMock(return_value=None)):
+            assert self._run(m) == "error"
+
+    def test_exception_during_get_usage_returns_error(self):
+        m = _make_monitor()
+        m.api_key = "sk-test-key"
+        with patch.object(m, "get_current_usage",
+                          new=AsyncMock(side_effect=RuntimeError("boom"))):
+            assert self._run(m) == "error"
+
+
+# ---------------------------------------------------------------------------
+# record_usage — async, file I/O fully mocked
+# ---------------------------------------------------------------------------
+
+class TestRecordUsage:
+    """Verify record_usage orchestrates load/compute/save/alert correctly."""
+
+    def _run(self, m, session_cost, description=""):
+        return asyncio.run(m.record_usage(session_cost, description))
+
+    def test_happy_path_returns_true(self):
+        m = _make_monitor()
+        with patch.object(m, "_load_usage_history", new=AsyncMock(return_value=[])), \
+             patch.object(m, "get_current_usage",
+                          new=AsyncMock(return_value=_make_usage(10.0))), \
+             patch.object(m, "_save_usage_history", new=AsyncMock(return_value=True)), \
+             patch.object(m, "_check_budget_alerts", new=AsyncMock()):
+            assert self._run(m, 1.0, "test session") is True
+
+    def test_get_current_usage_none_returns_false(self):
+        m = _make_monitor()
+        with patch.object(m, "_load_usage_history", new=AsyncMock(return_value=[])), \
+             patch.object(m, "get_current_usage", new=AsyncMock(return_value=None)):
+            assert self._run(m, 1.0) is False
+
+    def test_save_failure_returns_false(self):
+        m = _make_monitor()
+        with patch.object(m, "_load_usage_history", new=AsyncMock(return_value=[])), \
+             patch.object(m, "get_current_usage",
+                          new=AsyncMock(return_value=_make_usage(10.0))), \
+             patch.object(m, "_save_usage_history", new=AsyncMock(return_value=False)), \
+             patch.object(m, "_check_budget_alerts", new=AsyncMock()):
+            assert self._run(m, 1.0) is False
+
+    def test_credits_remaining_and_used_updated_correctly(self):
+        m = _make_monitor()
+        usage = _make_usage(10.0, credits_used=5.0, credits_remaining=20.0)
+        save_mock = AsyncMock(return_value=True)
+        with patch.object(m, "_load_usage_history", new=AsyncMock(return_value=[])), \
+             patch.object(m, "get_current_usage", new=AsyncMock(return_value=usage)), \
+             patch.object(m, "_save_usage_history", new=save_mock), \
+             patch.object(m, "_check_budget_alerts", new=AsyncMock()):
+            self._run(m, 2.0)
+        saved = save_mock.call_args[0][0]
+        assert abs(saved[-1]["credits_remaining"] - 18.0) < 0.01  # 20 - 2
+        assert abs(saved[-1]["credits_used"] - 7.0) < 0.01        # 5 + 2
+
+    def test_description_stored_in_saved_entry(self):
+        m = _make_monitor()
+        save_mock = AsyncMock(return_value=True)
+        with patch.object(m, "_load_usage_history", new=AsyncMock(return_value=[])), \
+             patch.object(m, "get_current_usage",
+                          new=AsyncMock(return_value=_make_usage(10.0))), \
+             patch.object(m, "_save_usage_history", new=save_mock), \
+             patch.object(m, "_check_budget_alerts", new=AsyncMock()):
+            self._run(m, 1.0, "my description")
+        assert save_mock.call_args[0][0][-1]["description"] == "my description"
+
+    def test_old_entries_pruned_beyond_30_days(self):
+        """Entries older than 30 days must be filtered out before save."""
+        m = _make_monitor()
+        old_entry = _entry(datetime.now() - timedelta(days=31), 25.0)
+        old_entry["description"] = "old"
+        save_mock = AsyncMock(return_value=True)
+        with patch.object(m, "_load_usage_history",
+                          new=AsyncMock(return_value=[old_entry])), \
+             patch.object(m, "get_current_usage",
+                          new=AsyncMock(return_value=_make_usage(10.0))), \
+             patch.object(m, "_save_usage_history", new=save_mock), \
+             patch.object(m, "_check_budget_alerts", new=AsyncMock()):
+            self._run(m, 1.0)
+        saved = save_mock.call_args[0][0]
+        # Old entry pruned; only the newly appended entry remains
+        assert len(saved) == 1
+        assert saved[0].get("description", "") != "old"
+
+    def test_recent_entries_kept(self):
+        """Entries within 30 days must survive the cutoff filter."""
+        m = _make_monitor()
+        recent = _entry(datetime.now() - timedelta(days=10), 22.0)
+        save_mock = AsyncMock(return_value=True)
+        with patch.object(m, "_load_usage_history",
+                          new=AsyncMock(return_value=[recent])), \
+             patch.object(m, "get_current_usage",
+                          new=AsyncMock(return_value=_make_usage(10.0))), \
+             patch.object(m, "_save_usage_history", new=save_mock), \
+             patch.object(m, "_check_budget_alerts", new=AsyncMock()):
+            self._run(m, 1.0)
+        saved = save_mock.call_args[0][0]
+        assert len(saved) == 2  # recent entry + new entry
+
+    def test_alerts_checked_when_save_succeeds(self):
+        m = _make_monitor()
+        alerts_mock = AsyncMock()
+        with patch.object(m, "_load_usage_history", new=AsyncMock(return_value=[])), \
+             patch.object(m, "get_current_usage",
+                          new=AsyncMock(return_value=_make_usage(10.0))), \
+             patch.object(m, "_save_usage_history", new=AsyncMock(return_value=True)), \
+             patch.object(m, "_check_budget_alerts", new=alerts_mock):
+            self._run(m, 1.0)
+        alerts_mock.assert_called_once()
+
+    def test_alerts_not_checked_when_save_fails(self):
+        m = _make_monitor()
+        alerts_mock = AsyncMock()
+        with patch.object(m, "_load_usage_history", new=AsyncMock(return_value=[])), \
+             patch.object(m, "get_current_usage",
+                          new=AsyncMock(return_value=_make_usage(10.0))), \
+             patch.object(m, "_save_usage_history", new=AsyncMock(return_value=False)), \
+             patch.object(m, "_check_budget_alerts", new=alerts_mock):
+            self._run(m, 1.0)
+        alerts_mock.assert_not_called()
+
+    def test_exception_in_load_returns_false(self):
+        m = _make_monitor()
+        with patch.object(m, "_load_usage_history",
+                          new=AsyncMock(side_effect=RuntimeError("disk full"))):
+            assert self._run(m, 1.0) is False
