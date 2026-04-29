@@ -2561,3 +2561,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: Nothing planned was skipped. No other bot-actionable issues remain open.
 
 **Next**: Human-required: renew GITHUB_CLASSIC_PAT and open PR yebyen:main → kingdonb:main for all pending commits from sessions #64–#71. Bot: hunt for new bot-actionable issues or test coverage gaps.
+
+## 2026-04-29 🏛️ — RAG test coverage: 61 new tests for BM25, RAGRetriever, and RAG generator (session #72)
+
+**Planned**: Add unit tests for `services/rag_retriever.py` and `services/rag_generator.py` which had zero coverage (yebyen/mecris#305). Deliver `tests/test_rag_retriever.py` (BM25, frontmatter, RAGRetriever) and `tests/test_rag_generator.py` (_build_context, fail-open paths).
+
+**Done**: Orient found no open yebyen/mecris issues and no feasible upstream issues blocked by infra. Discovered `rag_retriever.py` and `rag_generator.py` had zero test coverage despite ~330 lines of pure-Python logic. Created plan issue yebyen/mecris#305. Wrote `tests/test_rag_retriever.py` (46 tests: BM25 tokenize/fit/score/retrieve, _parse_frontmatter, _snippet, RAGRetriever lazy-load/reset/corpus_size/retrieve with tmp_path fixtures) and `tests/test_rag_generator.py` (15 tests: _build_context formatting, generate_answer fail-open paths with mock API). All 61 tests passed immediately. Full suite: 941 passed, 7 skipped, 0 failed (+61 vs baseline 880). Commit `bc27e78`. Closes yebyen/mecris#305.
+
+**Skipped**: Nothing planned was skipped. No other bot-actionable issues were feasible this session (all remaining items blocked on Aider, Ollama, Fermyon, or legacy-cloud push).
+
+**Next**: Human-required: renew GITHUB_CLASSIC_PAT and open PR yebyen:main → kingdonb:main for sessions #64–#72. Bot-actionable next session: `claude_monitor.py` `_calculate_daily_burn` and `_days_until_expiry` have testable pure logic; `billing_reconciliation.py` has 0 tests and could be mocked.

@@ -1,13 +1,14 @@
 # Next Session: Open PR yebyen:main → kingdonb:main (pending GITHUB_CLASSIC_PAT renewal)
 
-## Current Status (2026-04-29, post-session #71)
-- **test_narrator_context.py fixed**: All 6 `async def test_*` methods in `unittest.TestCase` rewritten as proper mocked pytest classes. Closes yebyen/mecris#303. Commit `b9f1bbb`.
-- **Test suite state**: **880 passed, 7 skipped, 0 failed** (unchanged, all baseline tests still green).
+## Current Status (2026-04-29, post-session #72)
+- **RAG test coverage added (session #72)**: 61 new unit tests for `services/rag_retriever.py` (BM25, frontmatter, RAGRetriever) and `services/rag_generator.py` (_build_context, fail-open). Suite: **941 passed, 7 skipped, 0 failed**. Commit `bc27e78`. Closes yebyen/mecris#305.
+- **Test suite state**: **941 passed, 7 skipped, 0 failed** (+61 vs baseline of 880).
 - **GITHUB_CLASSIC_PAT still expired**: Bot cannot create PRs to kingdonb/mecris. Human must renew.
-- **Upstream sync**: yebyen/mecris is fully up to date with kingdonb/mecris (latest upstream commit `f646174` was cherry-picked in session #68).
-- **No open bot-actionable issues**: yebyen/mecris#303 is now closed. Next priority is the human-required PR to kingdonb.
+- **Upstream sync**: yebyen/mecris is ahead of kingdonb/mecris by many sessions; content was cherry-picked in sessions #67–#68. History has diverged — future syncs must cherry-pick new files only.
+- **No open bot-actionable issues**: yebyen/mecris#305 is now closed. Next bot priority: more test coverage gaps or hunt kingdonb/mecris issues.
 
 ## Verified This Session
+- [x] **RAG test coverage (session #72)**: `tests/test_rag_retriever.py` (46 tests: BM25 tokenize/fit/score/retrieve, _parse_frontmatter, _snippet, RAGRetriever lazy-load/reset/corpus_size/retrieve with tmp_path) + `tests/test_rag_generator.py` (15 tests: _build_context formatting, generate_answer fail-open paths). `PYTHONPATH=. pytest tests/test_rag_retriever.py tests/test_rag_generator.py` → 61 passed. Full suite: 941 passed, 7 skipped, 0 failed. Commit `bc27e78`. Closes yebyen/mecris#305. **COMPLETE**.
 - [x] **test_narrator_context.py async fix (session #71)**: Rewrote 6 `async def test_*` methods in `unittest.TestCase` (which ignores async) as plain pytest classes with mocked httpx. Added `_make_mock_context` and `_make_httpx_mock` helpers. No live HTTP calls. `PYTHONPATH=. python3 -m pytest tests/test_narrator_context.py -v` → 6 passed. Full suite 880 passed, 7 skipped, 0 failed. Commit `b9f1bbb`. Closes yebyen/mecris#303. **COMPLETE**.
 - [x] **utcnow() deprecation fix (session #70)**: `datetime.utcnow()` → `datetime.now(timezone.utc)` in 8 files (5 source + 3 test). No `utcnow()` remains in `**/*.py`. 880 passed, 0 failed. Commit `0485340`. Closes yebyen/mecris#302. **COMPLETE**.
 - [x] **playwright lazy import fix (session #69)**: Moved `from playwright.sync_api import sync_playwright` from module-level in `fetch_groq_usage.py` to inside `scrape_usage_data()`. Fixes cascade `mcp_server.py → billing_reconciliation.py → fetch_groq_usage.py` that broke 83 tests. 797 → **880 passed, 0 failed**. Commit `c999983`. Closes yebyen/mecris#300. **COMPLETE**.
@@ -27,7 +28,7 @@
 
 ### 👤 Human-required (cannot be resolved by bot)
 - [ ] **URGENT: Refresh GITHUB_CLASSIC_PAT** — returns 401. Bot cannot create PRs to kingdonb/mecris. Renew in GitHub → Settings → Developer Settings → Personal access tokens (classic) with `repo` scope, update the workflow secret `GITHUB_CLASSIC_PAT`.
-- [ ] **Open PR yebyen:main → kingdonb:main** for all pending commits from sessions #64–#70 (narrator presence fix, NEON_DB_URL fix, upstream merge + legacy-cloud setup, CI/CD plan sync, ABI contract test x2, AGENTS.md sync, playwright fix, utcnow deprecation fix). Closes yebyen/mecris#294, #295, #296, #298, #299, #302.
+- [ ] **Open PR yebyen:main → kingdonb:main** for all pending commits from sessions #64–#72 (narrator presence fix, NEON_DB_URL fix, upstream merge + legacy-cloud setup, CI/CD plan sync, ABI contract test x2, AGENTS.md sync, playwright fix, utcnow deprecation fix, async test fix, RAG test coverage). Closes yebyen/mecris#294, #295, #296, #298, #299, #302, #303, #305.
 - [ ] **Live Sunkworks session (Saturday)**: Execute dual-track tagging — tag `v0.1.0-canary.*` on main, `v0.0.1` on legacy-cloud. Run the negative E2E ABI mismatch test against Fermyon/Akamai sandbox. See `docs/CI_CD_EVOLUTION_PLAN.md` for full context.
 - [ ] **CI/CD Pipeline for legacy-cloud (step 4)**: Update GitHub Actions deployment workflows to trigger Fermyon/Akamai deployments only from the `legacy-cloud` branch. `main` continues to deploy to local Kubernetes `spin-tainer`. Ref: `docs/SPIN_V3_COMPATIBILITY_PLAN.md` step 4.
 - [ ] **Cloud Readiness Check**: Monitor Fermyon/Akamai for updates to their Python WASM runtimes. Test a simple SDK v4 "Hello World" to confirm when the platform has caught up.
@@ -40,8 +41,10 @@
 - [ ] **Budget Governor: WASM Port (kingdonb/mecris#214)**: POC complete and wired into spin.toml. Remaining: Fermyon Cloud variable config — human-required for deployment.
 - [ ] **Local Inference Pipeline (kingdonb/mecris#203)**: Integrate Ollama and build a cloud-fallback router.
 - [ ] **Backporting workflow (legacy-cloud step 5)**: Backport `fetch_groq_usage.py` playwright lazy import fix (`c999983`) to `legacy-cloud` branch. WASM components differ (sync API) but this fix is Python-only. Cannot push legacy-cloud from bot workflow (workflow only pushes main).
+- [ ] **More test coverage gaps**: `billing_reconciliation.py` (442 lines, 0 tests — requires Neon mock). `claude_monitor.py` (351 lines, 0 tests — pure logic in `_calculate_daily_burn`, `_days_until_expiry` is testable). Bot-actionable next session.
 
 ## Infrastructure Notes (carried forward)
+- **RAG test coverage (post-session #72)**: `tests/test_rag_retriever.py` (46 tests) + `tests/test_rag_generator.py` (15 tests). Total suite: 941 passed, 7 skipped. BM25 is pure-Python — no external deps. RAGRetriever lazy-loads on first `retrieve()`; `reset()` forces re-index. `generate_answer` is fail-open (returns None if ANTHROPIC_API_KEY absent or API raises).
 - **test_narrator_context.py fixed (post-session #71)**: 6 async tests inside `unittest.TestCase` rewritten as plain pytest classes with mocked httpx. `_make_mock_context` and `_make_httpx_mock` helpers added at top of file. No live server required. Closes yebyen/mecris#303.
 - **No utcnow() in Python source (post-session #70)**: All `datetime.utcnow()` calls replaced with `datetime.now(timezone.utc)`. If new code is written, use `timezone.utc` pattern.
 - **Dual-track ABI contract tests (post-session #68)**: `tests/test_wasm_abi_contract.py` (main=async v4, 8 tests) + `tests/test_wasm_abi_contract_legacy.py` (legacy-cloud=sync v3, 8 tests). Legacy test uses `git show origin/legacy-cloud:<path>` — no checkout needed, but requires `origin/legacy-cloud` to be fetchable. Skips gracefully if branch not found.
