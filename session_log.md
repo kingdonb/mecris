@@ -2581,3 +2581,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: `billing_reconciliation.py` (442 lines, 0 tests) — left for next session; requires Neon/psycopg2 mock and is more complex to isolate.
 
 **Next**: Bot-actionable: `billing_reconciliation.py` test coverage (mock psycopg2). Human-required: renew GITHUB_CLASSIC_PAT and open PR yebyen:main → kingdonb:main for sessions #64–#73.
+
+## 2026-04-29 🏛️ — billing_reconciliation.py test coverage: 35 new tests (session #74)
+
+**Planned**: Add unit tests for `billing_reconciliation.py` (442 lines, 0 tests) — mocking Neon/psycopg2 for offline CI testing; deliver ≥20 tests with full suite green (yebyen/mecris#307).
+
+**Done**: Orient confirmed no open issues, no upstream drift, billing_reconciliation.py as sole bot-actionable task. Plan issue yebyen/mecris#307 created. Read `billing_reconciliation.py` — identified 11 test classes covering: `ReconciliationResult` dataclass (3 tests), `__init__` EnvironmentError guard (2 tests), `_calculate_drift_percentage` pure logic (7 tests), `_update_usage_records_with_actual_costs` early-return paths (4 tests), `reconcile_anthropic` 4 scenarios + user_id override (5 tests), `reconcile_groq` 4 scenarios (4 tests), `reconcile_all_providers` (1 test), `daily_reconciliation` date targeting (2 tests), `_get_groq_actual_costs` with mocked `fetch_groq_usage` (4 tests), `_get_estimated_costs` psycopg2 mock (2 tests), `_update_usage_records` DB path (1 test). All 35 passed immediately. Commit `d41a848`. Closes yebyen/mecris#307.
+
+**Skipped**: `get_reconciliation_summary` RealDictCursor mock — would add 3-5 tests but time budget was consumed; left for next session. `claude_monitor.py` async paths (record_usage, health_check) also deferred.
+
+**Next**: Bot-actionable: `claude_monitor.py` async path coverage (record_usage, health_check — require file I/O mock) or `billing_reconciliation.get_reconciliation_summary` RealDictCursor mock. Human-required: renew GITHUB_CLASSIC_PAT and open PR yebyen:main → kingdonb:main for sessions #64–#74.
