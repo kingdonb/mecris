@@ -2621,3 +2621,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: AI Framework Evaluation (requires Aider + API key — not feasible in CI). Budget Governor WASM Port (requires Fermyon Cloud — human-required). Local Inference Pipeline (requires Ollama).
 
 **Next**: Test coverage for mcp_reconcile_budget.py (170 lines, no direct test file) using __new__ bypass pattern. Or claude_api_budget_scraper.py (308 lines). Human must renew GITHUB_CLASSIC_PAT and open PR yebyen:main → kingdonb:main for sessions #64–#77.
+
+## 2026-04-30 🏛️ — mcp_reconcile_budget.py test coverage: 18 unit tests (session #78)
+
+**Planned**: Write ≥10 unit tests for `mcp_reconcile_budget.py` (170 lines, no direct test file) using `requests` mocking; cover all four public functions and `main()` CLI paths (yebyen/mecris#312).
+
+**Done**: Read `mcp_reconcile_budget.py` (170 lines, 4 functions + main). Wrote `tests/test_mcp_reconcile_budget.py` with 18 tests across 5 classes: TestGetCurrentBudgetStatus (3: happy path, HTTP error→exit(1), connection error→exit(1)), TestRecordReconciliation (3: correct POST payload verified, HTTP error→exit(1), network error→exit(1)), TestUpdateBudgetDirectly (4: no-total omits total_budget param, with-total includes it, custom period_end, HTTP error→exit(1)), TestGetReconciliationStatus (2: happy path returns dict, error returns None not exit(1)), TestMain (6: already-in-sync→exit(0), dry-run→exit(0), positive delta calls reconciliation, negative delta, custom reason forwarded, reconciliation failure→exit(1)). All 18 passed in 0.33s. Commit `2c19849`. Closes yebyen/mecris#312.
+
+**Skipped**: claude_api_budget_scraper.py (308 lines) and scheduler.py (484 lines) — deferred to future sessions; remaining budget for this session committed to clean archive.
+
+**Next**: Test coverage for `claude_api_budget_scraper.py` (308 lines, no direct test file). Strategy: mock `requests`/`httpx` at module level; cover scraping logic, HTTP error paths, and budget calculation helpers.

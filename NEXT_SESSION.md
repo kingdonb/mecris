@@ -1,14 +1,16 @@
-# Next Session: AI Framework Evaluation or further test coverage expansion
+# Next Session: Test coverage for claude_api_budget_scraper.py or scheduler.py
 
-## Current Status (2026-04-29, post-session #77)
+## Current Status (2026-04-30, post-session #78)
 - **legacy-cloud backport (session #77)**: Playwright lazy import fix (`c999983`) cherry-picked onto `legacy-cloud` branch as `2beb598`. `fetch_groq_usage.py` imports without playwright at module level. Closes yebyen/mecris#310.
 - **groq_odometer_tracker.py test coverage (session #77)**: 24 new tests in `tests/test_groq_odometer_tracker.py` — OdometerStatus (3), OdometerReading (3), _calculate_daily_usage (3), _days_until_month_end (4), check_reminder_needs (5), get_usage_for_virtual_budget (3), generate_narrator_context (3). All 24 passed. Commit `c60c78a`. Closes yebyen/mecris#311.
-- **Test suite state**: groq_odometer_tracker.py now has 24 tests. Full suite on main: ~1041 passed (1017 + 24 new). CI bare-env failures in test_scheduler_election and test_sms_mock are pre-existing and unrelated.
+- **mcp_reconcile_budget.py test coverage (session #78)**: 18 new tests in `tests/test_mcp_reconcile_budget.py` — get_current_budget_status (3), record_reconciliation (3), update_budget_directly (4), get_reconciliation_status (2), main() CLI paths (6). All 18 passed. Commit `2c19849`. Closes yebyen/mecris#312.
+- **Test suite state**: mcp_reconcile_budget.py now has 18 tests. CI bare-env failures in test_scheduler_election and test_sms_mock are pre-existing and unrelated.
 - **GITHUB_CLASSIC_PAT still expired**: Bot cannot create PRs to kingdonb/mecris. Human must renew.
 - **Upstream sync**: yebyen/mecris is ahead of kingdonb/mecris by many sessions; history has diverged since session #66. Future syncs must cherry-pick new files only.
 - **Next bot priority**: Test coverage for `mcp_reconcile_budget.py` (170 lines, no direct tests), `claude_api_budget_scraper.py` (308 lines), or `scheduler.py` (484 lines). Or: AI Framework Evaluation (kingdonb/mecris#205).
 
 ## Verified This Session
+- [x] **mcp_reconcile_budget.py test coverage (session #78)**: `tests/test_mcp_reconcile_budget.py` — 18 tests (get_current_budget_status×3, record_reconciliation×3, update_budget_directly×4, get_reconciliation_status×2, main×6). `PYTHONPATH=. python3 -m pytest tests/test_mcp_reconcile_budget.py -v` → 18 passed in 0.33s. Commit `2c19849`. Closes yebyen/mecris#312. **COMPLETE**.
 - [x] **legacy-cloud playwright backport (session #77)**: `git log origin/legacy-cloud | head -1` → `2beb598 fix(imports): make playwright import lazy in fetch_groq_usage.py`. `python3 -c "import fetch_groq_usage"` → OK. Commit `2beb598` on `origin/legacy-cloud`. Closes yebyen/mecris#310. **COMPLETE**.
 - [x] **groq_odometer_tracker.py test coverage (session #77)**: `tests/test_groq_odometer_tracker.py` — 24 tests (OdometerStatus×3, OdometerReading×3, _calculate_daily_usage×3, _days_until_month_end×4, check_reminder_needs×5, get_usage_for_virtual_budget×3, generate_narrator_context×3). `PYTHONPATH=. python3 -m pytest tests/test_groq_odometer_tracker.py -v` → 24 passed. Commit `c60c78a`. Closes yebyen/mecris#311. **COMPLETE**.
 - [x] **billing_reconciliation.get_reconciliation_summary tests (session #76)**: 6 new tests — RealDictCursor happy path, empty results, multiple-provider avg, no neon_url raises, DB exception reraises, user_id override. Suite: **41 passed** for billing_reconciliation.py. Commit `7a69b2d`. Closes yebyen/mecris#309.
@@ -39,7 +41,6 @@
 - [ ] **Verify log-message-py in Cloud**: Once platforms are ready, confirm audit logs appear in cloud KV.
 
 ### 🤖 Bot-actionable (can be resolved in future sessions)
-- [ ] **Test coverage for mcp_reconcile_budget.py** (170 lines, no direct test file): Budget reconciliation helpers. Use `__new__` bypass pattern. Target ≥10 tests.
 - [ ] **Test coverage for claude_api_budget_scraper.py** (308 lines, no direct test file): Claude API budget scraping. Mix of pure-logic and HTTP-mocked paths.
 - [ ] **Test coverage for scheduler.py** (484 lines, no scheduler-specific test file — test_scheduler_election.py only covers election logic).
 - [ ] **AI Framework Evaluation (kingdonb/mecris#205)**: Remaining: run `scripts/evaluate_aider.py` with Aider installed and append results to `docs/AI_FRAMEWORK_EVALUATION.md`. Requires Aider + an LLM API key.
