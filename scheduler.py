@@ -331,8 +331,7 @@ class MecrisScheduler:
                                     # We are still leader, maintain heartbeat
                                     cur.execute("UPDATE scheduler_election SET heartbeat = %s WHERE user_id = %s AND role = 'leader' AND process_id = %s", (now, self.user_id, self.process_id))
                                     self._write_obs_status(cur, "Heartbeat active", "maintain leadership")
-                                    if attempt % 20 == 0: # Log roughly every 10 minutes
-                                        logger.info(f"💓 Leader {self.process_id} heartbeat active.")
+                                    logger.debug(f"💓 Leader {self.process_id} heartbeat active.")
                 if self.is_leader:
                     await self._start_leader_jobs()
                 return
