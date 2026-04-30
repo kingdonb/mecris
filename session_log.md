@@ -2631,3 +2631,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: claude_api_budget_scraper.py (308 lines) and scheduler.py (484 lines) — deferred to future sessions; remaining budget for this session committed to clean archive.
 
 **Next**: Test coverage for `claude_api_budget_scraper.py` (308 lines, no direct test file). Strategy: mock `requests`/`httpx` at module level; cover scraping logic, HTTP error paths, and budget calculation helpers.
+
+## 2026-04-30 🏛️ — claude_api_budget_scraper.py test coverage: 24 unit tests (session #79)
+
+**Planned**: Write `tests/test_claude_api_budget_scraper.py` covering pure-logic and HTTP-mocked paths in `claude_api_budget_scraper.py` (308 lines, no direct test file), with ≥10 tests (yebyen/mecris#313).
+
+**Done**: Read `claude_api_budget_scraper.py` (308 lines — scaffolding module with CreditBalance dataclass, ClaudeConsoleScraper, and two convenience functions). Wrote `tests/test_claude_api_budget_scraper.py` with 24 tests across 9 classes: TestCreditBalance (4: to_dict keys, isoformat string, numeric values, field access), TestClaudeConsoleScraper_Init (3: default URLs, env credentials, cache settings), TestLoadCachedBalance (4: no file→None, fresh cache→CreditBalance, stale→None, bad JSON→None), TestSaveCachedBalance (2: writes JSON, IOError no raise), TestScaffoldScraper (2: returns CreditBalance, mock values 25.0/6.79/18.21), TestPlaywrightImplementation (1: returns None), TestGetCreditBalance (3: cache hit skips scaffold, no cache calls scaffold, returns CreditBalance), TestSetManualBalance (3: remaining-only, with total+period, fields from budget_info), TestConvenienceFunctions (2: get_claude_balance, update_balance_manually). All 24 passed in 0.32s. Commit `594b309`. Closes yebyen/mecris#313.
+
+**Skipped**: scheduler.py (484 lines) — deferred to next session; scope was intentionally scoped to claude_api_budget_scraper.py only.
+
+**Next**: Test coverage for `scheduler.py` (484 lines — only election logic currently tested). Key paths: timer management, task dispatch, cron parsing, presence integration. Human must renew GITHUB_CLASSIC_PAT and open PR yebyen:main → kingdonb:main for sessions #64–#79.
