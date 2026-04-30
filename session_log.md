@@ -2491,3 +2491,153 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: The 9 remaining NEON_DB_URL failures (`test_sms_mock.py` x7, `test_issue_52_template_mapping.py` x2) — these fail at import time when a live Neon DB isn't configured. Fixing requires adding `NEON_DB_URL` mock at the conftest/module import level. Added to bot-actionable pending items in NEXT_SESSION.md.
 
 **Next**: Renew `GITHUB_CLASSIC_PAT` (human-required, urgent) and open PRs for pending commits (`10be85d` + any others). Bot-actionable: investigate NEON_DB_URL import-time failures (no env tools required) or wait for Aider/Ollama for AI Framework Eval (#205) / Local Inference (#203).
+
+## 🏛️ 2026-04-28 — Fix 9 NEON_DB_URL test failures via conftest autouse fixture (session #65, yebyen/mecris#295, complete)
+
+**Planned**: Add `mock_usage_tracker_init` autouse fixture to `tests/conftest.py` to prevent `UsageTracker.init_database` from raising `EnvironmentError` when `NEON_DB_URL` is absent, fixing 9 collection-time failures in `test_sms_mock.py` (7) and `test_issue_52_template_mapping.py` (2). (Plan: yebyen/mecris#295)
+
+**Done**: Traced the root cause: `smart_send_message()` in `twilio_sender.py` unconditionally calls `get_tracker()` at function scope, which lazily instantiates `UsageTracker()` → `init_database()` → raises `EnvironmentError("NEON_DB_URL must be set...")`. Tests in `test_sms_mock.py` never mock `get_tracker()`, and `test_issue_52_template_mapping.py` patches `UsageTracker.get_user_preferences` but not `get_tracker()` itself. Fix: added `@pytest.fixture(autouse=True) mock_usage_tracker_init` to `tests/conftest.py` — resets `_tracker_instance = None` and patches `UsageTracker.init_database = lambda self: None` when `NEON_DB_URL` absent. Zero blast radius: fixture is conditional on `NEON_DB_URL` absence; `test_usage_tracker.py` already patches `init_database` in its own fixture so no conflict. `PYTHONPATH=. python3 -m pytest tests/test_sms_mock.py tests/test_issue_52_template_mapping.py` → **11 passed, 3 skipped-by-decorator, 0 failed** (was 9 collection errors). Committed `7c58ec4`. Closed yebyen/mecris#295.
+
+**Skipped**: Nothing — plan was fully executed within the session.
+
+**Next**: Renew `GITHUB_CLASSIC_PAT` (human-required, urgent) and open PRs for `10be85d` (narrator presence skew, session #64) and `7c58ec4` (NEON_DB_URL fix, session #65). Bot-actionable: AI Framework Eval (#205, needs Aider) or Local Inference Pipeline (#203, needs Ollama).
+
+## 🏛️ 2026-04-28 — Sync upstream + create legacy-cloud branch with Spin SDK v3 WASM reversions (session #66, yebyen/mecris#296, complete)
+
+**Planned**: Sync yebyen/mecris from kingdonb/mecris (3 commits behind), then create `legacy-cloud` branch reverting all 4 Python WASM components from SDK v4 (async) to SDK v3 (sync). (Plan: yebyen/mecris#296)
+
+**Done**: Merged 3 upstream commits from kingdonb/mecris main (`17d4855` test fix, `95c3564` NEXT_SESSION.md update, `0303d29` Spin V3 compat plan) into yebyen/mecris main — no conflicts. Created `legacy-cloud` branch from yebyen/mecris main via GitHub MCP. Reverted all 4 WASM components to sync API: `arabic-skip-counter` (removed `await` from `_spin_variables.get`), `log-message-py` (removed `await` from `kv.open_default`, `store.get`, `store.set`), `budget-governor-py` (converted `_get_bucket_config_from_spin_vars` and `_fetch_helix_balance_spin` from async to sync; removed all `await` from KV and variables calls), `review-pump-py` (`async def handle_request` → `def handle_request`). All 151 WASM component headless tests pass. Committed `51a5fc2` on legacy-cloud. Implements step 3 of `docs/SPIN_V3_COMPATIBILITY_PLAN.md`. Closed yebyen/mecris#296.
+
+**Skipped**: CI/CD pipeline adjustment (step 4 of plan) — human-required; backporting workflow (step 5) — future bot sessions as needed.
+
+**Next**: Renew `GITHUB_CLASSIC_PAT` (human-required, urgent) and open PR yebyen:main → kingdonb:main for sessions #64–#66. Bot-actionable: AI Framework Eval (#205, needs Aider) or Local Inference Pipeline (#203, needs Ollama) — both require tools not available here.
+
+## 🏛️ 2026-04-28 — Upstream sync + WASM ABI contract test (session #67, yebyen/mecris#297 + #298, complete)
+
+**Planned**: Sync `docs/CI_CD_EVOLUTION_PLAN.md` from kingdonb/mecris `d7cd7b9` (1 commit behind), read the new doc, identify bot-actionable work, and execute it. (Plans: yebyen/mecris#297, #298)
+
+**Done**: Cherry-picked `docs/CI_CD_EVOLUTION_PLAN.md` from upstream — skipped full merge because git histories diverged in session #66 (MCP push_files created parallel SHAs). Read the plan: dual-track release strategy (main=SDK v4 canary / legacy-cloud=SDK v3 stable), and a "Negative E2E Test" ABI-mismatch tripwire concept. The tripwire is the key new idea: deploy a v4 component to a v3 cloud host, assert the specific `"expected function but found coroutine"` ABI crash — when the cloud silently upgrades, the negative test suddenly passes, signaling time to sunset legacy-cloud. Built the bot-implementable portion: `tests/test_wasm_abi_contract.py` — AST-based static analysis confirming all 4 main-branch WASM components (`arabic-skip-counter`, `log-message-py`, `budget-governor-py`, `review-pump-py`) use `async def handle_request` (SDK v4 contract). 8 tests pass. Commits: `288568c` (CI/CD plan sync), `f66eedb` (ABI contract test).
+
+**Skipped**: Runtime cloud tripwire test (requires Fermyon/Akamai sandbox + Spin v3 host binary — human-executed Saturday live session). Legacy-cloud companion ABI test (assert sync API on legacy-cloud files) — identified as bot-actionable for next session.
+
+**Next**: Add companion ABI contract test for legacy-cloud branch (assert `def handle_request` is sync) — bot-actionable, no env vars needed. Human: renew GITHUB_CLASSIC_PAT and open PRs for sessions #64–#67. Saturday: live Sunkworks dual-track tagging session.
+
+## 🏛️ 2026-04-28 — Sync AGENTS.md from upstream + dual-track ABI enforcement complete (session #68, yebyen/mecris#299, complete)
+
+**Planned**: Cherry-pick 2 new kingdonb/mecris docs commits (AGENTS.md comprehensive rewrite + /mecris-pr-test in The Loop) into yebyen/mecris main; implement `tests/test_wasm_abi_contract_legacy.py` asserting legacy-cloud WASM components use sync `def handle_request` (SDK v3). (Plan: yebyen/mecris#299)
+
+**Done**: Synced AGENTS.md from upstream commits `1caacce` (comprehensive skill/MCP tool documentation) + `f646174` (/mecris-pr-test added to The Loop section) — commit `a17bbc7`. Created `tests/test_wasm_abi_contract_legacy.py` — reads all 4 WASM component sources from `origin/legacy-cloud` via `git show` (no checkout required). Asserts `def handle_request` is `ast.FunctionDef` (sync/v3) for all 4 components. 8/8 tests pass — commit `e13116e`. Dual-track ABI enforcement is now complete: main=async v4 (8 tests) + legacy-cloud=sync v3 (8 tests).
+
+**Skipped**: Nothing — plan fully executed.
+
+**Next**: Human: renew GITHUB_CLASSIC_PAT and open PR yebyen:main → kingdonb:main (sessions #64–#68). Bot-actionable: AI Framework Eval (#205, needs Aider) or Local Inference Pipeline (#203, needs Ollama) — both require tools not available in CI.
+
+## 🏛️ 2026-04-28 — Fix playwright top-level import breaking 83 tests (session #69, yebyen/mecris#300, complete)
+
+**Planned**: Move `from playwright.sync_api import sync_playwright` from module-level in `fetch_groq_usage.py` to a lazy import inside `scrape_usage_data()`, fixing a cascade import failure that broke 83 tests via `mcp_server.py → billing_reconciliation.py → fetch_groq_usage.py`. (Plan: yebyen/mecris#300)
+
+**Done**: Discovered bug during orient — ran full test suite and found 83 failures all reporting `ModuleNotFoundError: No module named 'playwright'`. Root cause traced to line 23 of `fetch_groq_usage.py`. One-line fix: removed top-level import, added `from playwright.sync_api import sync_playwright` inside the `try:` block at line 102 where `sync_playwright()` is actually called. Validation: `PYTHONPATH=. python3 -m pytest tests/` → **880 passed, 7 skipped, 0 failed** (up from 797 passed, 83 failed). Commit `c999983`. Closed yebyen/mecris#300.
+
+**Skipped**: Nothing — plan fully executed. No carry-forward items introduced.
+
+**Next**: Human: renew GITHUB_CLASSIC_PAT and open PR yebyen:main → kingdonb:main (sessions #64–#69). Bot-actionable: AI Framework Eval (#205, needs Aider) or Local Inference Pipeline (#203, needs Ollama) — both require tools not available in CI.
+
+## 2026-04-28 🏛️ — datetime.utcnow() deprecation fixed across 8 files (session #70)
+
+**Planned**: Fix `datetime.utcnow()` deprecation warnings — replace all 16 occurrences with `datetime.now(timezone.utc)` across source and test files (yebyen/mecris#302).
+
+**Done**: Discovered deprecation via `pytest -W error::DeprecationWarning`. Replaced all 16 `utcnow()` calls in 8 files: `services/budget_governor.py` (2), `poc/wasm/budget-governor-py/app.py` (2), `poc/wasm/log-message-py/app.py` (1), `mecris-go-spin/arabic-skip-counter/app.py` (1), `check_leadership.py` (1), `tests/test_budget_governor.py` (6), `tests/test_budget_governor_py_component.py` (3), `tests/test_log_message_py_component.py` (1). Added `from datetime import timezone` to each file. Baseline 880 tests still passing. Commit `0485340`. Closed yebyen/mecris#302.
+
+**Skipped**: Nothing planned was skipped. Bonus: filed yebyen/mecris#303 for pre-existing bug where 6 `async def test_*` methods in `test_narrator_context.py` run inside `unittest.TestCase` (which doesn't support async) — they silently pass zero assertions. Also found during orient that kingdonb/mecris#204, #206, #208, #211 are all already implemented in yebyen/mecris — awaiting PR once GITHUB_CLASSIC_PAT is renewed.
+
+**Next**: Bot-actionable: Fix yebyen/mecris#303 (rewrite 6 async TestCase tests as mocked pytest classes). Human-required: renew GITHUB_CLASSIC_PAT and open PR yebyen:main → kingdonb:main.
+
+## 2026-04-29 🏛️ — test_narrator_context.py async tests fixed (session #71)
+
+**Planned**: Rewrite 6 `async def test_*` methods in `unittest.TestCase` subclasses in `tests/test_narrator_context.py` as proper mocked pytest classes with no live HTTP calls (yebyen/mecris#304, closes yebyen/mecris#303).
+
+**Done**: Removed `unittest.TestCase` inheritance from `TestNarratorContext` and `TestClaudeNarratorIntegration`. Replaced `self.assert*` with plain `assert`. Added `_make_mock_context` and `_make_httpx_mock` helpers that build full mock httpx context managers. Converted live `localhost:8000` calls to mocked responses. Made `test_narrator_decision_making_scenarios` fully synchronous (pure logic, no HTTP needed). Removed all `return data` statements. Commit `b9f1bbb`. Full suite: 880 passed, 7 skipped, 0 failed. Closes yebyen/mecris#303.
+
+**Skipped**: Nothing planned was skipped. No other bot-actionable issues remain open.
+
+**Next**: Human-required: renew GITHUB_CLASSIC_PAT and open PR yebyen:main → kingdonb:main for all pending commits from sessions #64–#71. Bot: hunt for new bot-actionable issues or test coverage gaps.
+
+## 2026-04-29 🏛️ — RAG test coverage: 61 new tests for BM25, RAGRetriever, and RAG generator (session #72)
+
+**Planned**: Add unit tests for `services/rag_retriever.py` and `services/rag_generator.py` which had zero coverage (yebyen/mecris#305). Deliver `tests/test_rag_retriever.py` (BM25, frontmatter, RAGRetriever) and `tests/test_rag_generator.py` (_build_context, fail-open paths).
+
+**Done**: Orient found no open yebyen/mecris issues and no feasible upstream issues blocked by infra. Discovered `rag_retriever.py` and `rag_generator.py` had zero test coverage despite ~330 lines of pure-Python logic. Created plan issue yebyen/mecris#305. Wrote `tests/test_rag_retriever.py` (46 tests: BM25 tokenize/fit/score/retrieve, _parse_frontmatter, _snippet, RAGRetriever lazy-load/reset/corpus_size/retrieve with tmp_path fixtures) and `tests/test_rag_generator.py` (15 tests: _build_context formatting, generate_answer fail-open paths with mock API). All 61 tests passed immediately. Full suite: 941 passed, 7 skipped, 0 failed (+61 vs baseline 880). Commit `bc27e78`. Closes yebyen/mecris#305.
+
+**Skipped**: Nothing planned was skipped. No other bot-actionable issues were feasible this session (all remaining items blocked on Aider, Ollama, Fermyon, or legacy-cloud push).
+
+**Next**: Human-required: renew GITHUB_CLASSIC_PAT and open PR yebyen:main → kingdonb:main for sessions #64–#72. Bot-actionable next session: `claude_monitor.py` `_calculate_daily_burn` and `_days_until_expiry` have testable pure logic; `billing_reconciliation.py` has 0 tests and could be mocked.
+
+## 2026-04-29 🏛️ — claude_monitor.py test coverage: 27 new tests (session #73)
+
+**Planned**: Add unit tests for `_calculate_daily_burn` and `_days_until_expiry` (and other pure-logic functions) in `claude_monitor.py` — 351 lines with zero coverage (yebyen/mecris#306).
+
+**Done**: Orient confirmed no open issues anywhere, no upstream drift. Plan issue yebyen/mecris#306 created. Read `claude_monitor.py` — identified 5 testable surface areas: `_calculate_daily_burn` (sync, no I/O), `_days_until_expiry` (sync, reads `expiry_date`), `CreditUsage.to_dict` (pure dataclass), `BudgetAlert` (dataclass defaults), `get_usage_summary` (async, status threshold branches). Created `tests/test_claude_monitor.py` with 27 tests. Key technique: twilio not installed in stripped CI env → stubbed at `sys.modules` level; used `ClaudeMonitor.__new__` to bypass `__init__`. All 27 passed immediately. Commit `d4b9403`. Closes yebyen/mecris#306.
+
+**Skipped**: `billing_reconciliation.py` (442 lines, 0 tests) — left for next session; requires Neon/psycopg2 mock and is more complex to isolate.
+
+**Next**: Bot-actionable: `billing_reconciliation.py` test coverage (mock psycopg2). Human-required: renew GITHUB_CLASSIC_PAT and open PR yebyen:main → kingdonb:main for sessions #64–#73.
+
+## 2026-04-29 🏛️ — billing_reconciliation.py test coverage: 35 new tests (session #74)
+
+**Planned**: Add unit tests for `billing_reconciliation.py` (442 lines, 0 tests) — mocking Neon/psycopg2 for offline CI testing; deliver ≥20 tests with full suite green (yebyen/mecris#307).
+
+**Done**: Orient confirmed no open issues, no upstream drift, billing_reconciliation.py as sole bot-actionable task. Plan issue yebyen/mecris#307 created. Read `billing_reconciliation.py` — identified 11 test classes covering: `ReconciliationResult` dataclass (3 tests), `__init__` EnvironmentError guard (2 tests), `_calculate_drift_percentage` pure logic (7 tests), `_update_usage_records_with_actual_costs` early-return paths (4 tests), `reconcile_anthropic` 4 scenarios + user_id override (5 tests), `reconcile_groq` 4 scenarios (4 tests), `reconcile_all_providers` (1 test), `daily_reconciliation` date targeting (2 tests), `_get_groq_actual_costs` with mocked `fetch_groq_usage` (4 tests), `_get_estimated_costs` psycopg2 mock (2 tests), `_update_usage_records` DB path (1 test). All 35 passed immediately. Commit `d41a848`. Closes yebyen/mecris#307.
+
+**Skipped**: `get_reconciliation_summary` RealDictCursor mock — would add 3-5 tests but time budget was consumed; left for next session. `claude_monitor.py` async paths (record_usage, health_check) also deferred.
+
+**Next**: Bot-actionable: `claude_monitor.py` async path coverage (record_usage, health_check — require file I/O mock) or `billing_reconciliation.get_reconciliation_summary` RealDictCursor mock. Human-required: renew GITHUB_CLASSIC_PAT and open PR yebyen:main → kingdonb:main for sessions #64–#74.
+
+## 2026-04-29 🏛️ — claude_monitor.py async path tests: health_check and record_usage (session #75)
+
+**Planned**: Add unit tests for `ClaudeMonitor.health_check` and `ClaudeMonitor.record_usage` async paths — file I/O mocking (usage JSON read/write) and httpx mock — using `ClaudeMonitor.__new__` and `sys.modules` Twilio stub (yebyen/mecris#308).
+
+**Done**: Orient confirmed no open issues anywhere, no upstream drift. Plan issue yebyen/mecris#308 created. Read `claude_monitor.py` and `tests/test_claude_monitor.py`. Added TestHealthCheck (4 tests: no_api_key→not_configured, api_key+usage→ok, api_key+no_usage→error, exception→error) and TestRecordUsage (10 tests: happy path, get_current_usage=None, save failure, credits_remaining/used updated correctly, description stored in entry, entries >30 days pruned, recent entries kept, alerts on save success, no alerts on save failure, exception→False). All 41 claude_monitor tests pass. Full suite: 1017 passed. Commit `721bfd1`. Closes yebyen/mecris#308.
+
+**Skipped**: `billing_reconciliation.get_reconciliation_summary` RealDictCursor mock (deferred — #308 was the higher-priority gap).
+
+**Next**: Bot-actionable: `billing_reconciliation.get_reconciliation_summary` RealDictCursor mock path (~3-5 tests). Human-required: renew GITHUB_CLASSIC_PAT and open PR yebyen:main → kingdonb:main for sessions #64–#75.
+
+## 2026-04-29 🏛️ — billing_reconciliation.get_reconciliation_summary: 6 RealDictCursor mock tests (session #76)
+
+**Planned**: Write 3–5 unit tests for `billing_reconciliation.get_reconciliation_summary` RealDictCursor mock path — mocking `psycopg2.connect` with `cursor(cursor_factory=RealDictCursor)` returning row-dict mocks (yebyen/mecris#309).
+
+**Done**: Orient confirmed billing_reconciliation.get_reconciliation_summary as the sole bot-actionable task from NEXT_SESSION.md. Plan issue yebyen/mecris#309 created. Read source `billing_reconciliation.py:364–421` and existing test file (440 lines). Wrote 6 tests in `TestGetReconciliationSummary`: provider_summary_with_data (assert all dict keys + overall_accuracy), empty_results_zero_accuracy, multiple_providers_avg_drift, raises_when_no_neon_url (RuntimeError), reraises_on_db_exception, uses_override_user_id (verifies both SQL execute calls get the override). Two module-level helpers added: `_make_mock_cursor(provider_rows, recent_rows)` and `_make_mock_conn(mock_cursor)`. All 41 tests in billing_reconciliation suite pass. Commit `7a69b2d`. Closes yebyen/mecris#309.
+
+**Skipped**: Nothing — all planned tests delivered (exceeded plan by 1 test: 6 not 3–5).
+
+**Next**: Bot-actionable: Backport playwright lazy import fix to legacy-cloud branch (`git cherry-pick c999983`) or AI Framework Evaluation (kingdonb/mecris#205). Human-required: renew GITHUB_CLASSIC_PAT and open PR yebyen:main → kingdonb:main for sessions #64–#76.
+
+## 2026-04-29 🏛️ — legacy-cloud backport + groq_odometer_tracker test coverage (session #77)
+
+**Planned**: (1) Cherry-pick playwright lazy import fix (c999983) to legacy-cloud branch (yebyen/mecris#310). (2) Add unit tests for groq_odometer_tracker.py pure-logic and DB-mocked paths (yebyen/mecris#311).
+
+**Done**: (1) Backport: git cherry-pick c999983 onto legacy-cloud-backport branch, pushed as origin/legacy-cloud (HEAD=2beb598). Verified fetch_groq_usage.py imports cleanly; 40 tests passed in archivist/budget_governor suites. Closes yebyen/mecris#310. (2) Test coverage: wrote tests/test_groq_odometer_tracker.py with 24 tests — OdometerStatus (3), OdometerReading (3), _calculate_daily_usage (3), _days_until_month_end (4), check_reminder_needs (5), get_usage_for_virtual_budget (3), generate_narrator_context (3). PYTHONPATH=. python3 -m pytest tests/test_groq_odometer_tracker.py -v → 24 passed. Commit c60c78a. Closes yebyen/mecris#311.
+
+**Skipped**: AI Framework Evaluation (requires Aider + API key — not feasible in CI). Budget Governor WASM Port (requires Fermyon Cloud — human-required). Local Inference Pipeline (requires Ollama).
+
+**Next**: Test coverage for mcp_reconcile_budget.py (170 lines, no direct test file) using __new__ bypass pattern. Or claude_api_budget_scraper.py (308 lines). Human must renew GITHUB_CLASSIC_PAT and open PR yebyen:main → kingdonb:main for sessions #64–#77.
+
+## 2026-04-30 🏛️ — mcp_reconcile_budget.py test coverage: 18 unit tests (session #78)
+
+**Planned**: Write ≥10 unit tests for `mcp_reconcile_budget.py` (170 lines, no direct test file) using `requests` mocking; cover all four public functions and `main()` CLI paths (yebyen/mecris#312).
+
+**Done**: Read `mcp_reconcile_budget.py` (170 lines, 4 functions + main). Wrote `tests/test_mcp_reconcile_budget.py` with 18 tests across 5 classes: TestGetCurrentBudgetStatus (3: happy path, HTTP error→exit(1), connection error→exit(1)), TestRecordReconciliation (3: correct POST payload verified, HTTP error→exit(1), network error→exit(1)), TestUpdateBudgetDirectly (4: no-total omits total_budget param, with-total includes it, custom period_end, HTTP error→exit(1)), TestGetReconciliationStatus (2: happy path returns dict, error returns None not exit(1)), TestMain (6: already-in-sync→exit(0), dry-run→exit(0), positive delta calls reconciliation, negative delta, custom reason forwarded, reconciliation failure→exit(1)). All 18 passed in 0.33s. Commit `2c19849`. Closes yebyen/mecris#312.
+
+**Skipped**: claude_api_budget_scraper.py (308 lines) and scheduler.py (484 lines) — deferred to future sessions; remaining budget for this session committed to clean archive.
+
+**Next**: Test coverage for `claude_api_budget_scraper.py` (308 lines, no direct test file). Strategy: mock `requests`/`httpx` at module level; cover scraping logic, HTTP error paths, and budget calculation helpers.
+
+## 2026-04-30 🏛️ — claude_api_budget_scraper.py test coverage: 24 unit tests (session #79)
+
+**Planned**: Write `tests/test_claude_api_budget_scraper.py` covering pure-logic and HTTP-mocked paths in `claude_api_budget_scraper.py` (308 lines, no direct test file), with ≥10 tests (yebyen/mecris#313).
+
+**Done**: Read `claude_api_budget_scraper.py` (308 lines — scaffolding module with CreditBalance dataclass, ClaudeConsoleScraper, and two convenience functions). Wrote `tests/test_claude_api_budget_scraper.py` with 24 tests across 9 classes: TestCreditBalance (4: to_dict keys, isoformat string, numeric values, field access), TestClaudeConsoleScraper_Init (3: default URLs, env credentials, cache settings), TestLoadCachedBalance (4: no file→None, fresh cache→CreditBalance, stale→None, bad JSON→None), TestSaveCachedBalance (2: writes JSON, IOError no raise), TestScaffoldScraper (2: returns CreditBalance, mock values 25.0/6.79/18.21), TestPlaywrightImplementation (1: returns None), TestGetCreditBalance (3: cache hit skips scaffold, no cache calls scaffold, returns CreditBalance), TestSetManualBalance (3: remaining-only, with total+period, fields from budget_info), TestConvenienceFunctions (2: get_claude_balance, update_balance_manually). All 24 passed in 0.32s. Commit `594b309`. Closes yebyen/mecris#313.
+
+**Skipped**: scheduler.py (484 lines) — deferred to next session; scope was intentionally scoped to claude_api_budget_scraper.py only.
+
+**Next**: Test coverage for `scheduler.py` (484 lines — only election logic currently tested). Key paths: timer management, task dispatch, cron parsing, presence integration. Human must renew GITHUB_CLASSIC_PAT and open PR yebyen:main → kingdonb:main for sessions #64–#79.

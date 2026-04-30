@@ -20,7 +20,6 @@ import json
 import logging
 from datetime import datetime, timedelta
 from typing import Dict, Optional
-from playwright.sync_api import sync_playwright
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -99,6 +98,7 @@ class GroqUsageScraper:
         logger.info("Starting Groq usage scraping (use sparingly!)")
         
         try:
+            from playwright.sync_api import sync_playwright
             with sync_playwright() as p:
                 # Launch browser
                 browser = p.chromium.launch(

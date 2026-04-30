@@ -22,7 +22,7 @@ Plan: yebyen/mecris#26
 """
 from enum import Enum
 from typing import Dict, Any, Optional, List
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import json
 import os
 import logging
@@ -128,7 +128,7 @@ class BudgetGovernor:
 
     def _window_spent(self, bucket_name: str) -> float:
         """Sum spend events for a bucket in the last 39-minute rolling window."""
-        cutoff = datetime.utcnow() - timedelta(minutes=_ENVELOPE_WINDOW_MINUTES)
+        cutoff = datetime.now(timezone.utc) - timedelta(minutes=_ENVELOPE_WINDOW_MINUTES)
         return sum(
             e["cost"]
             for e in self._spend_log
@@ -168,7 +168,7 @@ class BudgetGovernor:
         self._spend_log.append({
             "bucket": bucket_name,
             "cost": cost,
-            "ts": datetime.utcnow(),
+            "ts": datetime.now(timezone.utc),
         })
         self._persist_spend_log()
 

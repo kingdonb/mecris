@@ -7,7 +7,7 @@ Returns JSON: {"skip_count": <u32>}
 
 import json
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Dict, Optional, List
 from urllib.parse import urlparse, parse_qs
 
@@ -52,7 +52,7 @@ def _count_reminders(neon_url: str, user_id: str, hours: int) -> int:
     try:
         http_url = _neon_http_url(neon_url)
         parsed = urlparse(neon_url)
-        cutoff = (datetime.utcnow() - timedelta(hours=hours)).isoformat()
+        cutoff = (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat()
         sql = (
             "SELECT COUNT(*) as count FROM message_log "
             "WHERE type IN ($1, $2) AND user_id = $3 AND created_at >= $4"

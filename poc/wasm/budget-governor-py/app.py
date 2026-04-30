@@ -15,7 +15,7 @@ Returns JSON: Action-specific response dict
 
 import json
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List, Dict, Any, Optional
 
 try:
@@ -73,7 +73,7 @@ def _calc_total_spent(log: List[Dict[str, Any]], bucket: str) -> float:
 
 def _calc_window_spent(log: List[Dict[str, Any]], bucket: str) -> float:
     """Sum spend for a bucket within the rolling 39-minute window."""
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     cutoff = now - timedelta(minutes=_WINDOW_MINUTES)
     total = 0.0
     for entry in log:
@@ -241,7 +241,7 @@ def make_spend_entry(bucket_name: str, cost: float) -> Dict[str, Any]:
     return {
         "bucket": bucket_name,
         "cost": cost,
-        "ts": datetime.utcnow().isoformat(),
+        "ts": datetime.now(timezone.utc).isoformat(),
     }
 
 

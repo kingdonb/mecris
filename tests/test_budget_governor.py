@@ -1,6 +1,6 @@
 """Tests for BudgetGovernor — TDG red phase. Plan: yebyen/mecris#26"""
 import pytest
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from unittest.mock import patch, MagicMock
 from services.budget_governor import BudgetGovernor, BucketType
 
@@ -23,7 +23,7 @@ def test_check_envelope_defers_when_window_full():
     window_cap = 0.05 * bucket_limit  # 5% of period quota
 
     # Fill the window to the cap by injecting a spend event 10 minutes ago
-    ten_min_ago = datetime.utcnow() - timedelta(minutes=10)
+    ten_min_ago = datetime.now(timezone.utc) - timedelta(minutes=10)
     gov._spend_log.append({
         "bucket": "anthropic_api",
         "cost": window_cap,
@@ -40,7 +40,7 @@ def test_check_envelope_denies_when_total_budget_exhausted():
     bucket_limit = gov.buckets["anthropic_api"]["limit"]
 
     # Force total spend to equal the limit by injecting an old event (outside window)
-    old_ts = datetime.utcnow() - timedelta(hours=2)
+    old_ts = datetime.now(timezone.utc) - timedelta(hours=2)
     gov._spend_log.append({
         "bucket": "anthropic_api",
         "cost": bucket_limit,
@@ -83,7 +83,7 @@ def test_recommend_bucket_falls_back_to_guard_when_spend_exhausted():
     # Exhaust all SPEND buckets
     for name, cfg in gov.buckets.items():
         if cfg["type"] == BucketType.SPEND:
-            old_ts = datetime.utcnow() - timedelta(hours=2)
+            old_ts = datetime.now(timezone.utc) - timedelta(hours=2)
             gov._spend_log.append({
                 "bucket": name,
                 "cost": cfg["limit"],
@@ -182,8 +182,8 @@ def test_get_narrator_summary_envelope_status_is_ok_when_fresh():
 def test_get_narrator_summary_envelope_status_halted_when_all_denied():
     """envelope_status should be 'HALTED' when all buckets are exhausted."""
     gov = BudgetGovernor()
-    from datetime import datetime, timedelta
-    old_ts = datetime.utcnow() - timedelta(hours=2)
+    from datetime import datetime, timedelta, timezone
+    old_ts = datetime.now(timezone.utc) - timedelta(hours=2)
     for name, cfg in gov.buckets.items():
         gov._spend_log.append({"bucket": name, "cost": cfg["limit"], "ts": old_ts})
     summary = gov.get_narrator_summary()
@@ -257,7 +257,7 @@ def test_budget_gate_returns_warning_dict_when_deferred():
     bucket_limit = gov.buckets["anthropic_api"]["limit"]
     window_cap = 0.05 * bucket_limit
 
-    ten_min_ago = datetime.utcnow() - timedelta(minutes=10)
+    ten_min_ago = datetime.now(timezone.utc) - timedelta(minutes=10)
     gov._spend_log.append({
         "bucket": "anthropic_api",
         "cost": window_cap,
@@ -276,7 +276,7 @@ def test_budget_gate_returns_error_dict_when_denied():
     """budget_gate() returns a structured error dict when the bucket is exhausted."""
     gov = BudgetGovernor()
     bucket_limit = gov.buckets["anthropic_api"]["limit"]
-    old_ts = datetime.utcnow() - timedelta(hours=2)
+    old_ts = datetime.now(timezone.utc) - timedelta(hours=2)
     gov._spend_log.append({
         "bucket": "anthropic_api",
         "cost": bucket_limit,
