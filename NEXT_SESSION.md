@@ -1,12 +1,14 @@
-# Next Session: AI Framework Evaluation + upstream sync
+# Next Session: Test coverage for remaining untested modules
 
-## Current Status (2026-04-30, post-session #83)
-- **test_scheduler_jobs.py ordering dependency (session #83)**: COMPLETE. Added module-level `_SCHEDULER_FAKES` bootstrap (psycopg2 + apscheduler stubs via `setdefault()`) to `tests/test_scheduler_jobs.py`. File now passes in isolation: `PYTHONPATH=. python3 -m pytest tests/test_scheduler_jobs.py -v` → 24 passed. Full suite (presence×21, election×7, jobs×24) → 52 passed. Commit `8f0026a`. Closes yebyen/mecris#317.
+## Current Status (2026-04-30, post-session #84)
+- **mcp_bridge.py test coverage (session #84)**: COMPLETE. 16 unit tests in `tests/test_mcp_bridge.py` covering all branches of `MCPBridge.handle_request()`. All 16 passed in 0.12s. Commit `640ef58`. Closes yebyen/mecris#318.
 - **Full scheduler suite**: 52 tests across 5 files (test_presence_scheduler×21, test_scheduler_election×7, test_scheduler_jobs×24, test_scheduler_timer_reset×2[env-fail]) — all pass when run alphabetically or individually.
 - **GITHUB_CLASSIC_PAT still expired**: Bot cannot create PRs to kingdonb/mecris. Human must renew.
-- **Upstream sync**: yebyen/mecris is ahead of kingdonb/mecris by many sessions; history has diverged since session #66. Future syncs must cherry-pick new files only.
+- **Upstream sync**: yebyen/mecris is ahead of kingdonb/mecris by many sessions (#80–#84); history has diverged since session #66. Future syncs must cherry-pick new files only.
+- **Latent bug noted**: `mcp_bridge.py:76` — `manifest.get("tools", [])` raises `AttributeError` when the server returns a bare JSON list. Not fixed (out of scope); documented here.
 
 ## Verified This Session
+- [x] **mcp_bridge.py test coverage (session #84)**: 16 unit tests. `PYTHONPATH=. python3 -m pytest tests/test_mcp_bridge.py -v` → 16 passed. Commit `640ef58`. Closes yebyen/mecris#318. **COMPLETE**.
 - [x] **test_scheduler_jobs.py ordering dependency (session #83)**: Module-level `_SCHEDULER_FAKES` bootstrap added. `PYTHONPATH=. python3 -m pytest tests/test_scheduler_jobs.py -v` → 24 passed in isolation. `PYTHONPATH=. python3 -m pytest tests/test_presence_scheduler.py tests/test_scheduler_election.py tests/test_scheduler_jobs.py -v` → 52 passed. Commit `8f0026a`. Closes yebyen/mecris#317. **COMPLETE**.
 - [x] **_start_leader_jobs test coverage (session #82)**: 5 new tests in `TestSchedulerPresenceGuard` (idempotent-all, idempotent-partial, locked-retry-success, locked-exhausted, non-lock-immediate-break). Commit `b7b2345`. Closes yebyen/mecris#316. **COMPLETE**.
 - [x] **scheduler.py NameError fix (session #81)**: `scheduler.py:334` — removed `if attempt % 20 == 0:` (undefined variable) and replaced with `logger.debug(...)`. Regression test `test_heartbeat_maintenance_no_name_error` added to `tests/test_scheduler_election.py`. Commit `da97597`. Closes yebyen/mecris#315. **COMPLETE**.
@@ -27,7 +29,7 @@
 
 ### 👤 Human-required (cannot be resolved by bot)
 - [ ] **URGENT: Refresh GITHUB_CLASSIC_PAT** — returns 401. Bot cannot create PRs to kingdonb/mecris. Renew in GitHub → Settings → Developer Settings → Personal access tokens (classic) with `repo` scope, update the workflow secret `GITHUB_CLASSIC_PAT`.
-- [ ] **Open PR yebyen:main → kingdonb:main** for all pending commits from sessions #64–#83 (narrator presence fix, NEON_DB_URL fix, upstream merge + legacy-cloud setup, CI/CD plan sync, ABI contract test x2, AGENTS.md sync, playwright fix, utcnow deprecation fix, async test fix, RAG test coverage, claude_monitor test coverage, billing_reconciliation test coverage, claude_monitor async path tests, get_reconciliation_summary tests, groq_odometer_tracker tests, mcp_reconcile_budget tests, claude_api_budget_scraper tests, scheduler background job tests, scheduler NameError fix, _start_leader_jobs tests, test_scheduler_jobs.py isolation fix). Closes yebyen/mecris#294, #295, #296, #298, #299, #302, #303, #305, #306, #307, #308, #309, #310, #311, #312, #313, #314, #315, #316, #317.
+- [ ] **Open PR yebyen:main → kingdonb:main** for all pending commits from sessions #64–#84 (narrator presence fix, NEON_DB_URL fix, upstream merge + legacy-cloud setup, CI/CD plan sync, ABI contract test x2, AGENTS.md sync, playwright fix, utcnow deprecation fix, async test fix, RAG test coverage, claude_monitor test coverage, billing_reconciliation test coverage, claude_monitor async path tests, get_reconciliation_summary tests, groq_odometer_tracker tests, mcp_reconcile_budget tests, claude_api_budget_scraper tests, scheduler background job tests, scheduler NameError fix, _start_leader_jobs tests, test_scheduler_jobs.py isolation fix, mcp_bridge tests). Closes yebyen/mecris#294, #295, #296, #298, #299, #302, #303, #305, #306, #307, #308, #309, #310, #311, #312, #313, #314, #315, #316, #317, #318.
 - [ ] **Cloud Readiness Check**: Monitor Fermyon/Akamai for updates to their Python WASM runtimes. Test a simple SDK v4 "Hello World" to confirm when the platform has caught up.
 - [ ] **Align Release Management**: Execute the plan in `docs/SPIN_V3_COMPATIBILITY_PLAN.md` to maintain a `legacy-cloud` branch providing a compatibility shim until the cloud catch-up is complete.
 - [ ] **Live Sunkworks session (Saturday)**: Execute dual-track tagging — tag `v0.1.0-canary.*` on main, `v0.0.1` on legacy-cloud. Run the negative E2E ABI mismatch test against Fermyon/Akamai sandbox. See `docs/CI_CD_EVOLUTION_PLAN.md` for full context.
@@ -37,11 +39,15 @@
 - [ ] **Verify log-message-py in Cloud**: Once platforms are ready, confirm audit logs appear in cloud KV.
 
 ### 🤖 Bot-actionable (can be resolved in future sessions)
+- [ ] **fetch_groq_usage.py test coverage**: `fetch_groq_usage.py` (263 lines) — `GroqUsageScraper` class with `get_cached_usage()`, `cache_usage_data()`, `scrape_usage_data()`, `get_usage_data()`, `_get_cache_age_minutes()`. DB paths patchable via `psycopg2.connect`. Playwright paths return error dict when credentials absent (testable without browser). No test file exists.
+- [ ] **twilio_sender.py test coverage**: `twilio_sender.py` (242 lines) — no test file exists.
 - [ ] **AI Framework Evaluation (kingdonb/mecris#205)**: Remaining: run `scripts/evaluate_aider.py` with Aider installed and append results to `docs/AI_FRAMEWORK_EVALUATION.md`. Requires Aider + an LLM API key.
 - [ ] **Budget Governor: WASM Port (kingdonb/mecris#214)**: POC complete. Remaining: Fermyon Cloud variable config — human-required for deployment.
 - [ ] **Local Inference Pipeline (kingdonb/mecris#203)**: Integrate Ollama and build a cloud-fallback router.
 
 ## Infrastructure Notes (carried forward)
+- **mcp_bridge.py latent bug (post-session #84)**: `handle_request()` line 76 `manifest.get("tools", [])` raises `AttributeError` if server returns a bare JSON list. The `isinstance(manifest, list)` check at line 80 never executes. Not fixed (out of scope). The outer `except Exception` catches it and returns an error response.
+- **mcp_bridge test pattern (post-session #84)**: `MCPBridge.__new__(MCPBridge)` + set `b.server_process = None`, `b.base_url`. Patch `requests.get` for tools/list, `requests.post` for tools/call. Outer exception mock requires `side_effect` function (not blanket raise) since the catch block also calls `request.get("id")`.
 - **test_scheduler_jobs.py isolation fix (post-session #83)**: Module-level `_SCHEDULER_FAKES` bootstrap in `tests/test_scheduler_jobs.py` primes `psycopg2` and all `apscheduler.*` subpackages via `sys.modules.setdefault()`. Then forces `import scheduler` if not cached. The `services.*` packages are real and import cleanly — do NOT mock them in the bootstrap. Commit `8f0026a`.
 - **_start_leader_jobs test pattern (post-session #82)**: Use `_make_minimal_scheduler()` from `test_presence_scheduler.py`. Patch `ghost.presence.is_human_present` + `asyncio.sleep` (AsyncMock). `get_job.return_value = None` for unregistered, `MagicMock()` for registered. `get_job.side_effect` for sequential mock paths. Tests live in `TestSchedulerPresenceGuard`.
 - **scheduler test ordering (post-session #83)**: `test_scheduler_jobs.py` now runs standalone (24 passed) and also in the full suite (52 passed). Ordering dependency is resolved.

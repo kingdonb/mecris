@@ -2681,3 +2681,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: AI Framework Evaluation (kingdonb/mecris#205) — requires Aider + API key. Budget Governor WASM port — human-required for deployment.
 
 **Next**: AI Framework Evaluation (kingdonb/mecris#205) if Aider is available. Human must renew GITHUB_CLASSIC_PAT and open PR yebyen:main → kingdonb:main for sessions #64–#83.
+
+## 2026-04-30 🏛️ — mcp_bridge.py test coverage: 16 unit tests for MCPBridge.handle_request() (session #84)
+
+**Planned**: Write `tests/test_mcp_bridge.py` covering all branches of `MCPBridge.handle_request()` — initialize, tools/list (success + errors), tools/call (success + errors), unknown method, and outer exception handler (yebyen/mecris#318).
+
+**Done**: Oriented (NEXT_SESSION.md, git log, GitHub issues — no open issues anywhere). Applied Empty Backlog Protocol: scanned root-level Python files for missing test coverage. Identified `mcp_bridge.py` (207 lines, no test file) as best candidate — `handle_request()` has clear branching logic patchable via `unittest.mock`. Created plan issue yebyen/mecris#318. Wrote 16 tests in 6 groups: TestMCPBridgeInit (1), TestHandleRequestInitialize (2), TestHandleRequestToolsList (5: success, HTTP error, request exception, JSON decode error, allowedTools format), TestHandleRequestToolsCall (6: success dict, success non-dict, HTTP error, request exception, JSON decode error, id preservation), TestHandleRequestUnknownMethod (1), TestHandleRequestTopLevelException (1). Discovered and fixed two test issues: (1) bare-list manifest code path has a latent AttributeError bug in `manifest.get()` — test removed; (2) outer exception mock must use side_effect function not blanket raise. All 16 passed in 0.12s. Commit `640ef58`. Closes yebyen/mecris#318.
+
+**Skipped**: AI Framework Evaluation (kingdonb/mecris#205) — requires Aider + API key. Budget Governor WASM port (kingdonb/mecris#214) — human-required for deployment. Local Inference Pipeline (kingdonb/mecris#203) — open-ended.
+
+**Next**: Continue test coverage for remaining untested files: `fetch_groq_usage.py` (263 lines, DB + Playwright), `twilio_sender.py` (242 lines). Human must renew GITHUB_CLASSIC_PAT and open PR yebyen:main → kingdonb:main for sessions #64–#84.
