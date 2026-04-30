@@ -2651,3 +2651,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: _start_leader_jobs tests (requires deeply-mocked APScheduler async integration; deferred). scheduler.py:334 NameError bug fix (discovered but not in scope). AI Framework Evaluation (kingdonb/mecris#205) — deprioritized in favor of completing scheduler coverage.
 
 **Next**: Fix NameError bug in scheduler.py:334 and add regression test; then remaining _start_leader_jobs coverage; then AI Framework Evaluation (kingdonb/mecris#205). Human must renew GITHUB_CLASSIC_PAT and open PR yebyen:main → kingdonb:main for sessions #64–#80.
+
+## 2026-04-30 🏛️ — Fix NameError in scheduler.py _attempt_leadership heartbeat branch (session #81)
+
+**Planned**: Remove undefined `attempt` variable reference at `scheduler.py:334` in the heartbeat-maintenance else-branch of `_attempt_leadership` and add a regression test (yebyen/mecris#315).
+
+**Done**: Oriented (NEXT_SESSION.md, git log, GitHub issues — all queues empty, top bot-actionable was the NameError fix). Created plan issue yebyen/mecris#315. Read `scheduler.py:295-342` to confirm the bug: `if attempt % 20 == 0:` at line 334 references `attempt` which is never defined in `_attempt_leadership` (not a loop, no counter). Wrote regression test `test_heartbeat_maintenance_no_name_error` in `TestWriteObsStatus` (exercises `is_leader=True, row[0]==process_id` path). Watched it fail with `NameError: name 'attempt' is not defined` (error caught by `except Exception`, causing RuntimeError fallthrough). Fixed: replaced 2-line conditional log with `logger.debug(...)` unconditional (downgraded from info to debug — appropriate since it fires every ~30s). Full suite: 7/7 passed. Commit `da97597`. Closes yebyen/mecris#315.
+
+**Skipped**: `_start_leader_jobs` coverage (deferred again — requires deep APScheduler mock; not in this session's scope). AI Framework Evaluation (kingdonb/mecris#205) — deprioritized.
+
+**Next**: Test coverage for `_start_leader_jobs` (key paths: idempotent job registration, locked DB retry loop). Consider patching `self.scheduler.get_job()` and `self.scheduler.add_job()` with MagicMock for the async APScheduler integration.
