@@ -2671,3 +2671,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: Test ordering dependency fix in conftest (noted but out of scope for this session). AI Framework Evaluation (kingdonb/mecris#205) — deprioritized.
 
 **Next**: Fix test_scheduler_jobs.py ordering dependency (add conftest fixture or module-level sys.modules patch so it runs standalone). Then AI Framework Evaluation (kingdonb/mecris#205). Human must renew GITHUB_CLASSIC_PAT and open PR yebyen:main → kingdonb:main for sessions #64–#82.
+
+## 2026-04-30 🏛️ — Fix test_scheduler_jobs.py ordering dependency: module-level sys.modules bootstrap (session #83)
+
+**Planned**: Add a module-level `sys.modules` patch in `tests/test_scheduler_jobs.py` so it can run in isolation without depending on `test_presence_scheduler.py` running first (yebyen/mecris#317).
+
+**Done**: Oriented (NEXT_SESSION.md, git log, GitHub issues — no open issues). Identified root cause: `scheduler.py` imports `psycopg2` and `apscheduler.*` at module level; these packages are absent in CI, and `test_presence_scheduler.py`'s `_make_minimal_scheduler()` primes `sys.modules` with MagicMock stubs only transiently. Diagnosed why `services` + `services.credentials_manager` must NOT be mocked (real package exists; mocking `services` blocks `services.encryption_service` import needed by `conftest.py`). Added `_SCHEDULER_FAKES` dict (8 entries: psycopg2 + apscheduler subpackages) with `setdefault()` guard and pre-import of scheduler. `PYTHONPATH=. python3 -m pytest tests/test_scheduler_jobs.py -v` → 24 passed in isolation. Full suite → 52 passed. Commit `8f0026a`. Closes yebyen/mecris#317.
+
+**Skipped**: AI Framework Evaluation (kingdonb/mecris#205) — requires Aider + API key. Budget Governor WASM port — human-required for deployment.
+
+**Next**: AI Framework Evaluation (kingdonb/mecris#205) if Aider is available. Human must renew GITHUB_CLASSIC_PAT and open PR yebyen:main → kingdonb:main for sessions #64–#83.
