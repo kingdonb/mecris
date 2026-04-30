@@ -24,6 +24,27 @@ import pytest
 from datetime import datetime, timezone
 from unittest.mock import MagicMock, AsyncMock, patch
 
+# ─── bootstrap: prime sys.modules with scheduler's heavy deps when they are
+#     absent (i.e. when this file runs in isolation without test_presence_
+#     scheduler.py having run first).  setdefault() is safe — real installs
+#     are never clobbered.
+# ─────────────────────────────────────────────────────────────────────────────
+_SCHEDULER_FAKES = {
+    "psycopg2":                         MagicMock(),
+    "apscheduler":                      MagicMock(),
+    "apscheduler.schedulers":           MagicMock(),
+    "apscheduler.schedulers.asyncio":   MagicMock(),
+    "apscheduler.triggers":             MagicMock(),
+    "apscheduler.triggers.date":        MagicMock(),
+    "apscheduler.jobstores":            MagicMock(),
+    "apscheduler.jobstores.sqlalchemy": MagicMock(),
+}
+for _k, _v in _SCHEDULER_FAKES.items():
+    sys.modules.setdefault(_k, _v)
+
+if "scheduler" not in sys.modules:
+    import scheduler as _scheduler_bootstrap  # noqa: F401 — side-effect import
+
 
 # ─── helpers ─────────────────────────────────────────────────────────────────
 
