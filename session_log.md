@@ -2661,3 +2661,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: `_start_leader_jobs` coverage (deferred again — requires deep APScheduler mock; not in this session's scope). AI Framework Evaluation (kingdonb/mecris#205) — deprioritized.
 
 **Next**: Test coverage for `_start_leader_jobs` (key paths: idempotent job registration, locked DB retry loop). Consider patching `self.scheduler.get_job()` and `self.scheduler.add_job()` with MagicMock for the async APScheduler integration.
+
+## 2026-04-30 🏛️ — _start_leader_jobs test coverage: 5 unit tests for idempotent and retry paths (session #82)
+
+**Planned**: Add unit tests for `MecrisScheduler._start_leader_jobs` covering idempotent (jobs-already-registered) path and locked-DB retry loop path (yebyen/mecris#316).
+
+**Done**: Oriented (NEXT_SESSION.md read, git log, GitHub issues). Discovered 2 existing `_start_leader_jobs` presence-guard tests in `test_presence_scheduler.py::TestSchedulerPresenceGuard` (from session covering kingdonb/mecris#211) — these only tested presence detection, not the retry/idempotent logic. Read `scheduler.py:343-414` to map all code paths. Created plan issue yebyen/mecris#316. Added 5 new tests to `TestSchedulerPresenceGuard`: (1) all-jobs-registered → add_job not called, (2) partial-jobs-registered → only missing 3 added, (3) locked-DB first attempt → sleep + retry → 5 jobs registered, (4) all 5 retries fail → 4 sleeps, add_job never called, (5) non-lock exception → immediate break, no sleep. All 5 pass. 52 total scheduler tests pass (presence×21, election×7, jobs×24; timer_reset×2 pre-existing env-fail requiring apscheduler). Commit `b7b2345`. Closes yebyen/mecris#316. Documented test ordering dependency (test_scheduler_jobs.py requires presence_scheduler to run first) as bot-actionable item.
+
+**Skipped**: Test ordering dependency fix in conftest (noted but out of scope for this session). AI Framework Evaluation (kingdonb/mecris#205) — deprioritized.
+
+**Next**: Fix test_scheduler_jobs.py ordering dependency (add conftest fixture or module-level sys.modules patch so it runs standalone). Then AI Framework Evaluation (kingdonb/mecris#205). Human must renew GITHUB_CLASSIC_PAT and open PR yebyen:main → kingdonb:main for sessions #64–#82.
