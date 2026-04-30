@@ -114,7 +114,8 @@ class TestWriteObsStatus:
 
         mock_cur.execute.assert_not_called()
 
-    def test_lost_leadership_path_writes_error(self, test_scheduler):
+    @pytest.mark.asyncio
+    async def test_lost_leadership_path_writes_error(self, test_scheduler):
         """When demoted, _attempt_leadership calls _write_obs_status with a non-None error."""
         mock_psycopg2 = MagicMock()
         mock_conn = MagicMock()
@@ -131,8 +132,7 @@ class TestWriteObsStatus:
             test_scheduler.process_id = "this_process_id"
             test_scheduler.is_leader = True
 
-            import asyncio
-            asyncio.get_event_loop().run_until_complete(test_scheduler._attempt_leadership())
+            await test_scheduler._attempt_leadership()
 
         # Find the UPDATE obs call that includes "Lost leadership"
         update_calls = [c for c in mock_cur.execute.call_args_list if "UPDATE" in str(c)]

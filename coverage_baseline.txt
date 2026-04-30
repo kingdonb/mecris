@@ -1,0 +1,5 @@
+ERROR: usage: pytest [options] [file_or_dir] [file_or_dir] [...]
+pytest: error: unrecognized arguments: --cov=. --cov-report=term-missing
+  inifile: /Users/yebyen/w/mecris/pytest.ini
+  rootdir: /Users/yebyen/w/mecris
+
