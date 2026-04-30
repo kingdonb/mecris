@@ -2641,3 +2641,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: scheduler.py (484 lines) — deferred to next session; scope was intentionally scoped to claude_api_budget_scraper.py only.
 
 **Next**: Test coverage for `scheduler.py` (484 lines — only election logic currently tested). Key paths: timer management, task dispatch, cron parsing, presence integration. Human must renew GITHUB_CLASSIC_PAT and open PR yebyen:main → kingdonb:main for sessions #64–#79.
+
+## 2026-04-30 🏛️ — scheduler.py background job + MecrisScheduler method tests: 24 unit tests (session #80)
+
+**Planned**: Add `tests/test_scheduler_jobs.py` covering global background job functions (_global_reminder_job, _global_language_sync_job, _global_walk_sync_job, _global_archivist_job, _global_cooperative_monitor_job) and MecrisScheduler methods (__init__, start, _init_db, _attempt_leadership, _stop_leader_jobs, enqueue_delayed_message, get_queue, shutdown) not covered by existing scheduler test files (yebyen/mecris#314).
+
+**Done**: Oriented (NEXT_SESSION.md read, git log, GitHub issues). Installed missing deps (psycopg2-binary, apscheduler, sqlalchemy) and confirmed 8 existing scheduler tests pass. Read scheduler.py (484 lines) and both existing test files to understand coverage gaps and test patterns. Created plan issue yebyen/mecris#314. Wrote `tests/test_scheduler_jobs.py` with 24 tests: global background job functions (11: non-leader/leader/exception paths across 5 job functions) + MecrisScheduler methods (13: __init__ EnvironmentError, start idempotent/not-running, _init_db exception, _attempt_leadership no-user_id, _stop_leader_jobs silent/5-jobs, enqueue_delayed_message success/error, get_queue success/exception, shutdown non-leader/leader). All 24 passed in 0.29s. Full scheduler suite: 32 passed. Commit `a363bc0`. Closes yebyen/mecris#314. Noted NameError bug at scheduler.py:334 (attempt variable undefined in heartbeat-maintenance branch) — documented in NEXT_SESSION.md but not fixed (out of scope).
+
+**Skipped**: _start_leader_jobs tests (requires deeply-mocked APScheduler async integration; deferred). scheduler.py:334 NameError bug fix (discovered but not in scope). AI Framework Evaluation (kingdonb/mecris#205) — deprioritized in favor of completing scheduler coverage.
+
+**Next**: Fix NameError bug in scheduler.py:334 and add regression test; then remaining _start_leader_jobs coverage; then AI Framework Evaluation (kingdonb/mecris#205). Human must renew GITHUB_CLASSIC_PAT and open PR yebyen:main → kingdonb:main for sessions #64–#80.
