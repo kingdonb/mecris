@@ -1,13 +1,16 @@
-# Next Session: Hunt for new test coverage targets or GitHub issues
+# Next Session: Hunt for remaining uncovered scripts/ modules or open kingdonb issues
 
-## Current Status (2026-05-01, post-session #87)
-- **obsidian_client.py test coverage (session #87)**: COMPLETE. 42 unit tests in `tests/test_obsidian_client.py` covering all methods of `ObsidianMCPClient` (pure helpers + async HTTP via AsyncMock). All 42 passed in 0.71s. Commit `19b81f9`. Closes yebyen/mecris#322.
-- **Full scheduler suite**: 52 tests across 5 files (test_presence_scheduler×21, test_scheduler_election×7, test_scheduler_jobs×24, test_scheduler_timer_reset×2[env-fail]) — all pass when run alphabetically or individually.
+## Current Status (2026-05-01, post-session #88)
+- **chunk_session_logs.py test coverage (session #88)**: COMPLETE. 41 unit tests in `tests/test_chunk_session_logs.py` covering DATE_HEADER_RE, parse_log (12 cases), extract_primary_activity (3), write_chunk (8), write_preamble (6), main (7). All 41 passed in 0.15s. Commit `0d4df1a`. Closes yebyen/mecris#323.
+- **obsidian_client.py test coverage (session #87)**: COMPLETE. 42 unit tests. Commit `19b81f9`. Closes yebyen/mecris#322.
+- **Full scheduler suite**: 52 tests across 5 files — all pass when run alphabetically or individually.
 - **GITHUB_CLASSIC_PAT still expired**: Bot cannot create PRs to kingdonb/mecris. Human must renew.
-- **Upstream sync**: yebyen/mecris is ahead of kingdonb/mecris by many sessions (#80–#87); history has diverged since session #66. Future syncs must cherry-pick new files only.
+- **Upstream sync**: yebyen/mecris is ahead of kingdonb/mecris by many sessions (#80–#88); history has diverged since session #66. Future syncs must cherry-pick new files only.
+- **Latent bug noted**: `base_walk_reminder.py:112` — `consent_manager` referenced but never defined; will raise `NameError` when `result.get("sent")` is True. Not fixed (not in scope for test session).
 - **Latent bug noted**: `mcp_bridge.py:76` — `manifest.get("tools", [])` raises `AttributeError` when the server returns a bare JSON list. Not fixed (out of scope); documented here.
 
 ## Verified This Session
+- [x] **chunk_session_logs.py test coverage (session #88)**: 41 unit tests. `PYTHONPATH=. python3 -m pytest tests/test_chunk_session_logs.py -v` → 41 passed in 0.15s. Commit `0d4df1a`. Closes yebyen/mecris#323. **COMPLETE**.
 - [x] **obsidian_client.py test coverage (session #87)**: 42 unit tests. `PYTHONPATH=. python3 -m pytest tests/test_obsidian_client.py -v` → 42 passed in 0.71s. Commit `19b81f9`. Closes yebyen/mecris#322. **COMPLETE**.
 - [x] **twilio_sender.py test coverage (session #86)**: 27 unit tests. `PYTHONPATH=. python3 -m pytest tests/test_twilio_sender.py -v` → 27 passed in 0.14s. Commit `3873a68`. Closes yebyen/mecris#320. **COMPLETE**.
 - [x] **fetch_groq_usage.py test coverage (session #85)**: 27 unit tests. `PYTHONPATH=. python3 -m pytest tests/test_fetch_groq_usage.py -v` → 27 passed. Commit `0caa0f1`. Closes yebyen/mecris#319. **COMPLETE**.
@@ -42,13 +45,15 @@
 - [ ] **Verify log-message-py in Cloud**: Once platforms are ready, confirm audit logs appear in cloud KV.
 
 ### 🤖 Bot-actionable (can be resolved in future sessions)
-- [ ] **Empty Backlog Protocol — services/ coverage audit**: Root-level modules now substantially covered. Next session should: (1) scan `services/*.py` for modules lacking test coverage; (2) search for `TODO`/`FIXME` comments in `services/`; (3) hunt for open `bug`/`good-first-issue` labels on kingdonb/mecris.
+- [ ] **Empty Backlog Protocol — scripts/ coverage audit (session #88)**: `services/*.py` all covered. `scripts/chunk_session_logs.py` now covered (session #88). Next session should: (1) check `scripts/anthropic_cost_tracker.py` (275 lines), `scripts/add_familiar_id.py` (42 lines), `scripts/check_beeminder.py` (22 lines) for testable pure logic; (2) search for `TODO`/`FIXME` in root `.py` files; (3) hunt for open `bug`/`good-first-issue` labels on kingdonb/mecris.
+- [ ] **Latent bug — `base_walk_reminder.py:112`**: `consent_manager` is referenced but never defined in `run_base_reminder()`. Will raise `NameError` when `result.get("sent")` returns True. File is a script (not a service), so a fix would be a one-line change adding `consent_manager = tracker` or removing the dead log call. Bot-actionable if tasked directly.
 - [ ] **Not amenable to unit testing (skip)**: `mcp_stdio_server.py` (48 lines, thin launcher — imports mcp_server and calls mcp.run()); `check_leadership.py` (25 lines, module-level DB script). Document this in NEXT_SESSION.md only; do not create test files.
 - [ ] **AI Framework Evaluation (kingdonb/mecris#205)**: Remaining: run `scripts/evaluate_aider.py` with Aider installed and append results to `docs/AI_FRAMEWORK_EVALUATION.md`. Requires Aider + an LLM API key.
 - [ ] **Budget Governor: WASM Port (kingdonb/mecris#214)**: POC complete. Remaining: Fermyon Cloud variable config — human-required for deployment.
 - [ ] **Local Inference Pipeline (kingdonb/mecris#203)**: Integrate Ollama and build a cloud-fallback router.
 
 ## Infrastructure Notes (carried forward)
+- **chunk_session_logs.py test pattern (post-session #88)**: Import directly — `from scripts.chunk_session_logs import parse_log, write_chunk, write_preamble, extract_primary_activity, main`. No sys.modules bootstrap needed (stdlib only). Use `tmp_path` pytest fixture for file I/O tests. `main(argv)` accepts a list for direct invocation without subprocess. DATE_HEADER_RE handles em-dash (—), en-dash (–), plain hyphen (-), and emoji prefix (🏛️). Commit `0d4df1a`.
 - **obsidian_client.py test pattern (post-session #87)**: `_fresh_client()` helper: `ObsidianMCPClient.__new__(ObsidianMCPClient)` + set `c.host`, `c.port`, `c.base_url`, `c.vault_path`. Set `c.client = MagicMock()` with `get/post/aclose` as `AsyncMock`. Use `asyncio.run(...)` to call async methods from sync tests. For `get_goals`/`get_todos`/`get_daily_note`/`append_to_session_log`, use `patch.object(c, "get_file_content", ...)` and `patch.object(c, "append_content", ...)` with `side_effect=async_fn`. Note: `### Current Goals` does NOT match section regex `^#{1,3}\s*Goals?\s*$` — only bare `Goals` or `Goal` headers trigger goal parsing. Commit `19b81f9`.
 - **twilio_sender.py test pattern (post-session #86)**: Bootstrap `sys.modules` with MagicMocks for `twilio`, `twilio.rest`, `dotenv`, `usage_tracker`, `services`, `services.encryption_service` before importing `twilio_sender`. Set `_mock_twilio_rest.Client = MagicMock()` on the `twilio.rest` mock. Patch `twilio_sender.Client` per-test with `patch("twilio_sender.Client", mock_cls)`. For `smart_send_message`, patch `sys.modules["usage_tracker"]` with `MagicMock(get_tracker=MagicMock(return_value=tracker))`. Use `patch.dict(os.environ, _CREDS, clear=True)` to isolate env. For `smart_send_message` template pool: `patch("os.path.exists", return_value=True)` + `patch("builtins.open", mock_open(read_data=pool_json_str))`. Commit `3873a68`.
 - **fetch_groq_usage.py test pattern (post-session #85)**: `GroqUsageScraper.__new__(GroqUsageScraper)` + set `s.neon_url`, `s.email`, `s.password`, `s.cache_minutes`. Bootstrap `sys.modules.setdefault("psycopg2", MagicMock())` and `sys.modules.setdefault("playwright.sync_api", MagicMock())` before importing `fetch_groq_usage`. Patch via `patch.object(sys.modules["psycopg2"], "connect", ...)`. Configure `sys.modules["playwright.sync_api"].sync_playwright.return_value = mock_pw`. Use `_mock_playwright_ctx(mock_page)` helper to build the playwright context manager mock.
