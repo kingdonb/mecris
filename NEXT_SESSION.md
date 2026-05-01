@@ -1,13 +1,14 @@
-# Next Session: Hunt remaining uncovered scripts or open issues on kingdonb/mecris
+# Next Session: Test clozemaster_scraper.py or hunt open issues on kingdonb/mecris
 
-## Current Status (2026-05-01, post-session #91)
-- **verify_docs_graph.py test coverage (session #91)**: COMPLETE. 35 unit tests in `tests/test_verify_docs_graph.py` — collect_docs (3), _strip_code_blocks (4), extract_links (11), resolve_link (5), build_graph (5), main/CLI (7). All 35 passed in 0.72s. Commit `e98b69a`. Closes yebyen/mecris#326.
+## Current Status (2026-05-01, post-session #92)
+- **bump_version.py + check_neon_budget.py + cloud_enable_beeminder.py test coverage (session #92)**: COMPLETE. 35 unit tests in 3 new test files — all passed in 0.36s. Commit `1a1732b`. Closes yebyen/mecris#327.
 - **Full scheduler suite**: 52 tests across 5 files — all pass when run alphabetically or individually.
 - **GITHUB_CLASSIC_PAT still expired**: Bot cannot create PRs to kingdonb/mecris. Human must renew.
-- **Upstream sync**: yebyen/mecris is ahead of kingdonb/mecris by many sessions (#80–#91); history has diverged since session #66. Future syncs must cherry-pick new files only.
-- **No open issues on either repo**: kingdonb/mecris has no bug/needs-test/pr-review labels. yebyen/mecris has no open issues. Only TODO/FIXME found was a template placeholder in `ghost/post_mortem.py:103` — not actionable code.
+- **Upstream sync**: yebyen/mecris is ahead of kingdonb/mecris by many sessions (#80–#92); history has diverged since session #66. Future syncs must cherry-pick new files only.
+- **No open issues on either repo**: kingdonb/mecris has no bug/needs-test/pr-review labels. yebyen/mecris has no open issues. TODO/FIXME found was a template placeholder in `ghost/post_mortem.py:103` — not actionable code.
 
 ## Verified This Session
+- [x] **bump_version.py + check_neon_budget.py + cloud_enable_beeminder.py test coverage (session #92)**: 35 unit tests. `PYTHONPATH=. python3 -m pytest tests/test_bump_version.py tests/test_check_neon_budget.py tests/test_cloud_enable_beeminder.py -v` → 35 passed in 0.36s. Commit `1a1732b`. **COMPLETE**.
 - [x] **verify_docs_graph.py test coverage (session #91)**: 35 unit tests. `PYTHONPATH=. python3 -m pytest tests/test_verify_docs_graph.py -v` → 35 passed in 0.72s. Commit `e98b69a`. **COMPLETE**.
 - [x] **mcp_bridge.py:76 bug fix (session #90)**: `isinstance(manifest, list)` now runs before `.get()`. `grep -n "isinstance" mcp_bridge.py` → line 77. Regression test passes. Commit `39f0e93`. **COMPLETE**.
 - [x] **add_familiar_id.py test coverage (session #90)**: 5 unit tests. `PYTHONPATH=. python3 -m pytest tests/test_add_familiar_id.py -v` → 5 passed in 0.10s. Commit `e4d322e`. **COMPLETE**.
@@ -48,12 +49,15 @@
 - [ ] **Verify log-message-py in Cloud**: Once platforms are ready, confirm audit logs appear in cloud KV.
 
 ### 🤖 Bot-actionable (can be resolved in future sessions)
-- [ ] **Empty Backlog Protocol — remaining coverage hunt (session #91)**: Scripts still uncovered: `scripts/bump_version.py` (78 lines — regex + file I/O, testable with tmp_path), `scripts/check_neon_budget.py` (35 lines), `scripts/cloud_enable_beeminder.py` (56 lines), `scripts/clozemaster_scraper.py` (392 lines — large, has playwright dep). `scripts/check_beeminder.py` (22 lines) documented as skip (thin wrapper). Debug scripts (`debug_twilio_messages.py`, `debug_whatsapp_content.py`, `log_groqspend.py`, `mcp_cost_endpoint.py`) likely not worth unit testing. Hunt for open `bug`/`good-first-issue` labels on kingdonb/mecris.
+- [ ] **Empty Backlog Protocol — remaining coverage hunt (session #92)**: One script still uncovered: `scripts/clozemaster_scraper.py` (392 lines — large, has playwright dep; complex to test but worth investigating). `scripts/check_beeminder.py` (22 lines) documented as skip (thin wrapper). Debug scripts (`debug_twilio_messages.py`, `debug_whatsapp_content.py`, `log_groqspend.py`, `mcp_cost_endpoint.py`) likely not worth unit testing. Hunt for open `bug`/`good-first-issue` labels on kingdonb/mecris.
 - [ ] **AI Framework Evaluation (kingdonb/mecris#205)**: Remaining: run `scripts/evaluate_aider.py` with Aider installed and append results to `docs/AI_FRAMEWORK_EVALUATION.md`. Requires Aider + an LLM API key.
 - [ ] **Budget Governor: WASM Port (kingdonb/mecris#214)**: POC complete. Remaining: Fermyon Cloud variable config — human-required for deployment.
 - [ ] **Local Inference Pipeline (kingdonb/mecris#203)**: Integrate Ollama and build a cloud-fallback router.
 
 ## Infrastructure Notes (carried forward)
+- **bump_version.py test pattern (post-session #92)**: `monkeypatch.setattr(bump_version, "__file__", str(scripts_dir / "bump_version.py"))` redirects `Path(__file__).parent.parent` to `tmp_path` — avoids real repo file mutation. CLI test (`test_version_arg_exits_0`) uses a symlink in `tmp_path/scripts/` to isolate subprocess from real root. Commit `1a1732b`.
+- **check_neon_budget.py test pattern (post-session #92)**: Script runs entirely at module level — no importable functions. Test via subprocess. Create a fake `psycopg2` package in `tmp_path` (`__init__.py` + `extras.py`) and inject via `PYTHONPATH`. Missing `NEON_DB_URL` → exit 1. Fake DB path → exit 0. Commit `1a1732b`.
+- **cloud_enable_beeminder.py test pattern (post-session #92)**: Bootstrap `sys.modules.setdefault("psycopg2", MagicMock())` + `sys.modules.setdefault("dotenv", MagicMock())` before import. `services.encryption_service.EncryptionService` imports cleanly from repo. Patch `cloud_enable_beeminder.EncryptionService` per-test. Use `patch.dict("os.environ", env, clear=True)`. `_make_cursor(rowcount)` + `_make_conn(cur)` helpers. `teardown_method` resets `_mock_psycopg2.connect.side_effect`. Commit `1a1732b`.
 - **verify_docs_graph.py test pattern (post-session #91)**: Import directly via `sys.path.insert(0, str(Path(__file__).parent.parent / "scripts"))` then `from verify_docs_graph import ...`. No sys.modules bootstrap needed (stdlib only). Use `tmp_path` fixture for file I/O. `_write(path, text)` helper creates parent dirs. `main(argv)` accepts list for direct invocation. Wikilink alias `[[Page|Display]]` — regex captures group(1) (page name only). `collect_docs` uses `rglob("*.md")` and returns sorted. Commit `e98b69a`.
 - **add_familiar_id.py test pattern (post-session #90)**: Bootstrap `sys.modules.setdefault("psycopg2", MagicMock())` before importing. Use `_make_mock_cursor(fetchone_result)` + `_make_mock_conn(cursor)` helpers; set `__enter__`/`__exit__` on both. Patch `psycopg2.connect` with `patch("psycopg2.connect", return_value=conn)`. Inspect `cur.execute.call_args_list` for SQL content + params. Commit `e4d322e`.
 - **mcp_bridge.py fix (post-session #90)**: `isinstance(manifest, list)` check now runs at line 77, before `.get()`. Regression test `test_tools_list_bare_list_manifest` in `tests/test_mcp_bridge.py` — 17 tests total. Commit `39f0e93`.
