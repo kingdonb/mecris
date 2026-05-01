@@ -114,7 +114,38 @@ class TestWriteObsStatus:
 
         mock_cur.execute.assert_not_called()
 
-    def test_lost_leadership_path_writes_error(self, test_scheduler):
+    @pytest.mark.asyncio
+    async def test_heartbeat_maintenance_no_name_error(self, test_scheduler):
+        """Regression test: heartbeat-maintenance branch must NOT raise NameError.
+
+        This exercises the is_leader=True + row[0]==process_id path (scheduler.py:330-335).
+        The `attempt` variable referenced there was never defined — yebyen/mecris#315.
+        """
+        mock_psycopg2 = MagicMock()
+        mock_conn = MagicMock()
+        mock_cur = MagicMock()
+        mock_psycopg2.connect.return_value.__enter__.return_value = mock_conn
+        mock_conn.cursor.return_value.__enter__.return_value = mock_cur
+        # rowcount=0 → UPDATE didn't (re-)claim the row
+        mock_cur.rowcount = 0
+        # fetchone returns our own process_id → we ARE still leader in DB
+        mock_cur.fetchone.return_value = ("this_process_id", datetime.datetime.now())
+        test_scheduler._has_obs_columns = True
+
+        with patch("scheduler.psycopg2", mock_psycopg2), \
+             patch.object(test_scheduler, "_start_leader_jobs", AsyncMock()):
+            test_scheduler.neon_url = "postgres://fake"
+            test_scheduler.process_id = "this_process_id"
+            test_scheduler.is_leader = True
+
+            # Must not raise NameError
+            await test_scheduler._attempt_leadership()
+
+        # Still leader — no demotion
+        assert test_scheduler.is_leader is True
+
+    @pytest.mark.asyncio
+    async def test_lost_leadership_path_writes_error(self, test_scheduler):
         """When demoted, _attempt_leadership calls _write_obs_status with a non-None error."""
         mock_psycopg2 = MagicMock()
         mock_conn = MagicMock()
@@ -131,8 +162,7 @@ class TestWriteObsStatus:
             test_scheduler.process_id = "this_process_id"
             test_scheduler.is_leader = True
 
-            import asyncio
-            asyncio.get_event_loop().run_until_complete(test_scheduler._attempt_leadership())
+            await test_scheduler._attempt_leadership()
 
         # Find the UPDATE obs call that includes "Lost leadership"
         update_calls = [c for c in mock_cur.execute.call_args_list if "UPDATE" in str(c)]

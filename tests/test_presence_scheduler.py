@@ -206,3 +206,66 @@ class TestSchedulerPresenceGuard:
         with patch("ghost.presence.is_human_present", return_value=False):
             await s._start_leader_jobs()
         assert s.scheduler.add_job.call_count >= 1
+
+    @pytest.mark.asyncio
+    async def test_idempotent_all_jobs_already_registered(self):
+        """When all five jobs already exist, add_job is never called."""
+        s = _make_minimal_scheduler()
+        s.scheduler.get_job.return_value = MagicMock()  # every job appears registered
+        with patch("ghost.presence.is_human_present", return_value=False):
+            await s._start_leader_jobs()
+        s.scheduler.add_job.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_idempotent_partial_jobs_registered(self):
+        """When only some jobs exist, add_job is called only for the missing ones."""
+        s = _make_minimal_scheduler()
+        # First two get_job calls return truthy (registered), rest return None
+        s.scheduler.get_job.side_effect = [MagicMock(), MagicMock(), None, None, None]
+        with patch("ghost.presence.is_human_present", return_value=False):
+            await s._start_leader_jobs()
+        assert s.scheduler.add_job.call_count == 3
+
+    @pytest.mark.asyncio
+    async def test_locked_db_retries_and_eventually_succeeds(self):
+        """A 'database is locked' error on the first attempt triggers a retry that succeeds."""
+        s = _make_minimal_scheduler()
+        raised = {"done": False}
+
+        def get_job_side_effect(job_id):
+            if not raised["done"]:
+                raised["done"] = True
+                raise Exception("database is locked")
+            return None  # All subsequent calls succeed (jobs appear unregistered)
+
+        s.scheduler.get_job.side_effect = get_job_side_effect
+        with patch("ghost.presence.is_human_present", return_value=False), \
+             patch("asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
+            await s._start_leader_jobs()
+        # Must have slept once for the retry
+        assert mock_sleep.await_count == 1
+        # Must have registered all 5 jobs on the successful retry
+        assert s.scheduler.add_job.call_count == 5
+
+    @pytest.mark.asyncio
+    async def test_locked_db_all_retries_exhausted(self):
+        """When all 5 attempts fail with 'database is locked', add_job is never called."""
+        s = _make_minimal_scheduler()
+        s.scheduler.get_job.side_effect = Exception("database is locked")
+        with patch("ghost.presence.is_human_present", return_value=False), \
+             patch("asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
+            await s._start_leader_jobs()
+        # Four sleeps for retries 0→1, 1→2, 2→3, 3→4 (attempt 4 breaks immediately)
+        assert mock_sleep.await_count == 4
+        s.scheduler.add_job.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_non_locked_exception_breaks_immediately(self):
+        """A non-lock exception on attempt 0 breaks without sleeping or retrying."""
+        s = _make_minimal_scheduler()
+        s.scheduler.get_job.side_effect = Exception("some other error")
+        with patch("ghost.presence.is_human_present", return_value=False), \
+             patch("asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
+            await s._start_leader_jobs()
+        mock_sleep.assert_not_called()
+        s.scheduler.add_job.assert_not_called()
