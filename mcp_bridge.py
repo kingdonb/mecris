@@ -74,14 +74,13 @@ class MCPBridge:
                         raise Exception(f"HTTP {response.status_code}: {response.text}")
                     
                     manifest = response.json()
-                    tools = manifest.get("tools", [])
-                    
-                    # If no tools key, try to extract from a different format
-                    if not tools and isinstance(manifest, list):
+                    if isinstance(manifest, list):
                         tools = manifest
-                    elif not tools and "allowedTools" in manifest:
-                        # Convert from your original format if needed
-                        tools = [{"name": tool, "description": f"Tool: {tool}", "inputSchema": {"type": "object", "additionalProperties": True}} for tool in manifest["allowedTools"]]
+                    else:
+                        tools = manifest.get("tools", [])
+                        if not tools and "allowedTools" in manifest:
+                            # Convert from your original format if needed
+                            tools = [{"name": tool, "description": f"Tool: {tool}", "inputSchema": {"type": "object", "additionalProperties": True}} for tool in manifest["allowedTools"]]
                     
                     print(f"Returning {len(tools)} tools", file=sys.stderr)
                     return {
