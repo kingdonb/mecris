@@ -114,7 +114,8 @@ class TestWriteObsStatus:
 
         mock_cur.execute.assert_not_called()
 
-    def test_heartbeat_maintenance_no_name_error(self, test_scheduler):
+    @pytest.mark.asyncio
+    async def test_heartbeat_maintenance_no_name_error(self, test_scheduler):
         """Regression test: heartbeat-maintenance branch must NOT raise NameError.
 
         This exercises the is_leader=True + row[0]==process_id path (scheduler.py:330-335).
@@ -138,13 +139,13 @@ class TestWriteObsStatus:
             test_scheduler.is_leader = True
 
             # Must not raise NameError
-            import asyncio
-            asyncio.get_event_loop().run_until_complete(test_scheduler._attempt_leadership())
+            await test_scheduler._attempt_leadership()
 
         # Still leader — no demotion
         assert test_scheduler.is_leader is True
 
-    def test_lost_leadership_path_writes_error(self, test_scheduler):
+    @pytest.mark.asyncio
+    async def test_lost_leadership_path_writes_error(self, test_scheduler):
         """When demoted, _attempt_leadership calls _write_obs_status with a non-None error."""
         mock_psycopg2 = MagicMock()
         mock_conn = MagicMock()
@@ -161,8 +162,7 @@ class TestWriteObsStatus:
             test_scheduler.process_id = "this_process_id"
             test_scheduler.is_leader = True
 
-            import asyncio
-            asyncio.get_event_loop().run_until_complete(test_scheduler._attempt_leadership())
+            await test_scheduler._attempt_leadership()
 
         # Find the UPDATE obs call that includes "Lost leadership"
         update_calls = [c for c in mock_cur.execute.call_args_list if "UPDATE" in str(c)]

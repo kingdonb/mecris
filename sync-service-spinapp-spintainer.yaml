@@ -1,0 +1,11 @@
+apiVersion: core.spinkube.dev/v1alpha1
+kind: SpinApp
+metadata:
+  name: mecris-sync-v2-spintainer
+spec:
+  image: "ttl.sh/mecris-sync-v2-beta4:1h"
+  replicas: 1
+  executor: spintainer-v4
+  variables:
+    - name: cloud_provider
+      value: "k3d-spintainer"

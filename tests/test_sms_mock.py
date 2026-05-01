@@ -29,7 +29,8 @@ class TestSMSMocked(unittest.TestCase):
             'TWILIO_AUTH_TOKEN': 'test_auth_token',
             'TWILIO_FROM_NUMBER': '+1234567890',
             'TWILIO_TO_NUMBER': '+0987654321',
-            'TWILIO_WHATSAPP_FROM': 'whatsapp:+14155238886'
+            'TWILIO_WHATSAPP_FROM': 'whatsapp:+14155238886',
+            'TWILIO_WHATSAPP_TEMPLATE_SID': '' # Ensure this is cleared
         }
         
         # Set environment variables for tests
