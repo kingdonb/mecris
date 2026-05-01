@@ -1,42 +1,44 @@
-# Next Session: Audit remaining untested scripts/ or hunt open kingdonb issues
+# Next Session: Hunt kingdonb/mecris open issues or TODO/FIXME in root .py files
 
-## Current Status (2026-05-01, post-session #89)
-- **anthropic_cost_tracker.py test coverage (session #89)**: COMPLETE. 34 unit tests in `tests/test_anthropic_cost_tracker.py` covering `__init__` (7), `_rate_limited_request` (8), `get_usage` (7), `get_cost` (5), `get_budget_summary` (7). All 34 passed in 0.35s. Commit `7e612b6`. Closes yebyen/mecris#324 (partial).
-- **base_walk_reminder.py NameError fix (session #89)**: COMPLETE. Removed dead 6-line `consent_manager.log_message_sent()` block from `scripts/base_walk_reminder.py:108-117`. `consent_manager` was never defined in `run_base_reminder()`; `log_message_sent` doesn't exist on any accessible object. Commit `f77ac11`. Closes yebyen/mecris#324 (partial).
+## Current Status (2026-05-01, post-session #90)
+- **mcp_bridge.py:76 AttributeError fix (session #90)**: COMPLETE. Moved `isinstance(manifest, list)` check before `manifest.get("tools", [])` to prevent AttributeError when server returns a bare JSON list. Added regression test `test_tools_list_bare_list_manifest`. 17 tests total pass. Commit `39f0e93`. Closes yebyen/mecris#325 (partial).
+- **add_familiar_id.py test coverage (session #90)**: COMPLETE. 5 unit tests in `tests/test_add_familiar_id.py` — early-return on missing NEON_DB_URL, column-exists path, column-absent path, update with/without DEFAULT_USER_ID. All 5 passed in 0.10s. Commit `e4d322e`. Closes yebyen/mecris#325.
 - **Full scheduler suite**: 52 tests across 5 files — all pass when run alphabetically or individually.
 - **GITHUB_CLASSIC_PAT still expired**: Bot cannot create PRs to kingdonb/mecris. Human must renew.
-- **Upstream sync**: yebyen/mecris is ahead of kingdonb/mecris by many sessions (#80–#89); history has diverged since session #66. Future syncs must cherry-pick new files only.
-- **Latent bug noted**: `mcp_bridge.py:76` — `manifest.get("tools", [])` raises `AttributeError` when the server returns a bare JSON list. Not fixed (out of scope); documented here.
+- **Upstream sync**: yebyen/mecris is ahead of kingdonb/mecris by many sessions (#80–#90); history has diverged since session #66. Future syncs must cherry-pick new files only.
+- **Latent bug resolved**: `mcp_bridge.py:76` — `manifest.get("tools", [])` AttributeError on bare-list fixed (session #90). No remaining known latent bugs in scripts/ coverage.
 
 ## Verified This Session
-- [x] **anthropic_cost_tracker.py test coverage (session #89)**: 34 unit tests. `PYTHONPATH=. python3 -m pytest tests/test_anthropic_cost_tracker.py -v` → 34 passed in 0.35s. Commit `7e612b6`. **COMPLETE**.
-- [x] **base_walk_reminder.py NameError fix (session #89)**: `grep -n consent_manager scripts/base_walk_reminder.py` → no results. Commit `f77ac11`. **COMPLETE**.
-- [x] **chunk_session_logs.py test coverage (session #88)**: 41 unit tests. Commit `0d4df1a`. Closes yebyen/mecris#323. **COMPLETE**.
-- [x] **obsidian_client.py test coverage (session #87)**: 42 unit tests. Commit `19b81f9`. Closes yebyen/mecris#322. **COMPLETE**.
-- [x] **twilio_sender.py test coverage (session #86)**: 27 unit tests. Commit `3873a68`. Closes yebyen/mecris#320. **COMPLETE**.
-- [x] **fetch_groq_usage.py test coverage (session #85)**: 27 unit tests. Commit `0caa0f1`. Closes yebyen/mecris#319. **COMPLETE**.
-- [x] **mcp_bridge.py test coverage (session #84)**: 16 unit tests. Commit `640ef58`. Closes yebyen/mecris#318. **COMPLETE**.
-- [x] **test_scheduler_jobs.py ordering dependency (session #83)**: Module-level `_SCHEDULER_FAKES` bootstrap added. Commit `8f0026a`. Closes yebyen/mecris#317. **COMPLETE**.
-- [x] **_start_leader_jobs test coverage (session #82)**: 5 new tests. Commit `b7b2345`. Closes yebyen/mecris#316. **COMPLETE**.
-- [x] **scheduler.py NameError fix (session #81)**: `scheduler.py:334` — removed `if attempt % 20 == 0:`. Commit `da97597`. Closes yebyen/mecris#315. **COMPLETE**.
-- [x] **scheduler.py test coverage (session #80)**: 24 tests. Commit `a363bc0`. Closes yebyen/mecris#314. **COMPLETE**.
-- [x] **claude_api_budget_scraper.py test coverage (session #79)**: 24 tests. Commit `594b309`. Closes yebyen/mecris#313. **COMPLETE**.
-- [x] **mcp_reconcile_budget.py test coverage (session #78)**: 18 tests. Commit `2c19849`. Closes yebyen/mecris#312. **COMPLETE**.
+- [x] **mcp_bridge.py:76 bug fix (session #90)**: `isinstance(manifest, list)` now runs before `.get()`. `grep -n "isinstance" mcp_bridge.py` → line 77. Regression test passes. Commit `39f0e93`. **COMPLETE**.
+- [x] **add_familiar_id.py test coverage (session #90)**: 5 unit tests. `PYTHONPATH=. python3 -m pytest tests/test_add_familiar_id.py -v` → 5 passed in 0.10s. Commit `e4d322e`. **COMPLETE**.
+- [x] **anthropic_cost_tracker.py test coverage (session #89)**: 34 unit tests. Commit `7e612b6`. **COMPLETE**.
+- [x] **base_walk_reminder.py NameError fix (session #89)**: Removed dead `consent_manager.log_message_sent()` block. Commit `f77ac11`. **COMPLETE**.
+- [x] **chunk_session_logs.py test coverage (session #88)**: 41 unit tests. Commit `0d4df1a`. **COMPLETE**.
+- [x] **obsidian_client.py test coverage (session #87)**: 42 unit tests. Commit `19b81f9`. **COMPLETE**.
+- [x] **twilio_sender.py test coverage (session #86)**: 27 unit tests. Commit `3873a68`. **COMPLETE**.
+- [x] **fetch_groq_usage.py test coverage (session #85)**: 27 unit tests. Commit `0caa0f1`. **COMPLETE**.
+- [x] **mcp_bridge.py test coverage (session #84)**: 16 unit tests. Commit `640ef58`. **COMPLETE**.
+- [x] **test_scheduler_jobs.py ordering dependency (session #83)**: Commit `8f0026a`. **COMPLETE**.
+- [x] **_start_leader_jobs test coverage (session #82)**: 5 new tests. Commit `b7b2345`. **COMPLETE**.
+- [x] **scheduler.py NameError fix (session #81)**: Commit `da97597`. **COMPLETE**.
+- [x] **scheduler.py test coverage (session #80)**: 24 tests. Commit `a363bc0`. **COMPLETE**.
+- [x] **claude_api_budget_scraper.py test coverage (session #79)**: 24 tests. Commit `594b309`. **COMPLETE**.
+- [x] **mcp_reconcile_budget.py test coverage (session #78)**: 18 tests. Commit `2c19849`. **COMPLETE**.
 - [x] **legacy-cloud playwright backport (session #77)**: Closes yebyen/mecris#310. **COMPLETE**.
-- [x] **groq_odometer_tracker.py test coverage (session #77)**: 24 tests. Commit `c60c78a`. Closes yebyen/mecris#311. **COMPLETE**.
-- [x] **billing_reconciliation.get_reconciliation_summary tests (session #76)**: 6 new tests — 41 total. Commit `7a69b2d`. Closes yebyen/mecris#309.
-- [x] **claude_monitor.py async path tests (session #75)**: 41 tests total. Commit `721bfd1`. Closes yebyen/mecris#308. **COMPLETE**.
-- [x] **billing_reconciliation.py test coverage (session #74)**: 35 tests. Commit `d41a848`. Closes yebyen/mecris#307. **COMPLETE**.
-- [x] **claude_monitor.py test coverage (session #73)**: 27 tests. Commit `d4b9403`. Closes yebyen/mecris#306. **COMPLETE**.
-- [x] **RAG test coverage (session #72)**: `tests/test_rag_retriever.py` (46) + `tests/test_rag_generator.py` (15). Commit `bc27e78`. Closes yebyen/mecris#305. **COMPLETE**.
-- [x] **test_narrator_context.py async fix (session #71)**: Commit `b9f1bbb`. Closes yebyen/mecris#303. **COMPLETE**.
-- [x] **utcnow() deprecation fix (session #70)**: Commit `0485340`. Closes yebyen/mecris#302. **COMPLETE**.
+- [x] **groq_odometer_tracker.py test coverage (session #77)**: 24 tests. Commit `c60c78a`. **COMPLETE**.
+- [x] **billing_reconciliation.get_reconciliation_summary tests (session #76)**: 6 new tests — 41 total. Commit `7a69b2d`.
+- [x] **claude_monitor.py async path tests (session #75)**: 41 tests total. Commit `721bfd1`. **COMPLETE**.
+- [x] **billing_reconciliation.py test coverage (session #74)**: 35 tests. Commit `d41a848`. **COMPLETE**.
+- [x] **claude_monitor.py test coverage (session #73)**: 27 tests. Commit `d4b9403`. **COMPLETE**.
+- [x] **RAG test coverage (session #72)**: `tests/test_rag_retriever.py` (46) + `tests/test_rag_generator.py` (15). Commit `bc27e78`. **COMPLETE**.
+- [x] **test_narrator_context.py async fix (session #71)**: Commit `b9f1bbb`. **COMPLETE**.
+- [x] **utcnow() deprecation fix (session #70)**: Commit `0485340`. **COMPLETE**.
 
 ## Pending Verification
 
 ### 👤 Human-required (cannot be resolved by bot)
 - [ ] **URGENT: Refresh GITHUB_CLASSIC_PAT** — returns 401. Bot cannot create PRs to kingdonb/mecris. Renew in GitHub → Settings → Developer Settings → Personal access tokens (classic) with `repo` scope, update the workflow secret `GITHUB_CLASSIC_PAT`.
-- [ ] **Open PR yebyen:main → kingdonb:main** for all pending commits from sessions #64–#89 (narrator presence fix, NEON_DB_URL fix, upstream merge + legacy-cloud setup, CI/CD plan sync, ABI contract test x2, AGENTS.md sync, playwright fix, utcnow deprecation fix, async test fix, RAG test coverage, claude_monitor test coverage, billing_reconciliation test coverage, claude_monitor async path tests, get_reconciliation_summary tests, groq_odometer_tracker tests, mcp_reconcile_budget tests, claude_api_budget_scraper tests, scheduler background job tests, scheduler NameError fix, _start_leader_jobs tests, test_scheduler_jobs.py isolation fix, mcp_bridge tests, fetch_groq_usage tests, twilio_sender tests, obsidian_client tests, chunk_session_logs tests, base_walk_reminder fix, anthropic_cost_tracker tests). Closes yebyen/mecris#294, #295, #296, #298, #299, #302, #303, #305, #306, #307, #308, #309, #310, #311, #312, #313, #314, #315, #316, #317, #318, #319, #320, #322, #323, #324.
+- [ ] **Open PR yebyen:main → kingdonb:main** for all pending commits from sessions #64–#90 (narrator presence fix, NEON_DB_URL fix, upstream merge + legacy-cloud setup, CI/CD plan sync, ABI contract test x2, AGENTS.md sync, playwright fix, utcnow deprecation fix, async test fix, RAG test coverage, claude_monitor test coverage, billing_reconciliation test coverage, claude_monitor async path tests, get_reconciliation_summary tests, groq_odometer_tracker tests, mcp_reconcile_budget tests, claude_api_budget_scraper tests, scheduler background job tests, scheduler NameError fix, _start_leader_jobs tests, test_scheduler_jobs.py isolation fix, mcp_bridge tests, fetch_groq_usage tests, twilio_sender tests, obsidian_client tests, chunk_session_logs tests, base_walk_reminder fix, anthropic_cost_tracker tests, mcp_bridge AttributeError fix, add_familiar_id tests). Closes yebyen/mecris#294, #295, #296, #298, #299, #302, #303, #305, #306, #307, #308, #309, #310, #311, #312, #313, #314, #315, #316, #317, #318, #319, #320, #322, #323, #324, #325.
 - [ ] **Cloud Readiness Check**: Monitor Fermyon/Akamai for updates to their Python WASM runtimes. Test a simple SDK v4 "Hello World" to confirm when the platform has caught up.
 - [ ] **Align Release Management**: Execute the plan in `docs/SPIN_V3_COMPATIBILITY_PLAN.md` to maintain a `legacy-cloud` branch providing a compatibility shim until the cloud catch-up is complete.
 - [ ] **Live Sunkworks session (Saturday)**: Execute dual-track tagging — tag `v0.1.0-canary.*` on main, `v0.0.1` on legacy-cloud. Run the negative E2E ABI mismatch test against Fermyon/Akamai sandbox. See `docs/CI_CD_EVOLUTION_PLAN.md` for full context.
@@ -46,20 +48,20 @@
 - [ ] **Verify log-message-py in Cloud**: Once platforms are ready, confirm audit logs appear in cloud KV.
 
 ### 🤖 Bot-actionable (can be resolved in future sessions)
-- [ ] **Empty Backlog Protocol — remaining scripts/ coverage (session #89)**: `scripts/anthropic_cost_tracker.py` now covered (session #89). Remaining: (1) `scripts/add_familiar_id.py` (42 lines, psycopg2 DB migration — mock psycopg2 to test early-return on missing NEON_DB_URL, column-exists path, column-absent path, update-with/without default_user_id); (2) `scripts/check_beeminder.py` (22 lines, thin BeeminderClient wrapper — NOT worth unit testing, document as skip); (3) search for `TODO`/`FIXME` in root `.py` files; (4) hunt for open `bug`/`good-first-issue` labels on kingdonb/mecris.
-- [ ] **Latent bug — `mcp_bridge.py:76`**: `handle_request()` `manifest.get("tools", [])` raises `AttributeError` if server returns a bare JSON list. `isinstance(manifest, list)` check at line 80 never executes. Outer `except Exception` catches it and returns error response — so it's fail-safe in practice, but incorrect. One-line fix: swap the isinstance check to run before `.get()`.
+- [ ] **Empty Backlog Protocol — remaining coverage hunt (session #90)**: `scripts/check_beeminder.py` (22 lines, thin BeeminderClient wrapper — NOT worth unit testing, document as skip in TDG or NEXT_SESSION). Search for `TODO`/`FIXME` in root `.py` files. Hunt for open `bug`/`good-first-issue` labels on kingdonb/mecris. (Session #90 found zero open issues on either repo and zero TODO/FIXME in scripts/ — try broader root .py search next time.)
 - [ ] **AI Framework Evaluation (kingdonb/mecris#205)**: Remaining: run `scripts/evaluate_aider.py` with Aider installed and append results to `docs/AI_FRAMEWORK_EVALUATION.md`. Requires Aider + an LLM API key.
 - [ ] **Budget Governor: WASM Port (kingdonb/mecris#214)**: POC complete. Remaining: Fermyon Cloud variable config — human-required for deployment.
 - [ ] **Local Inference Pipeline (kingdonb/mecris#203)**: Integrate Ollama and build a cloud-fallback router.
 
 ## Infrastructure Notes (carried forward)
+- **add_familiar_id.py test pattern (post-session #90)**: Bootstrap `sys.modules.setdefault("psycopg2", MagicMock())` before importing. Use `_make_mock_cursor(fetchone_result)` + `_make_mock_conn(cursor)` helpers; set `__enter__`/`__exit__` on both. Patch `psycopg2.connect` with `patch("psycopg2.connect", return_value=conn)`. Inspect `cur.execute.call_args_list` for SQL content + params. Commit `e4d322e`.
+- **mcp_bridge.py fix (post-session #90)**: `isinstance(manifest, list)` check now runs at line 77, before `.get()`. Regression test `test_tools_list_bare_list_manifest` in `tests/test_mcp_bridge.py` — 17 tests total. Commit `39f0e93`.
 - **anthropic_cost_tracker.py test pattern (post-session #89)**: Import directly — `from scripts.anthropic_cost_tracker import AnthropicCostTracker`. Instantiate directly via `AnthropicCostTracker(admin_api_key="test-key")` (no sys.modules bootstrap needed — only `requests` and stdlib). Patch `requests.get`/`requests.post` for `_rate_limited_request` tests. Use `patch.object(t, "_rate_limited_request", return_value=fake)` for `get_usage`/`get_cost` tests. Use `patch.object(t, "get_usage", ...)` + `patch.object(t, "get_cost", ...)` for `get_budget_summary` tests. Cache expiry tests: manually set `t.usage_cache[key] = (data, time.time() - 61)`. Commit `7e612b6`.
 - **base_walk_reminder.py fix (post-session #89)**: Dead `consent_manager.log_message_sent()` block (lines 112-117) removed. `consent_manager` was never defined in `run_base_reminder()`; `log_message_sent` is not defined on any object in the codebase. Now only logs success via `logger.info()`. Commit `f77ac11`.
 - **chunk_session_logs.py test pattern (post-session #88)**: Import directly — `from scripts.chunk_session_logs import parse_log, write_chunk, write_preamble, extract_primary_activity, main`. No sys.modules bootstrap needed (stdlib only). Use `tmp_path` pytest fixture for file I/O tests. `main(argv)` accepts a list for direct invocation without subprocess. DATE_HEADER_RE handles em-dash (—), en-dash (–), plain hyphen (-), and emoji prefix (🏛️). Commit `0d4df1a`.
 - **obsidian_client.py test pattern (post-session #87)**: `_fresh_client()` helper: `ObsidianMCPClient.__new__(ObsidianMCPClient)` + set `c.host`, `c.port`, `c.base_url`, `c.vault_path`. Set `c.client = MagicMock()` with `get/post/aclose` as `AsyncMock`. Use `asyncio.run(...)` to call async methods from sync tests. For `get_goals`/`get_todos`/`get_daily_note`/`append_to_session_log`, use `patch.object(c, "get_file_content", ...)` and `patch.object(c, "append_content", ...)` with `side_effect=async_fn`. Note: `### Current Goals` does NOT match section regex `^#{1,3}\s*Goals?\s*$` — only bare `Goals` or `Goal` headers trigger goal parsing. Commit `19b81f9`.
 - **twilio_sender.py test pattern (post-session #86)**: Bootstrap `sys.modules` with MagicMocks for `twilio`, `twilio.rest`, `dotenv`, `usage_tracker`, `services`, `services.encryption_service` before importing `twilio_sender`. Set `_mock_twilio_rest.Client = MagicMock()` on the `twilio.rest` mock. Patch `twilio_sender.Client` per-test with `patch("twilio_sender.Client", mock_cls)`. For `smart_send_message`, patch `sys.modules["usage_tracker"]` with `MagicMock(get_tracker=MagicMock(return_value=tracker))`. Use `patch.dict(os.environ, _CREDS, clear=True)` to isolate env. For `smart_send_message` template pool: `patch("os.path.exists", return_value=True)` + `patch("builtins.open", mock_open(read_data=pool_json_str))`. Commit `3873a68`.
 - **fetch_groq_usage.py test pattern (post-session #85)**: `GroqUsageScraper.__new__(GroqUsageScraper)` + set `s.neon_url`, `s.email`, `s.password`, `s.cache_minutes`. Bootstrap `sys.modules.setdefault("psycopg2", MagicMock())` and `sys.modules.setdefault("playwright.sync_api", MagicMock())` before importing `fetch_groq_usage`. Patch via `patch.object(sys.modules["psycopg2"], "connect", ...)`. Configure `sys.modules["playwright.sync_api"].sync_playwright.return_value = mock_pw`. Use `_mock_playwright_ctx(mock_page)` helper to build the playwright context manager mock.
-- **mcp_bridge.py latent bug (post-session #84)**: `handle_request()` line 76 `manifest.get("tools", [])` raises `AttributeError` if server returns a bare JSON list. The `isinstance(manifest, list)` check at line 80 never executes. Not fixed (out of scope). The outer `except Exception` catches it and returns an error response.
 - **mcp_bridge test pattern (post-session #84)**: `MCPBridge.__new__(MCPBridge)` + set `b.server_process = None`, `b.base_url`. Patch `requests.get` for tools/list, `requests.post` for tools/call. Outer exception mock requires `side_effect` function (not blanket raise) since the catch block also calls `request.get("id")`.
 - **test_scheduler_jobs.py isolation fix (post-session #83)**: Module-level `_SCHEDULER_FAKES` bootstrap in `tests/test_scheduler_jobs.py` primes `psycopg2` and all `apscheduler.*` subpackages via `sys.modules.setdefault()`. Then forces `import scheduler` if not cached. The `services.*` packages are real and import cleanly — do NOT mock them in the bootstrap. Commit `8f0026a`.
 - **_start_leader_jobs test pattern (post-session #82)**: Use `_make_minimal_scheduler()` from `test_presence_scheduler.py`. Patch `ghost.presence.is_human_present` + `asyncio.sleep` (AsyncMock). `get_job.return_value = None` for unregistered, `MagicMock()` for registered. `get_job.side_effect` for sequential mock paths. Tests live in `TestSchedulerPresenceGuard`.

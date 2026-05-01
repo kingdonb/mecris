@@ -2741,3 +2741,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: `scripts/add_familiar_id.py` (42 lines) — deferred to next session (psycopg2 mock bootstrap needed). `scripts/check_beeminder.py` (22 lines) — thin BeeminderClient wrapper, not worth unit testing. AI Framework Evaluation (kingdonb/mecris#205) — requires Aider + API key. Budget Governor WASM port — human-required for deployment.
 
 **Next**: Empty Backlog Protocol continues — `add_familiar_id.py` has testable paths with mocked psycopg2 (early-return on missing NEON_DB_URL, column-exists vs absent paths). Alternatively, hunt for open bug/enhancement issues on kingdonb/mecris or search for TODO/FIXME in root .py files. Human must renew GITHUB_CLASSIC_PAT and open PR yebyen:main → kingdonb:main for sessions #64–#89.
+
+## 2026-05-01 🏛️ — mcp_bridge.py AttributeError fix + add_familiar_id.py test coverage (session #90)
+
+**Planned**: Fix `mcp_bridge.py:76` latent bug (isinstance check after .get() causes AttributeError on bare-list manifest) and write 4 unit tests for `scripts/add_familiar_id.py` (yebyen/mecris#325).
+
+**Done**: Oriented (NEXT_SESSION.md, git log, GitHub issues — no open issues on either repo; no needs-test/bug labels on kingdonb/mecris). Fixed mcp_bridge.py:76 — moved `isinstance(manifest, list)` check before `manifest.get("tools", [])` so bare-list responses are handled without AttributeError; added regression test `test_tools_list_bare_list_manifest`; 17 tests total pass, commit `39f0e93`. Wrote 5 unit tests for `scripts/add_familiar_id.py` in `tests/test_add_familiar_id.py`: `test_no_neon_db_url_returns_immediately` (early return, psycopg2.connect never called), `test_column_already_present_skips_alter` (column found — no ALTER), `test_column_absent_issues_alter` (column missing — ALTER TABLE ADD COLUMN executed), `test_with_default_user_id_issues_update` (UPDATE users SET familiar_id='yebyen'), `test_without_default_user_id_skips_update` (UPDATE skipped); 5/5 passed in 0.10s, commit `e4d322e`. Closes yebyen/mecris#325.
+
+**Skipped**: `scripts/check_beeminder.py` (22 lines) — thin BeeminderClient wrapper, not worth unit testing (documented as skip). AI Framework Evaluation (kingdonb/mecris#205) — requires Aider + API key. Budget Governor WASM port — human-required for deployment.
+
+**Next**: Empty Backlog Protocol — hunt for open bug/enhancement issues on kingdonb/mecris or search for TODO/FIXME in root .py files. Human must renew GITHUB_CLASSIC_PAT and open PR yebyen:main → kingdonb:main for sessions #64–#90.
