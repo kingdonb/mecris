@@ -2701,3 +2701,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: `twilio_sender.py` test coverage — carried forward (next bot-actionable item). AI Framework Evaluation (kingdonb/mecris#205) — requires Aider + API key.
 
 **Next**: `twilio_sender.py` test coverage (242 lines, no test file). Human must renew GITHUB_CLASSIC_PAT and open PR yebyen:main → kingdonb:main for sessions #64–#85.
+
+## 2026-05-01 🏛️ — twilio_sender.py test coverage: 27 unit tests (session #86)
+
+**Planned**: Write `tests/test_twilio_sender.py` covering `send_sms`, `send_whatsapp_template`, `send_message`, and `smart_send_message` — bootstrapping `twilio` into `sys.modules` since it is not installed in CI (yebyen/mecris#320).
+
+**Done**: Oriented (NEXT_SESSION.md, git log, GitHub issues — no open issues on yebyen/mecris; no needs-test/bug labels on kingdonb/mecris). Identified `twilio_sender.py` as the sole remaining bot-actionable test-coverage task. Created plan issue yebyen/mecris#320. Read source: `from twilio.rest import Client` at module level requires sys.modules bootstrap. Discovered two existing broken test files (`test_sms_mock.py`, `test_issue_52_template_mapping.py`) that fail with `ModuleNotFoundError: No module named 'twilio'` — they import without bootstrapping. Wrote 27 tests in 4 groups: TestSendSms (2: always-False disabled function), TestSendWhatsappTemplate (8: missing-creds, missing-to, prefix-added, prefix-preserved, user_id no-enc, user_id decrypt-success, user_id decrypt-fail, outer-exception), TestSendMessage (7: missing-creds, prefix-added, prefix-preserved, decrypt-success, decrypt-fail, outer-exception, default-from-number), TestSmartSendMessage (10: console-default, template-success, template-fail→freeform, both-fail→console, freeform-no-sid, pool-SID-override, vacation-mode, temp-regex, daily_alert_v1-field-order, no-pairs-defaults). All 27 passed in 0.14s. Commit `3873a68`. Closes yebyen/mecris#320.
+
+**Skipped**: AI Framework Evaluation (kingdonb/mecris#205) — requires Aider + API key. Budget Governor WASM port (kingdonb/mecris#214) — human-required for deployment. Local Inference Pipeline (kingdonb/mecris#203) — open-ended multi-session work.
+
+**Next**: Empty Backlog Protocol — test coverage sprint for previously identified untested modules is now complete. Next session must scan for new untested modules, TODO/FIXME comments, or open bug issues on kingdonb/mecris. Human must renew GITHUB_CLASSIC_PAT and open PR yebyen:main → kingdonb:main for sessions #64–#86.

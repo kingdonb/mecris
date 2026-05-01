@@ -1,13 +1,14 @@
-# Next Session: Test coverage for remaining untested modules
+# Next Session: Hunt for new test coverage targets or GitHub issues
 
-## Current Status (2026-05-01, post-session #85)
-- **fetch_groq_usage.py test coverage (session #85)**: COMPLETE. 27 unit tests in `tests/test_fetch_groq_usage.py` covering all branches of `GroqUsageScraper`. All 27 passed in 0.15s. Commit `0caa0f1`. Closes yebyen/mecris#319.
+## Current Status (2026-05-01, post-session #86)
+- **twilio_sender.py test coverage (session #86)**: COMPLETE. 27 unit tests in `tests/test_twilio_sender.py` covering all branches of send_sms, send_whatsapp_template, send_message, smart_send_message. All 27 passed in 0.14s. Commit `3873a68`. Closes yebyen/mecris#320.
 - **Full scheduler suite**: 52 tests across 5 files (test_presence_scheduler×21, test_scheduler_election×7, test_scheduler_jobs×24, test_scheduler_timer_reset×2[env-fail]) — all pass when run alphabetically or individually.
 - **GITHUB_CLASSIC_PAT still expired**: Bot cannot create PRs to kingdonb/mecris. Human must renew.
-- **Upstream sync**: yebyen/mecris is ahead of kingdonb/mecris by many sessions (#80–#85); history has diverged since session #66. Future syncs must cherry-pick new files only.
+- **Upstream sync**: yebyen/mecris is ahead of kingdonb/mecris by many sessions (#80–#86); history has diverged since session #66. Future syncs must cherry-pick new files only.
 - **Latent bug noted**: `mcp_bridge.py:76` — `manifest.get("tools", [])` raises `AttributeError` when the server returns a bare JSON list. Not fixed (out of scope); documented here.
 
 ## Verified This Session
+- [x] **twilio_sender.py test coverage (session #86)**: 27 unit tests. `PYTHONPATH=. python3 -m pytest tests/test_twilio_sender.py -v` → 27 passed in 0.14s. Commit `3873a68`. Closes yebyen/mecris#320. **COMPLETE**.
 - [x] **fetch_groq_usage.py test coverage (session #85)**: 27 unit tests. `PYTHONPATH=. python3 -m pytest tests/test_fetch_groq_usage.py -v` → 27 passed. Commit `0caa0f1`. Closes yebyen/mecris#319. **COMPLETE**.
 - [x] **mcp_bridge.py test coverage (session #84)**: 16 unit tests. `PYTHONPATH=. python3 -m pytest tests/test_mcp_bridge.py -v` → 16 passed. Commit `640ef58`. Closes yebyen/mecris#318. **COMPLETE**.
 - [x] **test_scheduler_jobs.py ordering dependency (session #83)**: Module-level `_SCHEDULER_FAKES` bootstrap added. `PYTHONPATH=. python3 -m pytest tests/test_scheduler_jobs.py -v` → 24 passed in isolation. `PYTHONPATH=. python3 -m pytest tests/test_presence_scheduler.py tests/test_scheduler_election.py tests/test_scheduler_jobs.py -v` → 52 passed. Commit `8f0026a`. Closes yebyen/mecris#317. **COMPLETE**.
@@ -40,12 +41,13 @@
 - [ ] **Verify log-message-py in Cloud**: Once platforms are ready, confirm audit logs appear in cloud KV.
 
 ### 🤖 Bot-actionable (can be resolved in future sessions)
-- [ ] **twilio_sender.py test coverage**: `twilio_sender.py` (242 lines) — no test file exists. Likely uses `twilio` client; inject into `sys.modules` if not installed.
+- [ ] **Test coverage sprint complete — apply Empty Backlog Protocol**: All previously identified untested modules now have test files. Next session should: (1) scan for new Python modules added since #86 without test coverage; (2) search for `TODO`/`FIXME` comments; (3) hunt for open `bug`/`good-first-issue` labels on kingdonb/mecris. See CLAUDE.md Empty Backlog Protocol.
 - [ ] **AI Framework Evaluation (kingdonb/mecris#205)**: Remaining: run `scripts/evaluate_aider.py` with Aider installed and append results to `docs/AI_FRAMEWORK_EVALUATION.md`. Requires Aider + an LLM API key.
 - [ ] **Budget Governor: WASM Port (kingdonb/mecris#214)**: POC complete. Remaining: Fermyon Cloud variable config — human-required for deployment.
 - [ ] **Local Inference Pipeline (kingdonb/mecris#203)**: Integrate Ollama and build a cloud-fallback router.
 
 ## Infrastructure Notes (carried forward)
+- **twilio_sender.py test pattern (post-session #86)**: Bootstrap `sys.modules` with MagicMocks for `twilio`, `twilio.rest`, `dotenv`, `usage_tracker`, `services`, `services.encryption_service` before importing `twilio_sender`. Set `_mock_twilio_rest.Client = MagicMock()` on the `twilio.rest` mock. Patch `twilio_sender.Client` per-test with `patch("twilio_sender.Client", mock_cls)`. For `smart_send_message`, patch `sys.modules["usage_tracker"]` with `MagicMock(get_tracker=MagicMock(return_value=tracker))`. Use `patch.dict(os.environ, _CREDS, clear=True)` to isolate env. For `smart_send_message` template pool: `patch("os.path.exists", return_value=True)` + `patch("builtins.open", mock_open(read_data=pool_json_str))`. Commit `3873a68`.
 - **fetch_groq_usage.py test pattern (post-session #85)**: `GroqUsageScraper.__new__(GroqUsageScraper)` + set `s.neon_url`, `s.email`, `s.password`, `s.cache_minutes`. Bootstrap `sys.modules.setdefault("psycopg2", MagicMock())` and `sys.modules.setdefault("playwright.sync_api", MagicMock())` before importing `fetch_groq_usage`. Patch via `patch.object(sys.modules["psycopg2"], "connect", ...)`. Configure `sys.modules["playwright.sync_api"].sync_playwright.return_value = mock_pw`. Use `_mock_playwright_ctx(mock_page)` helper to build the playwright context manager mock.
 - **mcp_bridge.py latent bug (post-session #84)**: `handle_request()` line 76 `manifest.get("tools", [])` raises `AttributeError` if server returns a bare JSON list. The `isinstance(manifest, list)` check at line 80 never executes. Not fixed (out of scope). The outer `except Exception` catches it and returns an error response.
 - **mcp_bridge test pattern (post-session #84)**: `MCPBridge.__new__(MCPBridge)` + set `b.server_process = None`, `b.base_url`. Patch `requests.get` for tools/list, `requests.post` for tools/call. Outer exception mock requires `side_effect` function (not blanket raise) since the catch block also calls `request.get("id")`.
