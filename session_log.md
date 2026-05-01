@@ -2691,3 +2691,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: AI Framework Evaluation (kingdonb/mecris#205) — requires Aider + API key. Budget Governor WASM port (kingdonb/mecris#214) — human-required for deployment. Local Inference Pipeline (kingdonb/mecris#203) — open-ended.
 
 **Next**: Continue test coverage for remaining untested files: `fetch_groq_usage.py` (263 lines, DB + Playwright), `twilio_sender.py` (242 lines). Human must renew GITHUB_CLASSIC_PAT and open PR yebyen:main → kingdonb:main for sessions #64–#84.
+
+## 2026-05-01 🏛️ — fetch_groq_usage.py test coverage: 27 unit tests for GroqUsageScraper (session #85)
+
+**Planned**: Write `tests/test_fetch_groq_usage.py` covering all methods of `GroqUsageScraper` — `get_cached_usage()`, `cache_usage_data()`, `scrape_usage_data()`, `get_usage_data()`, `_get_cache_age_minutes()` — using psycopg2 and Playwright mocks (yebyen/mecris#319).
+
+**Done**: Oriented (NEXT_SESSION.md, git log, GitHub issues — no open issues anywhere). Identified `fetch_groq_usage.py` (263 lines, no test file) as top bot-actionable item. Created plan issue yebyen/mecris#319. Read source: `__init__` reads env vars; psycopg2 and playwright imported inline within methods (not at module level). Bootstrap `sys.modules` with MagicMock fakes for `psycopg2`, `psycopg2.extras`, `playwright`, `playwright.sync_api` (same pattern as test_scheduler_jobs.py). Patched via `patch.object(sys.modules["psycopg2"], "connect", ...)` and direct `.return_value` assignment on `sys.modules["playwright.sync_api"].sync_playwright`. Wrote 27 tests in 6 groups: TestGetCachedUsage (5), TestCacheUsageData (4), TestScrapeUsageData (7), TestGetUsageData (4), TestGetCacheAgeMinutes (5), TestFetchGroqUsage (2). All 27 passed in 0.15s. Commit `0caa0f1`. Closes yebyen/mecris#319.
+
+**Skipped**: `twilio_sender.py` test coverage — carried forward (next bot-actionable item). AI Framework Evaluation (kingdonb/mecris#205) — requires Aider + API key.
+
+**Next**: `twilio_sender.py` test coverage (242 lines, no test file). Human must renew GITHUB_CLASSIC_PAT and open PR yebyen:main → kingdonb:main for sessions #64–#85.
