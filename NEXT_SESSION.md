@@ -1,13 +1,14 @@
-# Next Session: Hunt open issues on kingdonb/mecris or investigate debug scripts for coverage
+# Next Session: All scripts covered — hunt for open issues or TODO/FIXME in source
 
-## Current Status (2026-05-02, post-session #93)
-- **ClozemasterScraper test coverage (session #93)**: COMPLETE. 28 unit tests in `tests/test_clozemaster_scraper.py` — all passed in 0.32s. Combined with 5 idempotency tests: 33 total for clozemaster. Commit `f66bf15`. Closes yebyen/mecris#328.
-- **Full scheduler suite**: 52 tests across 5 files — all pass when run alphabetically or individually.
+## Current Status (2026-05-02, post-session #94)
+- **base_walk_reminder.py test coverage (session #94)**: COMPLETE. 16 unit tests in `tests/test_base_walk_reminder.py` — all passed in 0.10s. Commit `4107364`. Closes yebyen/mecris#329.
+- **Full scripts coverage**: All major scripts now covered. Remaining documented skips: `check_beeminder.py` (22 lines, thin wrapper), debug scripts (not worth unit testing).
 - **GITHUB_CLASSIC_PAT still expired**: Bot cannot create PRs to kingdonb/mecris. Human must renew.
-- **Upstream sync**: yebyen/mecris is ahead of kingdonb/mecris by many sessions (#80–#93); history has diverged since session #66. Future syncs must cherry-pick new files only.
+- **Upstream sync**: yebyen/mecris is ahead of kingdonb/mecris by many sessions (#80–#94); history has diverged since session #66. Future syncs must cherry-pick new files only.
 - **No open issues on either repo**: kingdonb/mecris has no bug/needs-test/pr-review labels. yebyen/mecris has no open issues.
 
 ## Verified This Session
+- [x] **base_walk_reminder.py test coverage (session #94)**: 16 unit tests. `PYTHONPATH=. python3 -m pytest tests/test_base_walk_reminder.py -v` → 16 passed in 0.10s. Covers: `check_walk_needed` (4 tests: activity-today, no-activity, BeeminderClient exception, constructor error), `run_base_reminder` (12 tests: no phone env, walk done, user not in DB, not opted in, outside time window, inside window sends, vacation mode content, normal mode content, send failure log, window boundary start, window boundary end, alert header). Commit `4107364`. Closes yebyen/mecris#329. **COMPLETE**.
 - [x] **ClozemasterScraper test coverage (session #93)**: 28 unit tests. `PYTHONPATH=. python3 -m pytest tests/test_clozemaster_scraper.py -v` → 28 passed in 0.32s. Combined with idempotency file: 33 passed. Commit `f66bf15`. **COMPLETE**.
 - [x] **bump_version.py + check_neon_budget.py + cloud_enable_beeminder.py test coverage (session #92)**: 35 unit tests in 3 new test files — all passed in 0.36s. Commit `1a1732b`. Closes yebyen/mecris#327.
 - [x] **verify_docs_graph.py test coverage (session #91)**: 35 unit tests. `PYTHONPATH=. python3 -m pytest tests/test_verify_docs_graph.py -v` → 35 passed in 0.72s. Commit `e98b69a`. Closes yebyen/mecris#326.
@@ -50,7 +51,7 @@
 - [ ] **Verify log-message-py in Cloud**: Once platforms are ready, confirm audit logs appear in cloud KV.
 
 ### 🤖 Bot-actionable (can be resolved in future sessions)
-- [ ] **Empty Backlog Protocol — remaining coverage hunt (session #93)**: All major scripts now covered. Remaining candidates: `scripts/check_beeminder.py` (22 lines — documented skip, thin wrapper). Debug scripts (`debug_twilio_messages.py`, `debug_whatsapp_content.py`, `log_groqspend.py`, `mcp_cost_endpoint.py`) likely not worth unit testing. Hunt for open `bug`/`good-first-issue` labels on kingdonb/mecris.
+- [ ] **Empty Backlog Protocol — coverage complete (session #94)**: All major scripts now covered. Documented skips: `scripts/check_beeminder.py` (22 lines, thin wrapper), debug scripts. Next session: hunt for open `bug`/`good-first-issue` labels on kingdonb/mecris or search source for TODO/FIXME in `services/` and `lib/`.
 - [ ] **AI Framework Evaluation (kingdonb/mecris#205)**: Remaining: run `scripts/evaluate_aider.py` with Aider installed and append results to `docs/AI_FRAMEWORK_EVALUATION.md`. Requires Aider + an LLM API key.
 - [ ] **Budget Governor: WASM Port (kingdonb/mecris#214)**: POC complete. Remaining: Fermyon Cloud variable config — human-required for deployment.
 - [ ] **Local Inference Pipeline (kingdonb/mecris#203)**: Integrate Ollama and build a cloud-fallback router.

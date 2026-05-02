@@ -2781,3 +2781,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: `scripts/check_beeminder.py` (22 lines) — thin wrapper, documented skip. Debug scripts (`debug_twilio_messages.py`, `debug_whatsapp_content.py`, `log_groqspend.py`, `mcp_cost_endpoint.py`) — not worth unit testing. AI Framework Evaluation (kingdonb/mecris#205) — requires Aider + API key. Budget Governor WASM port — human-required for deployment.
 
 **Next**: All major scripts now covered. Hunt for open bug/enhancement issues on kingdonb/mecris. Human must renew GITHUB_CLASSIC_PAT and open PR yebyen:main → kingdonb:main for sessions #64–#93.
+
+## 2026-05-02 🏛️ — base_walk_reminder.py test coverage (session #94)
+
+**Planned**: Write unit tests for `scripts/base_walk_reminder.py` covering `check_walk_needed()` and `run_base_reminder()` with mocked external dependencies (yebyen/mecris#329).
+
+**Done**: Oriented (NEXT_SESSION.md, git log, GitHub issues — no open issues on either repo). Applied Empty Backlog Protocol per session #93 handoff. Read `base_walk_reminder.py` (115 lines). Identified two testable functions: `check_walk_needed()` (asyncio.run over BeeminderClient.has_activity_today) and `run_base_reminder()` (compliance pipeline: phone check, walk check, user-in-db, sms_opted_in, time window, message dispatch). Bootstrap: `sys.modules.setdefault()` for `dotenv`, `twilio_sender`, `beeminder_client`, `usage_tracker` before import; `patch.object(bwr, "BeeminderClient", ...)` and `patch.object(bwr, "smart_send_message", ...)` per-test. Wrote 16 tests in 2 classes: TestCheckWalkNeeded (4: activity-today→False, no-activity→True, exception→True fail-safe, constructor error→True fail-safe), TestRunBaseReminder (12: no phone env, walk done skips send, user not in DB skips send, not opted-in skips send, outside time window skips send, inside window calls send, vacation mode uses "Activity log" string, normal mode uses "Physical activity" string, send failure logs error, boundary at start_hour inclusive, boundary at end_hour inclusive, message starts with "Mecris System Alert"). All 16 passed in 0.10s. Commit `4107364`. Closes yebyen/mecris#329.
+
+**Skipped**: `scripts/check_beeminder.py` (22 lines) — thin wrapper, documented skip. Debug scripts — not worth unit testing. AI Framework Evaluation (kingdonb/mecris#205) — requires Aider + API key. Budget Governor WASM port — human-required for deployment.
+
+**Next**: All major scripts covered. Hunt for open bug/enhancement issues on kingdonb/mecris or TODO/FIXME in `services/` and `lib/`. Human must renew GITHUB_CLASSIC_PAT and open PR yebyen:main → kingdonb:main for sessions #64–#94.
