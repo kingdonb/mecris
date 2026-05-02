@@ -108,13 +108,6 @@ def run_base_reminder():
     if result.get("sent"):
         method = result.get("method", "unknown")
         logger.info(f"Message sent successfully via {method}.")
-        # Log the message to enforce daily limits in the consent manager
-        consent_manager.log_message_sent(
-            phone_number=target_phone,
-            message=message,
-            message_type="walk_reminder",
-            delivery_method=method
-        )
     else:
         logger.error("Failed to send message.")
 

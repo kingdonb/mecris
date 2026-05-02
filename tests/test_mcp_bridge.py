@@ -133,6 +133,20 @@ class TestHandleRequestToolsList:
         assert resp["error"]["code"] == -32603
         assert "Invalid JSON" in resp["error"]["message"]
 
+    def test_tools_list_bare_list_manifest(self):
+        """Regression: server returns a bare JSON list instead of a dict — must not AttributeError."""
+        b = _bridge()
+        tools = [{"name": "ping", "description": "pong", "inputSchema": {}}]
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = tools  # bare list, no .get()
+
+        with patch("requests.get", return_value=mock_resp):
+            resp = b.handle_request(_req("tools/list"))
+
+        assert resp["id"] == 1
+        assert resp["result"]["tools"] == tools
+
     def test_tools_list_allowed_tools_format(self):
         """allowedTools key triggers conversion to standard tool dicts."""
         b = _bridge()
