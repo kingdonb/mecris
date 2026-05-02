@@ -2801,3 +2801,13 @@ This document summarizes the collaborative debugging session to establish a func
 **Skipped**: `initialize_neon.py` (reads external schema file — harder to test without filesystem fixture, minor value). `mcp_cost_endpoint.py` (thin Flask wrapper, no logic). Debug scripts. AI Framework Evaluation (kingdonb/mecris#205) — requires Aider + API key. Budget Governor WASM port — human-required for deployment.
 
 **Next**: All major scripts and migrations now covered. Hunt for open bug/enhancement issues on kingdonb/mecris. Human must renew GITHUB_CLASSIC_PAT and open PR yebyen:main → kingdonb:main for sessions #64–#95.
+
+## 2026-05-02 🏛️ — initialize_neon.py test coverage (session #96)
+
+**Planned**: Write 3 unit tests for `scripts/initialize_neon.py` covering missing NEON_DB_URL early return, schema file absent early return, and successful execution (connects/reads/executes/commits). yebyen/mecris#332.
+
+**Done**: Oriented (NEXT_SESSION.md, git log, GitHub issues — no open bug/needs-test/pr-review issues on either repo). Applied Empty Backlog Protocol. Identified `initialize_neon.py` as the last documented bot-actionable coverage gap. Read the script (40 lines, 3 clear paths). Bootstrapped `sys.modules` with MagicMock for `psycopg2` and `dotenv`. Used `patch.object(sys.modules["psycopg2"], "connect", ...)` per-test. Used `mock_open` + `patch("os.path.exists", ...)` for filesystem isolation. All 3 tests passed in 0.46s. Commit `4f765ab`. Closes yebyen/mecris#332.
+
+**Skipped**: Nothing — task was appropriately scoped for a single session. Remaining intentional skips (debug scripts, thin wrappers) are documented in NEXT_SESSION.md.
+
+**Next**: Coverage is now complete for all scripts. Hunt for open bug/enhancement issues on kingdonb/mecris epics, or search services/ and lib/ for TODO/FIXME. Human must renew GITHUB_CLASSIC_PAT and open PR yebyen:main → kingdonb:main for sessions #64–#96.
