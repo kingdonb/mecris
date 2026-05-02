@@ -95,7 +95,7 @@ jobs:
         run: |
           set +e
           set -o pipefail
-          .venv/bin/pytest tests/ -v --tb=short 2>&1 | tee /tmp/pytest-output.txt
+          .venv/bin/pytest tests/ -q --tb=short 2>&1 | tee /tmp/pytest-output.txt
           echo "exit_code=$?" >> $GITHUB_OUTPUT
           set +o pipefail
           set -e
