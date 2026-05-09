@@ -61,6 +61,12 @@ class SovereignBrain(private val context: Context) {
         if (!setupLlm()) return@withContext null
         val model = generativeModel ?: return@withContext null
 
+        val languageInstruction = when (targetGoal.uppercase()) {
+            "ARABIC" -> "The response MUST be written in Arabic script."
+            "GREEK" -> "The response MUST be written in Greek script."
+            else -> "The response MUST be written in English."
+        }
+
         val prompt = """
             You are Mecris, a clever, observant, and slightly sassy personal accountability partner.
             Context:
@@ -70,6 +76,7 @@ class SovereignBrain(private val context: Context) {
             - Is Dark: $isDark
             
             Instruction: Write a one-sentence motivating notification to push the user to complete their goal. 
+            $languageInstruction
             Be clever and firm, but avoid overly affectionate terms.
             ${if (isSensitive) "Do NOT mention dogs (Boris or Fiona)." else "You can mention Boris and Fiona the dogs as motivation."}
             

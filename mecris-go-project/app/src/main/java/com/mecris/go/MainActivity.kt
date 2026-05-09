@@ -343,6 +343,9 @@ fun MecrisDashboard(
     BackHandler(enabled = showSystemHealth && !showProfileSettings) {
         showSystemHealth = false
     }
+    BackHandler(enabled = showSovereignLab && !showProfileSettings && !showSystemHealth) {
+        showSovereignLab = false
+    }
 
     val forceSync = {
         // Trigger parent refresh which will bypass cache
@@ -2338,6 +2341,51 @@ fun SovereignLabScreen(
         // 3. LLM Interaction Block
         Text("LLM BRAIN (GEMMA-2B)", style = MaterialTheme.typography.labelSmall, color = Color.Gray)
         Spacer(modifier = Modifier.height(8.dp))
+        
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            val scenarios = listOf("ARABIC", "GREEK", "WALK")
+            scenarios.forEach { scenario ->
+                Button(
+                    onClick = {
+                        scope.launch {
+                            isThinking = true
+                            error = null
+                            try {
+                                val isSensitive = aggregateStatus?.vacation_mode_until != null
+                                narrativeResult = brain.generateWithContext(
+                                    targetGoal = scenario,
+                                    isSensitive = isSensitive,
+                                    weatherConditions = weatherData?.conditions,
+                                    isDark = weatherData?.is_dark ?: false
+                                )
+                                if (narrativeResult == null) error = "Model not found on device!"
+                            } catch (e: Exception) {
+                                error = e.message
+                            } finally {
+                                isThinking = false
+                            }
+                        }
+                    },
+                    enabled = !isThinking,
+                    modifier = Modifier.weight(1f),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (scenario == "ARABIC") Color(0xFFFFD600) 
+                                        else if (scenario == "GREEK") Color(0xFF00E5FF) 
+                                        else Color(0xFF00C853),
+                        contentColor = Color.Black
+                    ),
+                    contentPadding = PaddingValues(4.dp)
+                ) {
+                    Text(scenario, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
         Button(
             onClick = {
                 scope.launch {
@@ -2365,9 +2413,9 @@ fun SovereignLabScreen(
             },
             enabled = !isThinking,
             modifier = Modifier.fillMaxWidth(),
-            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00E5FF), contentColor = Color.Black)
+            colors = ButtonDefaults.buttonColors(containerColor = Color.White.copy(alpha = 0.1f), contentColor = Color.White)
         ) {
-            Text(if (isThinking) "THINKING..." else "EXECUTE INFERENCE")
+            Text(if (isThinking) "AUTO-INFERENCE" else "RUN AUTO-HEURISTIC", fontSize = 12.sp)
         }
 
         if (error != null) {

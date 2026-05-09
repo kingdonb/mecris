@@ -111,9 +111,9 @@ class CoachingService:
 
         messages = [
             f"📈 Arabic Pace: {done}/{target}. You've got the lever at {multiplier}x. Time to close the gap. يلا، افتح كلوزماستر الآن! 😤",
-            f"💀 Arabic: {done}/{target} reviews done. You set the pressure to {multiplier}x yourself. لا عذر — open Clozemaster NOW. 🔪",
-            f"⚖️ Arabic Progress: {done}/{target}. Lever: {multiplier}x. اعمل المراجعات! The math doesn't add up until you do the work. 🏃‍♂️",
-            f"🚨 {done}/{target} Arabic reviews. استيقظ! You're running {multiplier}x pressure and coasting. افتح كلوزماستر. 😤",
+            f"💀 Arabic: {done}/{target} reviews done. You set the pressure to {multiplier}x yourself. لا عذر — افتح كلوزماستر فوراً. 🔪",
+            f"⚖️ Arabic Progress: {done}/{target}. Lever: {multiplier}x. اعمل المراجعات! الرياضيات لا تكذب، عليك بالعمل. 🏃‍♂️",
+            f"🚨 {done}/{target} Arabic reviews. استيقظ! أنت تعمل بضغط {multiplier}x وتتهاون. افتح كلوزماستر. 😤",
         ]
         
         return CoachingInsight(
@@ -128,9 +128,10 @@ class CoachingService:
         done = greek.get("daily_completions", 0)
         
         messages = [
-            f"📈 Greek Pace: {done}/{target}. Lever: {multiplier}x. You need to keep the flow up! 🇬🇷",
-            f"⚡ Greek Progress: {done}/{target}. You've set the pace to {multiplier}x. Time to hit the books. 🏛️",
-            f"🔥 Greek Momentum: {done}/{target}. Target is {target} today. Keep that flame alive! 🕯️"
+            f"📈 Greek Pace: {done}/{target}. Lever: {multiplier}x. Time to hit the books! Έλα, κάνε τις κάρτες σου τώρα! 🏛️",
+            f"⚡ Greek Progress: {done}/{target}. You've set the pace to {multiplier}x. No excuses! Άνοιξε το Clozemaster ΑΜΕΣΩΣ. 🏛️",
+            f"🔥 Greek Momentum: {done}/{target}. Target is {target} today. Keep that flame alive! Κράτα τη φλόγα αναμμένη! 🕯️",
+            f"🚨 {done}/{target} Greek reviews. Ξύπνα! Τρέχεις με {multiplier}x πίεση. Κάνε την προσπάθεια! 😤"
         ]
         
         return CoachingInsight(
