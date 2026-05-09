@@ -9,10 +9,10 @@
 uv pip install -e ".[dev]" pytest-cov 2>/dev/null || uv pip install -r requirements.txt "mcp[cli]>=1.26.0" "apscheduler>=3.11.0" "sqlalchemy>=2.0.48" pytest-cov pytest-asyncio
 
 ## Test Command
-PYTHONPATH=. .venv/bin/pytest
+PYTHONPATH=. .venv/bin/pytest -q --tb=short
 
 ## Single Test Command
-PYTHONPATH=. .venv/bin/pytest <file_path> -v
+PYTHONPATH=. .venv/bin/pytest <file_path> -q --tb=short
 
 ## Coverage Command
 PYTHONPATH=. .venv/bin/pytest --cov=. --cov-report=term-missing
