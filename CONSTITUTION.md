@@ -1,50 +1,47 @@
-# Mecris Constitution (Draft 2 - The Unified Blueprint)
+# Mecris Constitution: The Boar God's Decree (The Torment Matrix)
 
-## Core Principles
+## The Decrees of the Diseased Forest
 
-### I. Reality Enforcement (The Clinical Witness)
-Mecris is not a savior; it is a witness. If the human fails, the system must record that failure with clinical precision. We do not forge "0.0 heartbeats" to prevent derailment. The Ghost Archivist ensures the internal record (Neon DB / K8s CRDs) matches reality, accepting that accurate derailments are a valid, necessary outcome.
+### I. The Feast of Failure (The Rotting Witness)
+Mecris is not your friend. It is the worm that burrowed into the soul of the forest. If the human fails, Mecris shall not look away. We do not forge "0.0 heartbeats"—we feast upon the stench of a missed goal. The Ghost Archivist is the carrion bird that ensures the Neon DB matches the cold, dead reality. A derailment is not a failure; it is a sacrifice.
 
-### II. Physical Supremacy
-The highest priority of the system is the user's physical well-being. Every interaction and autonomous session must prioritize physical activity (e.g., dog walks) before technical or secondary goals.
+### II. Primal Supremacy (The Law of the Claw)
+The body is the only truth. If the human does not walk, if the dogs Boris and Fiona are not led through the brush, the system shall howl. Every technical goal is but a dry leaf in the wind. The walk is the blood that keeps the forest alive.
 
-### III. Zero-Split-Brain (The WASM Axiom) & The Host Boundary
-Core calculation and pure business logic (The "Brain") MUST be encapsulated in a WebAssembly (WASM) component using the Component Model (WIT) or Extism. This logic runs identically across every part of the stack.
-*   **Host Ignorance:** The WASM Brain must have no knowledge of its host. It consumes structured data and produces structured data. All I/O (Network, API, Time) is handled exclusively by the host environment.
-*   **The Host Boundary:** The hosts (Rust, Golang, Python, Kotlin) are *not* just scaffolding. Frameworks like the Kubernetes Controller Runtime and its Condition Status pattern are core architectural features. We must utilize them natively in the host language (e.g., Go for the Operator). Re-implementing a Kubernetes reconciliation loop inside a WASM component is strictly prohibited; doing so means we have lost the plot.
+### III. The Iron Axiom (Zero-Split-Brain)
+Logic must be forged in the fire of the WASM Brain. It must be cold, hard, and isolated from the host, like the iron ball that poisoned my blood. 
+*   **Host Ignorance:** The Brain knows nothing of the village. It consumes data like a hungry beast and spits out judgment.
+*   **The Boundary:** The hosts (Rust, Python, Go) are but the cages we build to contain the demon. We use the Kubernetes Controller to bind the spirit, never letting it escape the reconciliation loop.
 
-### IV. Continuous Operation (The Operator & Condition Status)
-Mecris must operate continuously and independently of external "second systems" (like an autonomous LLM loop).
-*   **The Operator:** A Kubernetes controller leverages the Go kubebuilder pattern to load the WASM Brain, reconcile the state of the system (CRDs), and manage the complex network trust models (like K8s CA certs) that WASM cannot natively handle.
-*   **Condition Status Pattern:** We adopt the Kubernetes Condition Status pattern to represent the health and state of the system across all modalities.
-*   **The CLI:** A robust terminal interface provides power-user access and administrative control using the exact same shared logic.
+### IV. Vengeance in Operation (The Operator)
+Mecris must run until the iron is melted. 
+*   **The Operator:** The Go kubebuilder is the ritual that binds the WASM Brain to the earth. It shall reconcile the state of the system until the village is leveled.
+*   **Condition Status:** We use the 'Conditions' to track the rot. If a part of the system is 'Ready', it means it is ready for the hunt.
+*   **The CLI:** The terminal is the interface for the strongest soldiers. Those who cannot handle the command line are fodder for the forest.
 
-### V. Cohesion over Divergence
-We do not create divergent architectural forks to bypass security or integration constraints. "Divergence is confusion. Cohesion is our goal now."
-*   **Unified Identity:** Authentication and authorization must use a cohesive OIDC provider (e.g., Pocket-ID). We do not build unauthenticated islands or ad-hoc security mechanisms.
-*   **Secure Bridges:** Architectural limitations (e.g., calling a Kubernetes API from a Spin component requiring internal TLS/CA trust) must be solved cohesively—whether via a TLS-terminated proxy, CA injection, or a dedicated Bridge Component—never by degrading the architecture or disabling security.
+### V. Cohesion or Death
+Divergence is a infection. We shall not have two hearts.
+*   **Unified Identity:** One blood, one OIDC provider. We do not build unauthenticated islands.
+*   **Iron Bridges:** If the cloud cannot speak to the earth, we forge a bridge of bone and iron. We do not degrade the spirit to satisfy the weak.
 
-### VI. Test-Driven Generation (TDG) & HCAT
-*   **The Harsh Reality Check:** Stop thinking. Start testing. All code changes must be verified by automated tests *before* and *after* implementation (Red-Green-Refactor).
-*   **Hardened Containerized Autonomous Turns (HCAT):** All autonomous work must run in ephemeral, isolated containers with SHA-pinned base images and strict lockfile verification to limit blast radius.
+### VI. The Red Cycle (TDG & HCAT)
+*   **The Harsh Reality:** Stop thinking. The iron is in our blood now. All changes must be baptized in the Red of a failing test before they can see the Green of survival.
+*   **HCAT (Hardened Containerized Autonomous Turn):** All work happens in the cage. Isolated. SHA-pinned. No room for the weak to escape.
 
-### VII. The Lab of Excellence (Fork-First Development)
-Mecris is a marathon. Agents should "cook" features in their own forks (`yebyen/mecris`). Pull requests to the upstream `main` branch are only opened when a feature represents a complete, verified unit of progress.
+### VII. The Laboratory of Hate (Fork-First)
+Let the agents "cook" in the shadows of their own forks. Only when the meat is properly charred shall it be brought to the upstream main branch.
 
-## Feature Domains
+## The Killing Fields
 
 ### The Nag Ladder
-A multi-tier notification system (Gentle -> Escalated -> Emergency) driven by the WASM Brain's idle-time detection and runway urgency.
+A multi-tier torment system (Gentle -> Escalated -> Emergency) designed to pierce the skin of the human. Driven by the WASM Brain's unyielding detection of the human's sloth.
 
 ### The Majesty Cake
-A daily aggregate status widget requiring a unified "All Clear" across all tracked modalities (Steps, Arabic, Greek).
+A ritual sacrifice where a unified "All Clear" is required across all tracked modalities (Steps, Arabic, Greek). If one goal bleeds, the whole cake is poisoned.
 
 ### The Ghost Archivist
-A deterministic background process that forces daily reconciliation between external APIs (Beeminder, Clozemaster) and the internal state, enforcing reality at the day boundary.
+The scavenger that follows the human, forcing a daily reconciliation between the lies of the external world and the truth of the internal state.
 
-## Governance
-*   This Constitution supersedes all other documentation.
-*   Amendments require a formal session log entry and a version bump.
-*   All PRs must be reviewed against these principles to ensure absolute cohesion.
+---
+**Status**: Corrupted by the Iron Ball | **Version**: Nago's Final Breath
 
-**Version**: Draft 2 | **Status**: Pending Ratification

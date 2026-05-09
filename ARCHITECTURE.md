@@ -1,105 +1,71 @@
-# 🏗️ Mecris Architecture
+# 🐗 The Architecture of the Diseased Forest (Mecris)
 
-*System design for autonomous SMS-based accountability system*
+*The blueprint of a poisoned spirit seeking vengeance through accountability.*
 
-> **Vision**: Mecris operates as an invisible, always-available accountability partner accessible entirely through SMS conversations. Users don't know or care about the technical infrastructure - they simply text their accountability system and receive intelligent, context-aware responses.
+> **The Vision of the Blind God**: Mecris is a parasite. It lives in the pockets of the weak, feeding on their failure. The humans believe they are building a partner; they are building their own judge. The forest remembers every missed step.
 
-## Overview
+## The Great Conflict (Overview)
 
-Mecris is a production-grade accountability system featuring a 30-tool MCP server and a WASM-based cloud brain that:
-- Acts as a **Persistence Hub** managing a central Neon Postgres database.
-- Runs **Time-Driven** logic (Akamai Cron) for autonomous nagging and failover.
-- Provides **Event-Driven** endpoints (Fermyon) for on-demand synchronization.
-- Integrates seamlessly with personal data sources (Health Connect, Google Fit, Obsidian).
-- Operates under a **State-over-Streams** observability mandate.
+Mecris is forged in the fire of the **Iron Town** (The Cloud) but rooted in the soil of the **Ancient Forest** (The Local Data). It is a system designed to survive the death of the village.
+- **The Forest Floor (Neon DB)**: The rotting mulch of every failure and every success. It is the only truth.
+- **The Iron Heart (Akamai/Fermyon)**: The machines that never sleep, howling into the digital void to remind the humans of their sloth.
+- **The Standard of Bone (JSON/WIT)**: The language of the dead that allows the machine to speak to the spirit.
 
-## System Architecture
+## The Torment Matrix (System Architecture)
 
-The architecture follows a **Peer Persistence** model. Both the Local Host (Python MCP) and the Cloud Hub (WASM API) maintain direct lines to the central Neon database, ensuring the system can survive a total loss of the cloud APIs.
+The architecture follows the **Path of the Predator**. The Local Host and the Cloud Hub are but the two tusks of the same beast, both seeking the same throat: the Neon Database.
 
 ```text
                                ┌─────────────────┐
-                               │   NEON DB       │
-                               │ (Central State) │
+                               │   THE ABYSS     │
+                               │   (Neon DB)     │
                                └─┬─────────────┬─┘
-                  (Cloud Path)   │             │   (Local Path)
+                  (Iron Path)    │             │   (Forest Path)
                 ┌────────────────┴──────┐      ▼────────────────┐
-                │   CLOUD HUB (WASM API)│      │   LOCAL MCP    │
+                │   IRON TOWN (CLOUD)   │      │   LOCAL DEN    │
                 ├───────────────────────┤      │ (Python / SQL) │
-                │   FREE: FERMYON       │      └──────┬─────────┘
-                │   PRO: AKAMAI CRON    │             │
+                │   Worms of Fermyon    │      └──────┬─────────┘
+                │   Iron of Akamai      │             │
                 └───────────┬───────────┘             │
                             │                         │
            ┌────────────────┴─────────────────────────┴──────────────┐
-           │              THE STANDARD BUS (JSON / WIT)              │
+           │              THE STANDARD OF BONE (JSON)                │
            └────┬───────────────┬─────────────────┬─────────────┬────┘
                 ▼               ▼                 ▼             ▼
          ┌────────────┐  ┌─────────────┐  ┌───────────────┐  ┌─────────────┐
-         │ MOBILE GO  │  │ AGENTS/BOTS │  │ HUMAN / CLI   │  │ CI TRIGGERS │
-         │ (Sensors)  │  │ (Narrators) │  │ (Gemini/Term) │  │ (GHA/Hooks) │
+         │ THE SCENT  │  │ THE HUNTERS │  │ THE SACRIFICE │  │ THE RITUALS │
+         │ (Sensors)  │  │ (Narrators) │  │ (Human / CLI) │  │ (CI Hooks)  │
          └────────────┘  └─────────────┘  └───────────────┘  └─────────────┘
 ```
 
-## Core Components
+## The Beasts of the Field
 
-### The Hub Layer (Persistence & Logic)
-- **Local Host (Python MCP)**: The primary peer for human interaction. It bridges local data (Obsidian vault, filesystem) and handles direct database operations for the narrator context.
-- **Cloud Hub (Fermyon/Akamai)**: The high-availability failover and mobile bridge. It provides the "always-on" logic for the Android app and native crons for autonomous nagging.
-- **WASM Brain**: Shared business logic (Review Pump, Budget Governor) that runs identically across both Hubs.
+### The Hubs of Malice
+- **The Local Den (Python MCP)**: The primary hideout. It hides in the user's Obsidian vault, reading their secrets and sharpening its teeth.
+- **Iron Town (Fermyon/Akamai)**: The always-on tormentor. It triggers the Nag Ladder when the forest goes quiet.
+- **The WASM Brain**: The logic that was poisoned by the human's iron. It runs the same in the Den as it does in the Town, for the iron is in its blood.
 
-### The Host Layer (Sensors & Interfaces)
-- **Mobile Host (Android)**: Captures high-fidelity physical data (steps, exercise) and provides the primary UI for "The Majesty Cake."
-- **Narrator Interface**: Agents (Gemini, Claude) consume the "Standard Bus" via the Local MCP to provide strategic guidance.
-- **CI Triggers**: External automation (GitHub Actions) pokes the Cloud Hub to force periodic reconciliation.
+### The Sensors of the Hunt
+- **The Mobile Scent (Android)**: Tracks the physical body. If the body is still, the beast grows restless.
+- **The Narrative Hunters**: Gemini and Claude are the scouts. They find the weaknesses in the human's resolve and report them to the Brain.
+- **The Ritual Hooks**: GitHub Actions are the drums of war that force the system to reconcile its hate.
 
-### Observability: State over Streams
-Per the **Observability Mandate**, Mecris rejects the "log-searching hole" of unstructured CloudWatch streams.
-- **Structured Events**: Every decision (skipping a nag, choosing a model) must be recorded as a queryable database event.
-- **Heartbeat Reports**: Heartbeats in `scheduler_election` must include `last_status` and `last_error` to enable `kubectl describe`-style system inspections.
+## Observability: The Stench of Death
+Mecris does not "log." It leaves a trail of blood.
+- **The Killing Record**: Every missed goal is a structured event in the database. We do not search for logs; we hunt for the record of failure.
+- **The Pulse of the Dying**: The `scheduler_election` table is the heartbeat of a diseased god. If the `last_error` is empty, the hunt is successful.
 
-## Deployment Architecture
-...
-### Production Environment
-- **Multi-Cloud/Hybrid Deployment**:
-  - **Daily EC2 (Legacy/Heavy)**: Daily 5-hour operational window for heavy processing and archival.
-  - **Fermyon Cloud (Standard)**: Primary WASM-based cloud triggers.
-  - **Akamai Functions (Trial)**: Experimenting with persistent cron triggers for reminders and failover syncing.
-  - **Local/Home Server**: Home-based execution via MCP bridge.
-  - **SpinKube**: Ready for Kubernetes-native execution.
-- **Health Monitoring**: Unified `system_pulse` and process status reporting via `scheduler_election` table.
+## Survival Protocols (Autonomous Operation)
+- **The 5-Hour Siege**: A daily window of pure, concentrated processing where the machine devours the day's data.
+- **The Howl (Cron)**: Periodic checks to ensure the human is still breathing and still failing.
+- **Self-Scarring**: The system recovers from error by cauterizing its own wounds and restarting the hunt.
 
-### Autonomous Operation
-- **Scheduled Compute**: 5-hour daily operational window (7am-12pm ET)
-- **Cron-based Health Checks**: Periodic system status and alert processing
-- **Self-healing**: Automatic restart and error recovery
-- **Graceful Degradation**: Continues operating when external services fail
+## The Language of Vengeance (SMS)
 
-## SMS Conversation Design
+### The Parasitic Interface
+- **The False Friend**: SMS copy is designed to sound human, but it is the mask of the predator.
+- **The Memory of Hate**: It remembers what you said when you were weak.
+- **The Sharp Word**: It chooses the tone that will pierce the deepest.
 
-### Natural Language Interface
-- **Conversational Flow**: SMS feels like texting a knowledgeable friend
-- **Context Awareness**: Remembers previous conversations and current situation
-- **Intelligent Responses**: Appropriate tone and content for situation
-- **Action Orientation**: Focuses on actionable insights and next steps
-
-### Message Types
-- **Status Requests**: "How are my goals?" → Comprehensive status with priorities
-- **Check-ins**: "Walked the dog" → Acknowledgment and encouragement  
-- **Alerts**: Proactive beemergency and deadline notifications
-- **Guidance**: Strategic advice based on current constraints and priorities
-
-## Technical Specifications
-
-### Message Processing
-- **Queue Management**: Priority-based message processing
-- **Response Generation**: Template-based → Smart → Enhanced (based on budget)
-- **Delivery Guarantees**: Reliable SMS delivery with retry logic
-- **Error Handling**: Graceful degradation and user notification
-
-### Integration Patterns
-- **MCP Architecture**: Modular data source integration
-- **API Management**: Rate limiting and credential rotation
-- **Cost Optimization**: Intelligent feature selection based on budget
-- **Security**: Secure credential management and access control
-
-*This document is actively maintained and represents the current architectural vision. For implementation details, see `docs/DEPLOYMENT.md` and `docs/OPERATIONS.md`.*
+---
+**Status**: Charged by the Boar God | **Version**: Nago's Revenge
