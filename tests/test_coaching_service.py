@@ -190,6 +190,42 @@ async def test_arabic_pressure_message_contains_arabic_script():
 
 
 @pytest.mark.asyncio
+async def test_greek_pressure_message_contains_greek_script():
+    """Greek reminders must include actual Greek-script characters (Alpha-Omega)."""
+    async def mock_context():
+        return {"daily_walk_status": {"has_activity_today": False}, "greek_backlog_boost": False}
+
+    async def mock_goals():
+        return []
+
+    async def mock_obsidian():
+        return ""
+
+    fake_lang_stats = {
+        "arabic": {"current": 0, "tomorrow": 0, "multiplier": 1.0, "daily_completions": 0, "next_7_days": 0},
+        "greek": {"current": 100, "tomorrow": 90, "multiplier": 2.0, "daily_completions": 5, "next_7_days": 0},
+    }
+
+    mock_neon = MagicMock()
+    mock_neon.get_language_stats.return_value = fake_lang_stats
+
+    _GREEK_RANGE = range(0x0370, 0x03FF)
+
+    with patch("services.neon_sync_checker.NeonSyncChecker", return_value=mock_neon):
+        service = CoachingService(mock_context, mock_goals, mock_obsidian)
+        # Run several times to cover all message variants (random.choice)
+        messages_seen = set()
+        for _ in range(20):
+            insight = await service.generate_insight()
+            messages_seen.add(insight.message)
+
+    assert all(
+        any(ord(ch) in _GREEK_RANGE for ch in msg)
+        for msg in messages_seen
+    ), f"Not all Greek pressure messages contain Greek script. Messages: {messages_seen}"
+
+
+@pytest.mark.asyncio
 async def test_vacation_mode_walk_prompt_omits_dogs():
     """vacation_mode=True walk prompt must not mention 'Boris and Fiona' and must say 'movement'."""
     async def mock_context():
