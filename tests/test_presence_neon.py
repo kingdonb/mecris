@@ -10,10 +10,24 @@ Covers:
 - File-based lock API unchanged (existing tests: test_ghost_presence.py)
 """
 
+import sys
 import os
 import pytest
 from datetime import datetime, timezone
 from unittest.mock import patch, MagicMock
+
+# Bootstrap psycopg2 mock before importing ghost.presence so the module-level
+# try/except sees a real object and sets _PSYCOPG2_AVAILABLE = True.
+_mock_psycopg2 = MagicMock()
+sys.modules.setdefault("psycopg2", _mock_psycopg2)
+
+# If ghost.presence was already imported (e.g. by test_ghost_presence.py in
+# the same session) with psycopg2 = None, patch it in-place so the Neon tests
+# can patch ghost.presence.psycopg2.connect.
+import ghost.presence as _gp_module
+if _gp_module.psycopg2 is None:
+    _gp_module.psycopg2 = _mock_psycopg2
+    _gp_module._PSYCOPG2_AVAILABLE = True
 
 from ghost.presence import (
     StatusType,
