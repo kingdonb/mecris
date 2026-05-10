@@ -1,5 +1,0 @@
-package vind-box:moon-phase@0.1.0;
-
-world moon-phase {
-    include spin:up/http-trigger@4.0.0;
-}
