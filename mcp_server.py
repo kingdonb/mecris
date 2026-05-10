@@ -605,7 +605,10 @@ async def get_narrator_context(user_id: str = None) -> Dict[str, Any]:
             "system_pulse": {
                 "running": scheduler.running,
                 "is_leader": scheduler.is_leader,
-                "process_id": scheduler.process_id
+                "process_id": scheduler.process_id,
+                "last_status": scheduler.last_status,
+                "intent": scheduler.intent,
+                "last_error": scheduler.last_error,
             },
             "vacation_mode": vacation_mode,
             "time_window_start": time_window_start,
