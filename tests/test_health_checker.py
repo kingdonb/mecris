@@ -9,10 +9,16 @@ Covers:
 Closes yebyen/mecris#189
 Updated: yebyen/mecris#282 (Observability Mandate Phase 1 — add last_status/last_error/intent)
 """
+import sys
 import os
 import datetime
 import pytest
 from unittest.mock import patch, MagicMock, call
+
+# Bootstrap: health_checker imports psycopg2 lazily; mock it so patch() can resolve the path.
+_mock_psycopg2 = MagicMock()
+sys.modules.setdefault("psycopg2", _mock_psycopg2)
+
 from services.health_checker import HealthChecker
 
 FAKE_URL = "postgres://fake"
