@@ -41,3 +41,13 @@
 **Skipped**: Nothing — full completion.
 
 **Next**: Continue Empty Backlog Protocol — hunt for more coverage gaps or explore kingdonb/mecris epics (#245, #211, #208) for bot-actionable subtasks.
+
+## 2026-05-10 — Bus Standardization: expose obs fields in fetch_system_pulse modalities
+
+**Planned**: Update `fetch_system_pulse()` in `mcp_server.py` to SELECT `last_status`, `intent`, `last_error` from `scheduler_election` alongside existing fields; add unit tests asserting these fields appear (null-safe for pre-migration DBs). Plan: yebyen/mecris#337.
+
+**Done**: Updated SQL in `fetch_system_pulse()` to SELECT 6 columns (role, heartbeat, minutes_since, last_status, intent, last_error) with graceful fallback to a NULL-only query when migration v8 columns are absent. Each modality dict now includes `last_status`, `intent`, `last_error` keys. Wrote `tests/test_system_pulse.py` with 6 tests: obs fields present, obs fields NULL (pre-migration), empty result, unknown_cloud skipped, display name mapping, no-NEON_DB_URL early return. All 6 pass; 19 existing mcp_server/daily_aggregate tests unaffected. Commit `a410df8`. Closes yebyen/mecris#337.
+
+**Skipped**: Nothing — full completion.
+
+**Next**: Human Yield `bin/mecris presence` CLI (kingdonb/mecris#211) or apply migration v8 to production Neon to activate obs fields end-to-end.
