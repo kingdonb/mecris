@@ -2,6 +2,16 @@
 
 *(Archived logs are in `attic/session-chunks/`)*
 
+## 2026-05-10 — 🏛️ feat(obs): mirror _write_obs_status to in-memory attrs; surface in system_pulse
+
+**Planned**: Add `last_status`, `intent`, `last_error` as in-memory attributes to `MecrisScheduler`; mirror each Neon write in `_write_obs_status()`; surface in `get_narrator_context` `system_pulse`. Plan: yebyen/mecris#335.
+
+**Done**: Added 3 in-memory attrs to `MecrisScheduler.__init__`; `_write_obs_status()` now updates them on success. `get_narrator_context` `system_pulse` includes all three fields. 6 new tests in `TestWriteObsStatusInMemoryMirror` — all 13 in `test_scheduler_election.py` pass in 0.69s. Commit `1c78824`. Closes yebyen/mecris#335.
+
+**Skipped**: Nothing — plan was fully executed.
+
+**Next**: Remaining Observability Mandate #245 subtasks: Rust WASM backend (`sync-service/src/lib.rs`) to record Silent Decisions, and Android `HeartbeatWorker` obs fields — both require non-Python work. Next bot-actionable frontier: kingdonb/mecris#211 (Human Yield / Presence Detection) unit tests.
+
 ## 2026-05-10 — fix(tests): psycopg2 bootstrap in test_system_health + test_health_checker
 
 **Planned**: Add `sys.modules["psycopg2"] = MagicMock()` module-level bootstrap to `tests/test_system_health.py` and `tests/test_health_checker.py` so all 16 failing tests pass without psycopg2 installed in CI. Plan: yebyen/mecris#334.
