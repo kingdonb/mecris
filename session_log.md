@@ -2,6 +2,16 @@
 
 *(Archived logs are in `attic/session-chunks/`)*
 
+## 2026-05-10 — 🏛️ fix(tests): add psycopg2 bootstrap to test_presence_neon (session #100)
+
+**Planned**: Implement `bin/mecris presence` command with lock file mechanism and unit tests (yebyen/mecris#336).
+
+**Done**: Discovered `ghost/presence.py`, `cli/main.py presence` subcommand, and scheduler integration were already complete. Found 13 failing tests in `tests/test_presence_neon.py` — `ghost.presence` sets `psycopg2=None` at module level when not installed, causing `patch("ghost.presence.psycopg2.connect", ...)` to raise `AttributeError`. Added `sys.modules.setdefault("psycopg2", _mock_psycopg2)` bootstrap and in-place patch of `ghost.presence.psycopg2` and `._PSYCOPG2_AVAILABLE`. 54 presence tests now pass (was 41). Commit `83f6b0a`.
+
+**Skipped**: Nothing — scope was correctly sized.
+
+**Next**: Observability Mandate Bus Standardization (kingdonb/mecris#245) — verify JSON response format matches Standard Bus spec in `docs/OBSERVABILITY_MANDATE.md`.
+
 ## 2026-05-10 — 🏛️ feat(obs): mirror _write_obs_status to in-memory attrs; surface in system_pulse
 
 **Planned**: Add `last_status`, `intent`, `last_error` as in-memory attributes to `MecrisScheduler`; mirror each Neon write in `_write_obs_status()`; surface in `get_narrator_context` `system_pulse`. Plan: yebyen/mecris#335.

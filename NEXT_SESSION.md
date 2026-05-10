@@ -1,15 +1,15 @@
-# Next Session: Explore Human Yield (kingdonb/mecris#211) or remaining Observability Mandate subtasks
+# Next Session: Observability Mandate Bus Standardization (kingdonb/mecris#245) or next bug hunt
 
-## Current Status (2026-05-10, post-session #99)
+## Current Status (2026-05-10, post-session #100)
+- **test_presence_neon.py psycopg2 bootstrap (session #100)**: COMPLETE. 13 previously-failing Neon presence tests now pass. `ghost.presence` sets `psycopg2=None` at module-level when psycopg2 not installed; bootstrap + in-place patch fixes `patch("ghost.presence.psycopg2.connect", ...)`. 54 presence tests total pass. Commit `83f6b0a`. Closes yebyen/mecris#336.
+- **Human Yield / Presence Detection (kingdonb/mecris#211)**: Feature is COMPLETE — `ghost/presence.py`, `cli/main.py presence` subcommand, scheduler integration, and all 54 tests pass. The plan issue #336 was the test fix.
 - **obs in-memory mirror (session #99)**: COMPLETE. `MecrisScheduler.last_status`, `.intent`, `.last_error` now mirrored by `_write_obs_status()`. `get_narrator_context` `system_pulse` includes all three. 13 tests pass. Commit `1c78824`. Closes yebyen/mecris#335.
-- **test_system_health.py + test_health_checker.py psycopg2 bootstrap (session #98)**: COMPLETE. Added `sys.modules.setdefault("psycopg2", MagicMock())` to both files. 19 passed in 0.17s. Commit `5e9df24`. Closes yebyen/mecris#334.
-- **whatsapp_template_manager.py test coverage (session #97)**: COMPLETE. 11 unit tests in `tests/test_whatsapp_template_manager.py` — all passed in 0.11s. Commit `9126bbf`. Closes yebyen/mecris#333.
-- **Full scripts coverage**: ALL scripts now covered. Only intentional skips remain: `scripts/check_beeminder.py` (22 lines, thin wrapper), debug scripts (not worth unit testing), `mcp_cost_endpoint.py` (thin Flask wrapper, no logic), `log_groqspend.py` (one-shot Beeminder datapoint), migration scripts v2–v8 (simple ALTER TABLE patterns, covered by migrate_review_pump pattern).
+- **Full test coverage**: All scripts and core modules covered. 54 presence tests pass.
 - **GITHUB_CLASSIC_PAT still expired**: Bot cannot create PRs to kingdonb/mecris. Human must renew.
-- **Upstream sync**: yebyen/mecris is ahead of kingdonb/mecris by many sessions (#80–#99); history has diverged since session #66. Future syncs must cherry-pick new files only.
-- **No open issues on either repo**: kingdonb/mecris has no bug/needs-test/pr-review labels. yebyen/mecris has no open issues.
+- **Upstream sync**: yebyen/mecris is ahead of kingdonb/mecris by many sessions (#80–#100); history has diverged since session #66. Future syncs must cherry-pick new files only.
 
 ## Verified This Session
+- [x] **test_presence_neon.py psycopg2 bootstrap (session #100)**: `PYTHONPATH=. pytest tests/test_ghost_presence.py tests/test_presence_scheduler.py tests/test_presence_neon.py -v` → 54 passed in 0.22s. Added `_mock_psycopg2 = MagicMock(); sys.modules.setdefault("psycopg2", _mock_psycopg2)` bootstrap + in-place patch of `ghost.presence.psycopg2` and `ghost.presence._PSYCOPG2_AVAILABLE` before import. Commit `83f6b0a`. Closes yebyen/mecris#336.
 - [x] **obs in-memory mirror (session #99)**: `PYTHONPATH=. .venv/bin/pytest tests/test_scheduler_election.py -v` → 13 passed in 0.69s. `MecrisScheduler` now has `last_status`, `intent`, `last_error` attrs; `_write_obs_status()` mirrors them on success; `get_narrator_context` `system_pulse` includes all three. Commit `1c78824`. Closes yebyen/mecris#335.
 - [x] **psycopg2 bootstrap fix (session #98)**: `PYTHONPATH=. python3 -m pytest tests/test_system_health.py tests/test_health_checker.py -v` → 19 passed in 0.17s. Both test files now have `sys.modules.setdefault("psycopg2", _mock_psycopg2)` at module level. Commit `5e9df24`.
 - [x] **whatsapp_template_manager.py test coverage (session #97)**: 11 unit tests. `PYTHONPATH=. python3 -m pytest tests/test_whatsapp_template_manager.py -v` → 11 passed in 0.11s. Covers: `TestFetchAllStatuses` (5: dict approval, list approval, empty/None fallback to "unknown", Twilio exception→[], multiple records), `TestGetApprovedPool` (3: approved filter, none approved→[], error→[]), `TestSyncApprovedTemplates` (3: writes correct JSON/count, returns 0 on empty, last_updated field). Bootstrap: `ModuleType("twilio")` + `ModuleType("twilio.rest")` + `sys.modules.setdefault("dotenv", MagicMock())`. Uses `WhatsAppTemplateManager.__new__` + manual attrs + `m.client = mock_client`. `tmp_path` fixture for disk I/O tests. Commit `9126bbf`. Closes yebyen/mecris#333.
