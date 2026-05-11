@@ -1,0 +1,22 @@
+#!/bin/bash
+# bin/mecris-tdg - A token-efficient local harness for Test-Driven Generation
+# Usage: ./bin/mecris-tdg <test_file_or_directory>
+
+TARGET="${1:-tests/}"
+MAX_TURNS=10
+
+echo "🚀 Starting Local TDG Harness for: $TARGET"
+echo "📊 Initial Budget Status:"
+./bin/mecris budget status
+
+# Enforce quiet output and short tracebacks
+export PYTEST_ADDOPTS="-q --tb=short"
+
+echo "🛠️ Suggested Workflow:"
+echo "1. Run specific test: PYTHONPATH=. .venv/bin/pytest $TARGET"
+echo "2. Fix code."
+echo "3. Verify: PYTHONPATH=. .venv/bin/pytest --last-failed"
+echo "4. Check Budget: ./bin/mecris budget status"
+
+# This script is a prompt for me (the agent) to follow.
+# I will now use these constraints for any TDG tasks.
