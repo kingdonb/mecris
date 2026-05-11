@@ -17,16 +17,31 @@ _mock_twilio_sender = MagicMock()
 _mock_beeminder_client = MagicMock()
 _mock_usage_tracker = MagicMock()
 
-sys.modules.setdefault("dotenv", _mock_dotenv)
-sys.modules.setdefault("twilio_sender", _mock_twilio_sender)
-sys.modules.setdefault("beeminder_client", _mock_beeminder_client)
-sys.modules.setdefault("usage_tracker", _mock_usage_tracker)
+# Track which entries we actually add (setdefault is a no-op when already present).
+# After importing bwr we remove ONLY the entries we added so that subsequent test
+# files see the real modules (twilio_sender, beeminder_client, usage_tracker).
+_bwr_added: dict = {}
+for _key, _mock in [
+    ("dotenv", _mock_dotenv),
+    ("twilio_sender", _mock_twilio_sender),
+    ("beeminder_client", _mock_beeminder_client),
+    ("usage_tracker", _mock_usage_tracker),
+]:
+    if _key not in sys.modules:
+        sys.modules[_key] = _mock
+        _bwr_added[_key] = _mock
 
 # Force a clean import (handles repeated test runs in the same process)
 if "scripts.base_walk_reminder" in sys.modules:
     del sys.modules["scripts.base_walk_reminder"]
 
 import scripts.base_walk_reminder as bwr  # noqa: E402
+
+# Remove entries we added so they don't pollute other test modules that need
+# the real implementations (e.g. test_beeminder_client_datapoint, test_sms_mock).
+for _key, _mock in _bwr_added.items():
+    if sys.modules.get(_key) is _mock:
+        del sys.modules[_key]
 
 
 # ---------------------------------------------------------------------------
@@ -100,6 +115,13 @@ class TestCheckWalkNeeded:
 
 
 class TestRunBaseReminder:
+    @pytest.fixture(autouse=True)
+    def _patch_get_tracker(self):
+        """Ensure run_base_reminder()'s lazy 'from usage_tracker import get_tracker'
+        resolves to our mock regardless of what is in sys.modules at test time."""
+        with patch("usage_tracker.get_tracker", _mock_usage_tracker.get_tracker):
+            yield
+
     def setup_method(self):
         """Reset shared mocks before each test."""
         _mock_twilio_sender.reset_mock()
