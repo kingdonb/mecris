@@ -1,6 +1,7 @@
-# Next Session: bin/mecris presence CLI is complete — next bot-actionable task or bug hunt
+# Next Session: test suite is fully green — hunt for next bot-actionable improvement
 
-## Current Status (2026-05-11, post-session #102)
+## Current Status (2026-05-11, post-session #103)
+- **Test suite de-pollution (session #103)**: COMPLETE. 67 test-pollution failures resolved. Root causes: (1) `test_base_walk_reminder.py` leaked `beeminder_client`/`twilio_sender`/`usage_tracker` mocks via `sys.modules.setdefault`, (2) multiple files mocked `psycopg2` without `psycopg2.extras`, (3) `apscheduler.jobstores` mock leaked from `test_scheduler_jobs.py`. Fixed via conftest.py pre-loading real packages + surgical per-file cleanups. 1475 passed, 0 failed. Commit `7090f0c`. Closes yebyen/mecris#339.
 - **Bus Standardization (session #101)**: COMPLETE. `fetch_system_pulse()` now SELECTs `last_status`, `intent`, `last_error` from `scheduler_election`. Graceful fallback SQL (NULL values) when migration v8 columns absent. 6 tests in `tests/test_system_pulse.py` pass. Commit `a410df8`. Closes yebyen/mecris#337.
 - **Observability Mandate Python layer (kingdonb/mecris#245)**: COMPLETE end-to-end. `_write_obs_status()` writes obs fields to DB → `fetch_system_pulse()` reads them back → modalities include `last_status`/`intent`/`last_error`. In-memory mirror also populated via `get_narrator_context` `system_pulse`.
 - **bin/mecris presence CLI (session #102)**: COMPLETE. `run_presence()` in `cli/main.py` now has 10 mock-based unit tests in `tests/test_cli_presence.py` (check/take/release actions, exit codes, output strings, --local flag, lock path routing). All 64 presence tests pass. Commit `cff57dd`. Closes yebyen/mecris#338.
@@ -8,6 +9,7 @@
 - **Upstream sync**: yebyen/mecris is ahead of kingdonb/mecris by many sessions (#80–#102); history has diverged since session #66. Future syncs must cherry-pick new files only.
 
 ## Verified This Session
+- [x] **Test suite de-pollution (session #103)**: `PYTHONPATH=. python3 -m pytest tests/ -q` → 1475 passed, 7 skipped, 0 failed (was 67 failed). Fixed `sys.modules` contamination from `test_base_walk_reminder.py` (beeminder_client, twilio_sender, usage_tracker) and multiple psycopg2/apscheduler mock leaks. Commit `7090f0c`. Closes yebyen/mecris#339.
 - [x] **bin/mecris presence CLI unit tests (session #102)**: `PYTHONPATH=. pytest tests/test_cli_presence.py tests/test_ghost_presence.py tests/test_presence_neon.py tests/test_presence_scheduler.py -v` → 64 passed. `run_presence()` handler now has 10 mock-based tests. Commit `cff57dd`. Closes yebyen/mecris#338.
 - [x] **Bus Standardization (session #101)**: `PYTHONPATH=. pytest tests/test_system_pulse.py -v` → 6 passed in 1.64s. `fetch_system_pulse()` in `mcp_server.py` now SELECTs 6 columns (role, heartbeat, minutes_since, last_status, intent, last_error) with SAVEPOINT-style fallback to NULL when migration v8 columns absent. Each modality dict includes the three obs fields. Regression: `test_mcp_server.py` + `test_daily_aggregate_status.py` → 19 passed. Commit `a410df8`. Closes yebyen/mecris#337.
 - [x] **test_presence_neon.py psycopg2 bootstrap (session #100)**: `PYTHONPATH=. pytest tests/test_ghost_presence.py tests/test_presence_scheduler.py tests/test_presence_neon.py -v` → 54 passed in 0.22s. Commit `83f6b0a`. Closes yebyen/mecris#336.

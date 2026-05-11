@@ -61,3 +61,13 @@
 **Skipped**: Nothing — full completion.
 
 **Next**: Human Yield `bin/mecris presence` CLI (kingdonb/mecris#211) or apply migration v8 to production Neon to activate obs fields end-to-end.
+
+## 2026-05-11 — 🏛️ fix(tests): resolve 67 test-pollution failures from sys.modules contamination (session #103)
+
+**Planned**: Full test suite was showing 67 failures caused by sys.modules pollution across test files. Plan: yebyen/mecris#339.
+
+**Done**: Diagnosed two root causes — (1) `test_base_walk_reminder.py` used `sys.modules.setdefault()` at module level to register `beeminder_client`, `twilio_sender`, `usage_tracker` as MagicMocks; these persisted to 35+ alphabetically-later test files. (2) 9+ files mocked `psycopg2` without also mocking `psycopg2.extras`, breaking `from psycopg2.extras import RealDictCursor` in `test_billing_reconciliation.py`; similar issue with `apscheduler.jobstores`. Fixed via: conftest.py pre-loading real psycopg2 and apscheduler submodules at module level; tracked-cleanup pattern in `test_base_walk_reminder.py` (only removes keys it actually added); autouse fixture patching `usage_tracker.get_tracker` for lazy-import in `run_base_reminder()`; `patch("psycopg2.connect")` context managers in `test_cloud_enable_beeminder.py`. Result: 1475 passed, 7 skipped, 0 failed (was 67 failed). Commit `7090f0c`. Closes yebyen/mecris#339.
+
+**Skipped**: Nothing — full completion.
+
+**Next**: Full test suite is green — hunt for next bot-actionable improvement. Candidates: coverage gaps, open `enhancement`/`bug` issues in kingdonb/mecris, or Observability Mandate non-Python layer (kingdonb/mecris#245).
