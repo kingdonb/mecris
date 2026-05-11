@@ -1,12 +1,14 @@
-# Next Session: Human Yield bin/mecris presence CLI (kingdonb/mecris#211) or next bug hunt
+# Next Session: bin/mecris presence CLI is complete — next bot-actionable task or bug hunt
 
-## Current Status (2026-05-10, post-session #101)
+## Current Status (2026-05-11, post-session #102)
 - **Bus Standardization (session #101)**: COMPLETE. `fetch_system_pulse()` now SELECTs `last_status`, `intent`, `last_error` from `scheduler_election`. Graceful fallback SQL (NULL values) when migration v8 columns absent. 6 tests in `tests/test_system_pulse.py` pass. Commit `a410df8`. Closes yebyen/mecris#337.
 - **Observability Mandate Python layer (kingdonb/mecris#245)**: COMPLETE end-to-end. `_write_obs_status()` writes obs fields to DB → `fetch_system_pulse()` reads them back → modalities include `last_status`/`intent`/`last_error`. In-memory mirror also populated via `get_narrator_context` `system_pulse`.
+- **bin/mecris presence CLI (session #102)**: COMPLETE. `run_presence()` in `cli/main.py` now has 10 mock-based unit tests in `tests/test_cli_presence.py` (check/take/release actions, exit codes, output strings, --local flag, lock path routing). All 64 presence tests pass. Commit `cff57dd`. Closes yebyen/mecris#338.
 - **GITHUB_CLASSIC_PAT still expired**: Bot cannot create PRs to kingdonb/mecris. Human must renew.
-- **Upstream sync**: yebyen/mecris is ahead of kingdonb/mecris by many sessions (#80–#101); history has diverged since session #66. Future syncs must cherry-pick new files only.
+- **Upstream sync**: yebyen/mecris is ahead of kingdonb/mecris by many sessions (#80–#102); history has diverged since session #66. Future syncs must cherry-pick new files only.
 
 ## Verified This Session
+- [x] **bin/mecris presence CLI unit tests (session #102)**: `PYTHONPATH=. pytest tests/test_cli_presence.py tests/test_ghost_presence.py tests/test_presence_neon.py tests/test_presence_scheduler.py -v` → 64 passed. `run_presence()` handler now has 10 mock-based tests. Commit `cff57dd`. Closes yebyen/mecris#338.
 - [x] **Bus Standardization (session #101)**: `PYTHONPATH=. pytest tests/test_system_pulse.py -v` → 6 passed in 1.64s. `fetch_system_pulse()` in `mcp_server.py` now SELECTs 6 columns (role, heartbeat, minutes_since, last_status, intent, last_error) with SAVEPOINT-style fallback to NULL when migration v8 columns absent. Each modality dict includes the three obs fields. Regression: `test_mcp_server.py` + `test_daily_aggregate_status.py` → 19 passed. Commit `a410df8`. Closes yebyen/mecris#337.
 - [x] **test_presence_neon.py psycopg2 bootstrap (session #100)**: `PYTHONPATH=. pytest tests/test_ghost_presence.py tests/test_presence_scheduler.py tests/test_presence_neon.py -v` → 54 passed in 0.22s. Commit `83f6b0a`. Closes yebyen/mecris#336.
 - [x] **obs in-memory mirror (session #99)**: 13 tests passed. `MecrisScheduler` now has `last_status`, `intent`, `last_error` attrs mirrored by `_write_obs_status()`. Commit `1c78824`. Closes yebyen/mecris#335.
@@ -34,7 +36,7 @@
 - [ ] **Verify log-message-py in Cloud**: Once platforms are ready, confirm audit logs appear in cloud KV.
 
 ### 🤖 Bot-actionable (can be resolved in future sessions)
-- [ ] **Human Yield / Presence Detection (kingdonb/mecris#211)**: Implement `bin/mecris presence` command or background thread with lock file mechanism (`/tmp/mecris_presence.lock`). Detect active terminal session, respect lock in `MecrisScheduler`. Write unit tests for presence detection logic (pure Python, no I/O deps). Note: `ghost/presence.py` + `cli/main.py presence` subcommand + scheduler integration already complete; this item is the `bin/mecris presence` CLI wrapper.
+- [x] **Human Yield / Presence Detection (kingdonb/mecris#211)**: COMPLETE. `bin/mecris presence` fully wired (`bin/mecris` → `python -m cli.main presence`). All layers done: `ghost/presence.py` (file lock + composite `is_human_present()`), `cli/main.py` (`run_presence()` handler), scheduler integration, 64 passing tests. Closed via yebyen/mecris#338 (session #102).
 - [ ] **Observability Mandate non-Python (kingdonb/mecris#245)**: Rust WASM `sync-service/src/lib.rs` Silent Decision logging (non-bot-actionable) and Android `HeartbeatWorker` obs fields (non-bot-actionable). Python layer is fully COMPLETE.
 - [ ] **AI Framework Evaluation (kingdonb/mecris#205)**: Run `scripts/evaluate_aider.py` with Aider installed. Requires Aider + LLM API key.
 - [ ] **Budget Governor: WASM Port (kingdonb/mecris#214)**: POC complete. Remaining: Fermyon Cloud variable config — human-required for deployment.

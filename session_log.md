@@ -2,6 +2,16 @@
 
 *(Archived logs are in `attic/session-chunks/`)*
 
+## 2026-05-11 — 🏛️ test(cli): 10 unit tests for run_presence() CLI handler (session #102)
+
+**Planned**: Add mock-based unit tests for `run_presence()` in `cli/main.py` covering all three actions (`check`, `take`, `release`) and `--local` flag (yebyen/mecris#338).
+
+**Done**: Oriented, confirmed all 54 prior presence tests pass, identified `run_presence()` as having zero unit test coverage. Wrote `tests/test_cli_presence.py` with 10 tests (4 check variants, 2 take, 2 release, 2 local-flag routing). All 64 presence tests pass. Commit `cff57dd`. Closes yebyen/mecris#338.
+
+**Skipped**: Nothing — scope was correctly sized and completed in one session.
+
+**Next**: No remaining bot-actionable presence work. Next session should look for open bugs, new issues on kingdonb/mecris, or begin `AI Framework Evaluation (kingdonb/mecris#205)` (requires Aider + LLM key — may be human-actionable only).
+
 ## 2026-05-10 — 🏛️ fix(tests): add psycopg2 bootstrap to test_presence_neon (session #100)
 
 **Planned**: Implement `bin/mecris presence` command with lock file mechanism and unit tests (yebyen/mecris#336).
