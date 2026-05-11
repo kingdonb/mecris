@@ -171,3 +171,80 @@ class TestWriteObsStatus:
         args = lost_call.args[1]
         assert args[2] is not None, "error arg should be non-None on lost leadership"
         assert "other_process_id" in args[2]
+
+
+# ---------------------------------------------------------------------------
+# _write_obs_status — in-memory mirroring (yebyen/mecris#335)
+# ---------------------------------------------------------------------------
+
+class TestWriteObsStatusInMemoryMirror:
+    def test_successful_write_updates_last_status_in_memory(self, test_scheduler):
+        """After a successful _write_obs_status call, last_status is updated in memory."""
+        mock_cur = MagicMock()
+        test_scheduler._has_obs_columns = True
+        test_scheduler.user_id = "test-user"
+        test_scheduler.process_id = "pid-mirror"
+
+        test_scheduler._write_obs_status(mock_cur, "Heartbeat active", "maintain leadership")
+
+        assert test_scheduler.last_status == "Heartbeat active"
+
+    def test_successful_write_updates_intent_in_memory(self, test_scheduler):
+        """After a successful _write_obs_status call, intent is updated in memory."""
+        mock_cur = MagicMock()
+        test_scheduler._has_obs_columns = True
+        test_scheduler.user_id = "test-user"
+        test_scheduler.process_id = "pid-mirror"
+
+        test_scheduler._write_obs_status(mock_cur, "Elected as leader", "claim leadership")
+
+        assert test_scheduler.intent == "claim leadership"
+
+    def test_successful_write_with_error_updates_last_error_in_memory(self, test_scheduler):
+        """When error= is passed, last_error is updated in memory after a successful write."""
+        mock_cur = MagicMock()
+        test_scheduler._has_obs_columns = True
+        test_scheduler.user_id = "test-user"
+        test_scheduler.process_id = "pid-mirror"
+
+        test_scheduler._write_obs_status(mock_cur, "Lost leadership", "standby", error="preempted by other")
+
+        assert test_scheduler.last_error == "preempted by other"
+
+    def test_successful_write_without_error_clears_last_error_in_memory(self, test_scheduler):
+        """When error is omitted (default None), last_error is set to None in memory."""
+        mock_cur = MagicMock()
+        test_scheduler._has_obs_columns = True
+        test_scheduler.last_error = "stale value"
+        test_scheduler.user_id = "test-user"
+        test_scheduler.process_id = "pid-mirror"
+
+        test_scheduler._write_obs_status(mock_cur, "Heartbeat active", "maintain leadership")
+
+        assert test_scheduler.last_error is None
+
+    def test_skipped_write_does_not_update_in_memory(self, test_scheduler):
+        """When _has_obs_columns is False, no in-memory update occurs."""
+        mock_cur = MagicMock()
+        test_scheduler._has_obs_columns = False
+        test_scheduler.last_status = "old status"
+        test_scheduler.intent = "old intent"
+
+        test_scheduler._write_obs_status(mock_cur, "New status", "new intent")
+
+        assert test_scheduler.last_status == "old status"
+        assert test_scheduler.intent == "old intent"
+
+    def test_failed_write_does_not_update_in_memory(self, test_scheduler):
+        """When the SAVEPOINT UPDATE raises (columns absent), in-memory attrs are not updated."""
+        mock_cur = MagicMock()
+        mock_cur.execute.side_effect = [None, Exception("column does not exist"), None, None]
+        test_scheduler._has_obs_columns = None
+        test_scheduler.last_status = "old status"
+        test_scheduler.user_id = "test-user"
+        test_scheduler.process_id = "pid-mirror"
+
+        test_scheduler._write_obs_status(mock_cur, "New status", "new intent")
+
+        assert test_scheduler.last_status == "old status"
+        assert test_scheduler._has_obs_columns is False

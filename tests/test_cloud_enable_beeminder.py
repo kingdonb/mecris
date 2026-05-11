@@ -78,11 +78,10 @@ class TestSuccessfulUpdatePath:
     def test_commits_after_update(self, capsys):
         cur = _make_cursor(rowcount=1)
         conn = _make_conn(cur)
-        _mock_psycopg2.reset_mock()
-        _mock_psycopg2.connect.return_value = conn
 
         with (
             patch.dict("os.environ", _GOOD_ENV, clear=True),
+            patch("psycopg2.connect", return_value=conn),
             patch("cloud_enable_beeminder.EncryptionService") as mock_enc_cls,
         ):
             mock_enc = MagicMock()
@@ -97,11 +96,10 @@ class TestSuccessfulUpdatePath:
     def test_does_not_insert_when_update_succeeds(self, capsys):
         cur = _make_cursor(rowcount=1)
         conn = _make_conn(cur)
-        _mock_psycopg2.reset_mock()
-        _mock_psycopg2.connect.return_value = conn
 
         with (
             patch.dict("os.environ", _GOOD_ENV, clear=True),
+            patch("psycopg2.connect", return_value=conn),
             patch("cloud_enable_beeminder.EncryptionService") as mock_enc_cls,
         ):
             mock_enc = MagicMock()
@@ -123,11 +121,10 @@ class TestFallbackInsertPath:
     def test_inserts_when_update_finds_no_user(self, capsys):
         cur = _make_cursor(rowcount=0)
         conn = _make_conn(cur)
-        _mock_psycopg2.reset_mock()
-        _mock_psycopg2.connect.return_value = conn
 
         with (
             patch.dict("os.environ", _GOOD_ENV, clear=True),
+            patch("psycopg2.connect", return_value=conn),
             patch("cloud_enable_beeminder.EncryptionService") as mock_enc_cls,
         ):
             mock_enc = MagicMock()
@@ -142,11 +139,10 @@ class TestFallbackInsertPath:
     def test_warns_when_user_not_found(self, capsys):
         cur = _make_cursor(rowcount=0)
         conn = _make_conn(cur)
-        _mock_psycopg2.reset_mock()
-        _mock_psycopg2.connect.return_value = conn
 
         with (
             patch.dict("os.environ", _GOOD_ENV, clear=True),
+            patch("psycopg2.connect", return_value=conn),
             patch("cloud_enable_beeminder.EncryptionService") as mock_enc_cls,
         ):
             mock_enc = MagicMock()
@@ -164,11 +160,9 @@ class TestFallbackInsertPath:
 
 class TestExceptionHandling:
     def test_db_exception_is_caught(self, capsys):
-        _mock_psycopg2.reset_mock()
-        _mock_psycopg2.connect.side_effect = RuntimeError("connection refused")
-
         with (
             patch.dict("os.environ", _GOOD_ENV, clear=True),
+            patch("psycopg2.connect", side_effect=RuntimeError("connection refused")),
             patch("cloud_enable_beeminder.EncryptionService"),
         ):
             # Should not raise
@@ -176,7 +170,3 @@ class TestExceptionHandling:
 
         out = capsys.readouterr().out
         assert "error" in out.lower() or "Error" in out
-
-    def teardown_method(self, method):
-        # Reset side_effect so other tests aren't affected
-        _mock_psycopg2.connect.side_effect = None

@@ -605,7 +605,10 @@ async def get_narrator_context(user_id: str = None) -> Dict[str, Any]:
             "system_pulse": {
                 "running": scheduler.running,
                 "is_leader": scheduler.is_leader,
-                "process_id": scheduler.process_id
+                "process_id": scheduler.process_id,
+                "last_status": scheduler.last_status,
+                "intent": scheduler.intent,
+                "last_error": scheduler.last_error,
             },
             "vacation_mode": vacation_mode,
             "time_window_start": time_window_start,
@@ -1365,19 +1368,31 @@ async def fetch_system_pulse(user_id: str) -> Dict[str, Any]:
         import psycopg2
         with psycopg2.connect(neon_url) as conn:
             with conn.cursor() as cur:
-                cur.execute("""
-                    SELECT role, heartbeat, 
-                           EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - heartbeat)) / 60 AS minutes_since
-                    FROM scheduler_election
-                    WHERE user_id = %s OR user_id IS NULL
-                    ORDER BY heartbeat DESC
-                """, (target_user_id,))
+                try:
+                    cur.execute("""
+                        SELECT role, heartbeat,
+                               EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - heartbeat)) / 60 AS minutes_since,
+                               last_status, intent, last_error
+                        FROM scheduler_election
+                        WHERE user_id = %s OR user_id IS NULL
+                        ORDER BY heartbeat DESC
+                    """, (target_user_id,))
+                except Exception:
+                    conn.rollback()
+                    cur.execute("""
+                        SELECT role, heartbeat,
+                               EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - heartbeat)) / 60 AS minutes_since,
+                               NULL, NULL, NULL
+                        FROM scheduler_election
+                        WHERE user_id = %s OR user_id IS NULL
+                        ORDER BY heartbeat DESC
+                    """, (target_user_id,))
                 return cur.fetchall()
 
     try:
         rows = await asyncio.to_thread(_query)
         modalities = []
-        for role, heartbeat, mins_since in rows:
+        for role, heartbeat, mins_since, last_status, intent, last_error in rows:
             # Skip only unknown ghosts
             if role == "unknown_cloud":
                 continue
@@ -1395,7 +1410,10 @@ async def fetch_system_pulse(user_id: str) -> Dict[str, Any]:
                 "role": display_role,
                 "status": get_modality_status(role, mins),
                 "last_seen": heartbeat.isoformat() if heartbeat else "never",
-                "minutes_since": int(mins)
+                "minutes_since": int(mins),
+                "last_status": last_status,
+                "intent": intent,
+                "last_error": last_error,
             })
         return {"modalities": modalities}
     except Exception as e:

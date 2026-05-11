@@ -3,6 +3,20 @@ import pytest
 import types
 import requests
 
+# Pre-load real packages into sys.modules so that later test files using
+# sys.modules.setdefault("psycopg2", MagicMock()) are no-ops and don't
+# poison the module cache for tests that need the real implementations.
+import psycopg2            # noqa: F401
+import psycopg2.extras     # noqa: F401
+import apscheduler                       # noqa: F401
+import apscheduler.jobstores            # noqa: F401
+import apscheduler.jobstores.memory     # noqa: F401
+import apscheduler.jobstores.sqlalchemy # noqa: F401
+import apscheduler.schedulers          # noqa: F401
+import apscheduler.schedulers.asyncio  # noqa: F401
+import apscheduler.triggers            # noqa: F401
+import apscheduler.triggers.date       # noqa: F401
+
 class DummyResponse:
     def __init__(self, json_data=None, status_code=200):
         self._json = json_data or {}

@@ -1,7 +1,12 @@
 """Tests for HealthChecker service (kingdonb/mecris#97 — unified heartbeat + health visibility)."""
+import sys
 import pytest
 from unittest.mock import patch, MagicMock
 from datetime import datetime, timezone, timedelta
+
+# Bootstrap: health_checker imports psycopg2 lazily; mock it so patch() can resolve the path.
+_mock_psycopg2 = MagicMock()
+sys.modules.setdefault("psycopg2", _mock_psycopg2)
 
 from services.health_checker import HealthChecker
 

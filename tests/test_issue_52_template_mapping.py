@@ -7,6 +7,8 @@ import json
 # Add project root to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+# Discard any stale MagicMock that an earlier test file may have injected.
+sys.modules.pop("twilio_sender", None)
 from twilio_sender import smart_send_message
 
 class TestIssue52TemplateMapping(unittest.TestCase):

@@ -219,6 +219,11 @@ class MecrisScheduler:
         # Cached flag: True if scheduler_election has observability columns (migration v8+).
         # None = unknown (check on first write). False = columns absent (pre-migration).
         self._has_obs_columns: Optional[bool] = None
+        # In-memory mirror of the last obs write — updated by _write_obs_status().
+        # Allows get_narrator_context to surface current scheduler state without a DB query.
+        self.last_status: Optional[str] = None
+        self.intent: Optional[str] = None
+        self.last_error: Optional[str] = None
 
     def start(self):
         """Start the coordination engine."""
@@ -283,6 +288,9 @@ class MecrisScheduler:
             )
             cur.execute("RELEASE SAVEPOINT obs_write")
             self._has_obs_columns = True
+            self.last_status = last_status
+            self.intent = intent
+            self.last_error = error
         except Exception:
             cur.execute("ROLLBACK TO SAVEPOINT obs_write")
             cur.execute("RELEASE SAVEPOINT obs_write")
