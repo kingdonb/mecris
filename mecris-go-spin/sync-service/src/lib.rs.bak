@@ -7,7 +7,6 @@ use spin_sdk::{
     variables,
 };
 use spin_cron_sdk::{cron_component, Metadata};
-use sha2::{Sha256, Digest};
 
 fn json_response<T: Serialize>(status: u16, data: &T) -> anyhow::Result<Response<String>> {
     Ok(Response::builder().status(status).header("content-type", "application/json").header("access-control-allow-origin", "*").body(serde_json::to_string(data)?)?)

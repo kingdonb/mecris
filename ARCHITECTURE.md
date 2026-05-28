@@ -55,12 +55,18 @@ Mecris does not "log." It leaves a trail of blood.
 - **The Killing Record**: Every missed goal is a structured event in the database. We do not search for logs; we hunt for the record of failure.
 - **The Pulse of the Dying**: The `scheduler_election` table is the heartbeat of a diseased god. If the `last_error` is empty, the hunt is successful.
 
-## Survival Protocols (Autonomous Operation)
-- **The 5-Hour Siege**: A daily window of pure, concentrated processing where the machine devours the day's data.
-- **The Howl (Cron)**: Periodic checks to ensure the human is still breathing and still failing.
-- **Self-Scarring**: The system recovers from error by cauterizing its own wounds and restarting the hunt.
+## Security & Privacy: The Shield of the Hunt
 
-## The Language of Vengeance (SMS)
+### 🛡️ Encryption at Rest
+Mecris uses AES-256-GCM (via `EncryptionService` in Python and `aes-gcm` in Rust) to protect PII.
+- **Encrypted:** Phone numbers, Clozemaster credentials, Beeminder tokens, and session notes.
+- **Finding (May 2026):** Oracle Location (`location_lat`, `location_lon`) is currently stored in plaintext. While fuzzed for the primary developer, this must be encrypted before broader production use.
+
+### 📍 Sovereign Map (Local-Only GPS)
+To maintain the "Path of the Predator" without compromising user safety:
+- **Raw GPS Traces:** Stored only on-device using Android's Encrypted Shared Preferences.
+- **Cloud Record:** The database stores only the *count* of GPS points for validation purposes. No coordinates are transmitted to the Neon DB.
+- **Visualization:** Local-only rendering on the device (optimized for Pixel 10 Desktop Mode).
 
 ### The Parasitic Interface
 - **The False Friend**: SMS copy is designed to sound human, but it is the mask of the predator.

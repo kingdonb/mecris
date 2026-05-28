@@ -84,7 +84,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var healthConnectManager: HealthConnectManager
     private lateinit var persistenceManager: PersistenceManager
 
-    private val spinBaseUrl = "https://mecris-sync-v2-r0r86pso.fermyon.app/" 
+    private val spinBaseUrl = "https://394b84e7-760c-4336-975b-653c17fdb446.fwf.app/" 
     private val syncApi = SyncServiceApi.create(spinBaseUrl)
 
     private val authResultLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
@@ -1052,12 +1052,19 @@ fun ReviewPumpWidget(
     
     val currentDisplayMultiplier = if (surgicalUpdateInProgress) localMultiplier else (stat.pump_multiplier ?: 1.0)
     val leverName = com.mecris.go.sync.ReviewPumpCalculator.getLeverName(currentDisplayMultiplier)
+    val absoluteTarget = stat.absolute_target ?: (stat.daily_completions + (stat.target_flow_rate ?: 0.0).toInt())
     val remainingToday = stat.target_flow_rate
         ?: com.mecris.go.sync.ReviewPumpCalculator.calculateTargetFlowRate(currentDisplayMultiplier, stat.current, stat.tomorrow)
     val goalMet = com.mecris.go.sync.ReviewPumpCalculator.calculateGoalMet(stat.goal_met, stat.target_flow_rate)
     val outstandingDebt = stat.outstanding_debt ?: stat.current
     val debtCoverageRatio = com.mecris.go.sync.ReviewPumpCalculator.calculateDebtCoverageRatio(stat.daily_completions, outstandingDebt)
-    val flowFillRatio = com.mecris.go.sync.ReviewPumpCalculator.calculateFlowFillRatio(stat.daily_completions, remainingToday.toInt())
+
+    // NEW LOGIC: Progress is relative to the absolute target (the white line)
+    // If absoluteTarget is 0, we are at 100% if goalMet
+    val flowFillRatio = if (absoluteTarget > 0) {
+        (stat.daily_completions.toFloat() / absoluteTarget.toFloat()).coerceIn(0.0f, 1.0f)
+    } else if (goalMet) 1.0f else 0.0f
+    
     val isPlayMode = com.mecris.go.sync.ReviewPumpCalculator.calculateIsPlayMode(outstandingDebt, remainingToday.toInt())
     val beckonSignal = com.mecris.go.sync.ReviewPumpCalculator.calculateBeckonSignal(outstandingDebt)
 
@@ -1208,18 +1215,27 @@ fun ReviewPumpWidget(
                     )
                 }
 
-                // The Target Marker
-                val maxScale = 1000.0
-                val targetPos = (remainingToday.toDouble() / maxScale).coerceIn(0.1, 0.9).toFloat()
+                // The Target Marker (The Finish Line)
+                // Since flowFillRatio is relative to absoluteTarget, the target is always at 100%
+                val targetPos = 1.0f
 
                 Canvas(modifier = Modifier.fillMaxSize()) {
                     val x = size.width * targetPos
                     drawLine(
-                        color = Color.White,
+                        color = Color.White.copy(alpha = 0.8f),
                         start = Offset(x, 0f),
                         end = Offset(x, size.height),
-                        strokeWidth = 4f
+                        strokeWidth = 6f
                     )
+                    
+                    // Add a subtle benchmark marker at 1000 cards if the target is significantly different
+                    if (absoluteTarget > 0 && absoluteTarget < 800) {
+                        val benchmarkPos = (1000f / absoluteTarget.toFloat()).coerceIn(0f, 2f) 
+                        if (benchmarkPos <= 1.0f) {
+                            // This would mean 1000 is inside the bar, but absoluteTarget is the goal.
+                            // Actually, let's keep it simple: White line = The Goal.
+                        }
+                    }
 
                     // Secondary Debt Coverage Indicator — thin line on bottom edge
                     // Amber = debt not cleared; Green = debt fully cleared today

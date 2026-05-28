@@ -4,7 +4,7 @@ spin_manifest_version = 2
 
 [application]
 name = "mecris-sync-v2"
-version = "0.0.1-beta.4"
+version = "0.0.1-beta.5"
 authors = ["Kingdon B <kingdon@urmanac.com>"]
 description = ""
 
@@ -31,21 +31,21 @@ cloud_provider = { required = false, default = "unknown_cloud" }
 route = "/internal/review-pump-status"
 component = "review-pump"
 
-[[trigger.http]]
-route = "/internal/review-pump-status-py"
-component = "review-pump-py"
+# [[trigger.http]]
+# route = "/internal/review-pump-status-py"
+# component = "review-pump-py"
 
-[[trigger.http]]
-route = "/internal/budget-governor-py"
-component = "budget-governor-py"
+# [[trigger.http]]
+# route = "/internal/budget-governor-py"
+# component = "budget-governor-py"
 
-[[trigger.http]]
-route = "/internal/log-message"
-component = "log-message-py"
+# [[trigger.http]]
+# route = "/internal/log-message"
+# component = "log-message-py"
 
-[[trigger.http]]
-route = "/internal/arabic-skip-count"
-component = "arabic-skip-counter"
+# [[trigger.http]]
+# route = "/internal/arabic-skip-count"
+# component = "arabic-skip-counter"
 
 [[trigger.http]]
 route = "/..."
@@ -93,48 +93,48 @@ watch = ["src/**/*.rs", "Cargo.toml"]
 # HTTP trigger: POST /internal/review-pump-status-py
 # Body JSON: {debt, tomorrow_liability, daily_completions, multiplier_x10, unit}
 # Returns JSON: PumpStatus object — parity with Rust review-pump at /internal/review-pump-status
-[component.review-pump-py]
-source = "../../poc/wasm/review-pump-py/review-pump-py.wasm"
-[component.review-pump-py.build]
-command = "find . -name '.venv*' -type d -exec rm -rf {} + && find . -name '__pycache__' -type d -exec rm -rf {} + && uv venv .venv_build --clear --python 3.13 && . .venv_build/bin/activate && uv pip install componentize-py==0.23.0 spin-sdk==4.0.0 && componentize-py -w spin:up/http-trigger@4.0.0 componentize -p . -p .venv_build/lib/python3.13/site-packages app -o review-pump-py.wasm"
-workdir = "../../poc/wasm/review-pump-py"
-watch = ["app.py", "wit/*.wit"]
+# [component.review-pump-py]
+# source = "../../poc/wasm/review-pump-py/review-pump-py.wasm"
+# [component.review-pump-py.build]
+# command = "find . -name '.venv*' -type d -exec rm -rf {} + && find . -name '__pycache__' -type d -exec rm -rf {} + && uv venv .venv_build --clear --python 3.13 && . .venv_build/bin/activate && uv pip install componentize-py==0.23.0 spin-sdk==4.0.0 && componentize-py -w spin:up/http-trigger@4.0.0 componentize -p . -p .venv_build/lib/python3.13/site-packages app -o review-pump-py.wasm"
+# workdir = "../../poc/wasm/review-pump-py"
+# watch = ["app.py", "wit/*.wit"]
 
 # budget-governor-py: Python-native WASM component (componentize-py + spin_sdk, Phase 1.7.2 / kingdonb/mecris#214).
 # HTTP trigger: POST /internal/budget-governor-py
 # Body JSON: {"action": "status"|"check"|"record"|"recommend"|"gate", "bucket": <str>, "cost": <float>}
 # Returns JSON: action-specific response dict — ports 5%/5% spend envelope logic from services/budget_governor.py.
 # Reads budget limits from Spin variables; persists spend log via Spin KV; fetches Helix balance via outbound HTTP.
-[component.budget-governor-py]
-source = "../../poc/wasm/budget-governor-py/budget-governor-py.wasm"
-key_value_stores = ["default"]
-[component.budget-governor-py.build]
-command = "find . -name '.venv*' -type d -exec rm -rf {} + && find . -name '__pycache__' -type d -exec rm -rf {} + && uv venv .venv_build --clear --python 3.13 && . .venv_build/bin/activate && uv pip install componentize-py==0.23.0 spin-sdk==4.0.0 && componentize-py -w spin:up/http-trigger@4.0.0 componentize -p . -p .venv_build/lib/python3.13/site-packages app -o budget-governor-py.wasm"
-workdir = "../../poc/wasm/budget-governor-py"
-watch = ["app.py", "wit/*.wit"]
+# [component.budget-governor-py]
+# source = "../../poc/wasm/budget-governor-py/budget-governor-py.wasm"
+# key_value_stores = ["default"]
+# [component.budget-governor-py.build]
+# command = "find . -name '.venv*' -type d -exec rm -rf {} + && find . -name '__pycache__' -type d -exec rm -rf {} + && uv venv .venv_build --clear --python 3.13 && . .venv_build/bin/activate && uv pip install componentize-py==0.23.0 spin-sdk==4.0.0 && componentize-py -w spin:up/http-trigger@4.0.0 componentize -p . -p .venv_build/lib/python3.13/site-packages app -o budget-governor-py.wasm"
+# workdir = "../../poc/wasm/budget-governor-py"
+# watch = ["app.py", "wit/*.wit"]
 
 # arabic-skip-counter: Python WASM component (componentize-py + spin_sdk, Phase 1.6).
 # HTTP trigger: GET /internal/arabic-skip-count?user_id=<id>&hours=<n>
 # Returns JSON: {"skip_count": <u32>}
 # Reads neon_db_url from Spin variables.
-[component.arabic-skip-counter]
-source = "../arabic-skip-counter/arabic-skip-counter.wasm"
-allowed_outbound_hosts = ["https://*.neon.tech"]
-[component.arabic-skip-counter.variables]
-neon_db_url = "{{ neon_db_url }}"
-[component.arabic-skip-counter.build]
-command = "find . -name '.venv*' -type d -exec rm -rf {} + && find . -name '__pycache__' -type d -exec rm -rf {} + && uv venv .venv_build --clear --python 3.13 && . .venv_build/bin/activate && uv pip install componentize-py==0.23.0 spin-sdk==4.0.0 psycopg2-binary httpx && componentize-py -w spin:up/http-trigger@4.0.0 componentize -p . -p .venv_build/lib/python3.13/site-packages app -o arabic-skip-counter.wasm"
-workdir = "../arabic-skip-counter"
-watch = ["app.py", "wit/*.wit"]
+# [component.arabic-skip-counter]
+# source = "../arabic-skip-counter/arabic-skip-counter.wasm"
+# allowed_outbound_hosts = ["https://*.neon.tech"]
+# [component.arabic-skip-counter.variables]
+# neon_db_url = "{{ neon_db_url }}"
+# [component.arabic-skip-counter.build]
+# command = "find . -name '.venv*' -type d -exec rm -rf {} + && find . -name '__pycache__' -type d -exec rm -rf {} + && uv venv .venv_build --clear --python 3.13 && . .venv_build/bin/activate && uv pip install componentize-py==0.23.0 spin-sdk==4.0.0 psycopg2-binary httpx && componentize-py -w spin:up/http-trigger@4.0.0 componentize -p . -p .venv_build/lib/python3.13/site-packages app -o arabic-skip-counter.wasm"
+# workdir = "../arabic-skip-counter"
+# watch = ["app.py", "wit/*.wit"]
 
 # log-message-py: Python WASM component (componentize-py + spin_sdk, kingdonb/mecris#213).
 # HTTP trigger: POST /internal/log-message
 # Returns JSON: {"logged": true, "entry_count": <int>, "logged_at": <ISO 8601>}
 # GET /internal/log-message returns notification audit history.
-[component.log-message-py]
-source = "../../poc/wasm/log-message-py/log-message-py.wasm"
-key_value_stores = ["default"]
-[component.log-message-py.build]
-command = "find . -name '.venv*' -type d -exec rm -rf {} + && find . -name '__pycache__' -type d -exec rm -rf {} + && uv venv .venv_build --clear --python 3.13 && . .venv_build/bin/activate && uv pip install componentize-py==0.23.0 spin-sdk==4.0.0 && componentize-py -w spin:up/http-trigger@4.0.0 componentize -p . -p .venv_build/lib/python3.13/site-packages app -o log-message-py.wasm"
-workdir = "../../poc/wasm/log-message-py"
-watch = ["app.py", "wit/*.wit"]
+# [component.log-message-py]
+# source = "../../poc/wasm/log-message-py/log-message-py.wasm"
+# key_value_stores = ["default"]
+# [component.log-message-py.build]
+# command = "find . -name '.venv*' -type d -exec rm -rf {} + && find . -name '__pycache__' -type d -exec rm -rf {} + && uv venv .venv_build --clear --python 3.13 && . .venv_build/bin/activate && uv pip install componentize-py==0.23.0 spin-sdk==4.0.0 && componentize-py -w spin:up/http-trigger@4.0.0 componentize -p . -p .venv_build/lib/python3.13/site-packages app -o log-message-py.wasm"
+# workdir = "../../poc/wasm/log-message-py"
+# watch = ["app.py", "wit/*.wit"]

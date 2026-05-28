@@ -142,12 +142,13 @@ fn default_unit() -> String {
 mod spin_handler {
     use super::*;
     use spin_sdk::http::{IntoResponse, Request, Response};
-    use spin_sdk::http_component;
+    use spin_sdk::http_service;
+    use http_body_util::BodyExt;
 
-    #[http_component]
-    fn handle_review_pump(req: Request) -> anyhow::Result<impl IntoResponse> {
-        let body = req.body();
-        let pr: PumpRequest = serde_json::from_slice(body).unwrap_or_else(|_| PumpRequest {
+    #[http_service]
+    async fn handle_review_pump(req: Request) -> anyhow::Result<impl IntoResponse> {
+        let body_bytes = req.into_body().collect().await.map_err(|e| anyhow::anyhow!("Body error: {:?}", e))?.to_bytes();
+        let pr: PumpRequest = serde_json::from_slice(&body_bytes).unwrap_or_else(|_| PumpRequest {
             debt: 0,
             tomorrow_liability: 0,
             daily_completions: 0,
@@ -167,8 +168,7 @@ mod spin_handler {
         Ok(Response::builder()
             .status(200)
             .header("content-type", "application/json")
-            .body(json)
-            .build())
+            .body(json)?)
     }
 }
 
