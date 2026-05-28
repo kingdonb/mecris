@@ -61,7 +61,6 @@ async fn handle_sync_service(req: Request) -> anyhow::Result<Response<String>> {
 
 async fn handle_aggregate_status_get(req: Request) -> anyhow::Result<Response<String>> {
     let uid = match extract_user_id(req.headers().get("authorization")).await { Some(id) => id, None => return Ok(text_response(401, "Unauthorized")?) };
-    let full = req.uri().query().map(|q| q.contains("full=true")).unwrap_or(false);
     let db = match variables::get("db_url").await { Ok(v) if !v.is_empty() => v, _ => variables::get("neon_db_url").await? };
     let conn = Connection::open(&db).await?;
     let walk_rs = conn.query("SELECT COUNT(*) FROM walk_inferences WHERE (start_time::TIMESTAMPTZ AT TIME ZONE 'US/Eastern')::DATE = (CURRENT_TIMESTAMP AT TIME ZONE 'US/Eastern')::DATE AND CAST(step_count AS INTEGER) >= 2000 AND user_id = $1", &[ParameterValue::Str(uid.clone())]).await?.collect().await?;
@@ -69,31 +68,18 @@ async fn handle_aggregate_status_get(req: Request) -> anyhow::Result<Response<St
     let lang_rows = conn.query("SELECT language_name, current_reviews, tomorrow_reviews, pump_multiplier::FLOAT8, daily_completions FROM language_stats WHERE user_id = $1", &[ParameterValue::Str(uid.clone())]).await?.collect().await?;
     let user_rows = conn.query("SELECT vacation_mode_until::TEXT, phone_verified FROM users WHERE pocket_id_sub = $1", &[ParameterValue::Str(uid.clone())]).await?.collect().await?;
     let (vaca, phone) = if !user_rows.is_empty() { (match &user_rows[0][0] { DbValue::Str(s) => Some(s.clone()), _ => None }, match &user_rows[0][1] { DbValue::Boolean(b) => *b, _ => false }) } else { (None, false) };
-    let mut clear = walked; let mut stats = Vec::new();
-    #[derive(Serialize)] struct Stat { name: String, daily_completions: i32, absolute_target: i32, goal_met: bool }
+    let mut total_goals = 1; let mut goals_met = if walked { 1 } else { 0 };
+    let (mut arabic_met, mut greek_met) = (false, false);
     for r in &lang_rows {
         let n = match &r[0] { DbValue::Str(s) => s.clone(), _ => continue };
         let (cur, tom, mult, done) = (match &r[1] { DbValue::Int32(i) => *i, _ => 0 }, match &r[2] { DbValue::Int32(i) => *i, _ => 0 }, match &r[3] { DbValue::Floating64(f) => *f, _ => 1.0 }, match &r[4] { DbValue::Int32(i) => *i, _ => 0 });
-        let (target, _, met) = calculate_targets(cur, tom, mult, done);
-        if !met { clear = false; }
-        stats.push(Stat { name: n, daily_completions: done, absolute_target: target, goal_met: met });
+        let (_, _, met) = calculate_targets(cur, tom, mult, done);
+        if n == "ARABIC" { total_goals += 1; arabic_met = met; if met { goals_met += 1; } }
+        else if n == "GREEK" { total_goals += 1; greek_met = met; if met { goals_met += 1; } }
     }
-    if vaca.is_some() { clear = true; }
-    #[derive(Serialize)] struct Mod { role: String, status: String, last_seen: String }
-    #[derive(Serialize)] struct AggResp { all_clear: bool, walk_complete: bool, phone_verified: bool, languages: Vec<Stat>, modalities: Option<Vec<Mod>> }
-    let mut mods = None;
-    if full {
-        let p_rows = conn.query("SELECT role, heartbeat::TEXT, CAST(EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - heartbeat)) / 60 AS BIGINT) AS mins FROM scheduler_election WHERE user_id = $1 OR user_id IS NULL ORDER BY heartbeat DESC", &[ParameterValue::Str(uid.clone())]).await?.collect().await?;
-        let mut ms = Vec::new();
-        for r in &p_rows {
-            let role = match &r[0] { DbValue::Str(s) => s.clone(), _ => continue };
-            let display = match role.as_str() { "leader" => "MCP SERVER", "android_client" => "ANDROID", "akamai_functions" => "AKAMAI", "fermyon_cloud" => "FERMYON", _ => &role };
-            let mins = match &r[2] { DbValue::Int64(i) => *i as u64, _ => 9999 };
-            ms.push(Mod { role: display.to_string(), status: get_modality_status(&role, mins).to_string(), last_seen: match &r[1] { DbValue::Str(s) => s.clone(), _ => "never".to_string() } });
-        }
-        mods = Some(ms);
-    }
-    json_response(200, &AggResp { all_clear: clear, walk_complete: walked, phone_verified: phone, languages: stats, modalities: mods })
+    #[derive(Serialize)] struct Comp { walk: bool, arabic: bool, greek: bool }
+    #[derive(Serialize)] struct AggResp { score: String, goals_met: i32, total_goals: i32, all_clear: bool, components: Comp, vacation_mode_until: Option<String>, phone_verified: bool }
+    json_response(200, &AggResp { score: format!("{}/{}", goals_met, total_goals), goals_met, total_goals, all_clear: vaca.is_some() || goals_met >= total_goals, components: Comp { walk: walked, arabic: arabic_met, greek: greek_met }, vacation_mode_until: vaca, phone_verified: phone })
 }
 
 fn calculate_targets(cur: i32, tom: i32, mult: f64, done: i32) -> (i32, f64, bool) {
@@ -121,13 +107,41 @@ async fn handle_profile_post(req: Request) -> anyhow::Result<Response<String>> {
 
 async fn handle_profile_get(req: Request) -> anyhow::Result<Response<String>> {
     let uid = match extract_user_id(req.headers().get("authorization")).await { Some(id) => id, None => return Ok(text_response(401, "Unauthorized")?) };
+    println!("DEBUG: handle_profile_get for user {}", uid);
     let db = match variables::get("db_url").await { Ok(v) if !v.is_empty() => v, _ => variables::get("neon_db_url").await? };
     let conn = Connection::open(&db).await?;
-    let rs = conn.query("SELECT phone_number_encrypted, beeminder_user_encrypted, location_lat, location_lon, vacation_mode_until::TEXT, autonomous_sync_enabled, COALESCE(notification_prefs::TEXT, '') FROM users WHERE pocket_id_sub = $1", &[ParameterValue::Str(uid.clone())]).await?.collect().await?;
+    let rs = conn.query("SELECT phone_number_encrypted, beeminder_user_encrypted, location_lat, location_lon, vacation_mode_until::TEXT, autonomous_sync_enabled FROM users WHERE pocket_id_sub = $1", &[ParameterValue::Str(uid.clone())]).await?.collect().await?;
     if rs.is_empty() { return Ok(text_response(404, "User not found")?); }
-    #[derive(Serialize)] struct ProfResp { phone_number_configured: bool, beeminder_user_configured: bool, latitude: Option<f64>, longitude: Option<f64>, vacation_mode_until: Option<String>, autonomous_sync_enabled: bool, notification_prefs: Option<serde_json::Value> }
+    #[derive(Serialize)] struct ProfResp { phone_number: Option<String>, beeminder_user: Option<String>, latitude: Option<f64>, longitude: Option<f64>, vacation_mode_until: Option<String>, autonomous_sync_enabled: bool }
     let r = &rs[0];
-    json_response(200, &ProfResp { phone_number_configured: match &r[0] { DbValue::Str(s) => !s.is_empty(), _ => false }, beeminder_user_configured: match &r[1] { DbValue::Str(s) => !s.is_empty(), _ => false }, latitude: match &r[2] { DbValue::Floating64(f) => Some(*f), _ => None }, longitude: match &r[3] { DbValue::Floating64(f) => Some(*f), _ => None }, vacation_mode_until: match &r[4] { DbValue::Str(s) if !s.is_empty() => Some(s.clone()), _ => None }, autonomous_sync_enabled: match &r[5] { DbValue::Boolean(b) => *b, _ => false }, notification_prefs: match &r[6] { DbValue::Str(s) if !s.is_empty() => serde_json::from_str(s).ok(), _ => None } })
+    
+    let p = match &r[0] { 
+        DbValue::Str(s) if !s.is_empty() => {
+            match decrypt_token(s).await {
+                Ok(dec) => Some(dec),
+                Err(e) => { println!("ERROR: phone decryption failed: {:?}", e); None }
+            }
+        }, 
+        _ => None 
+    };
+    let bu = match &r[1] { 
+        DbValue::Str(s) if !s.is_empty() => {
+            match decrypt_token(s).await {
+                Ok(dec) => Some(dec),
+                Err(e) => { println!("ERROR: beeminder_user decryption failed: {:?}", e); None }
+            }
+        }, 
+        _ => None 
+    };
+    
+    json_response(200, &ProfResp { 
+        phone_number: p, 
+        beeminder_user: bu, 
+        latitude: match &r[2] { DbValue::Floating64(f) => Some(*f), _ => None }, 
+        longitude: match &r[3] { DbValue::Floating64(f) => Some(*f), _ => None }, 
+        vacation_mode_until: match &r[4] { DbValue::Str(s) if !s.is_empty() => Some(s.clone()), _ => None }, 
+        autonomous_sync_enabled: match &r[5] { DbValue::Boolean(b) => *b, _ => false } 
+    })
 }
 
 async fn handle_cloud_sync(req: Request) -> anyhow::Result<Response<String>> {
@@ -178,11 +192,16 @@ async fn handle_languages_get(req: Request) -> anyhow::Result<Response<String>> 
     let uid = match extract_user_id(req.headers().get("authorization")).await { Some(id) => id, None => return Ok(text_response(401, "Unauthorized")?) };
     let db = match variables::get("db_url").await { Ok(v) if !v.is_empty() => v, _ => variables::get("neon_db_url").await? };
     let conn = Connection::open(&db).await?;
-    let rs = conn.query("SELECT language_name, current_reviews, tomorrow_reviews, next_7_days_reviews, daily_rate::FLOAT8, safebuf, derail_risk, pump_multiplier::FLOAT8, beeminder_slug, daily_completions FROM language_stats WHERE user_id = $1", &[ParameterValue::Str(uid)]).await?.collect().await?;
-    #[derive(Serialize)] struct LangStat { name: String, current: i32, tomorrow: i32, next_7: i32, rate: f64, safebuf: i32, risk: String, multiplier: f64, slug: String, daily_done: i32 }
+    let rs = conn.query("SELECT language_name, current_reviews, tomorrow_reviews, next_7_days_reviews, daily_rate::FLOAT8, safebuf, derail_risk, pump_multiplier::FLOAT8, beeminder_slug, daily_completions FROM language_stats WHERE user_id = $1 ORDER BY (beeminder_slug != '') DESC, language_name ASC", &[ParameterValue::Str(uid)]).await?.collect().await?;
+    #[derive(Serialize)] struct LangStat { name: String, current: i32, tomorrow: i32, next_7_days: i32, daily_rate: f64, safebuf: i32, derail_risk: String, pump_multiplier: Option<f64>, daily_completions: i32, goal_met: bool, absolute_target: i32 }
     let mut langs = Vec::new();
-    for r in &rs { langs.push(LangStat { name: match &r[0] { DbValue::Str(s) => s.clone(), _ => continue }, current: match &r[1] { DbValue::Int32(i) => *i, _ => 0 }, tomorrow: match &r[2] { DbValue::Int32(i) => *i, _ => 0 }, next_7: match &r[3] { DbValue::Int32(i) => *i, _ => 0 }, rate: match &r[4] { DbValue::Floating64(f) => *f, _ => 0.0 }, safebuf: match &r[5] { DbValue::Int32(i) => *i, _ => 0 }, risk: match &r[6] { DbValue::Str(s) => s.clone(), _ => "unknown".to_string() }, multiplier: match &r[7] { DbValue::Floating64(f) => *f, _ => 1.0 }, slug: match &r[8] { DbValue::Str(s) => s.clone(), _ => "none".to_string() }, daily_done: match &r[9] { DbValue::Int32(i) => *i, _ => 0 } }); }
-    json_response(200, &langs)
+    for r in &rs {
+        let (name, cur, tom, n7, rate, sb, risk, mult, done) = (match &r[0] { DbValue::Str(s) => s.clone(), _ => continue }, match &r[1] { DbValue::Int32(i) => *i, _ => 0 }, match &r[2] { DbValue::Int32(i) => *i, _ => 0 }, match &r[3] { DbValue::Int32(i) => *i, _ => 0 }, match &r[4] { DbValue::Floating64(f) => *f, _ => 0.0 }, match &r[5] { DbValue::Int32(i) => *i, _ => 0 }, match &r[6] { DbValue::Str(s) => s.clone(), _ => "unknown".to_string() }, match &r[7] { DbValue::Floating64(f) => Some(*f), _ => None }, match &r[9] { DbValue::Int32(i) => *i, _ => 0 });
+        let (target, _, met) = calculate_targets(cur, tom, mult.unwrap_or(1.0), done);
+        langs.push(LangStat { name, current: cur, tomorrow: tom, next_7_days: n7, daily_rate: rate, safebuf: sb, derail_risk: risk, pump_multiplier: mult, daily_completions: done, goal_met: met, absolute_target: target });
+    }
+    #[derive(Serialize)] struct LangResp { languages: Vec<LangStat> }
+    json_response(200, &LangResp { languages: langs })
 }
 
 async fn handle_budget_get(req: Request) -> anyhow::Result<Response<String>> {
@@ -191,21 +210,31 @@ async fn handle_budget_get(req: Request) -> anyhow::Result<Response<String>> {
     let conn = Connection::open(&db).await?;
     let rs = conn.query("SELECT remaining_budget FROM budget_tracking WHERE user_id = $1 LIMIT 1", &[ParameterValue::Str(uid)]).await?.collect().await?;
     let budget = if rs.is_empty() { 0.0 } else { match &rs[0][0] { DbValue::Floating64(f) => *f, _ => 0.0 } };
-    json_response(200, &budget)
+    #[derive(Serialize)] struct BudgetResp { remaining_budget: f64 }
+    json_response(200, &BudgetResp { remaining_budget: budget })
 }
 
 async fn handle_walks_post(req: Request) -> anyhow::Result<Response<String>> {
+    println!("DEBUG: handle_walks_post entered");
     let uid = match extract_user_id(req.headers().get("authorization")).await { Some(id) => id, None => return Ok(text_response(401, "Unauthorized")?) };
     let body = req.into_body().collect().await.map_err(|e| anyhow::anyhow!("Body: {:?}", e))?.to_bytes();
-    #[derive(Deserialize)] struct WalkSum { start_time: String, end_time: String, step_count: i32, distance_meters: f64, distance_source: String }
-    let walk: WalkSum = serde_json::from_slice(&body)?;
+    #[derive(Deserialize, Debug)] struct WalkSum { start_time: String, end_time: String, step_count: i32, distance_meters: f64, distance_source: String, confidence_score: f64, gps_route_points: i32 }
+    let walk: WalkSum = match serde_json::from_slice(&body) {
+        Ok(w) => w,
+        Err(e) => { println!("ERROR: Deserialization failed: {:?}", e); return Ok(text_response(400, "Invalid JSON")?); }
+    };
+    println!("DEBUG: walk data: {:?}", walk);
     let db = match variables::get("db_url").await { Ok(v) if !v.is_empty() => v, _ => variables::get("neon_db_url").await? };
     let conn = Connection::open(&db).await?;
     let _ = conn.execute("INSERT INTO users (pocket_id_sub, beeminder_token_encrypted, beeminder_goal) VALUES ($1, '', 'bike') ON CONFLICT DO NOTHING", &[ParameterValue::Str(uid.clone())]).await;
     let prev = conn.query("SELECT distance_meters FROM walk_inferences WHERE user_id = $1 AND start_time = $2", &[ParameterValue::Str(uid.clone()), ParameterValue::Str(walk.start_time.clone())]).await?.collect().await?;
     let prev_dist: f64 = if !prev.is_empty() { match &prev[0][0] { DbValue::Str(s) => s.parse().unwrap_or(0.0), _ => 0.0 } } else { 0.0 };
     let delta = walk.distance_meters - prev_dist;
-    conn.execute("INSERT INTO walk_inferences (user_id, start_time, end_time, step_count, distance_meters, distance_source) VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT (user_id, start_time) DO UPDATE SET end_time = EXCLUDED.end_time, step_count = EXCLUDED.step_count, distance_meters = EXCLUDED.distance_meters, distance_source = EXCLUDED.distance_source", &[ParameterValue::Str(uid.clone()), ParameterValue::Str(walk.start_time.clone()), ParameterValue::Str(walk.end_time.clone()), ParameterValue::Str(walk.step_count.to_string()), ParameterValue::Str(walk.distance_meters.to_string()), ParameterValue::Str(walk.distance_source.clone())]).await?;
+    println!("DEBUG: inserting walk inference for user {} at {}", uid, walk.start_time);
+    match conn.execute("INSERT INTO walk_inferences (user_id, start_time, end_time, step_count, distance_meters, distance_source, confidence_score, gps_route_points) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) ON CONFLICT (user_id, start_time) DO UPDATE SET end_time = EXCLUDED.end_time, step_count = EXCLUDED.step_count, distance_meters = EXCLUDED.distance_meters, distance_source = EXCLUDED.distance_source, confidence_score = EXCLUDED.confidence_score, gps_route_points = EXCLUDED.gps_route_points", &[ParameterValue::Str(uid.clone()), ParameterValue::Str(walk.start_time.clone()), ParameterValue::Str(walk.end_time.clone()), ParameterValue::Str(walk.step_count.to_string()), ParameterValue::Str(walk.distance_meters.to_string()), ParameterValue::Str(walk.distance_source.clone()), ParameterValue::Str(walk.confidence_score.to_string()), ParameterValue::Str(walk.gps_route_points.to_string())]).await {
+        Ok(_) => println!("DEBUG: walk inference inserted successfully"),
+        Err(e) => { println!("ERROR: DB execution failed: {:?}", e); return Err(e.into()); }
+    }
     let token = conn.query("SELECT beeminder_goal FROM users WHERE pocket_id_sub = $1", &[ParameterValue::Str(uid.clone())]).await?.collect().await?;
     if !token.is_empty() && delta > 200.0 {
         let goal = match &token[0][0] { DbValue::Str(s) if !s.is_empty() => s.clone(), _ => "bike".to_string() };
@@ -232,7 +261,7 @@ async fn handle_trigger_reminders_post(_req: Request) -> anyhow::Result<Response
         let m_rs = conn.query("SELECT sent_at::TEXT FROM message_log WHERE user_id = $1 AND type = 'walk_reminder' ORDER BY sent_at DESC LIMIT 1", &[ParameterValue::Str(uid.clone())]).await?.collect().await?;
         let ms = m_rs.first().and_then(|mr| match &mr[0] { DbValue::Str(s) if !s.is_empty() => Some(s.as_str()), _ => None });
         let mins = ms.and_then(|s| chrono::DateTime::parse_from_rfc3339(s).or_else(|_| chrono::DateTime::parse_from_str(s, "%Y-%m-%d %H:%M:%S%.f%z")).ok().map(|dt| epoch.saturating_sub(dt.timestamp() as u64) / 60));
-        if !should_dispatch(local_hour_from_timezone(&tz, &now), steps, mins, &pref) { continue; }
+        if !should_dispatch_rem(local_hour_from_timezone(&tz, &now), steps, mins, &pref) { continue; }
         let hb_rs = conn.query("SELECT EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - heartbeat)) / 60 FROM scheduler_election WHERE user_id = $1 AND role = 'android_client' ORDER BY heartbeat DESC LIMIT 1", &[ParameterValue::Str(uid.clone())]).await?.collect().await?;
         if hb_rs.first().and_then(|hr| match &hr[0] { DbValue::Floating64(f) => Some(*f as u64), _ => None }).map_or(false, |m| m < 240) { continue; }
         let ph = decrypt_token(&ph_enc).await?;
@@ -301,7 +330,7 @@ async fn handle_confirm_phone_verification_post(req: Request) -> anyhow::Result<
 }
 
 async fn handle_twilio_webhook_post(req: Request) -> anyhow::Result<Response<String>> {
-    let _tok = decrypt_token(&variables::get("twilio_auth_token_encrypted").await?).await?;
+    let tok = decrypt_token(&variables::get("twilio_auth_token_encrypted").await?).await?;
     let body = req.into_body().collect().await.map_err(|_| anyhow::anyhow!("body"))?.to_bytes();
     let body_str = std::str::from_utf8(&body).unwrap_or("");
     let from_num = body_str.split('&').find_map(|p| { let mut i = p.splitn(2, '='); if i.next() == Some("From") { Some(urlencoding::decode(&i.next()?.replace('+', " ")).unwrap_or_default().into_owned()) } else { None } }).unwrap_or_default();
@@ -350,7 +379,15 @@ async fn run_clozemaster_scraper(db: &str, uid: &str) -> anyhow::Result<()> {
             let cur = p.get("numReadyForReview").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
             let tot = p.get("score").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
             let tod = p.get("numPointsToday").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
-            let (lang, beem) = match slug_name.as_str() { "ara-eng" => ("ARABIC", "reviewstack"), "ell-eng" => ("GREEK", ""), _ => (slug_name.as_str(), ""), };
+            let (lang, beem) = match slug_name.as_str() { 
+                "ara-eng" => ("ARABIC", "reviewstack"), 
+                "ell-eng" => ("GREEK", ""), 
+                "gle-eng" => ("IRISH", ""),
+                "tok-eng" => ("TOKI PONA", ""),
+                "lit-eng" => ("LITHUANIAN", ""),
+                "swh-eng" => ("SWAHILI", ""),
+                _ => (slug_name.as_str(), ""), 
+            };
             let (mut tom, mut n7) = (0, 0);
             if id > 0 {
                 let api_url = format!("https://www.clozemaster.com/api/v1/lp/{}/more-stats", id);
@@ -416,7 +453,8 @@ async fn send_twilio_sms(sid: &str, tok: &str, from: &str, to: &str, msg: &str) 
 }
 
 fn local_hour_from_timezone(tz_name: &str, now: &chrono::DateTime<chrono::Utc>) -> u32 { let tz: chrono_tz::Tz = tz_name.parse().unwrap_or(chrono_tz::UTC); now.with_timezone(&tz).hour() }
-fn should_dispatch(h: u32, s: i32, m: Option<u64>, _p: &NotificationPrefs) -> bool { if h < 9 || h >= 21 || s >= 2000 { false } else { m.map_or(true, |v| v >= 120) } }
+fn aggregate_step_count(rs: &Vec<Vec<DbValue>>) -> i32 { rs.iter().filter_map(|r| match &r[0] { DbValue::Str(s) => s.parse::<i32>().ok(), _ => None }).max().unwrap_or(0) }
+fn should_dispatch_rem(h: u32, s: i32, m: Option<u64>, _p: &NotificationPrefs) -> bool { if h < 9 || h >= 21 || s >= 2000 { false } else { m.map_or(true, |v| v >= 120) } }
 
 async fn decrypt_token(enc_hex: &str) -> anyhow::Result<String> {
     let key_str = variables::get("master_encryption_key").await?;
@@ -448,15 +486,19 @@ async fn extract_user_id(auth: Option<&spin_sdk::http::HeaderValue>) -> Option<S
     if parts.len() != 3 { return None; }
     let header: serde_json::Value = serde_json::from_slice(&URL_SAFE_NO_PAD.decode(parts[0]).ok()?).ok()?;
     let kid = header["kid"].as_str()?; let jwk = jwks.keys.iter().find(|k| k.kid == kid)?;
+    let options = VerificationOptions { accept_future: true, ..Default::default() };
     if jwk.kty == "EC" && jwk.alg == "ES384" {
         let n = URL_SAFE_NO_PAD.decode(&jwk.n).ok()?; let e = URL_SAFE_NO_PAD.decode(&jwk.e).ok()?;
         let mut pk_b = vec![0x04]; pk_b.extend_from_slice(&n); pk_b.extend_from_slice(&e);
         let pk = ES384PublicKey::from_bytes(&pk_b).ok()?;
-        pk.verify_token::<serde_json::Value>(tok, Some(VerificationOptions { accept_future: true, ..Default::default() })).ok()?.custom["sub"].as_str().map(|s| s.to_string())
+        let claims = pk.verify_token::<serde_json::Value>(tok, Some(options)).ok()?;
+        claims.subject.or_else(|| claims.custom["sub"].as_str().map(|s| s.to_string()))
     } else if jwk.kty == "RSA" && jwk.alg == "RS256" {
-        let n = URL_SAFE_NO_PAD.decode(&jwk.n).ok()?; let e = URL_SAFE_NO_PAD.decode(&jwk.e).ok()?;
+        let n = match URL_SAFE_NO_PAD.decode(&jwk.n) { Ok(b) => b, Err(_) => base64::engine::general_purpose::STANDARD.decode(&jwk.n).ok()? };
+        let e = match URL_SAFE_NO_PAD.decode(&jwk.e) { Ok(b) => b, Err(_) => base64::engine::general_purpose::STANDARD.decode(&jwk.e).ok()? };
         let pk = RS256PublicKey::from_components(&n, &e).ok()?;
-        pk.verify_token::<serde_json::Value>(tok, Some(VerificationOptions { accept_future: true, ..Default::default() })).ok()?.custom["sub"].as_str().map(|s| s.to_string())
+        let claims = pk.verify_token::<serde_json::Value>(tok, Some(options)).ok()?;
+        claims.subject.or_else(|| claims.custom["sub"].as_str().map(|s| s.to_string()))
     } else { None }
 }
 
@@ -471,6 +513,7 @@ fn get_modality_status(role: &str, mins: u64) -> &'static str {
     match role { "leader" => if mins < 2 { "healthy" } else if mins < 5 { "degraded" } else { "offline" }, "android_client" => if mins < 20 { "healthy" } else if mins < 60 { "degraded" } else { "offline" }, "akamai_functions" => if mins < 135 { "healthy" } else if mins < 250 { "degraded" } else { "offline" }, "fermyon_cloud" => if mins < 5 { "healthy" } else if mins < 15 { "degraded" } else { "offline" }, _ => "unknown" }
 }
 
+async fn handle_weather_heuristic_get(_r: Request) -> anyhow::Result<Response<String>> { Ok(text_response(200, "Weather not implemented")?) }
 #[derive(Serialize)] struct StatusResponse { status: String, message: String }
 #[derive(Deserialize, Serialize, Debug)] struct Jwks { keys: Vec<JwKey> }
 #[derive(Deserialize, Serialize, Debug)] struct JwKey { kid: String, kty: String, alg: String, n: String, e: String }
