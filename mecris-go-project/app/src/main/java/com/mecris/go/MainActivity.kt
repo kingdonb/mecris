@@ -84,9 +84,8 @@ class MainActivity : ComponentActivity() {
     private lateinit var healthConnectManager: HealthConnectManager
     private lateinit var persistenceManager: PersistenceManager
 
-    private val spinBaseUrl = "https://394b84e7-760c-4336-975b-653c17fdb446.fwf.app/" 
+    private val spinBaseUrl = "http://10.17.13.248:3005/"
     private val syncApi = SyncServiceApi.create(spinBaseUrl)
-
     private val authResultLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         pocketIdAuth.handleAuthorizationResponse(result.data)
     }

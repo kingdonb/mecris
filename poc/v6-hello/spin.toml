@@ -1,0 +1,14 @@
+spin_manifest_version = 2
+
+[application]
+name = "v6-hello"
+version = "0.1.0"
+
+[[trigger.http]]
+route = "/..."
+component = "v6-hello"
+
+[component.v6-hello]
+source = "target/wasm32-wasip1/release/v6_hello.wasm"
+[component.v6-hello.build]
+command = "cargo build --target wasm32-wasip1 --release"

@@ -1,0 +1,14 @@
+/Users/yebyen/w/mecris/poc/v6-hello/target/wasm32-wasip1/release/deps/serde-afec61ae6e36abe0.d: /Users/yebyen/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/lib.rs /Users/yebyen/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/integer128.rs /Users/yebyen/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/mod.rs /Users/yebyen/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/de.rs /Users/yebyen/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/ser.rs /Users/yebyen/w/mecris/poc/v6-hello/target/wasm32-wasip1/release/build/serde-1a879e7297a45cc7/out/private.rs
+
+/Users/yebyen/w/mecris/poc/v6-hello/target/wasm32-wasip1/release/deps/libserde-afec61ae6e36abe0.rlib: /Users/yebyen/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/lib.rs /Users/yebyen/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/integer128.rs /Users/yebyen/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/mod.rs /Users/yebyen/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/de.rs /Users/yebyen/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/ser.rs /Users/yebyen/w/mecris/poc/v6-hello/target/wasm32-wasip1/release/build/serde-1a879e7297a45cc7/out/private.rs
+
+/Users/yebyen/w/mecris/poc/v6-hello/target/wasm32-wasip1/release/deps/libserde-afec61ae6e36abe0.rmeta: /Users/yebyen/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/lib.rs /Users/yebyen/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/integer128.rs /Users/yebyen/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/mod.rs /Users/yebyen/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/de.rs /Users/yebyen/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/ser.rs /Users/yebyen/w/mecris/poc/v6-hello/target/wasm32-wasip1/release/build/serde-1a879e7297a45cc7/out/private.rs
+
+/Users/yebyen/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/lib.rs:
+/Users/yebyen/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/integer128.rs:
+/Users/yebyen/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/mod.rs:
+/Users/yebyen/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/de.rs:
+/Users/yebyen/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/ser.rs:
+/Users/yebyen/w/mecris/poc/v6-hello/target/wasm32-wasip1/release/build/serde-1a879e7297a45cc7/out/private.rs:
+
+# env-dep:OUT_DIR=/Users/yebyen/w/mecris/poc/v6-hello/target/wasm32-wasip1/release/build/serde-1a879e7297a45cc7/out

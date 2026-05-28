@@ -901,7 +901,7 @@ wheels = [
 
 [[package]]
 name = "mecris"
-version = "0.0.1b4"
+version = "0.0.1b5"
 source = { virtual = "." }
 dependencies = [
     { name = "apscheduler" },

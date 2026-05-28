@@ -1,0 +1,14 @@
+/Users/yebyen/w/mecris/poc/v6-hello/target/wasm32-wasip1/release/deps/thiserror-24e1cecdeef0f26e.d: /Users/yebyen/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/thiserror-2.0.18/src/lib.rs /Users/yebyen/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/thiserror-2.0.18/src/aserror.rs /Users/yebyen/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/thiserror-2.0.18/src/display.rs /Users/yebyen/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/thiserror-2.0.18/src/var.rs /Users/yebyen/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/thiserror-2.0.18/src/private.rs /Users/yebyen/w/mecris/poc/v6-hello/target/wasm32-wasip1/release/build/thiserror-586ef9d226950572/out/private.rs
+
+/Users/yebyen/w/mecris/poc/v6-hello/target/wasm32-wasip1/release/deps/libthiserror-24e1cecdeef0f26e.rlib: /Users/yebyen/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/thiserror-2.0.18/src/lib.rs /Users/yebyen/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/thiserror-2.0.18/src/aserror.rs /Users/yebyen/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/thiserror-2.0.18/src/display.rs /Users/yebyen/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/thiserror-2.0.18/src/var.rs /Users/yebyen/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/thiserror-2.0.18/src/private.rs /Users/yebyen/w/mecris/poc/v6-hello/target/wasm32-wasip1/release/build/thiserror-586ef9d226950572/out/private.rs
+
+/Users/yebyen/w/mecris/poc/v6-hello/target/wasm32-wasip1/release/deps/libthiserror-24e1cecdeef0f26e.rmeta: /Users/yebyen/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/thiserror-2.0.18/src/lib.rs /Users/yebyen/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/thiserror-2.0.18/src/aserror.rs /Users/yebyen/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/thiserror-2.0.18/src/display.rs /Users/yebyen/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/thiserror-2.0.18/src/var.rs /Users/yebyen/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/thiserror-2.0.18/src/private.rs /Users/yebyen/w/mecris/poc/v6-hello/target/wasm32-wasip1/release/build/thiserror-586ef9d226950572/out/private.rs
+
+/Users/yebyen/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/thiserror-2.0.18/src/lib.rs:
+/Users/yebyen/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/thiserror-2.0.18/src/aserror.rs:
+/Users/yebyen/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/thiserror-2.0.18/src/display.rs:
+/Users/yebyen/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/thiserror-2.0.18/src/var.rs:
+/Users/yebyen/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/thiserror-2.0.18/src/private.rs:
+/Users/yebyen/w/mecris/poc/v6-hello/target/wasm32-wasip1/release/build/thiserror-586ef9d226950572/out/private.rs:
+
+# env-dep:OUT_DIR=/Users/yebyen/w/mecris/poc/v6-hello/target/wasm32-wasip1/release/build/thiserror-586ef9d226950572/out
