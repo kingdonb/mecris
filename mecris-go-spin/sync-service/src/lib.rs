@@ -11,7 +11,7 @@ use sha2::{Sha256, Digest};
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use jwt_simple::prelude::*;
 use aes_gcm::{aead::{Aead, KeyInit}, Aes256Gcm, Nonce};
-use chrono::Timelike;
+use chrono::{Timelike, TimeZone};
 
 #[derive(Deserialize, Default)] struct NotificationPrefs { #[allow(dead_code)] sms_opted_in: Option<bool> }
 fn internal_api_key_ok(cfg: &str, h: Option<&str>) -> bool { if cfg.is_empty() { true } else { h == Some(cfg) } }
@@ -51,6 +51,7 @@ async fn handle_sync_service(req: Request) -> anyhow::Result<Response<String>> {
             let key = req.headers().get("x-internal-api-key").and_then(|v| v.to_str().ok());
             if !internal_api_key_ok(&cfg, key) { text_response(401, "Unauthorized")? } else { handle_failover_sync_post(req).await? }
         },
+        ("/internal/weather-heuristic", &Method::GET) => handle_weather_heuristic_get(req).await?,
         ("/internal/request-phone-verification", &Method::POST) => handle_request_phone_verification_post(req).await?,
         ("/internal/confirm-phone-verification", &Method::POST) => handle_confirm_phone_verification_post(req).await?,
         ("/internal/twilio-webhook", &Method::POST) => handle_twilio_webhook_post(req).await?,
@@ -61,6 +62,7 @@ async fn handle_sync_service(req: Request) -> anyhow::Result<Response<String>> {
 
 async fn handle_aggregate_status_get(req: Request) -> anyhow::Result<Response<String>> {
     let uid = match extract_user_id(req.headers().get("authorization")).await { Some(id) => id, None => return Ok(text_response(401, "Unauthorized")?) };
+    let full = req.uri().query().map(|q| q.contains("full=true")).unwrap_or(false);
     let db = match variables::get("db_url").await { Ok(v) if !v.is_empty() => v, _ => variables::get("neon_db_url").await? };
     let conn = Connection::open(&db).await?;
     let walk_rs = conn.query("SELECT COUNT(*) FROM walk_inferences WHERE (start_time::TIMESTAMPTZ AT TIME ZONE 'US/Eastern')::DATE = (CURRENT_TIMESTAMP AT TIME ZONE 'US/Eastern')::DATE AND CAST(step_count AS INTEGER) >= 2000 AND user_id = $1", &[ParameterValue::Str(uid.clone())]).await?.collect().await?;
@@ -78,8 +80,21 @@ async fn handle_aggregate_status_get(req: Request) -> anyhow::Result<Response<St
         else if n == "GREEK" { total_goals += 1; greek_met = met; if met { goals_met += 1; } }
     }
     #[derive(Serialize)] struct Comp { walk: bool, arabic: bool, greek: bool }
-    #[derive(Serialize)] struct AggResp { score: String, goals_met: i32, total_goals: i32, all_clear: bool, components: Comp, vacation_mode_until: Option<String>, phone_verified: bool }
-    json_response(200, &AggResp { score: format!("{}/{}", goals_met, total_goals), goals_met, total_goals, all_clear: vaca.is_some() || goals_met >= total_goals, components: Comp { walk: walked, arabic: arabic_met, greek: greek_met }, vacation_mode_until: vaca, phone_verified: phone })
+    #[derive(Serialize)] struct Mod { role: String, status: String, last_seen: String }
+    #[derive(Serialize)] struct AggResp { score: String, goals_met: i32, total_goals: i32, all_clear: bool, components: Comp, vacation_mode_until: Option<String>, phone_verified: bool, modalities: Option<Vec<Mod>> }
+    let mut mods = None;
+    if full {
+        let p_rows = conn.query("SELECT role, heartbeat::TEXT, CAST(EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - heartbeat)) / 60 AS BIGINT) AS mins FROM scheduler_election WHERE user_id = $1 OR user_id IS NULL ORDER BY heartbeat DESC", &[ParameterValue::Str(uid.clone())]).await?.collect().await?;
+        let mut ms = Vec::new();
+        for r in &p_rows {
+            let role = match &r[0] { DbValue::Str(s) => s.clone(), _ => continue };
+            let display = match role.as_str() { "leader" => "MCP SERVER", "android_client" => "ANDROID", "akamai_functions" => "AKAMAI", "fermyon_cloud" => "FERMYON", _ => &role };
+            let mins = match &r[2] { DbValue::Int64(i) => *i as u64, _ => 9999 };
+            ms.push(Mod { role: display.to_string(), status: get_modality_status(&role, mins).to_string(), last_seen: match &r[1] { DbValue::Str(s) => s.clone(), _ => "never".to_string() } });
+        }
+        mods = Some(ms);
+    }
+    json_response(200, &AggResp { score: format!("{}/{}", goals_met, total_goals), goals_met, total_goals, all_clear: vaca.is_some() || goals_met >= total_goals, components: Comp { walk: walked, arabic: arabic_met, greek: greek_met }, vacation_mode_until: vaca, phone_verified: phone, modalities: mods })
 }
 
 fn calculate_targets(cur: i32, tom: i32, mult: f64, done: i32) -> (i32, f64, bool) {
@@ -107,41 +122,15 @@ async fn handle_profile_post(req: Request) -> anyhow::Result<Response<String>> {
 
 async fn handle_profile_get(req: Request) -> anyhow::Result<Response<String>> {
     let uid = match extract_user_id(req.headers().get("authorization")).await { Some(id) => id, None => return Ok(text_response(401, "Unauthorized")?) };
-    println!("DEBUG: handle_profile_get for user {}", uid);
     let db = match variables::get("db_url").await { Ok(v) if !v.is_empty() => v, _ => variables::get("neon_db_url").await? };
     let conn = Connection::open(&db).await?;
     let rs = conn.query("SELECT phone_number_encrypted, beeminder_user_encrypted, location_lat, location_lon, vacation_mode_until::TEXT, autonomous_sync_enabled FROM users WHERE pocket_id_sub = $1", &[ParameterValue::Str(uid.clone())]).await?.collect().await?;
     if rs.is_empty() { return Ok(text_response(404, "User not found")?); }
     #[derive(Serialize)] struct ProfResp { phone_number: Option<String>, beeminder_user: Option<String>, latitude: Option<f64>, longitude: Option<f64>, vacation_mode_until: Option<String>, autonomous_sync_enabled: bool }
     let r = &rs[0];
-    
-    let p = match &r[0] { 
-        DbValue::Str(s) if !s.is_empty() => {
-            match decrypt_token(s).await {
-                Ok(dec) => Some(dec),
-                Err(e) => { println!("ERROR: phone decryption failed: {:?}", e); None }
-            }
-        }, 
-        _ => None 
-    };
-    let bu = match &r[1] { 
-        DbValue::Str(s) if !s.is_empty() => {
-            match decrypt_token(s).await {
-                Ok(dec) => Some(dec),
-                Err(e) => { println!("ERROR: beeminder_user decryption failed: {:?}", e); None }
-            }
-        }, 
-        _ => None 
-    };
-    
-    json_response(200, &ProfResp { 
-        phone_number: p, 
-        beeminder_user: bu, 
-        latitude: match &r[2] { DbValue::Floating64(f) => Some(*f), _ => None }, 
-        longitude: match &r[3] { DbValue::Floating64(f) => Some(*f), _ => None }, 
-        vacation_mode_until: match &r[4] { DbValue::Str(s) if !s.is_empty() => Some(s.clone()), _ => None }, 
-        autonomous_sync_enabled: match &r[5] { DbValue::Boolean(b) => *b, _ => false } 
-    })
+    let p = match &r[0] { DbValue::Str(s) if !s.is_empty() => decrypt_token(s).await.ok(), _ => None };
+    let bu = match &r[1] { DbValue::Str(s) if !s.is_empty() => decrypt_token(s).await.ok(), _ => None };
+    json_response(200, &ProfResp { phone_number: p, beeminder_user: bu, latitude: match &r[2] { DbValue::Floating64(f) => Some(*f), _ => None }, longitude: match &r[3] { DbValue::Floating64(f) => Some(*f), _ => None }, vacation_mode_until: match &r[4] { DbValue::Str(s) if !s.is_empty() => Some(s.clone()), _ => None }, autonomous_sync_enabled: match &r[5] { DbValue::Boolean(b) => *b, _ => false } })
 }
 
 async fn handle_cloud_sync(req: Request) -> anyhow::Result<Response<String>> {
@@ -215,38 +204,30 @@ async fn handle_budget_get(req: Request) -> anyhow::Result<Response<String>> {
 }
 
 async fn handle_walks_post(req: Request) -> anyhow::Result<Response<String>> {
-    println!("DEBUG: handle_walks_post entered");
     let uid = match extract_user_id(req.headers().get("authorization")).await { Some(id) => id, None => return Ok(text_response(401, "Unauthorized")?) };
     let body = req.into_body().collect().await.map_err(|e| anyhow::anyhow!("Body: {:?}", e))?.to_bytes();
-    #[derive(Deserialize, Debug)] struct WalkSum { start_time: String, end_time: String, step_count: i32, distance_meters: f64, distance_source: String, confidence_score: f64, gps_route_points: i32 }
-    let walk: WalkSum = match serde_json::from_slice(&body) {
-        Ok(w) => w,
-        Err(e) => { println!("ERROR: Deserialization failed: {:?}", e); return Ok(text_response(400, "Invalid JSON")?); }
-    };
-    println!("DEBUG: walk data: {:?}", walk);
+    #[derive(Deserialize)] struct WalkSum { start_time: String, end_time: String, step_count: i32, distance_meters: f64, distance_source: String, confidence_score: f64, gps_route_points: i32 }
+    let walk: WalkSum = serde_json::from_slice(&body)?;
     let db = match variables::get("db_url").await { Ok(v) if !v.is_empty() => v, _ => variables::get("neon_db_url").await? };
     let conn = Connection::open(&db).await?;
     let _ = conn.execute("INSERT INTO users (pocket_id_sub, beeminder_token_encrypted, beeminder_goal) VALUES ($1, '', 'bike') ON CONFLICT DO NOTHING", &[ParameterValue::Str(uid.clone())]).await;
     let prev = conn.query("SELECT distance_meters FROM walk_inferences WHERE user_id = $1 AND start_time = $2", &[ParameterValue::Str(uid.clone()), ParameterValue::Str(walk.start_time.clone())]).await?.collect().await?;
     let prev_dist: f64 = if !prev.is_empty() { match &prev[0][0] { DbValue::Str(s) => s.parse().unwrap_or(0.0), _ => 0.0 } } else { 0.0 };
     let delta = walk.distance_meters - prev_dist;
-    println!("DEBUG: inserting walk inference for user {} at {}", uid, walk.start_time);
-    match conn.execute("INSERT INTO walk_inferences (user_id, start_time, end_time, step_count, distance_meters, distance_source, confidence_score, gps_route_points) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) ON CONFLICT (user_id, start_time) DO UPDATE SET end_time = EXCLUDED.end_time, step_count = EXCLUDED.step_count, distance_meters = EXCLUDED.distance_meters, distance_source = EXCLUDED.distance_source, confidence_score = EXCLUDED.confidence_score, gps_route_points = EXCLUDED.gps_route_points", &[ParameterValue::Str(uid.clone()), ParameterValue::Str(walk.start_time.clone()), ParameterValue::Str(walk.end_time.clone()), ParameterValue::Str(walk.step_count.to_string()), ParameterValue::Str(walk.distance_meters.to_string()), ParameterValue::Str(walk.distance_source.clone()), ParameterValue::Str(walk.confidence_score.to_string()), ParameterValue::Str(walk.gps_route_points.to_string())]).await {
-        Ok(_) => println!("DEBUG: walk inference inserted successfully"),
-        Err(e) => { println!("ERROR: DB execution failed: {:?}", e); return Err(e.into()); }
-    }
+    conn.execute("INSERT INTO walk_inferences (user_id, start_time, end_time, step_count, distance_meters, distance_source, confidence_score, gps_route_points) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) ON CONFLICT (user_id, start_time) DO UPDATE SET end_time = EXCLUDED.end_time, step_count = EXCLUDED.step_count, distance_meters = EXCLUDED.distance_meters, distance_source = EXCLUDED.distance_source, confidence_score = EXCLUDED.confidence_score, gps_route_points = EXCLUDED.gps_route_points", &[ParameterValue::Str(uid.clone()), ParameterValue::Str(walk.start_time.clone()), ParameterValue::Str(walk.end_time.clone()), ParameterValue::Str(walk.step_count.to_string()), ParameterValue::Str(walk.distance_meters.to_string()), ParameterValue::Str(walk.distance_source.clone()), ParameterValue::Str(walk.confidence_score.to_string()), ParameterValue::Str(walk.gps_route_points.to_string())]).await?;
     let token = conn.query("SELECT beeminder_goal FROM users WHERE pocket_id_sub = $1", &[ParameterValue::Str(uid.clone())]).await?.collect().await?;
     if !token.is_empty() && delta > 200.0 {
         let goal = match &token[0][0] { DbValue::Str(s) if !s.is_empty() => s.clone(), _ => "bike".to_string() };
         let miles = ((walk.distance_meters / 1609.34) * 1000.0).round() / 1000.0;
-        let _ = push_to_beeminder(&uid, &goal, miles, "Synced via Spin (Cumulative)", &conn).await;
+        let requestid = format!("{}-{}-{}-{}", uid, goal, walk.start_time, walk.distance_meters);
+        let _ = push_to_beeminder_idempotent(&uid, &goal, miles, "Synced via Spin (Cumulative)", &requestid, &conn).await;
     }
     json_response(201, &StatusResponse { status: "success".to_string(), message: "Walk ingested".to_string() })
 }
 
 async fn handle_trigger_reminders_post(_req: Request) -> anyhow::Result<Response<String>> {
     let sid = variables::get("twilio_account_sid").await?;
-    let tok = decrypt_token(&variables::get("twilio_auth_token_encrypted").await?).await?;
+    let _tok = decrypt_token(&variables::get("twilio_auth_token_encrypted").await?).await?;
     let from = variables::get("twilio_from_number").await?;
     let db = match variables::get("db_url").await { Ok(v) if !v.is_empty() => v, _ => variables::get("neon_db_url").await? };
     let conn = Connection::open(&db).await?;
@@ -257,15 +238,15 @@ async fn handle_trigger_reminders_post(_req: Request) -> anyhow::Result<Response
         let (uid, ph_enc, tz, pref_j) = (match &r[0] { DbValue::Str(s) => s.clone(), _ => continue }, match &r[1] { DbValue::Str(s) => s.clone(), _ => continue }, match &r[2] { DbValue::Str(s) => s.clone(), _ => "UTC".to_string() }, match &r[3] { DbValue::Str(s) => s.clone(), _ => "{}".to_string() });
         let pref: NotificationPrefs = serde_json::from_str(&pref_j).unwrap_or_default();
         let s_rs = conn.query("SELECT step_count FROM walk_inferences WHERE user_id = $1 AND start_time >= $2 ORDER BY start_time ASC", &[ParameterValue::Str(uid.clone()), ParameterValue::Str(today.clone())]).await?.collect().await?;
-        let steps = s_rs.iter().filter_map(|sr| match &sr[0] { DbValue::Str(s) => s.parse::<i32>().ok(), _ => None }).max().unwrap_or(0);
+        let steps = aggregate_step_count(&s_rs);
         let m_rs = conn.query("SELECT sent_at::TEXT FROM message_log WHERE user_id = $1 AND type = 'walk_reminder' ORDER BY sent_at DESC LIMIT 1", &[ParameterValue::Str(uid.clone())]).await?.collect().await?;
         let ms = m_rs.first().and_then(|mr| match &mr[0] { DbValue::Str(s) if !s.is_empty() => Some(s.as_str()), _ => None });
         let mins = ms.and_then(|s| chrono::DateTime::parse_from_rfc3339(s).or_else(|_| chrono::DateTime::parse_from_str(s, "%Y-%m-%d %H:%M:%S%.f%z")).ok().map(|dt| epoch.saturating_sub(dt.timestamp() as u64) / 60));
-        if !should_dispatch_rem(local_hour_from_timezone(&tz, &now), steps, mins, &pref) { continue; }
+        if !should_dispatch(local_hour_from_timezone(&tz, &now), steps, mins, &pref) { continue; }
         let hb_rs = conn.query("SELECT EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - heartbeat)) / 60 FROM scheduler_election WHERE user_id = $1 AND role = 'android_client' ORDER BY heartbeat DESC LIMIT 1", &[ParameterValue::Str(uid.clone())]).await?.collect().await?;
         if hb_rs.first().and_then(|hr| match &hr[0] { DbValue::Floating64(f) => Some(*f as u64), _ => None }).map_or(false, |m| m < 240) { continue; }
         let ph = decrypt_token(&ph_enc).await?;
-        match send_twilio_sms(&sid, &tok, &from, &ph, "Mecris: Time for a walk! Reply YES to log 1 mile.").await {
+        match send_twilio_sms(&sid, &_tok, &from, &ph, "Mecris: Time for a walk! Reply YES to log 1 mile.").await {
             Ok(_) => { let _ = conn.execute("INSERT INTO message_log (user_id, type, sent_at, compliance_status) VALUES ($1, 'walk_reminder', CURRENT_TIMESTAMP, 'sent')", &[ParameterValue::Str(uid.clone())]).await; sent += 1; }
             Err(_) => { errors += 1; }
         }
@@ -330,7 +311,7 @@ async fn handle_confirm_phone_verification_post(req: Request) -> anyhow::Result<
 }
 
 async fn handle_twilio_webhook_post(req: Request) -> anyhow::Result<Response<String>> {
-    let tok = decrypt_token(&variables::get("twilio_auth_token_encrypted").await?).await?;
+    let _tok = decrypt_token(&variables::get("twilio_auth_token_encrypted").await?).await?;
     let body = req.into_body().collect().await.map_err(|_| anyhow::anyhow!("body"))?.to_bytes();
     let body_str = std::str::from_utf8(&body).unwrap_or("");
     let from_num = body_str.split('&').find_map(|p| { let mut i = p.splitn(2, '='); if i.next() == Some("From") { Some(urlencoding::decode(&i.next()?.replace('+', " ")).unwrap_or_default().into_owned()) } else { None } }).unwrap_or_default();
@@ -343,7 +324,8 @@ async fn handle_twilio_webhook_post(req: Request) -> anyhow::Result<Response<Str
             if let Ok(ph) = decrypt_token(&ph_enc).await {
                 let clean = |s: &str| s.chars().filter(|c| c.is_digit(10)).collect::<String>();
                 if !ph.is_empty() && clean(&ph) == clean(&from_num) {
-                    let _ = push_to_beeminder(&uid, &goal, 1.0, "Walk logged via SMS", &conn).await;
+                    let requestid = format!("{}-{}-{}-sms", uid, goal, chrono::Utc::now().format("%Y-%m-%d"));
+                    let _ = push_to_beeminder_idempotent(&uid, &goal, 1.0, "Walk logged via SMS", &requestid, &conn).await;
                     let _ = conn.execute("INSERT INTO message_log (user_id, type, sent_at, compliance_status) VALUES ($1, 'walk_ack', CURRENT_TIMESTAMP, 'received')", &[ParameterValue::Str(uid)]).await;
                 }
             }
@@ -399,16 +381,19 @@ async fn run_clozemaster_scraper(db: &str, uid: &str) -> anyhow::Result<()> {
                     } }
                 }
             }
-            let rs = conn.query("SELECT current_reviews, beeminder_last_sync::TEXT FROM language_stats WHERE user_id = $1 AND language_name = $2", &[ParameterValue::Str(uid.to_string()), ParameterValue::Str(lang.to_uppercase())]).await?.collect().await?;
+            let rs = conn.query("SELECT current_reviews, (beeminder_last_sync AT TIME ZONE 'UTC')::TEXT FROM language_stats WHERE user_id = $1 AND language_name = $2", &[ParameterValue::Str(uid.to_string()), ParameterValue::Str(lang.to_uppercase())]).await?.collect().await?;
             let (mut prev, mut lsync) = (-1, String::new());
             if !rs.is_empty() { prev = match &rs[0][0] { DbValue::Int32(i) => *i, _ => -1 }; lsync = match &rs[0][1] { DbValue::Str(s) => s.clone(), _ => String::new() }; }
             let mut compl = tod; if lang == "ARABIC" { compl = (tod as f64 / 16.0) as i32; }
             conn.execute("INSERT INTO language_stats (user_id, language_name, current_reviews, tomorrow_reviews, next_7_days_reviews, beeminder_slug, daily_completions, last_points, total_points, last_updated) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, CURRENT_TIMESTAMP) ON CONFLICT (user_id, language_name) DO UPDATE SET current_reviews = EXCLUDED.current_reviews, tomorrow_reviews = EXCLUDED.tomorrow_reviews, next_7_days_reviews = EXCLUDED.next_7_days_reviews, beeminder_slug = EXCLUDED.beeminder_slug, daily_completions = EXCLUDED.daily_completions, last_points = EXCLUDED.last_points, total_points = EXCLUDED.total_points, last_updated = CURRENT_TIMESTAMP", &[ParameterValue::Str(uid.to_string()), ParameterValue::Str(lang.to_uppercase()), ParameterValue::Int32(cur), ParameterValue::Int32(tom), ParameterValue::Int32(n7), ParameterValue::Str(beem.to_string()), ParameterValue::Int32(compl), ParameterValue::Int32(tot), ParameterValue::Int32(tot)]).await?;
             if !beem.is_empty() {
-                let today_ny = chrono::Utc::now().with_timezone(&chrono_tz::America::New_York).format("%Y-%m-%d").to_string();
-                if cur != prev || !lsync.contains(&today_ny) {
-                    let comment = format!("Auto-synced from Clozemaster (Cloud) at {} | Tomorrow: {} | 7-day: {}", chrono::Local::now().format("%Y-%m-%d %H:%M"), tom, n7);
-                    if let Ok(_) = push_to_beeminder(uid, beem, cur as f64, &comment, &conn).await { conn.execute("UPDATE language_stats SET beeminder_last_sync = CURRENT_TIMESTAMP WHERE user_id = $1 AND language_name = $2", &[ParameterValue::Str(uid.to_string()), ParameterValue::Str(lang.to_uppercase())]).await?; }
+                let now_ny = chrono::Utc::now().with_timezone(&chrono_tz::America::New_York);
+                let today_ny = now_ny.format("%Y-%m-%d").to_string();
+                let already_synced = if lsync.is_empty() { false } else { match chrono::NaiveDateTime::parse_from_str(lsync.split('.').next().unwrap_or(""), "%Y-%m-%d %H:%M:%S") { Ok(ndt) => chrono::Utc.from_utc_datetime(&ndt).with_timezone(&chrono_tz::America::New_York).format("%Y-%m-%d").to_string() == today_ny, Err(_) => false } };
+                if cur != prev || !already_synced {
+                    let comment = format!("Auto-synced from Clozemaster (Cloud) at {} | Tomorrow: {} | 7-day: {}", now_ny.format("%Y-%m-%d %H:%M"), tom, n7);
+                    let rid = format!("{}-{}-{}-{}", uid, beem, today_ny, cur);
+                    if let Ok(_) = push_to_beeminder_idempotent(uid, beem, cur as f64, &comment, &rid, &conn).await { conn.execute("UPDATE language_stats SET beeminder_last_sync = CURRENT_TIMESTAMP WHERE user_id = $1 AND language_name = $2", &[ParameterValue::Str(uid.to_string()), ParameterValue::Str(lang.to_uppercase())]).await?; }
                 }
                 if let Ok((mut sb, mut risk, rate)) = fetch_from_beeminder(uid, beem, &conn).await {
                     if cur == 0 && tom == 0 && n7 == 0 { sb = 999; risk = "SAFE".to_string(); }
@@ -433,6 +418,18 @@ async fn fetch_from_beeminder(uid: &str, slug: &str, conn: &Connection) -> anyho
     Ok((sb, risk.to_string(), rate))
 }
 
+async fn push_to_beeminder_idempotent(uid: &str, slug: &str, val: f64, comment: &str, rid: &str, conn: &Connection) -> anyhow::Result<()> {
+    let rs = conn.query("SELECT beeminder_token_encrypted, beeminder_user_encrypted FROM users WHERE pocket_id_sub = $1", &[ParameterValue::Str(uid.to_string())]).await?.collect().await?;
+    if rs.is_empty() { return Err(anyhow::anyhow!("User")); }
+    let tok = decrypt_token(match &rs[0][0] { DbValue::Str(s) => s, _ => "" }).await?;
+    let user = if let DbValue::Str(s) = &rs[0][1] { if !s.is_empty() { decrypt_token(s).await? } else { "me".to_string() } } else { "me".to_string() };
+    let body = format!("auth_token={}&value={}&comment={}&requestid={}", tok, val, urlencoding::encode(comment), urlencoding::encode(rid));
+    let res = spin_sdk::http::send(Request::builder().method(Method::POST).uri(format!("https://www.beeminder.com/api/v1/users/{}/goals/{}/datapoints.json", user, slug)).header("content-type", "application/x-www-form-urlencoded").body(body)?).await?;
+    if res.status().as_u16() == 422 { return Ok(()); }
+    if !(200..300).contains(&res.status().as_u16()) { return Err(anyhow::anyhow!("Push fail: {}", res.status())); }
+    Ok(())
+}
+
 async fn push_to_beeminder(uid: &str, slug: &str, val: f64, comment: &str, conn: &Connection) -> anyhow::Result<()> {
     let rs = conn.query("SELECT beeminder_token_encrypted, beeminder_user_encrypted FROM users WHERE pocket_id_sub = $1", &[ParameterValue::Str(uid.to_string())]).await?.collect().await?;
     if rs.is_empty() { return Err(anyhow::anyhow!("User")); }
@@ -440,7 +437,7 @@ async fn push_to_beeminder(uid: &str, slug: &str, val: f64, comment: &str, conn:
     let user = if let DbValue::Str(s) = &rs[0][1] { if !s.is_empty() { decrypt_token(s).await? } else { "me".to_string() } } else { "me".to_string() };
     let body = format!("auth_token={}&value={}&comment={}", tok, val, urlencoding::encode(comment));
     let res = spin_sdk::http::send(Request::builder().method(Method::POST).uri(format!("https://www.beeminder.com/api/v1/users/{}/goals/{}/datapoints.json", user, slug)).header("content-type", "application/x-www-form-urlencoded").body(body)?).await?;
-    if !(200..300).contains(&res.status().as_u16()) { return Err(anyhow::anyhow!("Push fail: {}", res.status())); }
+    if !(200..300).contains(&res.status().as_u16()) { return Err(anyhow::anyhow!("Push: {}", res.status())); }
     Ok(())
 }
 
@@ -453,8 +450,8 @@ async fn send_twilio_sms(sid: &str, tok: &str, from: &str, to: &str, msg: &str) 
 }
 
 fn local_hour_from_timezone(tz_name: &str, now: &chrono::DateTime<chrono::Utc>) -> u32 { let tz: chrono_tz::Tz = tz_name.parse().unwrap_or(chrono_tz::UTC); now.with_timezone(&tz).hour() }
-fn aggregate_step_count(rs: &Vec<Vec<DbValue>>) -> i32 { rs.iter().filter_map(|r| match &r[0] { DbValue::Str(s) => s.parse::<i32>().ok(), _ => None }).max().unwrap_or(0) }
-fn should_dispatch_rem(h: u32, s: i32, m: Option<u64>, _p: &NotificationPrefs) -> bool { if h < 9 || h >= 21 || s >= 2000 { false } else { m.map_or(true, |v| v >= 120) } }
+fn aggregate_step_count(rs: &Vec<spin_sdk::pg::Row>) -> i32 { rs.iter().filter_map(|r| match &r[0] { DbValue::Str(s) => s.parse::<i32>().ok(), _ => None }).max().unwrap_or(0) }
+fn should_dispatch(h: u32, s: i32, m: Option<u64>, _p: &NotificationPrefs) -> bool { if h < 9 || h >= 21 || s >= 2000 { false } else { m.map_or(true, |v| v >= 120) } }
 
 async fn decrypt_token(enc_hex: &str) -> anyhow::Result<String> {
     let key_str = variables::get("master_encryption_key").await?;
