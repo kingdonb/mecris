@@ -588,8 +588,19 @@ fn get_modality_status(role: &str, mins: u64) -> &'static str {
 }
 
 async fn handle_weather_heuristic_get(_r: Request) -> anyhow::Result<Response> {
-    #[derive(Serialize)] struct WeatherResp { conditions: String, description: String, temperature: f64, is_dark: bool, sunset_time: String, recommendation: String }
-    json_response(200, &WeatherResp { conditions: "Clear".to_string(), description: "sunny".to_string(), temperature: 25.0, is_dark: false, sunset_time: "20:00".to_string(), recommendation: "Great day for a walk!".to_string() })
+    #[derive(Serialize)] struct WeatherResp { is_walk_appropriate: bool, conditions: String, description: String, temperature: f64, sunrise: i64, sunset: i64, is_dark: bool, now_epoch: i64, data_ts: i64, recommendation: String }
+    json_response(200, &WeatherResp {
+        is_walk_appropriate: true,
+        conditions: "Clear".to_string(),
+        description: "sunny".to_string(),
+        temperature: 25.0,
+        sunrise: 1717650000,
+        sunset: 1717700000,
+        is_dark: false,
+        now_epoch: 1717680000,
+        data_ts: 1717680000,
+        recommendation: "Great day for a walk!".to_string()
+    })
 }
 
 #[derive(Serialize)] struct StatusResponse { status: String, message: String }
