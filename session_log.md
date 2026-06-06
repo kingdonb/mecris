@@ -1,23 +1,32 @@
-# Session Log: 2026-05-11 (Efficiency Audit & Dev Container)
+# Session Log: 2026-06-06 (Token Efficiency & Local-First Milestone)
 
 ## Context
-- **Date**: Monday, May 11, 2026
-- **Status**: Post-Mortem completed for the $247 budget spike.
+- **Date**: Saturday, June 6, 2026
+- **Status**: Local-first optimization complete. Scaffolding overhead reduced by 90%.
 - **Narrator**: Mecris (Gemini)
 
 ## Accomplishments
-1. **Budget Post-Mortem**: Analyzed the mecris-bot (Claude) spike. Confirmed that while expensive, the bot successfully resolved 67 test-pollution failures and performed major context hygiene (archiving 40+ docs).
-2. **Efficiency Harness**: Created `bin/mecris-tdg`. A local script that enforces `pytest -q --tb=short` and budget checks to prevent context snowballing during autonomous loops.
-3. **Dev Container**: Implemented a comprehensive Dockerfile-based development environment including Python 3.13, Node.js, Rust (WASM), `uv`, `spin`, and Java 17.
-4. **Context Hygiene**: Verified `session_log.md` reduction (327KB -> 7.3KB) and documentation pruning.
+1. **Token Efficiency Refactor**:
+   - Implemented a minimal Python-based agent harness in `py_harness/`.
+   - Achieved <1.5k token scaffolding overhead (down from 11k+) using lazy tool loading and "1-tool-first" philosophy.
+   - Verified functional ReAct loop with `gemma4:12b` on local hardware.
+2. **Authentic Toolkit Integration**:
+   - Installed and verified **Rust Token Killer (RTK)** CLI for shell output compression.
+   - Integrated the official **Caveman Skill** (`SKILL.md`) for ultra-compressed communication.
+3. **Noise Reduction & Stability**:
+   - Implemented feature flags (`MECRIS_ENABLE_OBSIDIAN`, `MECRIS_ENABLE_CLOUD_PUMP`) in `mcp_server.py` to silence non-functional cloud/plugin errors.
+   - Added E2E integration test `tests/integration_mcp.py` to verify real MCP connectivity.
+   - Documented backend failures (Obsidian/Fermyon) in GitHub Issue **#258**.
+4. **Physical Accountability**:
+   - User confirmed a successful walk outcome today (0.60 miles recorded) despite technical friction.
 
 ## Strategic Insights
-- **The "Self-Healing" bot was actually human intervention.** (Clarification from user).
-- **Unmetered Autonomy is dangerous.** The Budget Governor must have `NEON_DB_URL` in all environments to enforce hard stops.
-- **Parity matters.** The large test suite (1493 tests) is justified by the need for consistency across Python backend and WASM edge components.
+- **"1-Tool-First" is the path forward for local LLMs.** Starting small and expanding prevents the model from drowning in scaffolding.
+- **The "Brutal Heuristic" for Greek (100 pts) is too high.** Investigation into the source of this target is needed next session.
+- **Fermyon Cloud transition is the primary blocker for sync.** Local-first operation is the current priority while cloud infrastructure is in flux.
 
 ## Next Steps
-- [ ] Test the new Dev Container in a real VS Code environment.
-- [ ] Inject `NEON_DB_URL` into GitHub Actions secrets to enable metered bot runs.
-- [ ] Continue pruning legacy tests to `attic/` as features move out of the 30-day window.
-
+- [ ] Fix Fermyon/Spin cloud integration (Goal 1).
+- [ ] Refine Greek Review Pump target logic (Moussaka Hour baseline).
+- [ ] Port `py_harness` to a more interactive/aesthetic TUI (modeled on Claude Code).
+- [ ] Clean up redundant tests and archive ancient scripts.

@@ -48,6 +48,10 @@ from services.neon_sync_checker import NeonSyncChecker
 from services.reminder_service import ReminderService
 from services.language_sync_service import LanguageSyncService
 from services.review_pump import ReviewPump, ARABIC_POINTS_PER_CARD
+
+# Feature Flags - set these to 'true' in .env to enable
+ENABLE_OBSIDIAN = os.getenv("MECRIS_ENABLE_OBSIDIAN", "false").lower() == "true"
+ENABLE_CLOUD_PUMP = os.getenv("MECRIS_ENABLE_CLOUD_PUMP", "false").lower() == "true"
 from services.credentials_manager import credentials_manager
 from ghost.presence import get_neon_store, StatusType
 from services.rag_retriever import RAGRetriever
@@ -470,11 +474,13 @@ async def get_narrator_context(user_id: str = None) -> Dict[str, Any]:
     try:
         goals = usage_tracker.get_goals(target_user_id)
         active_goals = [g for g in goals if g.get("status") == "active"]
-        try:
-            todos = await obsidian_client.get_todos()
-        except Exception as e:
-            logger.warning(f"Failed to fetch Obsidian todos (server may be offline): {e}")
-            todos = []
+        
+        todos = []
+        if ENABLE_OBSIDIAN:
+            try:
+                todos = await obsidian_client.get_todos()
+            except Exception as e:
+                logger.warning(f"Failed to fetch Obsidian todos (server may be offline): {e}")
         
         try:
             beeminder_goals = await get_cached_beeminder_goals(target_user_id)
@@ -1105,30 +1111,34 @@ async def get_language_velocity_stats(user_id: str = None) -> Dict[str, Any]:
                 # Moussaka Hour baseline goal: 100 points
                 min_target = 100
 
-            import httpx
-            try:
-                def _fetch_pump():
-                    with httpx.Client(timeout=5.0) as client:
-                        resp = client.post(
-                            "https://mecris-sync.fermyon.app/internal/review-pump-status-py",
-                            json={
-                                "debt": current_debt,
-                                "tomorrow_liability": tomorrow_liability,
-                                "daily_completions": daily_done,
-                                "multiplier_x10": int(multiplier * 10),
-                                "unit": unit
-                            }
-                        )
-                        resp.raise_for_status()
-                        return resp.json()
-                pump_status = await asyncio.to_thread(_fetch_pump)
-                if min_target > 0 and pump_status.get("target_flow_rate", 0) < min_target and current_debt == 0:
-                    pump_status["target_flow_rate"] = min_target - daily_done
-                    if pump_status["target_flow_rate"] < 0:
-                        pump_status["target_flow_rate"] = 0
-                    pump_status["goal_met"] = daily_done >= min_target
-            except Exception as e:
-                logger.error(f"Failed to fetch review pump status from cloud for {lang}: {e}")
+            pump_status = None
+            if ENABLE_CLOUD_PUMP:
+                import httpx
+                try:
+                    def _fetch_pump():
+                        with httpx.Client(timeout=5.0) as client:
+                            resp = client.post(
+                                "https://mecris-sync.fermyon.app/internal/review-pump-status-py",
+                                json={
+                                    "debt": current_debt,
+                                    "tomorrow_liability": tomorrow_liability,
+                                    "daily_completions": daily_done,
+                                    "multiplier_x10": int(multiplier * 10),
+                                    "unit": unit
+                                }
+                            )
+                            resp.raise_for_status()
+                            return resp.json()
+                    pump_status = await asyncio.to_thread(_fetch_pump)
+                    if min_target > 0 and pump_status.get("target_flow_rate", 0) < min_target and current_debt == 0:
+                        pump_status["target_flow_rate"] = min_target - daily_done
+                        if pump_status["target_flow_rate"] < 0:
+                            pump_status["target_flow_rate"] = 0
+                        pump_status["goal_met"] = daily_done >= min_target
+                except Exception as e:
+                    logger.warning(f"Cloud pump sync skipped or failed for {lang}: {e}")
+
+            if not pump_status:
                 pump = ReviewPump(multiplier=multiplier)
                 pump_status = pump.get_status(current_debt, tomorrow_liability, daily_done, unit=unit, min_target=min_target)
             
