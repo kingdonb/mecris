@@ -1,5 +1,19 @@
 from typing import List, Dict, Any, Optional
 
+def prune_history(messages: List[Dict[str, Any]], max_messages: int = 20) -> List[Dict[str, Any]]:
+    """
+    Prune history to keep the system prompt and the last N messages.
+    """
+    if len(messages) <= max_messages:
+        return messages
+
+    system_messages = [m for m in messages if m.get("role") == "system"]
+    other_messages = [m for m in messages if m.get("role") != "system"]
+    
+    # Keep the last (max_messages - len(system_messages)) messages
+    keep_count = max(0, max_messages - len(system_messages))
+    return system_messages + other_messages[-keep_count:]
+
 class MecrisHarness:
     def __init__(self, llm_client: Any, mcp_client: Any):
         self.llm_client = llm_client
