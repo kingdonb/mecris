@@ -7,10 +7,28 @@ import os
 import logging
 import asyncio
 import sys
+
+# Configure logging to stderr with ERROR level immediately to prevent stdout pollution
+# Using force=True to ensure this configuration takes precedence over any defaults set by imports
+logging.basicConfig(
+    level=logging.ERROR,
+    stream=sys.stderr,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    force=True
+)
+
+# Also explicitly set the levels for our namespaces
+logging.getLogger("mecris").setLevel(logging.ERROR)
+logging.getLogger("mcp").setLevel(logging.ERROR)
+
 from datetime import datetime, timedelta, date, timezone
 from typing import List, Dict, Any, Optional
 
 from dotenv import load_dotenv
+
+# Load environment variables first
+load_dotenv()
+
 from mcp.server.fastmcp import FastMCP
 from fastapi import FastAPI, Depends, HTTPException, Security
 from fastapi.middleware.cors import CORSMiddleware
@@ -37,15 +55,6 @@ from services.rag_generator import generate_answer as _rag_generate
 from tools.chrome_bookmarks import get_bookmarks_by_topic as _get_bookmarks_by_topic
 from services.semantic_index import BookmarkIndex, search_bookmarks as _search_bookmarks
 
-# Load environment variables
-load_dotenv()
-
-# Configure logging to stderr with ERROR level
-logging.basicConfig(
-    level=logging.ERROR,
-    stream=sys.stderr,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-)
 logger = logging.getLogger("mecris")
 
 async def _record_presence(user_id: str) -> None:

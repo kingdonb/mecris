@@ -34,3 +34,6 @@ This document is the high-fidelity source of truth for the current development c
 - [x] Context Burn mitigation in `TDG.md` (-q --tb=short).
 - [x] Restoration of `mecris-bot` GitHub Actions workflow.
 - [x] Formalization of Architectural Evolution research project.
+
+## Infrastructure and DX
+- [ ] Add --help command support to mcp_server.py to allow better skill discovery for autonomous agents.

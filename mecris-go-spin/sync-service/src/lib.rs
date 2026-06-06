@@ -446,7 +446,14 @@ async fn run_clozemaster_scraper(db: &str, uid: &str) -> anyhow::Result<()> {
             let cur = p.get("numReadyForReview").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
             let tot = p.get("score").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
             let tod = p.get("numPointsToday").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
-            let (lang, beem) = match slug_name.as_str() { "ara-eng" => ("ARABIC", "reviewstack"), "ell-eng" => ("GREEK", ""), _ => (slug_name.as_str(), ""), };
+            let (lang, beem) = match slug_name.as_str() { 
+                "ara-eng" => ("ARABIC", "reviewstack"), 
+                "ell-eng" => ("GREEK", "ellinika"), 
+                "gle-eng" => ("IRISH", ""),
+                "lit-eng" => ("LITHUANIAN", ""),
+                "swh-eng" => ("SWAHILI", ""),
+                _ => (slug_name.as_str(), ""), 
+            };
             let (mut tom, mut n7) = (0, 0);
             if id > 0 {
                 let api_url = format!("https://www.clozemaster.com/api/v1/lp/{}/more-stats", id);

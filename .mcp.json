@@ -12,12 +12,12 @@
       "args": [
         "--quiet",
         "run",
-        "--project", ".",
-        "mcp_server.py",
+        "--project", "/Users/yebyen/w/mecris",
+        "/Users/yebyen/w/mecris/mcp_server.py",
         "--stdio"
       ],
       "env": {
-        "PYTHONPATH": ".",
+        "PYTHONPATH": "/Users/yebyen/w/mecris",
         "GITHUB_TOKEN": "${GITHUB_TOKEN}"
       }
     }

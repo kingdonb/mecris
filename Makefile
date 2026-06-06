@@ -59,7 +59,7 @@ run-local: build-wasm
 		--variable oidc_discovery_url="https://metnoom.urmanac.com/.well-known/openid-configuration" \
 		--variable oidc_jwks_json='$(JWKS_JSON)' \
 		--variable cloud_provider=local \
-		--variable auth_bypass=false \
+		--variable auth_bypass=true \
 		--listen 0.0.0.0:3000
 
 deploy-all: deploy-fermyon deploy-akamai
