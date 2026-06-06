@@ -12,9 +12,7 @@ def test_filter_core_tools():
     
     core_tools = filter_core_tools(all_tools)
     
-    assert len(core_tools) == 3
+    assert len(core_tools) == 1
     names = [t["name"] for t in core_tools]
     assert "get_narrator_context" in names
-    assert "get_daily_aggregate_status" in names
-    assert "search_bookmarks" in names
-    assert "delete_user_data" not in names
+    assert "get_daily_aggregate_status" not in names

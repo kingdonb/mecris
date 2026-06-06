@@ -21,11 +21,17 @@ class MecrisHarness:
 
     async def run_loop(self, messages: List[Dict[str, Any]], tools: Optional[List[Dict[str, Any]]] = None) -> str:
         while True:
+            # Observability: Show what we are sending to the model
+            # print(f"[debug] Sending {len(messages)} messages to Ollama...")
+            
             response = await self.llm_client.chat(model="gemma4:12b", messages=messages, tools=tools)
             
-            # Ollama returns dict, not object attributes. The mock needs to match this.
             msg = response.get("message", {})
             
+            # Observability: Show thinking/content
+            if msg.get("content"):
+                pass # Already handled by main loop print, but we could log it here too
+
             messages.append({
                 "role": "assistant",
                 "content": msg.get("content"),
@@ -38,11 +44,21 @@ class MecrisHarness:
                 for tool_call in tool_calls:
                     name = tool_call["function"]["name"]
                     args = tool_call["function"]["arguments"]
+                    
+                    print(f"⛏️  Caveman use tool: {name}")
                     result = await self.mcp_client.call_tool(name, args)
+                    
+                    # result is a CallToolResult
+                    content = ""
+                    if hasattr(result, "content"):
+                        content = "\n".join([c.text for c in result.content if hasattr(c, "text")])
+                    
+                    print(f"✅ Tool result size: {len(content)} chars")
+                    
                     messages.append({
                         "role": "tool",
                         "name": name,
-                        "content": str(result)
+                        "content": content
                     })
                 continue
             

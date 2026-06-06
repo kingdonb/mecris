@@ -9,7 +9,8 @@ async def main():
     
     async with MecrisMcpClient() as mcp_client:
         tools_response = await mcp_client.list_tools()
-        core_tools = filter_core_tools(tools_response.get("tools", []))
+        # tools_response is a ListToolsResult object
+        core_tools = filter_core_tools([t.model_dump() if hasattr(t, "model_dump") else vars(t) for t in tools_response.tools])
         print(f"Loaded {len(core_tools)} core tools.")
         
         # Convert tools to Ollama format
@@ -21,7 +22,7 @@ async def main():
         # But for now, we'll just handle the top-level loop here.
         
         messages = [
-            {"role": "system", "content": "You are Mecris. Call get_narrator_context first. Then report status and ask what to do next."}
+            {"role": "system", "content": "You are Mecris. Talk like caveman (terse, no articles, no filler). Brain big, mouth small. Call get_narrator_context first. Report status. Ask next step."}
         ]
         
         # Initialize harness
@@ -33,7 +34,7 @@ async def main():
         while True:
             try:
                 user_input = input("\n> ").strip()
-            except EOFError:
+            except (EOFError, KeyboardInterrupt):
                 break
                 
             if user_input.lower() in ("exit", "quit"):
@@ -42,17 +43,9 @@ async def main():
             messages.append({"role": "user", "content": user_input})
             messages = prune_history(messages)
             
-            # The run_loop should ideally handle multiple turns (tool calls) for a single user input
-            # Let's adjust the run_loop to take tools and just return when the assistant speaks to the user.
-            
-            # Let's implement the loop logic directly here for simplicity if the test just mocks it.
-            # But the test patches MecrisHarness.run_loop, so let's call it.
-            # We'll assume run_loop handles the internal tool-calling turns and returns the final assistant message.
-            # wait, the test expects us to check input immediately, which we do.
-            
-            # Note: The test only patches run_loop and doesn't actually run this part because it exits.
-            # Let's just break for now.
-            break
+            # The run_loop handles the ReAct logic and returns when the assistant has a message for the user.
+            response_content = await harness.run_loop(messages, tools=ollama_tools)
+            print(f"\nMecris: {response_content}")
 
 if __name__ == "__main__":
     asyncio.run(main())

@@ -7,12 +7,7 @@ from mcp.client.stdio import stdio_client
 from typing import List, Dict, Any
 
 CORE_TOOLS = {
-    "get_narrator_context",
-    "get_daily_aggregate_status",
-    "complete_goal",
-    "get_budget_status",
-    "ask_mecris",
-    "search_bookmarks"
+    "get_narrator_context"
 }
 
 def filter_core_tools(tools: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
