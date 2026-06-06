@@ -32,7 +32,15 @@ While 64K is a significant improvement over the default 4K, it is still smaller 
 *   Local Fine-Tuning: Potential for fine-tuning Gemma models specifically for the Mecris schema to reduce the need for exhaustive documentation in the context window.
 *   Instruction Preservation: We will preserve the Gemini CLI instructions in our documentation, adapting them for the OpenCode/Gemma workflow.
 
-## 5. Conclusion
+## 5. The Final Hurdle: The Environment Expansion Trap
+
+Even after context expansion, we encountered a final "Literal Leak" failure:
+*   **The Problem**: CLI tools (like `claude` or `opencode`) often fail to expand environment variables like `${NEON_DB_URL}` if they are not explicitly exported in the current shell. This causes the MCP server to receive literal strings instead of actual connection credentials.
+*   **The Fix**:
+    1.  **Early Loading**: Moved `load_dotenv()` to the absolute top of `mcp_server.py` to ensure it reads directly from the local `.env` file, bypassing the CLI's failed expansion.
+    2.  **Absolute Paths**: Updated `.mcp.json` to use absolute project paths for all `uv run` commands, preventing path resolution errors when the CLI is started from a sub-directory or different context.
+
+## 6. Conclusion
 Mecris is now officially "Rug-Pull Proof." The ability to run a code agent locally with full narrator context, using no infrastructure support beyond local silicon, is a major milestone for decentralized AI accountability.
 
 Long live the robot. Stay sovereign.
