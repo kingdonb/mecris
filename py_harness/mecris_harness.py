@@ -19,28 +19,31 @@ class MecrisHarness:
         self.llm_client = llm_client
         self.mcp_client = mcp_client
 
-    async def run_loop(self, messages: List[Dict[str, Any]]) -> str:
+    async def run_loop(self, messages: List[Dict[str, Any]], tools: Optional[List[Dict[str, Any]]] = None) -> str:
         while True:
-            response = await self.llm_client.chat(messages=messages)
+            response = await self.llm_client.chat(model="gemma4:12b", messages=messages, tools=tools)
             
-            # Add assistant message to history
+            # Ollama returns dict, not object attributes. The mock needs to match this.
+            msg = response.get("message", {})
+            
             messages.append({
                 "role": "assistant",
-                "content": response.message.content,
-                "tool_calls": getattr(response.message, "tool_calls", None)
+                "content": msg.get("content"),
+                "tool_calls": msg.get("tool_calls")
             })
 
-            if response.stop_reason == "tool_use":
-                for tool_call in response.message.tool_calls:
-                    name = tool_call.function.name
-                    args = tool_call.function.arguments
+            # Check for tool calls
+            tool_calls = msg.get("tool_calls")
+            if tool_calls:
+                for tool_call in tool_calls:
+                    name = tool_call["function"]["name"]
+                    args = tool_call["function"]["arguments"]
                     result = await self.mcp_client.call_tool(name, args)
                     messages.append({
                         "role": "tool",
-                        "tool_call_id": getattr(tool_call, "id", "mock_id"),
                         "name": name,
-                        "content": result
+                        "content": str(result)
                     })
                 continue
             
-            return response.message.content or ""
+            return msg.get("content", "")

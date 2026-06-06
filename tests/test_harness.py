@@ -1,5 +1,5 @@
 import pytest
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 from py_harness.mecris_harness import MecrisHarness
 
 @pytest.mark.asyncio
@@ -8,18 +8,18 @@ async def test_harness_react_loop():
     llm_client = AsyncMock()
     llm_client.chat.side_effect = [
         # First response: call a tool
-        MagicMock(
-            message=MagicMock(
-                content=None,
-                tool_calls=[MagicMock(function=MagicMock(name="get_narrator_context", arguments={}))]
-            ),
-            stop_reason="tool_use"
-        ),
+        {
+            "message": {
+                "content": None,
+                "tool_calls": [{"function": {"name": "get_narrator_context", "arguments": {}}}]
+            },
+            "done": False
+        },
         # Second response: final answer
-        MagicMock(
-            message=MagicMock(content="I am Mecris.", tool_calls=None),
-            stop_reason="stop"
-        )
+        {
+            "message": {"content": "I am Mecris.", "tool_calls": None},
+            "done": True
+        }
     ]
 
     # Mock MCP client
