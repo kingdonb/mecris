@@ -43,6 +43,25 @@ build-wasm:
 	@echo "🦀 Building Sync Service WASM..."
 	cd mecris-go-spin/sync-service && spin build
 
+run-local: build-wasm
+	@echo "🚀 Running locally with .env variables..."
+	$(eval JWKS_JSON := $(shell curl -s https://metnoom.urmanac.com/.well-known/openid-configuration | jq -r .jwks_uri | xargs curl -s | jq -c .))
+	cd mecris-go-spin/sync-service && set -a && source ../../.env && set +a && spin up \
+		--variable db_url=$${NEON_DB_URL} \
+		--variable neon_db_url=$${NEON_DB_URL} \
+		--variable master_encryption_key=$${MASTER_ENCRYPTION_KEY} \
+		--variable clozemaster_email=$${CLOZEMASTER_EMAIL} \
+		--variable clozemaster_password=$${CLOZEMASTER_PASSWORD} \
+		--variable twilio_account_sid=$${TWILIO_ACCOUNT_SID} \
+		--variable twilio_auth_token_encrypted=$${TWILIO_AUTH_TOKEN_ENCRYPTED} \
+		--variable twilio_from_number=$${TWILIO_FROM_NUMBER} \
+		--variable openweather_api_key=$${OPENWEATHER_API_KEY} \
+		--variable oidc_discovery_url="https://metnoom.urmanac.com/.well-known/openid-configuration" \
+		--variable oidc_jwks_json='$(JWKS_JSON)' \
+		--variable cloud_provider=local \
+		--variable auth_bypass=false \
+		--listen 0.0.0.0:3000
+
 deploy-all: deploy-fermyon deploy-akamai
 	@echo "✅ Deployment to both clouds complete"
 

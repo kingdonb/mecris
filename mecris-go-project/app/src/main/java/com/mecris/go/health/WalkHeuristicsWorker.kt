@@ -27,8 +27,7 @@ class WalkHeuristicsWorker @JvmOverloads constructor(
 ) : CoroutineWorker(appContext, workerParams) {
 
     private val pocketIdAuth = injectedAuth ?: PocketIdAuth(applicationContext)
-    private val spinBaseUrl = "http://10.17.13.248:3005/" 
-    private val syncApi = injectedSyncApi ?: SyncServiceApi.create(spinBaseUrl)
+    private val syncApi = injectedSyncApi ?: SyncServiceApi.create(com.mecris.go.BackendManager.getBaseUrl(applicationContext))
     
     private val prefs = applicationContext.getSharedPreferences("mecris_worker_state", Context.MODE_PRIVATE)
 

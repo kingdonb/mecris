@@ -1,11 +1,11 @@
 {
   "suite_name": "Mecris Personal Accountability Suite",
-  "release_date": "2026-05-27",
-  "total_version": "0.0.1-beta.7",
+  "release_date": "2026-06-05",
+  "total_version": "0.0.1-beta.9",
   "components": {
     "android_app": {
       "name": "Mecris-Go Android",
-      "version": "0.0.1-beta.7",
+      "version": "0.0.1-beta.9",
       "features": [
         "OIDC Submarine Mode Fixes",
         "WorkManager Heartbeat",
@@ -17,7 +17,7 @@
     },
     "spin_backend": {
       "name": "Mecris-Go Sync Service (Spin)",
-      "version": "0.0.1-beta.7",
+      "version": "0.0.1-beta.9",
       "features": [
         "Arabic Skip Counter",
         "Multi-Component Layout",
@@ -29,7 +29,7 @@
     },
     "python_mcp": {
       "name": "Mecris MCP Server",
-      "version": "0.0.1-beta.7",
+      "version": "0.0.1-beta.9",
       "features": [
         "Hardened Authentication",
         "Enriched System Pulse",
@@ -40,7 +40,7 @@
     },
     "neon_infrastructure": {
       "name": "Neon PostgreSQL Cloud",
-      "version": "0.0.1-beta.7",
+      "version": "0.0.1-beta.9",
       "features": [
         "Ghost Presence Table",
         "Message Log with Compliance Status",

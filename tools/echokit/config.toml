@@ -1,0 +1,31 @@
+addr = "0.0.0.0:8080"
+hello_wav = "hello.wav"
+
+[tts]
+platform = "Elevenlabs"
+token = "ELEVENLABS_TOKEN_PLACEHOLDER"
+voice = "JBFqnCBsd6RMkjVDRZzb"
+
+[asr]
+platform = "openai"
+url = "https://api.groq.com/openai/v1/audio/transcriptions"
+api_key = "GSK_API_KEY_PLACEHOLDER"
+model = "whisper-large-v3"
+lang = "en"
+prompt = "Hello\n你好\n(noise)\n(bgm)\n(silence)\n"
+vad_url = "http://localhost:8000/v1/audio/vad"
+
+[llm]
+llm_chat_url = "https://api.groq.com/openai/v1/chat/completions"
+api_key = "GSK_API_KEY_PLACEHOLDER"
+model = "openai/gpt-oss-20b"
+history = 15
+
+[[llm.extra.tools]]
+type = "browser_search"
+
+[[llm.sys_prompts]]
+role = "system"
+content = """
+You are a helpful assistant. Answer truthfully and concisely. Always answer in English.
+"""

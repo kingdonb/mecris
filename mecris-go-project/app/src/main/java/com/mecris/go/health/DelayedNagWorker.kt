@@ -20,8 +20,7 @@ class DelayedNagWorker(
 ) : CoroutineWorker(appContext, workerParams) {
 
     private val pocketIdAuth = PocketIdAuth(applicationContext)
-    private val spinBaseUrl = "https://mecris-sync-v2-r0r86pso.fermyon.app/"
-    private val syncApi = SyncServiceApi.create(spinBaseUrl)
+    private val syncApi = SyncServiceApi.create(com.mecris.go.BackendManager.getBaseUrl(applicationContext))
     private val prefs = applicationContext.getSharedPreferences("mecris_worker_state", Context.MODE_PRIVATE)
     private val profileManager = ProfilePreferencesManager(applicationContext)
     private val brain = SovereignBrain(applicationContext)

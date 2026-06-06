@@ -84,8 +84,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var healthConnectManager: HealthConnectManager
     private lateinit var persistenceManager: PersistenceManager
 
-    private val spinBaseUrl = "http://10.17.13.248:3005/"
-    private val syncApi = SyncServiceApi.create(spinBaseUrl)
+    private lateinit var syncApi: SyncServiceApi
     private val authResultLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         pocketIdAuth.handleAuthorizationResponse(result.data)
     }
@@ -96,6 +95,8 @@ class MainActivity : ComponentActivity() {
         pocketIdAuth = PocketIdAuth(this)
         healthConnectManager = HealthConnectManager(this)
         persistenceManager = PersistenceManager(this)
+        
+        syncApi = SyncServiceApi.create(BackendManager.getBaseUrl(this))
 
         setupWorkManager()
 
@@ -2236,6 +2237,14 @@ fun ProfileSettingsScreen(
     }
 
     Spacer(modifier = Modifier.height(32.dp))
+
+    com.mecris.go.BackendSelector(onBackendChanged = {
+        // Re-initialize to pick up the new URL
+        Toast.makeText(context, "Backend changed. Please restart the app.", Toast.LENGTH_LONG).show()
+    })
+
+    Spacer(modifier = Modifier.height(16.dp))
+
     Button(
         onClick = onLogOut,
         modifier = Modifier.fillMaxWidth(),
