@@ -55,3 +55,15 @@ Once your changes are verified locally on both the Spin server and the Android c
    make bump-version VERSION=x.y.z [VC=nn]
 3. **Deploy to both clouds**:
    make deploy-all
+
+## Beta.9 Regression Analysis (Self-Correction)
+
+The initial Beta.9 release encountered several critical failures that have since been resolved through Test-Driven Generation:
+
+1. Path Routing Bug: Spin SDK v5 can sometimes return the full request URL in req.path(). Our initial fix was too aggressive and cut off path segments (e.g., /internal/cloud-sync became /internal). This caused 404s for background syncs.
+2. Goal Wiping (Slug Overwrite): The Clozemaster scraper was hardcoded to update the beeminder_slug. If a language wasn't explicitly mapped in the Rust code, it would overwrite your carefully configured DB slugs with an empty string, causing the "No Goal" badge to appear.
+3. Integer Parsing Fragility: Some Neon/Postgres integer types were being returned as DbValue::Int64 or DbValue::Str, which our initial helpers ignored, resulting in 0s for targets and review counts.
+4. Illegal Odometer Push: We accidentally mapped GREEK to the ellinika goal, which is a cumulative odometer. The scraper attempted to push a "backlog snapshot" (current review count) to it, which is forbidden by our project mandate.
+
+Verification Status: 
+These issues are now covered by tests/test_beta9_regressions.py. Always run this suite against a local make run-local instance before any future cloud deployment.
