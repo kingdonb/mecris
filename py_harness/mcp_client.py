@@ -4,6 +4,21 @@ from contextlib import AsyncExitStack
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
+from typing import List, Dict, Any
+
+CORE_TOOLS = {
+    "get_narrator_context",
+    "get_daily_aggregate_status",
+    "complete_goal",
+    "get_budget_status",
+    "ask_mecris",
+    "search_bookmarks"
+}
+
+def filter_core_tools(tools: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Filter down a list of MCP tools to only the core tools to save context window space."""
+    return [t for t in tools if t.get("name") in CORE_TOOLS]
+
 class MecrisMcpClient:
     def __init__(self, server_script: str = "mcp_server.py"):
         self.server_params = StdioServerParameters(
