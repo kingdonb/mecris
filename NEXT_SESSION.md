@@ -11,7 +11,10 @@
 1. **Fix Fermyon/Spin Integration (Goal 1)**:
    - Restore the `/internal/review-pump-status-py` endpoint.
    - Address the Spin CLI 4.0 / SDK transition issues.
-2. **Review Pump Logic Audit**:
+2. **Transition to Streaming API**:
+   - Update `ollama_client.py` and `mecris_harness.py` to support streaming tokens.
+   - Show real-time "thinking" in the terminal to eliminate the black-box wait.
+3. **Review Pump Logic Audit**:
    - Investigate why Greek target is pinned to 100.
    - Make targets responsive to the return pile size (e.g., 40 in pile != 100 target).
 3. **TUI/UX Improvement**:

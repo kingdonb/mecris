@@ -65,5 +65,22 @@ The initial Beta.9 release encountered several critical failures that have since
 3. Integer Parsing Fragility: Some Neon/Postgres integer types were being returned as DbValue::Int64 or DbValue::Str, which our initial helpers ignored, resulting in 0s for targets and review counts.
 4. Illegal Odometer Push: We accidentally mapped GREEK to the ellinika goal, which is a cumulative odometer. The scraper attempted to push a "backlog snapshot" (current review count) to it, which is forbidden by our project mandate.
 
-Verification Status: 
-These issues are now covered by tests/test_beta9_regressions.py. Always run this suite against a local make run-local instance before any future cloud deployment.
+## Optimizing Local LLM Inference (Ollama)
+
+Starting with Beta 9, Mecris supports a high-performance local inference loop via `py_harness`. To get the most out of your hardware (e.g., Apple Silicon), consider these operational characteristics:
+
+### 1. The Predictable "Tax" (Cold Starts)
+By default, Ollama unloads models from GPU memory after **5 minutes** of inactivity to save power and heat.
+- **Loading Tax**: The first request after a break will take 10-20s longer as the model loads from Disk to VRAM.
+- **Warm Starts**: Subsequent requests are near-instant because the model is already "warm."
+- **Optimization**: You can keep the model "always warm" by setting the `keep_alive` parameter to a higher value (e.g., `1h` or `-1` for infinity) in your Ollama API calls or config.
+
+### 2. KV Cache: Your Persistent Progress
+Ollama's **Key-Value (KV) Cache** stores the mathematical representation of your context (like the 8k `get_narrator_context` result) in GPU memory.
+- **Persistence**: Even if the harness times out (brain stall), the work Ollama did to ingest your prompt **remains in the KV cache** (as long as the model stays loaded).
+- **Fast Retries**: If you hit a "brain stall" and immediately try again, Ollama will skip the heavy context-reading phase and jump straight to generating text, making the retry much faster than the initial attempt.
+
+### 3. Resilience over Speed
+The `py_harness` is designed for **marathon stability**, not sprint speed.
+- It uses a generous **5-minute timeout** to allow local hardware to process complex tool-calling logic without interruption.
+- Future versions will transition to the **Streaming API** to provide real-time visibility into the model's "thinking" process, eliminating the "black box" wait.
