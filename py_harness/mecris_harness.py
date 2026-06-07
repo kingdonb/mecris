@@ -21,10 +21,10 @@ class MecrisHarness:
 
     async def run_loop(self, messages: List[Dict[str, Any]], tools: Optional[List[Dict[str, Any]]] = None) -> str:
         while True:
-            # Observability: Show what we are sending to the model
-            # print(f"[debug] Sending {len(messages)} messages to Ollama...")
-            
-            response = await self.llm_client.chat(model="gemma4:12b", messages=messages, tools=tools)
+            try:
+                response = await self.llm_client.chat(model="gemma4:12b", messages=messages, tools=tools)
+            except Exception as e:
+                return f"Mecris brain stall: {str(e)}. Try again?"
             
             msg = response.get("message", {})
             

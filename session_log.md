@@ -15,6 +15,7 @@
    - Integrated the official **Caveman Skill** (`SKILL.md`) for ultra-compressed communication.
 3. **Noise Reduction & Stability**:
    - Implemented feature flags (`MECRIS_ENABLE_OBSIDIAN`, `MECRIS_ENABLE_CLOUD_PUMP`) in `mcp_server.py` to silence non-functional cloud/plugin errors.
+   - Hardened `py_harness` with a 300s timeout and exception handling to survive local latency.
    - Added E2E integration test `tests/integration_mcp.py` to verify real MCP connectivity.
    - Documented backend failures (Obsidian/Fermyon) in GitHub Issue **#258**.
 4. **Physical Accountability**:

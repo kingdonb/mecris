@@ -15,6 +15,7 @@ class OllamaClient:
             payload["tools"] = tools
 
         async with httpx.AsyncClient() as client:
-            response = await client.post(f"{self.base_url}/api/chat", json=payload, timeout=60.0)
+            # Local inference (especially with tools) can be slow. 5m timeout.
+            response = await client.post(f"{self.base_url}/api/chat", json=payload, timeout=300.0)
             response.raise_for_status()
             return response.json()
