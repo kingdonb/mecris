@@ -125,6 +125,21 @@
 
 **Philosophy**: "If there's an established framework that does better what we already do, let's use it"
 
+### **GOAL 5: Token Efficiency & Local-First Optimization** ⛏️
+**Priority**: HIGH | **Timeline**: 1-2 weeks | **Budget Impact**: REDUCTION (saves tokens)
+**Status**: IN PROGRESS (Beta 9 milestone) 🚧
+
+**Current Problem**: Running against local models (Gemma 4 via Ollama) is slow and expensive in terms of time/heat because of massive (11k+) scaffolding overhead.
+
+**Solution**: Build a minimal, "1-tool-first" agent harness that uses lazy tool loading, context pruning, and authentic token-minimization techniques (RTK, Caveman).
+
+**Deliverables**:
+- [x] **Minimal Python Harness**: A ReAct-loop client for local MCP + Ollama.
+- [x] **Lazy Tool Loading**: Reduce initial context overhead by 90%.
+- [x] **RTK Integration**: High-performance Rust CLI proxy for output compression.
+- [x] **Caveman Skill Adoption**: Ultra-compressed "Brain big, mouth small" communication mode.
+- [ ] **Rich TUI/UI**: Port harness to a more interactive terminal interface (modeled on Claude Code).
+
 ---
 
 ## 📅 Implementation Timeline

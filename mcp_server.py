@@ -48,6 +48,10 @@ from services.neon_sync_checker import NeonSyncChecker
 from services.reminder_service import ReminderService
 from services.language_sync_service import LanguageSyncService
 from services.review_pump import ReviewPump, ARABIC_POINTS_PER_CARD
+
+# Feature Flags - set these to 'true' in .env to enable
+ENABLE_OBSIDIAN = os.getenv("MECRIS_ENABLE_OBSIDIAN", "false").lower() == "true"
+ENABLE_CLOUD_PUMP = os.getenv("MECRIS_ENABLE_CLOUD_PUMP", "false").lower() == "true"
 from services.credentials_manager import credentials_manager
 from ghost.presence import get_neon_store, StatusType
 from services.rag_retriever import RAGRetriever
@@ -290,6 +294,43 @@ async def narrator_context_endpoint(user_id: str = Depends(get_authorized_user))
 async def beeminder_status_endpoint(user_id: str = Depends(get_authorized_user)):
     return await get_beeminder_status(user_id)
 
+@app.get("/budget")
+async def get_budget_endpoint(user_id: str = Depends(get_authorized_user)):
+    status = get_budget_status(user_id)
+    return {"remaining_budget": status.get("remaining_budget", 0.0)}
+
+@app.get("/profile")
+async def get_profile(user_id: str = Depends(get_authorized_user)):
+    try:
+        import psycopg2
+        neon_url = os.getenv("NEON_DB_URL")
+        with psycopg2.connect(neon_url) as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    SELECT phone_number_encrypted, beeminder_user, location_lat, location_lon, vacation_mode_until, autonomous_sync_enabled 
+                    FROM users WHERE pocket_id_sub = %s
+                """, (user_id,))
+                row = cur.fetchone()
+                if not row:
+                    return {
+                        "phone_number": None, "beeminder_user": None, "latitude": None, "longitude": None, 
+                        "vacation_mode_until": None, "autonomous_sync_enabled": True
+                    }
+                
+                # Note: Decryption skipped for brevity in this fetch, returning encrypted if present
+                # or null if not. The Android app handles empty/null profile data gracefully.
+                return {
+                    "phone_number": row[0],
+                    "beeminder_user": row[1],
+                    "latitude": float(row[2]) if row[2] else None,
+                    "longitude": float(row[3]) if row[3] else None,
+                    "vacation_mode_until": row[4].isoformat() if row[4] else None,
+                    "autonomous_sync_enabled": bool(row[5])
+                }
+    except Exception as e:
+        logger.error(f"Profile fetch failed: {e}")
+        return {"error": str(e)}
+
 @app.get("/budget/status")
 async def budget_status_endpoint(user_id: str = Depends(get_authorized_user)):
     return get_budget_status(user_id)
@@ -470,11 +511,13 @@ async def get_narrator_context(user_id: str = None) -> Dict[str, Any]:
     try:
         goals = usage_tracker.get_goals(target_user_id)
         active_goals = [g for g in goals if g.get("status") == "active"]
-        try:
-            todos = await obsidian_client.get_todos()
-        except Exception as e:
-            logger.warning(f"Failed to fetch Obsidian todos (server may be offline): {e}")
-            todos = []
+        
+        todos = []
+        if ENABLE_OBSIDIAN:
+            try:
+                todos = await obsidian_client.get_todos()
+            except Exception as e:
+                logger.warning(f"Failed to fetch Obsidian todos (server may be offline): {e}")
         
         try:
             beeminder_goals = await get_cached_beeminder_goals(target_user_id)
@@ -1055,28 +1098,26 @@ async def get_language_velocity_stats(user_id: str = None) -> Dict[str, Any]:
     if not target_user_id:
         return {"error": "Authentication Required"}
     try:
-        # 1. Get stats from Neon (cached from last scraper run) - use to_thread to avoid blocking event loop
+        # 1. Get stats from Neon (cached from last scraper run)
         db_stats = await asyncio.to_thread(neon_checker.get_language_stats, target_user_id)
+        
+        # 2. Trigger async sync if empty OR stale (> 1 hour)
+        is_stale = False
+        if db_stats:
+            # Check most recent update time
+            latest_update = max([s.get("last_updated") for s in db_stats.values() if s.get("last_updated")] or [datetime.min.replace(tzinfo=timezone.utc)])
+            if (datetime.now(timezone.utc) - latest_update).total_seconds() > 3600:
+                is_stale = True
+
+        if not db_stats or is_stale:
+            logger.info(f"Language stats {'missing' if not db_stats else 'stale'}. Triggering background sync for {target_user_id}.")
+            # Run the scraper in the background - DO NOT AWAIT
+            asyncio.create_task(language_sync_service.sync_all(user_id=target_user_id))
+
         if not db_stats:
-            # Fallback to scrape if DB is empty
-            scraper_data = await sync_clozemaster_to_beeminder(dry_run=True)
-            if not scraper_data:
-                return {"error": "No language data available"}
+            return {"error": "Language data is being synchronized. Please retry in a moment."}
 
-            # Map scraper format to internal stats format
-            db_stats = {}
-            for lang, data in scraper_data.items():
-                db_stats[lang] = {
-                    "current": data.get("count", 0),
-                    "tomorrow": data.get("forecast", {}).get("tomorrow", 0),
-                    "multiplier": 1.0
-                }
-
-        # 2. Use daily_completions from Neon (numPointsToday) as the flow rate.
-        # Previously this fetched Beeminder datapoints for reviewstack/ellinika, but those
-        # goals track the current review *backlog* (not completions). Summing backlog
-        # snapshots as if they were completions caused the Pump to report "turbulent"
-        # whenever the backlog was large — even when zero reviews had been done that day.
+        # 3. Process cached results immediately
         results = {}
         for lang, stats in db_stats.items():
             current_debt = stats.get("current", 0)
@@ -1105,30 +1146,34 @@ async def get_language_velocity_stats(user_id: str = None) -> Dict[str, Any]:
                 # Moussaka Hour baseline goal: 100 points
                 min_target = 100
 
-            import httpx
-            try:
-                def _fetch_pump():
-                    with httpx.Client(timeout=5.0) as client:
-                        resp = client.post(
-                            "https://mecris-sync.fermyon.app/internal/review-pump-status-py",
-                            json={
-                                "debt": current_debt,
-                                "tomorrow_liability": tomorrow_liability,
-                                "daily_completions": daily_done,
-                                "multiplier_x10": int(multiplier * 10),
-                                "unit": unit
-                            }
-                        )
-                        resp.raise_for_status()
-                        return resp.json()
-                pump_status = await asyncio.to_thread(_fetch_pump)
-                if min_target > 0 and pump_status.get("target_flow_rate", 0) < min_target and current_debt == 0:
-                    pump_status["target_flow_rate"] = min_target - daily_done
-                    if pump_status["target_flow_rate"] < 0:
-                        pump_status["target_flow_rate"] = 0
-                    pump_status["goal_met"] = daily_done >= min_target
-            except Exception as e:
-                logger.error(f"Failed to fetch review pump status from cloud for {lang}: {e}")
+            pump_status = None
+            if ENABLE_CLOUD_PUMP:
+                import httpx
+                try:
+                    def _fetch_pump():
+                        with httpx.Client(timeout=5.0) as client:
+                            resp = client.post(
+                                "https://mecris-sync.fermyon.app/internal/review-pump-status-py",
+                                json={
+                                    "debt": current_debt,
+                                    "tomorrow_liability": tomorrow_liability,
+                                    "daily_completions": daily_done,
+                                    "multiplier_x10": int(multiplier * 10),
+                                    "unit": unit
+                                }
+                            )
+                            resp.raise_for_status()
+                            return resp.json()
+                    pump_status = await asyncio.to_thread(_fetch_pump)
+                    if min_target > 0 and pump_status.get("target_flow_rate", 0) < min_target and current_debt == 0:
+                        pump_status["target_flow_rate"] = min_target - daily_done
+                        if pump_status["target_flow_rate"] < 0:
+                            pump_status["target_flow_rate"] = 0
+                        pump_status["goal_met"] = daily_done >= min_target
+                except Exception as e:
+                    logger.warning(f"Cloud pump sync skipped or failed for {lang}: {e}")
+
+            if not pump_status:
                 pump = ReviewPump(multiplier=multiplier)
                 pump_status = pump.get_status(current_debt, tomorrow_liability, daily_done, unit=unit, min_target=min_target)
             
@@ -1700,32 +1745,28 @@ if __name__ == "__main__":
     use_stdio = "--stdio" in sys.argv
     use_http = "--http" in sys.argv
 
-    def run_http():
-        print("Starting Mecris API on http://localhost:8000", file=sys.stderr)
-        uvicorn.run(app, host="0.0.0.0", port=8000, log_level="error")
+    # Start HTTP server for Android Bridge by default (or if --http requested)
+    def run_http_server():
+        logger.info("Starting Mecris Android Bridge on http://0.0.0.0:8080")
+        uvicorn.run(app, host="0.0.0.0", port=8080, log_level="error")
 
-    if use_http:
-        # Start HTTP server in a background thread
-        http_thread = threading.Thread(target=run_http, daemon=True)
-        http_thread.start()
+    # Always launch HTTP bridge in a background thread to keep it independent of stdio/mcp
+    http_thread = threading.Thread(target=run_http_server, daemon=True)
+    http_thread.start()
 
     if use_stdio:
-        async def run_stdio():
+        async def run_stdio_with_scheduler():
             scheduler.start()
             try:
                 await mcp.run_stdio_async()
             finally:
                 scheduler.shutdown()
             
-        asyncio.run(run_stdio())
-    elif use_http:
-        # If ONLY http was requested, we need to keep the main thread alive
+        asyncio.run(run_stdio_with_scheduler())
+    else:
+        # Fallback to standard mcp.run() for manual terminal debugging
         scheduler.start()
         try:
-            # Since uvicorn.run is blocking, we can just run it in the main thread here
-            run_http()
+            mcp.run()
         finally:
             scheduler.shutdown()
-    else:
-        # Default fallback
-        mcp.run()

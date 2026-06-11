@@ -34,8 +34,24 @@ The Android application features a **Dynamic Backend Selector** to switch target
 5. Select your target:
    - **Local (Emulator)**: Uses http://10.0.2.2:3000/. Select this if running the app in the Android Studio emulator on the same machine running spin up.
    - **Local (LAN: IP_ADDRESS)**: Uses your Mac's LAN IP (e.g., http://10.17.14.155:3000/). Select this if running the app on a physical Android device connected to Wi-Fi.
+   - **Tailnet (Tailscale)**: Point the app to your Mac's **Tailscale IP** on port 3000 (e.g., http://100.x.y.z:3000/). This allows the phone to sync with your home CLI from anywhere in the world without exposing ports to the public internet.
    - **Akamai/Fermyon Cloud**: The live production endpoints.
 6. **Restart the app** fully for the networking configuration to take effect.
+
+## The Tailnet-Native Sync Bridge
+
+When the public cloud hosts (Fermyon/Akamai) are offline or in a version mismatch state, you can use Tailscale to turn your local Mecris CLI into your primary sync hub:
+
+1. **Verify your Mac's Tailscale IP**:
+   `tailscale ip -4`
+2. **Ensure the MCP Server is listening**:
+   The server must be started with `0.0.0.0` to accept Tailscale traffic (default in `make run-local`).
+3. **Configure Android**:
+   In the Android app's **Profile Settings**, set the Backend Server to your Mac's Tailscale IP (e.g., `http://100.64.0.5:3000/`).
+4. **Update Network Security**:
+   Ensure your Tailscale IP range (usually `100.64.0.0/10`) is permitted in the Android app's `network_security_config.xml` if you encounter cleartext traffic errors.
+
+This setup allows the Android app to heartbeat directly into your local leader's Neon-backed coordination table, restoring "Moussaka Time" reminders even during cloud outages.
 
 ## Security Considerations for Local Testing
 
@@ -65,5 +81,22 @@ The initial Beta.9 release encountered several critical failures that have since
 3. Integer Parsing Fragility: Some Neon/Postgres integer types were being returned as DbValue::Int64 or DbValue::Str, which our initial helpers ignored, resulting in 0s for targets and review counts.
 4. Illegal Odometer Push: We accidentally mapped GREEK to the ellinika goal, which is a cumulative odometer. The scraper attempted to push a "backlog snapshot" (current review count) to it, which is forbidden by our project mandate.
 
-Verification Status: 
-These issues are now covered by tests/test_beta9_regressions.py. Always run this suite against a local make run-local instance before any future cloud deployment.
+## Optimizing Local LLM Inference (Ollama)
+
+Starting with Beta 9, Mecris supports a high-performance local inference loop via `py_harness`. To get the most out of your hardware (e.g., Apple Silicon), consider these operational characteristics:
+
+### 1. The Predictable "Tax" (Cold Starts)
+By default, Ollama unloads models from GPU memory after **5 minutes** of inactivity to save power and heat.
+- **Loading Tax**: The first request after a break will take 10-20s longer as the model loads from Disk to VRAM.
+- **Warm Starts**: Subsequent requests are near-instant because the model is already "warm."
+- **Optimization**: You can keep the model "always warm" by setting the `keep_alive` parameter to a higher value (e.g., `1h` or `-1` for infinity) in your Ollama API calls or config.
+
+### 2. KV Cache: Your Persistent Progress
+Ollama's **Key-Value (KV) Cache** stores the mathematical representation of your context (like the 8k `get_narrator_context` result) in GPU memory.
+- **Persistence**: Even if the harness times out (brain stall), the work Ollama did to ingest your prompt **remains in the KV cache** (as long as the model stays loaded).
+- **Fast Retries**: If you hit a "brain stall" and immediately try again, Ollama will skip the heavy context-reading phase and jump straight to generating text, making the retry much faster than the initial attempt.
+
+### 3. Resilience over Speed
+The `py_harness` is designed for **marathon stability**, not sprint speed.
+- It uses a generous **5-minute timeout** to allow local hardware to process complex tool-calling logic without interruption.
+- Future versions will transition to the **Streaming API** to provide real-time visibility into the model's "thinking" process, eliminating the "black box" wait.

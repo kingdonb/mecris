@@ -10,6 +10,15 @@ Mecris is a **persistent cognitive agent system** that extends Claude's narrativ
 
 ## Quick Start
 
+### 🚀 Local-First (Optimized for Ollama)
+Mecris is now optimized for fast, local inference on **Ollama (Gemma 4)** with a token-efficient minimal harness (<1.5k context overhead).
+
+```bash
+# Launch the optimized local-first loop
+PYTHONPATH=. .venv/bin/python3 py_harness/main.py
+```
+
+### ☁️ Standard Setup
 For detailed setup instructions for different agents, see [docs/SETUP_GUIDE.md](docs/SETUP_GUIDE.md).
 
 ```bash
