@@ -439,8 +439,7 @@ async def request_phone_verification_endpoint(request: Dict[str, Any], user_id: 
                 "5": "Account"
             }
             send_whatsapp_template(template_sid, variables, to_number=phone)
-            # Log it to console as well so the developer can see it
-            print(f"VERIFICATION CODE for {phone}: {code} (sent via WhatsApp template)")
+            logger.info(f"Verification code sent via WhatsApp template to {phone[:5]}...")
         except Exception as e:
             logger.error(f"Failed to send verification WhatsApp: {e}")
 
