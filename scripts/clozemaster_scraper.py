@@ -63,7 +63,7 @@ class ClozemasterScraper:
                 return
             raise RuntimeError("NEON_DB_URL not set and legacy env vars missing")
 
-        try:
+        def _fetch():
             import psycopg2
             with psycopg2.connect(neon_url) as conn:
                 with conn.cursor() as cur:
@@ -71,17 +71,20 @@ class ClozemasterScraper:
                         "SELECT clozemaster_email_encrypted, clozemaster_password_encrypted FROM users WHERE pocket_id_sub = %s",
                         (target_user_id,)
                     )
-                    row = cur.fetchone()
-                    if row and row[0] and row[1]:
-                        self.email = self.encryption.decrypt(row[0])
-                        self.password = self.encryption.decrypt(row[1])
-                        logger.info(f"Loaded encrypted Clozemaster credentials for user {target_user_id}")
-                    else:
-                        self.email = os.getenv("CLOZEMASTER_EMAIL")
-                        self.password = os.getenv("CLOZEMASTER_PASSWORD")
-                        if not (self.email and self.password):
-                            raise RuntimeError(f"No Clozemaster credentials found in DB or ENV for user {target_user_id}")
-                        logger.warning(f"Falling back to legacy env vars for user {target_user_id}")
+                    return cur.fetchone()
+
+        try:
+            row = await asyncio.to_thread(_fetch)
+            if row and row[0] and row[1]:
+                self.email = self.encryption.decrypt(row[0])
+                self.password = self.encryption.decrypt(row[1])
+                logger.info(f"Loaded encrypted Clozemaster credentials for user {target_user_id}")
+            else:
+                self.email = os.getenv("CLOZEMASTER_EMAIL")
+                self.password = os.getenv("CLOZEMASTER_PASSWORD")
+                if not (self.email and self.password):
+                    raise RuntimeError(f"No Clozemaster credentials found in DB or ENV for user {target_user_id}")
+                logger.warning(f"Falling back to legacy env vars for user {target_user_id}")
         except Exception as e:
             logger.error(f"Failed to load Clozemaster credentials: {e}")
             raise

@@ -89,7 +89,7 @@ class BeeminderClient:
                 return
             raise RuntimeError("NEON_DB_URL not set and legacy env vars missing")
 
-        try:
+        def _fetch():
             import psycopg2
             with psycopg2.connect(neon_url) as conn:
                 with conn.cursor() as cur:
@@ -97,29 +97,32 @@ class BeeminderClient:
                         "SELECT beeminder_user_encrypted, beeminder_token_encrypted, beeminder_user FROM users WHERE pocket_id_sub = %s",
                         (target_user_id,)
                     )
-                    row = cur.fetchone()
-                    if row:
-                        enc_user, enc_token, plain_user = row
-                        if enc_user:
-                            self.username = self.encryption.decrypt(enc_user)
-                            logger.info(f"Loaded encrypted Beeminder username for user {target_user_id}")
-                        elif plain_user:
-                            self.username = plain_user
-                            logger.warning(f"Using plaintext Beeminder username fallback for user {target_user_id}")
-                        
-                        if enc_token:
-                            self.auth_token = self.encryption.decrypt(enc_token)
-                            logger.info(f"Loaded encrypted Beeminder token for user {target_user_id}")
-                        
-                        if self.username and self.auth_token:
-                            return
-                        
-                        # Final fallback to env
-                        self.username = os.getenv("BEEMINDER_USERNAME")
-                        self.auth_token = os.getenv("BEEMINDER_AUTH_TOKEN")
-                        if not (self.username and self.auth_token):
-                            raise RuntimeError(f"No Beeminder credentials found in DB or ENV for user {target_user_id}")
-                        logger.warning(f"Falling back to legacy env vars for user {target_user_id}")
+                    return cur.fetchone()
+
+        try:
+            row = await asyncio.to_thread(_fetch)
+            if row:
+                enc_user, enc_token, plain_user = row
+                if enc_user:
+                    self.username = self.encryption.decrypt(enc_user)
+                    logger.info(f"Loaded encrypted Beeminder username for user {target_user_id}")
+                elif plain_user:
+                    self.username = plain_user
+                    logger.warning(f"Using plaintext Beeminder username fallback for user {target_user_id}")
+                
+                if enc_token:
+                    self.auth_token = self.encryption.decrypt(enc_token)
+                    logger.info(f"Loaded encrypted Beeminder token for user {target_user_id}")
+                
+                if self.username and self.auth_token:
+                    return
+                
+                # Final fallback to env
+                self.username = os.getenv("BEEMINDER_USERNAME")
+                self.auth_token = os.getenv("BEEMINDER_AUTH_TOKEN")
+                if not (self.username and self.auth_token):
+                    raise RuntimeError(f"No Beeminder credentials found in DB or ENV for user {target_user_id}")
+                logger.warning(f"Falling back to legacy env vars for user {target_user_id}")
         except Exception as e:
             logger.error(f"Failed to load Beeminder credentials: {e}")
             raise

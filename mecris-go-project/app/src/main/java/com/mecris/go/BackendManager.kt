@@ -10,6 +10,7 @@ object BackendManager {
     val ENDPOINTS = listOf(
         "Local (Emulator)" to "http://10.0.2.2:3000/",
         "Local (LAN: 10.17.14.155)" to "http://10.17.14.155:3000/",
+        "Local (Python: 8080)" to "http://10.17.14.155:8080/",
         "Tailnet (Tailscale)" to "http://100.64.0.5:3000/",
         "Akamai Cloud" to "https://394b84e7-760c-4336-975b-653c17fdb446.fwf.app/",
         "Fermyon Cloud" to "https://mecris-sync-v2-glo0zpfm.fermyon.app/"
