@@ -426,21 +426,23 @@ async def request_phone_verification_endpoint(request: Dict[str, Any], user_id: 
                     enc_phone = usage_tracker.encryption.encrypt(phone)
                 cur.execute("UPDATE users SET phone_number_encrypted = %s, phone_verified = false WHERE pocket_id_sub = %s", (enc_phone, user_id))
         
-        # Send SMS via Twilio
-        msg = f"Your Mecris verification code is: {code}"
-        # We use a simple send_sms here, even if it might fail due to A2P, it's the right logic
-        # If it fails, the error will be logged but we return success to the app for now
-        # so the user can see if it worked or not.
+        # Send Verification Code via WhatsApp Template (reliable delivery)
         try:
-            from twilio_sender import send_message
-            # Using send_message (WhatsApp/Freeform) as a proxy since SMS is disabled in twilio_sender.py
-            # But wait, verification codes SHOULD be SMS. 
-            # If the user is on WhatsApp, they might get it.
-            send_message(msg, to_number=phone)
+            from twilio_sender import send_whatsapp_template
+            template_sid = os.getenv("TWILIO_WHATSAPP_TEMPLATE_SID", "HX9403f1b85350b8c05780a1128b79f3c2")
+            # Map to mecris_status_v2: {{1}} is currently {{2}}. {{3}} is {{4}}. Review {{5}}.
+            variables = {
+                "1": "Identity",
+                "2": "PENDING",
+                "3": "Code",
+                "4": code,
+                "5": "Account"
+            }
+            send_whatsapp_template(template_sid, variables, to_number=phone)
             # Log it to console as well so the developer can see it
-            print(f"VERIFICATION CODE for {phone}: {code}")
+            print(f"VERIFICATION CODE for {phone}: {code} (sent via WhatsApp template)")
         except Exception as e:
-            logger.error(f"Failed to send verification SMS: {e}")
+            logger.error(f"Failed to send verification WhatsApp: {e}")
 
         return {"status": "success", "message": "Verification code sent"}
     except Exception as e:
