@@ -34,8 +34,24 @@ The Android application features a **Dynamic Backend Selector** to switch target
 5. Select your target:
    - **Local (Emulator)**: Uses http://10.0.2.2:3000/. Select this if running the app in the Android Studio emulator on the same machine running spin up.
    - **Local (LAN: IP_ADDRESS)**: Uses your Mac's LAN IP (e.g., http://10.17.14.155:3000/). Select this if running the app on a physical Android device connected to Wi-Fi.
+   - **Tailnet (Tailscale)**: Point the app to your Mac's **Tailscale IP** on port 3000 (e.g., http://100.x.y.z:3000/). This allows the phone to sync with your home CLI from anywhere in the world without exposing ports to the public internet.
    - **Akamai/Fermyon Cloud**: The live production endpoints.
 6. **Restart the app** fully for the networking configuration to take effect.
+
+## The Tailnet-Native Sync Bridge
+
+When the public cloud hosts (Fermyon/Akamai) are offline or in a version mismatch state, you can use Tailscale to turn your local Mecris CLI into your primary sync hub:
+
+1. **Verify your Mac's Tailscale IP**:
+   `tailscale ip -4`
+2. **Ensure the MCP Server is listening**:
+   The server must be started with `0.0.0.0` to accept Tailscale traffic (default in `make run-local`).
+3. **Configure Android**:
+   In the Android app's **Profile Settings**, set the Backend Server to your Mac's Tailscale IP (e.g., `http://100.64.0.5:3000/`).
+4. **Update Network Security**:
+   Ensure your Tailscale IP range (usually `100.64.0.0/10`) is permitted in the Android app's `network_security_config.xml` if you encounter cleartext traffic errors.
+
+This setup allows the Android app to heartbeat directly into your local leader's Neon-backed coordination table, restoring "Moussaka Time" reminders even during cloud outages.
 
 ## Security Considerations for Local Testing
 

@@ -432,6 +432,24 @@ class MecrisScheduler:
                 self.scheduler.remove_job(f'auto_archivist_{self.user_id}')
         except: pass
 
+    def _update_heartbeat(self, role: str, process_id: str, user_id: str):
+        """Record a heartbeat for a specific role and process."""
+        if not self.neon_url:
+            return
+
+        now = datetime.now(timezone.utc)
+        try:
+            with psycopg2.connect(self.neon_url) as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "INSERT INTO scheduler_election (user_id, role, process_id, heartbeat) "
+                        "VALUES (%s, %s, %s, %s) "
+                        "ON CONFLICT (user_id, role) DO UPDATE SET process_id = EXCLUDED.process_id, heartbeat = EXCLUDED.heartbeat",
+                        (user_id, role, process_id, now)
+                    )
+        except Exception as e:
+            logger.error(f"Failed to update heartbeat for {role}/{process_id}: {e}")
+
     def enqueue_delayed_message(self, message: str, delay_minutes: int, to_number: Optional[str] = None):
         """Enqueue a job into the shared job store."""
         run_time = datetime.now(timezone.utc) + timedelta(minutes=delay_minutes)
