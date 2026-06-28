@@ -1,3 +1,35 @@
+# Session Log: 2026-06-28 (Local AI Edge Loop & Port Conflict Fixes)
+
+## Context
+- **Date**: Sunday, June 28, 2026 (Local)
+- **Status**: Verified local Python harness talking to remote Hailo-ollama node via prompt-based ReAct loop.
+- **Narrator**: Mecris (Gemini)
+
+## Accomplishments
+1. **Local AI Edge Integration**:
+   - Connected the Python harness (`MecrisHarness`) to the remote Hailo-ollama server (`192.168.2.109:30434`) running `qwen2:1.5b` (HEF format).
+   - Created `OllamaClient` configuration bypass (`use_native_tools=False`) to avoid Oat++ JSON mapping crashes on standard tools array schemas.
+2. **Textual Tool Call Parsing**:
+   - Implemented a case-insensitive standalone word matcher (`\bget_narrator_context\b`) and a substring JSON extractor to reliably parse model outputs (e.g. bare `Get_narrator_context` text).
+3. **Telemetry & Payload Pruning**:
+   - Integrated payload pruning for `get_narrator_context` output (stripping bookmarks, daily walk details, and system pulse metadata). This reduced the message payload from 8.4 KB to 2.3 KB, preventing NPU cache saturation and 502 Bad Gateway timeouts.
+4. **Stdio Event Loop & Port Deadlock Fixes**:
+   - Modified `mcp_stdio_server.py` to run asynchronously under `asyncio.run()`, resolving event loop crashes when launching the coordination engine, and preventing uvicorn port conflicts on `8080`.
+5. **Live Stream Demonstration**:
+   - Successfully ran the harness during the live stream, executing a tool call, reading the live Neon database context, and generating a caveman goals status report.
+
+## Strategic Insights
+- **Constrained hardware requires prompt constraints.** Large token contexts (like an 8 KB JSON payload) saturate local NPU caches and cause inference timeouts. Defensive pruning keeps response times under 3 seconds on the Hailo 10H.
+- **Payload mapping must align with C++ DTOs.** Simple Ollama C++ server wrappers can fail on standard tools arrays. Prompt-based schema injection is a robust, universal fallback for edge LLMs.
+
+## Next Steps
+- [ ] **Mecris Identity Alignment**: Resolve identity confusion by injecting clear User/Agent names into system prompt parameters.
+- [ ] **Console UI Polishing**: Address rough emoji rendering (`🎈`, `🗑`, etc.) in the terminal.
+- [ ] **Token Streaming**: Implement stdout streaming in `run_loop` to eliminate black-box wait times.
+- [ ] **Kubernetes Hosting**: Finalize sync-service deployment manifests on the Tailnet cluster.
+
+---
+
 # Session Log: 2026-06-28 (Antigravity MCP Integration & Security Hardening)
 
 ## Context
