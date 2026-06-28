@@ -1,29 +1,27 @@
-# Next Session: Kubernetes Tailnet Hosting & Local AI Exploration
+# Next Session: Mecris Local AI Tuning & Identity Alignment
 
 ## Context
-- **Last Session**: Antigravity CLI MCP server integration and secure `.env` absolute-path loading completed.
+- **Last Session**: Edge LLM tokens-routing and prompt-based ReAct loop completed for the Hailo-ollama integration.
 - **Current State**:
-  - Global `mcp_config.json` configured cleanly in `~/.gemini/antigravity-cli/mcp_config.json` with no hardcoded credentials.
-  - `mcp_server.py` loads `.env` dynamically from its own directory path, keeping secrets safely isolated.
-  - Android "Cloud Sync" verified functional (syncing walks and language stats).
-  - Walk today of 0.60 miles completed and registered.
+  - **Local Python Harness (`MecrisHarness`)**: Connected to remote Hailo-ollama node (`192.168.2.109:30434`) using `qwen2:1.5b` (HEF hardware-accelerated format).
+  - **Ollama Client (`OllamaClient`)**: Configured with `use_native_tools=False` to bypass Oat++ JSON array schemas that caused 500 mapping errors. Added top-level `"system"` parameter extraction to enforce instructions on the C++ API server.
+  - **Tool Fallback & Parser**: Added substring JSON block parsing and case-insensitive word matching (`\bget_narrator_context\b`) to catch loose model outputs (like bare `Get_narrator_context` text).
+  - **Defensive Pruning**: Added payload pruning for `get_narrator_context` (from 8.4 KB to 2.3 KB), eliminating Hailo NPU cache saturation and 502 Gateway timeouts.
+  - **Stdio Event Loop Fix**: Resolved `mcp_stdio_server.py` event loop crash by running asynchronously, preventing uvicorn bind conflicts on `8080`.
+  - **Inference Verification**: Live stream run successfully executed: user check status query triggered the NPU, executed local MCP narrator context, pruned payload, and returned goal status (Arabic 0 days, Greek 4/7 days, Groq $1).
 
-## High Priority
-1. **Kubernetes Tailnet Deployment Planning**:
-   - Explore permanent hosting of the Mecris deployment (sync-service, database link, scheduler daemon) on the user's new HA 9-node Tailnet Kubernetes cluster.
-   - Investigate deploying the sync-service as a native Kubernetes deployment or containerized pod.
-2. **Local AI Model Execution via Hailo AI**:
-   - Investigate loading low-footprint local models on the cluster's Hailo AI accelerator.
-   - Document how Mecris could interface with local inference endpoints to offload agent tasks.
-3. **Tab Maestro Analysis**:
-   - Investigate why Tab Maestro could fit where other tools struggled, and understand key integration pathways.
-4. **Fix Fermyon/Spin Integration**:
-   - Restore the `/internal/review-pump-status-py` cloud endpoint and address Spin CLI 4.0 issues.
-5. **Review Pump & Streaming API Audit**:
-   - Audit target calculation logic (why Greek pins at 100).
-   - Integrate streaming token visualization in the Python harness.
+## High Priority Goals
+1. **Mecris Identity crisis**:
+   - Resolve the model's identity confusion (where Qwen2 calls the user "Mecris" or refers to itself in the second person).
+   - Update the system instructions and user message formats to inject explicit names (e.g. `User: Kingdon`, `Assistant: Mecris`).
+2. **Terminal Emojis & Output Cleanup**:
+   - Fix rough emoji rendering in the terminal console (`🎈`, `🗑`, etc.) to provide a clean and polished console UI/UX.
+3. **Streaming Token integration**:
+   - Integrate token-by-token streaming to `stdout` in `py_harness/mecris_harness.py` to eliminate black-box waiting during prompt evaluation and inference.
+4. **HA Kubernetes hosting**:
+   - Finalize the Tailnet K8s deployment plan for the permanent Mecris coordination engine (sync-service, database link, scheduler daemon) on the 9-node cluster.
 
 ## Notes for the Narrator
-- The user is preparing for a livestream. Secrets are successfully scrubbed from public config fields. Keep any logs and visual displays completely clean.
-- The 9-node K8s HA cluster with Hailo AI accelerator is the next core hosting target.
-- Walk status is updated and active! Keep motivation high.
+- The Hailo 10H local AI pipeline is verified functional.
+- Edge memory limitations are successfully managed using token pruning.
+- Say hello to the live stream folks and celebrate this major local AI milestone!
