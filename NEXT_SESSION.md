@@ -1,32 +1,29 @@
-# Next Session: Cloud Restoration & TUI Polish
+# Next Session: Kubernetes Tailnet Hosting & Local AI Exploration
 
 ## Context
-- **Last Session**: Token Efficiency Refactor complete. Local harness functional.
-- **Current State**: 
-  - Local loop is fast (<1.5k overhead).
-  - Cloud sync is broken (Fermyon 404s).
-  - Greek target (100 pts) is suspiciously high.
+- **Last Session**: Antigravity CLI MCP server integration and secure `.env` absolute-path loading completed.
+- **Current State**:
+  - Global `mcp_config.json` configured cleanly in `~/.gemini/antigravity-cli/mcp_config.json` with no hardcoded credentials.
+  - `mcp_server.py` loads `.env` dynamically from its own directory path, keeping secrets safely isolated.
+  - Android "Cloud Sync" verified functional (syncing walks and language stats).
+  - Walk today of 0.60 miles completed and registered.
 
 ## High Priority
-1. **Fix Fermyon/Spin Integration (Goal 1)**:
-   - Restore the `/internal/review-pump-status-py` endpoint.
-   - Address the Spin CLI 4.0 / SDK transition issues.
-2. **Transition to Streaming API**:
-   - Update `ollama_client.py` and `mecris_harness.py` to support streaming tokens.
-   - Show real-time "thinking" in the terminal to eliminate the black-box wait.
-3. **Review Pump Logic Audit**:
-   - Investigate why Greek target is pinned to 100.
-   - Make targets responsive to the return pile size (e.g., 40 in pile != 100 target).
-3. **TUI/UX Improvement**:
-   - Model the `py_harness` interface on the polished "OpenCode" or "Claude Code" terminal experience.
-   - Add color support and live-updating status bars.
-
-## Technical Debt / Cleanup
-- [ ] Remove `scripts/token_killer.py` and `scripts/caveman.py` (already moved to `attic/` or replaced by authentic versions).
-- [ ] Consolidate redundant tests in `tests/`.
-- [ ] Archive `mecris_usage.db` if Neon transition is 100% verified (it is).
+1. **Kubernetes Tailnet Deployment Planning**:
+   - Explore permanent hosting of the Mecris deployment (sync-service, database link, scheduler daemon) on the user's new HA 9-node Tailnet Kubernetes cluster.
+   - Investigate deploying the sync-service as a native Kubernetes deployment or containerized pod.
+2. **Local AI Model Execution via Hailo AI**:
+   - Investigate loading low-footprint local models on the cluster's Hailo AI accelerator.
+   - Document how Mecris could interface with local inference endpoints to offload agent tasks.
+3. **Tab Maestro Analysis**:
+   - Investigate why Tab Maestro could fit where other tools struggled, and understand key integration pathways.
+4. **Fix Fermyon/Spin Integration**:
+   - Restore the `/internal/review-pump-status-py` cloud endpoint and address Spin CLI 4.0 issues.
+5. **Review Pump & Streaming API Audit**:
+   - Audit target calculation logic (why Greek pins at 100).
+   - Integrate streaming token visualization in the Python harness.
 
 ## Notes for the Narrator
-- The user had a successful walk today (0.60 miles)! Motivation is high.
-- Use the **Caveman** voice for all status updates.
-- **RTK** is active and should be used for all shell-intensive research.
+- The user is preparing for a livestream. Secrets are successfully scrubbed from public config fields. Keep any logs and visual displays completely clean.
+- The 9-node K8s HA cluster with Hailo AI accelerator is the next core hosting target.
+- Walk status is updated and active! Keep motivation high.

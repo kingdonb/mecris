@@ -1,3 +1,32 @@
+# Session Log: 2026-06-28 (Antigravity MCP Integration & Security Hardening)
+
+## Context
+- **Date**: Sunday, June 28, 2026 (Local)
+- **Status**: Antigravity CLI connected to local Mecris MCP server. Secure config.
+- **Narrator**: Mecris (Gemini)
+
+## Accomplishments
+1. **Antigravity CLI MCP Integration**:
+   - Connected the Antigravity CLI (`agy`) to the local Mecris MCP server by configuring `~/.gemini/antigravity-cli/mcp_config.json`.
+2. **Security Hardening**:
+   - Kept all sensitive database credentials, API keys, and auth tokens out of the global configuration file.
+   - Refactored `mcp_server.py` to resolve its `.env` path dynamically via `os.path.abspath(__file__)`, allowing it to load the workspace `.env` file securely without copying secrets into the system-level config file.
+3. **Android Sync & Walk Status**:
+   - Verified that the Android app's "Cloud Sync" successfully uploads data, resolving sync delays and returning status cleanly.
+   - User walk today (0.60 miles) was completed and logged.
+
+## Strategic Insights
+- **Secrets stay local.** Duplicating secrets to external files (like `mcp_config.json` in the home directory) introduces risk and violates the single source of truth model. Keeping all environment variables in `.env` and loading it relative to the script location maintains clean separation.
+- **Tailnet Deployment is the future.** The local sync bridge shows Tailnet-Native operations are highly stable. Migrating permanently to a local Kubernetes deployment is the next logical step.
+
+## Next Steps
+- [ ] Investigate deployment to the new 9-node HA Kubernetes cluster on the Tailnet.
+- [ ] Evaluate the local AI model capabilities using the Hailo AI device (low contact size models).
+- [ ] Investigate integration obstacles with Tab Maestro and evaluate if Mecris can fit.
+- [ ] Address review pump target values and streaming API integration.
+
+---
+
 # Session Log: 2026-06-11 (Local Bridge & Non-Blocking Milestone)
 
 ## Context

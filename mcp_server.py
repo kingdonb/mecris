@@ -28,8 +28,9 @@ from typing import List, Dict, Any, Optional
 
 from dotenv import load_dotenv
 
-# Load environment variables first
-load_dotenv()
+# Load environment variables first, using absolute path relative to this script
+dotenv_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '.env')
+load_dotenv(dotenv_path=dotenv_path)
 
 from mcp.server.fastmcp import FastMCP
 from fastapi import FastAPI, Depends, HTTPException, Security
