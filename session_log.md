@@ -17,13 +17,17 @@
    - Modified `mcp_stdio_server.py` to run asynchronously under `asyncio.run()`, resolving event loop crashes when launching the coordination engine, and preventing uvicorn port conflicts on `8080`.
 5. **Live Stream Demonstration**:
    - Successfully ran the harness during the live stream, executing a tool call, reading the live Neon database context, and generating a caveman goals status report.
+6. **Harness Robustness Tests & Identity Hardening (Post-Stream)**:
+   - Authored **[tests/test_harness_react_robustness.py](file:///Users/yebyen/w/mecris/tests/test_harness_react_robustness.py)** to verify the prompt-based ReAct loop against mixed text/JSON formats, bare capitalized tokens, and Chinese/bilingual context triggers.
+   - Refactored system instructions in **[py_harness/main.py](file:///Users/yebyen/w/mecris/py_harness/main.py)** to explicitly separate agent (`Mecris`) and user (`Kingdon`) name mappings.
 
 ## Strategic Insights
 - **Constrained hardware requires prompt constraints.** Large token contexts (like an 8 KB JSON payload) saturate local NPU caches and cause inference timeouts. Defensive pruning keeps response times under 3 seconds on the Hailo 10H.
 - **Payload mapping must align with C++ DTOs.** Simple Ollama C++ server wrappers can fail on standard tools arrays. Prompt-based schema injection is a robust, universal fallback for edge LLMs.
 
 ## Next Steps
-- [ ] **Mecris Identity Alignment**: Resolve identity confusion by injecting clear User/Agent names into system prompt parameters.
+- [x] **Mecris Identity Alignment**: Resolve identity confusion by injecting clear User/Agent names into system prompt parameters.
+- [ ] **Verify Naming Fix Live**: Run the updated main harness against the Qwen2 1.5B edge node to verify that it addresses the user as Kingdon.
 - [ ] **Console UI Polishing**: Address rough emoji rendering (`🎈`, `🗑`, etc.) in the terminal.
 - [ ] **Token Streaming**: Implement stdout streaming in `run_loop` to eliminate black-box wait times.
 - [ ] **Kubernetes Hosting**: Finalize sync-service deployment manifests on the Tailnet cluster.
