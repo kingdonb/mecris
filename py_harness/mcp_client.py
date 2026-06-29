@@ -15,7 +15,7 @@ def filter_core_tools(tools: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return [t for t in tools if t.get("name") in CORE_TOOLS]
 
 class MecrisMcpClient:
-    def __init__(self, server_script: str = "mcp_server.py"):
+    def __init__(self, server_script: str = "mcp_stdio_server.py"):
         self.server_params = StdioServerParameters(
             command=sys.executable,
             args=[server_script],

@@ -5,6 +5,7 @@ Handles Beeminder API calls and beemergency logic
 
 import os
 import logging
+import asyncio
 from typing import List, Dict, Any, Optional
 from datetime import datetime, timedelta
 from dataclasses import dataclass

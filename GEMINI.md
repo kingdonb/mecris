@@ -109,13 +109,12 @@ Mecris operates through a combination of **Agent Skills** (which provide procedu
 - [x] Consistently green test suite (437 Python, 158 Rust passing).
 - [x] Akamai Functions Deployment (Trial): `sync-service` active with live Neon DB and Twilio variables.
 - [x] Akamai Cron Automation: `trigger-reminders` (2h) and `failover-sync` (Daily EST/EDT) scheduled.
+- [x] **Phone Verification**: Android app successfully verifies phone number via WhatsApp Template (beta.10).
+- [x] **Profile Sync**: User preferences (Beeminder, Location, etc.) persist to Neon DB via MCP.
 
 ### Pending Verification (Next Session)
-- **Akamai Validation**: Verify cron jobs are firing (check Akamai logs if accessible).
-- **Akamai E2E**: Manually trigger `/internal/failover-sync` and `/internal/trigger-reminders` via `POST` (requires no auth) to verify logic works in cloud environment.
-- **Security Hardening**: Secure the `/internal/failover-sync` and `/internal/trigger-reminders` endpoints on Akamai (e.g., via simple API key or IP restriction).
+- **Cloud Hardening**: Secure the `/internal/` endpoints on Akamai/Fermyon as the primary backend role transitions to the local Python MCP.
 - **Manual Trigger**: Verify that the Android app's "Cloud Sync" results in a Beeminder datapoint with the correct comment.
-- **Multiplier Sync**: Set the lever in the app and verify it persists in Neon (`SELECT pump_multiplier FROM language_stats`).
 - **Autonomous Presence**: Begin Goal 1 Implementation — detection of `presence.lock` and spawning the first "Archivist" Ghost Session.
 
 ## Active Technologies

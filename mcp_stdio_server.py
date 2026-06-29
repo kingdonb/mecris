@@ -26,19 +26,21 @@ logger = logging.getLogger("mecris.stdio")
 def main():
     """Main entry point for the stdio server."""
     logger.info("Starting Mecris MCP Server in stdio mode...")
+    import asyncio
     try:
         from mcp_server import mcp, scheduler
         
-        # Start background coordination engine
-        scheduler.start()
-        
-        # mcp.run() by default uses stdio transport
-        mcp.run()
+        async def run_stdio_with_scheduler():
+            scheduler.start()
+            try:
+                await mcp.run_stdio_async()
+            finally:
+                scheduler.shutdown()
+            
+        asyncio.run(run_stdio_with_scheduler())
 
     except (KeyboardInterrupt, SystemExit):
         logger.info("Mecris MCP stdio server shutting down.")
-        if 'scheduler' in locals():
-            scheduler.shutdown()
     except Exception as e:
         logger.error(f"Mcp Stdio Server failed: {e}", exc_info=True)
         sys.exit(1)

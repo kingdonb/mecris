@@ -42,6 +42,7 @@
 - [x] **Heuristic decision engine**: Nag Ladder implemented for notification triggers.
 - [x] **Ghost Archivist**: Presence-aware background sync (daemon ready).
 - [x] **Headless Loopback**: Subprocess wrapper for `gemini --yolo` and `gh copilot`.
+- [x] **Phone/Profile Verification**: Reliable WhatsApp OTP and persistent profile sync (beta.10).
 - [ ] **Secret Manager Integration**: Hardened token injection for autonomous turns.
 - [ ] **Smart nagging algorithms**: time-of-day, goal urgency, success patterns.
 - [x] **Web dashboard**: Neural Link visualization for check-in status.

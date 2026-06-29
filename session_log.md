@@ -1,3 +1,97 @@
+# Session Log: 2026-06-29 (Android Widget Inconsistencies & Python MCP Latency)
+
+## Context
+- **Date**: Monday, June 29, 2026 (Local)
+- **Status**: Verified live Android sync via Python MCP server. Raised widget inconsistency and sync latency issues.
+- **Narrator**: Mecris (Gemini)
+
+## Accomplishments
+1. **Direct MCP Verification**: Verified that the Antigravity CLI successfully invokes lazy-loaded MCP tools (e.g., `get_narrator_context`) directly via the MCP server bridge without manual Python script calls.
+2. **Android Sync Success**: Confirmed Android app successfully completed a "Cloud Sync" via the local Python MCP server (`10.17.14.155:8080`), updating Android Client status to "🟢 Healthy" (seen 1m ago).
+3. **Runway Dispatches**: Dispatched the `reviewstack` goal and verified Greek goal progress, updating system metrics.
+
+## Strategic Insights & Issues Raised
+- **Android App Widget Discrepancies**:
+  - The Arabic goal is marked met in the main Android app, but the "cake progress" widget displays it as unmet.
+  - Greek completions are done, but the 3x header widgets at the top of the Android app do not reflect this progress.
+- **Python MCP API Latency**:
+  - The syncing process over the Python MCP API is noticeably slower than the Rust/Spin API.
+  - The Spin API is battle-hardened and better tested but remains down due to broken hosting configurations on Akamai/Fermyon.
+  - Re-hosting the Spin API on the Beby.cloud Kubernetes cluster remains the primary pathway for high-performance syncs.
+
+## Next Steps
+- [ ] Research and resolve the Android app widget mismatch (Arabic cake progress and 3x goal widgets at the top).
+- [ ] Plan and execute Spin API re-hosting on the Beby.cloud Kubernetes cluster.
+- [ ] Fix terminal console emoji rendering issues.
+- [ ] Integrate stdout token streaming in the local AI loop (`mecris_harness.py`).
+
+---
+
+# Session Log: 2026-06-28 (Local AI Edge Loop & Port Conflict Fixes)
+
+## Context
+- **Date**: Sunday, June 28, 2026 (Local)
+- **Status**: Verified local Python harness talking to remote Hailo-ollama node via prompt-based ReAct loop.
+- **Narrator**: Mecris (Gemini)
+
+## Accomplishments
+1. **Local AI Edge Integration**:
+   - Connected the Python harness (`MecrisHarness`) to the remote Hailo-ollama server (`192.168.2.109:30434`) running `qwen2:1.5b` (HEF format).
+   - Created `OllamaClient` configuration bypass (`use_native_tools=False`) to avoid Oat++ JSON mapping crashes on standard tools array schemas.
+2. **Textual Tool Call Parsing**:
+   - Implemented a case-insensitive standalone word matcher (`\bget_narrator_context\b`) and a substring JSON extractor to reliably parse model outputs (e.g. bare `Get_narrator_context` text).
+3. **Telemetry & Payload Pruning**:
+   - Integrated payload pruning for `get_narrator_context` output (stripping bookmarks, daily walk details, and system pulse metadata). This reduced the message payload from 8.4 KB to 2.3 KB, preventing NPU cache saturation and 502 Bad Gateway timeouts.
+4. **Stdio Event Loop & Port Deadlock Fixes**:
+   - Modified `mcp_stdio_server.py` to run asynchronously under `asyncio.run()`, resolving event loop crashes when launching the coordination engine, and preventing uvicorn port conflicts on `8080`.
+5. **Live Stream Demonstration**:
+   - Successfully ran the harness during the live stream, executing a tool call, reading the live Neon database context, and generating a caveman goals status report.
+6. **Harness Robustness Tests & Identity Hardening (Post-Stream)**:
+   - Authored **[tests/test_harness_react_robustness.py](file:///Users/yebyen/w/mecris/tests/test_harness_react_robustness.py)** to verify the prompt-based ReAct loop against mixed text/JSON formats, bare capitalized tokens, and Chinese/bilingual context triggers.
+   - Refactored system instructions in **[py_harness/main.py](file:///Users/yebyen/w/mecris/py_harness/main.py)** to explicitly separate agent (`Mecris`) and user (`Kingdon`) name mappings.
+
+## Strategic Insights
+- **Constrained hardware requires prompt constraints.** Large token contexts (like an 8 KB JSON payload) saturate local NPU caches and cause inference timeouts. Defensive pruning keeps response times under 3 seconds on the Hailo 10H.
+- **Payload mapping must align with C++ DTOs.** Simple Ollama C++ server wrappers can fail on standard tools arrays. Prompt-based schema injection is a robust, universal fallback for edge LLMs.
+
+## Next Steps
+- [x] **Mecris Identity Alignment**: Resolve identity confusion by injecting clear User/Agent names into system prompt parameters.
+- [ ] **Verify Naming Fix Live**: Run the updated main harness against the Qwen2 1.5B edge node to verify that it addresses the user as Kingdon.
+- [ ] **Console UI Polishing**: Address rough emoji rendering (`🎈`, `🗑`, etc.) in the terminal.
+- [ ] **Token Streaming**: Implement stdout streaming in `run_loop` to eliminate black-box wait times.
+- [ ] **Kubernetes Hosting**: Finalize sync-service deployment manifests on the Tailnet cluster.
+
+---
+
+# Session Log: 2026-06-28 (Antigravity MCP Integration & Security Hardening)
+
+## Context
+- **Date**: Sunday, June 28, 2026 (Local)
+- **Status**: Antigravity CLI connected to local Mecris MCP server. Secure config.
+- **Narrator**: Mecris (Gemini)
+
+## Accomplishments
+1. **Antigravity CLI MCP Integration**:
+   - Connected the Antigravity CLI (`agy`) to the local Mecris MCP server by configuring `~/.gemini/antigravity-cli/mcp_config.json`.
+2. **Security Hardening**:
+   - Kept all sensitive database credentials, API keys, and auth tokens out of the global configuration file.
+   - Refactored `mcp_server.py` to resolve its `.env` path dynamically via `os.path.abspath(__file__)`, allowing it to load the workspace `.env` file securely without copying secrets into the system-level config file.
+3. **Android Sync & Walk Status**:
+   - Verified that the Android app's "Cloud Sync" successfully uploads data, resolving sync delays and returning status cleanly.
+   - User walk today (0.60 miles) was completed and logged.
+
+## Strategic Insights
+- **Secrets stay local.** Duplicating secrets to external files (like `mcp_config.json` in the home directory) introduces risk and violates the single source of truth model. Keeping all environment variables in `.env` and loading it relative to the script location maintains clean separation.
+- **Tailnet Deployment is the future.** The local sync bridge shows Tailnet-Native operations are highly stable. Migrating permanently to a local Kubernetes deployment is the next logical step.
+
+## Next Steps
+- [ ] Investigate deployment to the new 9-node HA Kubernetes cluster on the Tailnet.
+- [ ] Evaluate the local AI model capabilities using the Hailo AI device (low contact size models).
+- [ ] Investigate integration obstacles with Tab Maestro and evaluate if Mecris can fit.
+- [ ] Address review pump target values and streaming API integration.
+
+---
+
 # Session Log: 2026-06-11 (Local Bridge & Non-Blocking Milestone)
 
 ## Context

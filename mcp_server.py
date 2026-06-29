@@ -7,6 +7,8 @@ import os
 import logging
 import asyncio
 import sys
+import random
+import hashlib
 
 # Configure logging to stderr with ERROR level immediately to prevent stdout pollution
 # Using force=True to ensure this configuration takes precedence over any defaults set by imports
@@ -26,8 +28,9 @@ from typing import List, Dict, Any, Optional
 
 from dotenv import load_dotenv
 
-# Load environment variables first
-load_dotenv()
+# Load environment variables first, using absolute path relative to this script
+dotenv_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '.env')
+load_dotenv(dotenv_path=dotenv_path)
 
 from mcp.server.fastmcp import FastMCP
 from fastapi import FastAPI, Depends, HTTPException, Security
@@ -40,7 +43,7 @@ from usage_tracker import UsageTracker, get_budget_status as get_budget_status_f
 from virtual_budget_manager import VirtualBudgetManager
 from billing_reconciliation import BillingReconciliation
 from groq_odometer_tracker import get_groq_context_for_narrator, get_groq_reminder_status, record_groq_reading as record_groq_reading_from_tracker
-from twilio_sender import smart_send_message, send_sms
+from twilio_sender import smart_send_message, send_sms, send_message
 from scripts.anthropic_cost_tracker import AnthropicCostTracker
 from scripts.clozemaster_scraper import sync_clozemaster_to_beeminder
 from services.weather_service import WeatherService
@@ -307,29 +310,190 @@ async def get_profile(user_id: str = Depends(get_authorized_user)):
         with psycopg2.connect(neon_url) as conn:
             with conn.cursor() as cur:
                 cur.execute("""
-                    SELECT phone_number_encrypted, beeminder_user, location_lat, location_lon, vacation_mode_until, autonomous_sync_enabled 
+                    SELECT phone_number_encrypted, beeminder_user, location_lat, location_lon, vacation_mode_until, autonomous_sync_enabled, phone_verified 
                     FROM users WHERE pocket_id_sub = %s
                 """, (user_id,))
                 row = cur.fetchone()
                 if not row:
                     return {
                         "phone_number": None, "beeminder_user": None, "latitude": None, "longitude": None, 
-                        "vacation_mode_until": None, "autonomous_sync_enabled": True
+                        "vacation_mode_until": None, "autonomous_sync_enabled": True, "phone_verified": False
                     }
                 
-                # Note: Decryption skipped for brevity in this fetch, returning encrypted if present
-                # or null if not. The Android app handles empty/null profile data gracefully.
+                # Decrypt phone number if present
+                phone_number = row[0]
+                if phone_number and usage_tracker.encryption.aesgcm:
+                    try:
+                        phone_number = usage_tracker.encryption.decrypt(phone_number)
+                    except: pass
+
                 return {
-                    "phone_number": row[0],
+                    "phone_number": phone_number,
                     "beeminder_user": row[1],
                     "latitude": float(row[2]) if row[2] else None,
                     "longitude": float(row[3]) if row[3] else None,
                     "vacation_mode_until": row[4].isoformat() if row[4] else None,
-                    "autonomous_sync_enabled": bool(row[5])
+                    "autonomous_sync_enabled": bool(row[5]),
+                    "phone_verified": bool(row[6])
                 }
     except Exception as e:
         logger.error(f"Profile fetch failed: {e}")
         return {"error": str(e)}
+
+@app.post("/profile")
+async def update_profile_endpoint(request: Dict[str, Any], user_id: str = Depends(get_authorized_user)):
+    try:
+        import psycopg2
+        neon_url = os.getenv("NEON_DB_URL")
+        
+        # Extract fields
+        phone = request.get("phone_number")
+        beeminder_user = request.get("beeminder_user")
+        lat = request.get("latitude")
+        lon = request.get("longitude")
+        vacation_until = request.get("vacation_mode_until")
+        auto_sync = request.get("autonomous_sync_enabled")
+
+        # Encrypt phone if present
+        if phone and usage_tracker.encryption.aesgcm:
+            phone = usage_tracker.encryption.encrypt(phone)
+
+        with psycopg2.connect(neon_url) as conn:
+            with conn.cursor() as cur:
+                # Update users table
+                updates = []
+                params = []
+                if phone is not None:
+                    updates.append("phone_number_encrypted = %s")
+                    params.append(phone)
+                    # Reset verification if phone changed? 
+                    # For now we'll just let the user verify again.
+                if beeminder_user is not None:
+                    updates.append("beeminder_user = %s")
+                    params.append(beeminder_user)
+                if lat is not None:
+                    updates.append("location_lat = %s")
+                    params.append(lat)
+                if lon is not None:
+                    updates.append("location_lon = %s")
+                    params.append(lon)
+                if vacation_until is not None:
+                    updates.append("vacation_mode_until = %s")
+                    params.append(vacation_until)
+                if auto_sync is not None:
+                    updates.append("autonomous_sync_enabled = %s")
+                    params.append(auto_sync)
+                
+                if updates:
+                    params.append(user_id)
+                    cur.execute(f"UPDATE users SET {', '.join(updates)} WHERE pocket_id_sub = %s", tuple(params))
+        
+        return {"status": "success", "message": "Profile updated"}
+    except Exception as e:
+        logger.error(f"Profile update failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/internal/request-phone-verification")
+async def request_phone_verification_endpoint(request: Dict[str, Any], user_id: str = Depends(get_authorized_user)):
+    phone = request.get("phone_number")
+    if not phone:
+        raise HTTPException(status_code=400, detail="Missing phone_number")
+    
+    # Generate 6-digit code
+    import random
+    import hashlib
+    code = f"{random.randint(100000, 999999)}"
+    code_hash = hashlib.sha1(code.encode()).hexdigest()
+    expires_at = datetime.now(timezone.utc) + timedelta(minutes=15)
+    
+    try:
+        import psycopg2
+        neon_url = os.getenv("NEON_DB_URL")
+        with psycopg2.connect(neon_url) as conn:
+            with conn.cursor() as cur:
+                # Upsert into phone_verifications
+                cur.execute("""
+                    INSERT INTO phone_verifications (user_id, code_hash, expires_at)
+                    VALUES (%s, %s, %s)
+                    ON CONFLICT (user_id) DO UPDATE SET 
+                        code_hash = EXCLUDED.code_hash, 
+                        expires_at = EXCLUDED.expires_at, 
+                        attempts = 0
+                """, (user_id, code_hash, expires_at))
+                
+                # Also update user's phone number (encrypted)
+                enc_phone = phone
+                if usage_tracker.encryption.aesgcm:
+                    enc_phone = usage_tracker.encryption.encrypt(phone)
+                cur.execute("UPDATE users SET phone_number_encrypted = %s, phone_verified = false WHERE pocket_id_sub = %s", (enc_phone, user_id))
+        
+        # Send Verification Code via WhatsApp Template (reliable delivery)
+        try:
+            from twilio_sender import send_whatsapp_template
+            template_sid = os.getenv("TWILIO_WHATSAPP_TEMPLATE_SID", "HX9403f1b85350b8c05780a1128b79f3c2")
+            # Map to mecris_status_v2: {{1}} is currently {{2}}. {{3}} is {{4}}. Review {{5}}.
+            variables = {
+                "1": "Identity",
+                "2": "PENDING",
+                "3": "Code",
+                "4": code,
+                "5": "Account"
+            }
+            send_whatsapp_template(template_sid, variables, to_number=phone)
+            logger.info(f"Verification code sent via WhatsApp template to {phone[:5]}...")
+        except Exception as e:
+            logger.error(f"Failed to send verification WhatsApp: {e}")
+
+        return {"status": "success", "message": "Verification code sent"}
+    except Exception as e:
+        logger.error(f"Phone verification request failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/internal/confirm-phone-verification")
+async def confirm_phone_verification_endpoint(request: Dict[str, Any], user_id: str = Depends(get_authorized_user)):
+    code = request.get("code")
+    if not code:
+        raise HTTPException(status_code=400, detail="Missing code")
+    
+    import hashlib
+    provided_hash = hashlib.sha1(code.encode()).hexdigest()
+    
+    try:
+        import psycopg2
+        neon_url = os.getenv("NEON_DB_URL")
+        with psycopg2.connect(neon_url) as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT code_hash, expires_at, attempts FROM phone_verifications WHERE user_id = %s", (user_id,))
+                row = cur.fetchone()
+                if not row:
+                    raise HTTPException(status_code=404, detail="No pending verification found")
+                
+                stored_hash, expires_at, attempts = row
+                if attempts >= 5:
+                    raise HTTPException(status_code=401, detail="Too many attempts")
+                
+                if datetime.now(timezone.utc) > expires_at:
+                    raise HTTPException(status_code=401, detail="Code expired")
+                
+                if provided_hash != stored_hash:
+                    cur.execute("UPDATE phone_verifications SET attempts = attempts + 1 WHERE user_id = %s", (user_id,))
+                    raise HTTPException(status_code=401, detail="Invalid code")
+                
+                # Success!
+                cur.execute("UPDATE users SET phone_verified = true WHERE pocket_id_sub = %s", (user_id,))
+                cur.execute("DELETE FROM phone_verifications WHERE user_id = %s", (user_id,))
+        
+        return {"status": "success", "message": "Phone number verified"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Phone verification confirmation failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/internal/log-message")
+async def log_message_endpoint(request: Dict[str, Any], user_id: str = Depends(get_authorized_user)):
+    # Dummy implementation for now to satisfy Android app
+    return {"status": "success"}
 
 @app.get("/budget/status")
 async def budget_status_endpoint(user_id: str = Depends(get_authorized_user)):

@@ -11,6 +11,13 @@ Mecris is forged in the fire of the **Iron Town** (The Cloud) but rooted in the 
 - **The Iron Heart (Akamai/Fermyon)**: The machines that never sleep, howling into the digital void to remind the humans of their sloth.
 - **The Standard of Bone (JSON/WIT)**: The language of the dead that allows the machine to speak to the spirit.
 
+### 🌓 The Great Cloud Easing (June 2026)
+In June 2026, the Iron Town grew silent. Both Fermyon and Akamai backends experienced persistent outages that defied immediate diagnosis. While other unrelated apps remained active, Mecris API stalled, suggesting a specific, localized block in the deployment path.
+
+**The Skeptic's Note:** We do not yet know *why* the cloud backends failed. It may have been a cascading interaction with Spin's evolution or a latent bug in the Mecris rust-to-wasm bridge. Because of this ambiguity, the system has **pivoted to the Local Python MCP** as the primary backend role.
+
+**Reversibility:** This shift is strategic but **completely reversible**. The infrastructure for `make deploy-all` remains intact. Future agents (or Antigravity) are tasked with bisecting the deployment history to find the exact point of failure and restoring the Iron Town to its former glory when the path is clear.
+
 ## The Torment Matrix (System Architecture)
 
 The architecture follows the **Path of the Predator**. The Local Host and the Cloud Hub are but the two tusks of the same beast, both seeking the same throat: the Neon Database.

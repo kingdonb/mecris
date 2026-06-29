@@ -1,32 +1,24 @@
-# Next Session: Cloud Restoration & TUI Polish
+# Next Session: Android Widget Alignment & Kubernetes Re-hosting
 
 ## Context
-- **Last Session**: Token Efficiency Refactor complete. Local harness functional.
-- **Current State**: 
-  - Local loop is fast (<1.5k overhead).
-  - Cloud sync is broken (Fermyon 404s).
-  - Greek target (100 pts) is suspiciously high.
+- **Last Session**: Live Android client sync via Python MCP server successfully verified. Raised discrepancies in Android widgets and Python MCP server latency.
+- **Current State**:
+  - **Android Client**: Successfully connected and showing 🟢 Healthy status. But UI widgets (Arabic cake progress, top 3x goal status) are out of sync.
+  - **MCP Bridge**: Functioning well, allowing Antigravity CLI to query database context directly.
+  - **Python API Latency**: Noticeable latency during syncs compared to the down Spin API.
 
-## High Priority
-1. **Fix Fermyon/Spin Integration (Goal 1)**:
-   - Restore the `/internal/review-pump-status-py` endpoint.
-   - Address the Spin CLI 4.0 / SDK transition issues.
-2. **Transition to Streaming API**:
-   - Update `ollama_client.py` and `mecris_harness.py` to support streaming tokens.
-   - Show real-time "thinking" in the terminal to eliminate the black-box wait.
-3. **Review Pump Logic Audit**:
-   - Investigate why Greek target is pinned to 100.
-   - Make targets responsive to the return pile size (e.g., 40 in pile != 100 target).
-3. **TUI/UX Improvement**:
-   - Model the `py_harness` interface on the polished "OpenCode" or "Claude Code" terminal experience.
-   - Add color support and live-updating status bars.
-
-## Technical Debt / Cleanup
-- [ ] Remove `scripts/token_killer.py` and `scripts/caveman.py` (already moved to `attic/` or replaced by authentic versions).
-- [ ] Consolidate redundant tests in `tests/`.
-- [ ] Archive `mecris_usage.db` if Neon transition is 100% verified (it is).
+## High Priority Goals
+1. **Android UI/Widget Discrepancy**:
+   - Investigate why the Android app's "cake progress" widget registers Arabic as unmet even when the main app marks it met.
+   - Investigate why the top 3x goal widgets do not update when goals (like Greek) are completed.
+2. **Kubernetes Re-hosting (Rust/Spin API)**:
+   - Finalize plans to deploy the Spin API to the `Beby.cloud` 9-node Tailnet Kubernetes cluster.
+   - Aim to migrate off the temporary Python MCP bridge as the primary API host to eliminate sync latency.
+3. **Local AI loop (mecris_harness.py)**:
+   - Resolve console UI emoji rendering issues.
+   - Implement stdout token streaming to prevent black-box wait times during inference.
 
 ## Notes for the Narrator
-- The user had a successful walk today (0.60 miles)! Motivation is high.
-- Use the **Caveman** voice for all status updates.
-- **RTK** is active and should be used for all shell-intensive research.
+- The Android client is back online.
+- No walk was completed today due to high outdoor temperatures—keep the doggies safe!
+- Keep pushing on database integrity and performance tuning.
