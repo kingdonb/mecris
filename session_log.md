@@ -1,3 +1,32 @@
+# Session Log: 2026-06-29 (Android Widget Inconsistencies & Python MCP Latency)
+
+## Context
+- **Date**: Monday, June 29, 2026 (Local)
+- **Status**: Verified live Android sync via Python MCP server. Raised widget inconsistency and sync latency issues.
+- **Narrator**: Mecris (Gemini)
+
+## Accomplishments
+1. **Direct MCP Verification**: Verified that the Antigravity CLI successfully invokes lazy-loaded MCP tools (e.g., `get_narrator_context`) directly via the MCP server bridge without manual Python script calls.
+2. **Android Sync Success**: Confirmed Android app successfully completed a "Cloud Sync" via the local Python MCP server (`10.17.14.155:8080`), updating Android Client status to "🟢 Healthy" (seen 1m ago).
+3. **Runway Dispatches**: Dispatched the `reviewstack` goal and verified Greek goal progress, updating system metrics.
+
+## Strategic Insights & Issues Raised
+- **Android App Widget Discrepancies**:
+  - The Arabic goal is marked met in the main Android app, but the "cake progress" widget displays it as unmet.
+  - Greek completions are done, but the 3x header widgets at the top of the Android app do not reflect this progress.
+- **Python MCP API Latency**:
+  - The syncing process over the Python MCP API is noticeably slower than the Rust/Spin API.
+  - The Spin API is battle-hardened and better tested but remains down due to broken hosting configurations on Akamai/Fermyon.
+  - Re-hosting the Spin API on the Beby.cloud Kubernetes cluster remains the primary pathway for high-performance syncs.
+
+## Next Steps
+- [ ] Research and resolve the Android app widget mismatch (Arabic cake progress and 3x goal widgets at the top).
+- [ ] Plan and execute Spin API re-hosting on the Beby.cloud Kubernetes cluster.
+- [ ] Fix terminal console emoji rendering issues.
+- [ ] Integrate stdout token streaming in the local AI loop (`mecris_harness.py`).
+
+---
+
 # Session Log: 2026-06-28 (Local AI Edge Loop & Port Conflict Fixes)
 
 ## Context

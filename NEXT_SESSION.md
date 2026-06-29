@@ -1,27 +1,24 @@
-# Next Session: Mecris Local AI Tuning & Identity Alignment
+# Next Session: Android Widget Alignment & Kubernetes Re-hosting
 
 ## Context
-- **Last Session**: Edge LLM tokens-routing and prompt-based ReAct loop completed for the Hailo-ollama integration.
+- **Last Session**: Live Android client sync via Python MCP server successfully verified. Raised discrepancies in Android widgets and Python MCP server latency.
 - **Current State**:
-  - **Local Python Harness (`MecrisHarness`)**: Connected to remote Hailo-ollama node (`192.168.2.109:30434`) using `qwen2:1.5b` (HEF hardware-accelerated format).
-  - **Ollama Client (`OllamaClient`)**: Configured with `use_native_tools=False` to bypass Oat++ JSON array schemas that caused 500 mapping errors. Added top-level `"system"` parameter extraction to enforce instructions on the C++ API server.
-  - **Tool Fallback & Parser**: Added substring JSON block parsing and case-insensitive word matching (`\bget_narrator_context\b`) to catch loose model outputs (like bare `Get_narrator_context` text).
-  - **Defensive Pruning**: Added payload pruning for `get_narrator_context` (from 8.4 KB to 2.3 KB), eliminating Hailo NPU cache saturation and 502 Gateway timeouts.
-  - **Stdio Event Loop Fix**: Resolved `mcp_stdio_server.py` event loop crash by running asynchronously, preventing uvicorn bind conflicts on `8080`.
-  - **Inference Verification**: Live stream run successfully executed: user check status query triggered the NPU, executed local MCP narrator context, pruned payload, and returned goal status (Arabic 0 days, Greek 4/7 days, Groq $1).
+  - **Android Client**: Successfully connected and showing 🟢 Healthy status. But UI widgets (Arabic cake progress, top 3x goal status) are out of sync.
+  - **MCP Bridge**: Functioning well, allowing Antigravity CLI to query database context directly.
+  - **Python API Latency**: Noticeable latency during syncs compared to the down Spin API.
 
 ## High Priority Goals
-1. **Mecris Identity crisis**:
-   - Resolve the model's identity confusion (where Qwen2 calls the user "Mecris" or refers to itself in the second person).
-   - Update the system instructions and user message formats to inject explicit names (e.g. `User: Kingdon`, `Assistant: Mecris`).
-2. **Terminal Emojis & Output Cleanup**:
-   - Fix rough emoji rendering in the terminal console (`🎈`, `🗑`, etc.) to provide a clean and polished console UI/UX.
-3. **Streaming Token integration**:
-   - Integrate token-by-token streaming to `stdout` in `py_harness/mecris_harness.py` to eliminate black-box waiting during prompt evaluation and inference.
-4. **HA Kubernetes hosting**:
-   - Finalize the Tailnet K8s deployment plan for the permanent Mecris coordination engine (sync-service, database link, scheduler daemon) on the 9-node cluster.
+1. **Android UI/Widget Discrepancy**:
+   - Investigate why the Android app's "cake progress" widget registers Arabic as unmet even when the main app marks it met.
+   - Investigate why the top 3x goal widgets do not update when goals (like Greek) are completed.
+2. **Kubernetes Re-hosting (Rust/Spin API)**:
+   - Finalize plans to deploy the Spin API to the `Beby.cloud` 9-node Tailnet Kubernetes cluster.
+   - Aim to migrate off the temporary Python MCP bridge as the primary API host to eliminate sync latency.
+3. **Local AI loop (mecris_harness.py)**:
+   - Resolve console UI emoji rendering issues.
+   - Implement stdout token streaming to prevent black-box wait times during inference.
 
 ## Notes for the Narrator
-- The Hailo 10H local AI pipeline is verified functional.
-- Edge memory limitations are successfully managed using token pruning.
-- Say hello to the live stream folks and celebrate this major local AI milestone!
+- The Android client is back online.
+- No walk was completed today due to high outdoor temperatures—keep the doggies safe!
+- Keep pushing on database integrity and performance tuning.
