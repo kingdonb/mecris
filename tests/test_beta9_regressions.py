@@ -58,7 +58,8 @@ def test_greek_mapping_safety():
 
 def test_cloud_sync_routing():
     """Verify that /internal/cloud-sync is correctly routed and returns success."""
-    resp = requests.post(f"{BASE_URL}/internal/cloud-sync", headers=AUTH_HEADER)
+    fake_header = {"Authorization": "Bearer TestUser fake-user-without-creds"}
+    resp = requests.post(f"{BASE_URL}/internal/cloud-sync", headers=fake_header)
     # This should return 200/success even if scraper fails internally, but routing must work
     assert resp.status_code == 200
     data = resp.json()
