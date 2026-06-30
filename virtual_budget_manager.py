@@ -66,7 +66,11 @@ class VirtualBudgetManager:
             }
         }
         
-        if self.neon_url:
+        self._db_initialized = False
+
+    def ensure_db_initialized(self):
+        if not self._db_initialized and self.neon_url:
+            self._db_initialized = True
             self.init_database()
 
     def init_database(self):
@@ -133,6 +137,7 @@ class VirtualBudgetManager:
             logger.error(f"Neon DB init failed: {e}")
 
     def _ensure_daily_budget(self, user_id: str = None):
+        self.ensure_db_initialized()
         target_user_id = user_id or self.user_id
         if not self.neon_url or not target_user_id: return
         today = date.today()
@@ -241,6 +246,7 @@ class VirtualBudgetManager:
             return {"error": str(e)}
 
     def reset_daily_budget(self, user_id: str = None) -> Dict:
+        self.ensure_db_initialized()
         target_user_id = user_id or self.user_id
         if not self.neon_url: return {"error": "Neon DB not configured"}
         today, now = date.today(), datetime.now()
@@ -255,6 +261,7 @@ class VirtualBudgetManager:
             return {"error": str(e)}
 
     def get_usage_summary(self, days: int = 7, user_id: str = None) -> Dict:
+        self.ensure_db_initialized()
         target_user_id = user_id or self.user_id
         if not self.neon_url: return {"error": "Neon DB not configured"}
         cutoff = (datetime.now() - timedelta(days=days)).isoformat()

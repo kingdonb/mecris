@@ -60,6 +60,7 @@ run-local: build-wasm
 		--variable oidc_jwks_json='$(JWKS_JSON)' \
 		--variable cloud_provider=local \
 		--variable auth_bypass=true \
+		--truncate-logs \
 		--listen 0.0.0.0:3000
 
 deploy-all: deploy-fermyon deploy-akamai

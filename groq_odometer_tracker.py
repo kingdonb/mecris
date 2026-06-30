@@ -109,7 +109,9 @@ class GroqOdometerTracker:
         if not self.neon_url:
             return {"recorded": False, "reason": "No DB configured"}
             
-        now = datetime.now()
+        from datetime import timezone
+        import calendar
+        now = datetime.now(timezone.utc)
         target_month = month if month else now.strftime("%Y-%m")
         
         # Check for odometer reset (only for current month recordings)
@@ -128,9 +130,11 @@ class GroqOdometerTracker:
                 self._finalize_month(last_month, last_value, target_user_id)
         
         try:
-            # For historical records, use a timestamp from that month
+            # For historical records, use the last day of the specified month at 12:00 noon UTC
             if month:
-                historical_date = datetime.strptime(f"{month}-01", "%Y-%m-%d")
+                year, m = map(int, month.split("-"))
+                _, last_day = calendar.monthrange(year, m)
+                historical_date = datetime(year, m, last_day, 12, 0, tzinfo=timezone.utc)
                 record_timestamp = historical_date
             else:
                 record_timestamp = now

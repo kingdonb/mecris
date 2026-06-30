@@ -10,6 +10,11 @@ BASE_URL = "http://127.0.0.1:3000"
 TEST_USER_ID = "c0a81a4b-115a-4eb6-bc2c-40908c58bf64"
 AUTH_HEADER = {"Authorization": f"Bearer TestUser {TEST_USER_ID}"}
 
+@pytest.fixture(autouse=True)
+def disable_mock_requests(monkeypatch):
+    """Restore real requests for E2E tests."""
+    monkeypatch.undo()
+
 def test_languages_dto_completeness():
     """Verify that /languages returns all fields required by the Android app."""
     resp = requests.get(f"{BASE_URL}/languages", headers=AUTH_HEADER)
