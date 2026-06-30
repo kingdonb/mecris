@@ -212,6 +212,8 @@ async def upload_walk(walk_data: Dict[str, Any], user_id: str = Depends(get_auth
 async def get_languages(user_id: str = Depends(get_authorized_user)):
     # Use the unified velocity calculator to get enriched stats (absolute_target, target_flow_rate, goal_met)
     stats_dict = await get_language_velocity_stats(user_id)
+    if "error" in stats_dict:
+        raise HTTPException(status_code=503, detail=stats_dict["error"])
     
     lang_list = []
     for name, data in stats_dict.items():
@@ -266,24 +268,19 @@ async def post_heartbeat(data: Dict[str, Any], user_id: str = Depends(get_author
     await asyncio.to_thread(scheduler._update_heartbeat, role, process_id, user_id)
     return {"status": "success", "mcp_server_active": True}
 
-@app.post("/internal/cloud-sync", status_code=202)
+@app.post("/internal/cloud-sync")
 async def trigger_cloud_sync_endpoint(user_id: str = Depends(get_authorized_user)):
     logger.info(f"Android app triggered cloud sync for {user_id}")
-    
-    # Run the slow sync in a background task
-    async def run_sync():
-        try:
-            await language_sync_service.sync_all(user_id=user_id)
-            logger.info(f"Background cloud sync complete for {user_id}")
-        except Exception as e:
-            logger.error(f"Background cloud sync failed for {user_id}: {e}")
-
-    asyncio.create_task(run_sync())
-    
-    return {
-        "status": "accepted", 
-        "message": "Cloud sync started in background. Please check /languages in a few moments for updates."
-    }
+    try:
+        await language_sync_service.sync_all(user_id=user_id)
+        logger.info(f"Cloud sync complete for {user_id}")
+        return {
+            "status": "success", 
+            "message": "Cloud sync complete"
+        }
+    except Exception as e:
+        logger.error(f"Cloud sync failed for {user_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/intelligent-reminder/trigger")
 async def trigger_reminder_endpoint(user_id: str = Depends(get_authorized_user)):
@@ -1668,10 +1665,11 @@ async def get_daily_aggregate_status(user_id: str = None) -> Dict[str, Any]:
             stat = next((v for k, v in lang_stats.items() if isinstance(v, dict) and k.lower() == lang_key), None)
             if stat:
                 # Add to aggregate goals
+                target_flow = stat.get("target_flow_rate")
                 goals.append({
                     "name": f"{lang_key}_review",
                     "label": label,
-                    "satisfied": bool(stat.get("goal_met", False)),
+                    "satisfied": bool(stat.get("goal_met", False)) or (target_flow is not None and target_flow <= 0.0),
                     "status": stat.get("status", "unknown"),
                 })
             else:

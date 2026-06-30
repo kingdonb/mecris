@@ -196,6 +196,21 @@ async def test_languages_sorted_beeminder_tracked_first():
         assert not (seen_false and flag), f"has_goal=True appeared after has_goal=False in: {names}"
 
 
+@pytest.mark.asyncio
+async def test_languages_error_handling():
+    """`get_languages` raises HTTPException with 503 when velocity stats returns an error."""
+    sys.modules.pop("mcp_server", None)
+
+    env_patch, db_patch = _make_mcp_importable()
+    with env_patch, db_patch:
+        with patch("mcp_server.get_language_velocity_stats", return_value={"error": "Database loading"}):
+            from mcp_server import get_languages, HTTPException
+            with pytest.raises(HTTPException) as exc_info:
+                await get_languages(user_id="test-user")
+            assert exc_info.value.status_code == 503
+            assert exc_info.value.detail == "Database loading"
+
+
 # ---------------------------------------------------------------------------
 # get_daily_aggregate_status — Majesty Cake backend (kingdonb/mecris#170)
 # ---------------------------------------------------------------------------

@@ -30,9 +30,9 @@ class UsageTracker:
     def __init__(self, user_id: str = None):
         self.neon_url = os.getenv("NEON_DB_URL")
         self.user_id = credentials_manager.resolve_user_id(user_id)
-        self.use_neon = False
+        self._use_neon = False
+        self._db_initialized = False
         self.encryption = EncryptionService()
-        self.init_database()
         
         # Current pricing (as of 2025) - Claude 3.5 Sonnet
         # Input: $3/million tokens, Output: $15/million tokens
@@ -47,13 +47,30 @@ class UsageTracker:
             }
         }
     
+    @property
+    def use_neon(self) -> bool:
+        if not self._db_initialized:
+            self.ensure_db_initialized()
+        return self._use_neon
+
+    @use_neon.setter
+    def use_neon(self, value: bool):
+        self._use_neon = value
+        if value:
+            self._db_initialized = True
+
+    def ensure_db_initialized(self):
+        if not self._db_initialized:
+            self._db_initialized = True
+            self.init_database()
+
     def init_database(self):
         """Initialize database for usage tracking."""
         if self.neon_url:
             try:
                 import psycopg2
                 self._init_neon()
-                self.use_neon = True
+                self._use_neon = True
                 logger.info("UsageTracker: Neon database initialized successfully.")
                 return
             except Exception as e:

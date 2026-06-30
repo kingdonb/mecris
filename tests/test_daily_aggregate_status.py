@@ -26,8 +26,8 @@ def _base_patches():
 
 def _make_lang_stats(arabic_goal_met: bool, greek_goal_met: bool):
     return {
-        "arabic": {"goal_met": arabic_goal_met, "status": "laminar", "target_flow_rate": 0, "current_flow_rate": 5},
-        "greek": {"goal_met": greek_goal_met, "status": "laminar", "target_flow_rate": 0, "current_flow_rate": 10},
+        "arabic": {"goal_met": arabic_goal_met, "status": "laminar", "target_flow_rate": 0 if arabic_goal_met else 5, "current_flow_rate": 5},
+        "greek": {"goal_met": greek_goal_met, "status": "laminar", "target_flow_rate": 0 if greek_goal_met else 10, "current_flow_rate": 10},
     }
 
 

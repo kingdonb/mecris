@@ -159,6 +159,8 @@ class BeeminderClient:
                 response = await self.client.get(url, params=params)
             elif method == "POST":
                 response = await self.client.post(url, params=params, json=data or {})
+            elif method == "DELETE":
+                response = await self.client.delete(url, params=params)
             else:
                 raise BeeminderAPIError(f"Unsupported HTTP method: {method}", status_code=400)
             
@@ -300,6 +302,21 @@ class BeeminderClient:
         )
         
         return result is not None
+
+    async def delete_datapoint(self, goal_slug: str, datapoint_id: str) -> bool:
+        """Delete a datapoint from a goal
+        
+        Args:
+            goal_slug: The goal to delete the datapoint from
+            datapoint_id: The ID of the datapoint to delete
+        """
+        endpoint = f"users/{self.username}/goals/{goal_slug}/datapoints/{datapoint_id}.json"
+        try:
+            await self._api_call(endpoint, method="DELETE")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to delete datapoint {datapoint_id} for goal {goal_slug}: {e}")
+            return False
     
     def _classify_derail_risk(self, safebuf: int) -> str:
         """Classify derailment risk based on safebuf days"""
