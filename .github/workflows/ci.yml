@@ -24,7 +24,7 @@ jobs:
         ports:
           - 5432:5432
         options: >-
-          --health-cmd pg_isready
+          --health-cmd "pg_isready -U postgres"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
@@ -81,10 +81,10 @@ jobs:
         with:
           path: |
             ~/.local/share/spin
-            ~/.cache/pip
-          key: ${{ runner.os }}-spin-pip-${{ hashFiles('**/requirements.txt', '**/spin.toml') }}
+            ~/.cache/uv
+          key: ${{ runner.os }}-spin-uv-${{ hashFiles('**/requirements.txt', '**/spin.toml') }}
           restore-keys: |
-            ${{ runner.os }}-spin-pip-
+            ${{ runner.os }}-spin-uv-
 
       - name: Install py2wasm Spin Plugin
         run: spin plugins install py2wasm --yes
