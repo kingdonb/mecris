@@ -107,7 +107,7 @@ class NeonSyncChecker:
             # 3. Source indicates an explicit workout/activity session
             query = """
                 SELECT COUNT(*) FROM walk_inferences 
-                WHERE (start_time::TIMESTAMPTZ AT TIME ZONE 'US/Eastern') >= %s
+                WHERE (start_time::TIMESTAMPTZ AT TIME ZONE 'America/New_York') >= %s
                 AND (
                     CAST(step_count AS INTEGER) >= %s 
                     OR CAST(distance_meters AS FLOAT) >= 1609.34

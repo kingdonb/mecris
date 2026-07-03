@@ -289,7 +289,7 @@ class UsageTracker:
                         # today spend
                         cur.execute("""
                             SELECT SUM(estimated_cost) FROM usage_sessions 
-                            WHERE user_id = %s AND (timestamp::TIMESTAMPTZ AT TIME ZONE 'US/Eastern')::date = CURRENT_DATE AT TIME ZONE 'US/Eastern'
+                            WHERE user_id = %s AND (timestamp::TIMESTAMPTZ AT TIME ZONE 'America/New_York')::date = CURRENT_DATE AT TIME ZONE 'America/New_York'
                         """, (target_user_id,))
                         today_spend = cur.fetchone()['sum'] or 0
                         

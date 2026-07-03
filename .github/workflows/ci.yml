@@ -1,0 +1,173 @@
+name: CI
+
+on:
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
+jobs:
+  test-suite:
+    name: Run Complete Test Suite
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: mecrisdb
+          POSTGRES_USER: mecris
+          POSTGRES_PASSWORD: mecris
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U mecris -d mecrisdb"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2 (working hash from release.yml)
+        with:
+          fetch-depth: 0
+          submodules: false
+
+      - name: Disable Submodule Recurse
+        run: git config --global submodule.recurse false
+
+      - name: Set up JDK 17 for Android
+        uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654  # v5.2.0 (working hash from release.yml)
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Cache Gradle Packages
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae  # v5 (working hash from release.yml)
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable  # (working version tag from pr-test.yml)
+        with:
+          targets: wasm32-wasip1
+
+      - name: Cache Rust Build Artifacts
+        uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32  # v2 (working hash from release.yml)
+        with:
+          workspaces: |
+            boris-fiona-walker -> target
+            mecris-go-spin/sync-service -> target
+            mecris-go-spin/review-pump -> target
+
+      - name: Set up Spin
+        uses: spinframework/actions/spin/setup@06319d3612303cb558fabe9b13cc0d7256d0aeb9  # spinframework organization main branch SHA
+
+      - name: Install uv
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+
+      - name: Cache Spin & Python Dependencies
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae  # v5 (working hash from release.yml)
+        with:
+          path: |
+            ~/.local/share/spin
+            ~/.cache/uv
+          key: ${{ runner.os }}-spin-uv-${{ hashFiles('**/requirements.txt', '**/spin.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-spin-uv-
+
+      - name: Install py2wasm Spin Plugin
+        run: spin plugins install py2wasm --yes
+
+      - name: Install Python Dependencies
+        run: |
+          uv venv
+          uv pip install -r requirements.txt pytest-cov pytest-asyncio "mcp[cli]>=1.26.0" rich
+
+      - name: Initialize Database Schema
+        env:
+          NEON_DB_URL: postgresql://mecris:mecris@localhost:5432/mecrisdb
+        run: |
+          if [ -f scripts/initialize_neon.py ]; then
+            PYTHONPATH=. .venv/bin/python scripts/initialize_neon.py || true
+          fi
+          if [ -f scripts/apply_sql_migrations.py ]; then
+            PYTHONPATH=. .venv/bin/python scripts/apply_sql_migrations.py
+          fi
+          for f in scripts/migrate_*.py; do
+            [ -f "$f" ] && PYTHONPATH=. .venv/bin/python "$f" || true
+          done
+          if [ -f scripts/seed_test_db.py ]; then
+            PYTHONPATH=. .venv/bin/python scripts/seed_test_db.py
+          fi
+
+      - name: Build WASM Components
+        run: |
+          cd mecris-go-spin/sync-service && spin build
+
+      - name: Start Spin Local Development Server
+        env:
+          NEON_DB_URL: postgresql://mecris:mecris@localhost:5432/mecrisdb
+        run: |
+          # Fetch JWKS configuration for OIDC local mock variables
+          JWKS_JSON=$(curl -s https://metnoom.urmanac.com/.well-known/openid-configuration | jq -r .jwks_uri | xargs curl -s | jq -c .)
+          
+          cd mecris-go-spin/sync-service && spin up \
+            --variable db_url="postgresql://mecris:mecris@localhost:5432/mecrisdb" \
+            --variable neon_db_url="postgresql://mecris:mecris@localhost:5432/mecrisdb" \
+            --variable master_encryption_key="test_master_key_32_bytes_long_12345" \
+            --variable clozemaster_email="test@example.com" \
+            --variable clozemaster_password="test_password" \
+            --variable twilio_account_sid="ACtest" \
+            --variable twilio_auth_token_encrypted="test_token" \
+            --variable twilio_from_number="+15005550006" \
+            --variable oidc_discovery_url="https://metnoom.urmanac.com/.well-known/openid-configuration" \
+            --variable oidc_jwks_json="$JWKS_JSON" \
+            --variable cloud_provider=local \
+            --variable auth_bypass=true \
+            --listen 127.0.0.1:3000 > /tmp/spin.log 2>&1 &
+          
+          echo "Waiting for local Spin server to bind to port 3000..."
+          for i in {1..30}; do
+            if curl -s http://127.0.0.1:3000 > /dev/null; then
+              echo "Spin server is up and responsive!"
+              break
+            fi
+            sleep 1
+          done
+
+      - name: Run Python Tests
+        env:
+          NEON_DB_URL: postgresql://mecris:mecris@localhost:5432/mecrisdb
+          PYTHONPATH: .
+        run: |
+          .venv/bin/pytest tests/ -v --tb=short
+
+      - name: Run Rust Tests
+        run: |
+          cargo test --manifest-path boris-fiona-walker/Cargo.toml
+          cargo test --manifest-path mecris-go-spin/sync-service/Cargo.toml
+
+      - name: Run Android Unit Tests
+        working-directory: ./mecris-go-project
+        run: |
+          chmod +x gradlew
+          ./gradlew testDebugUnitTest --no-daemon --max-workers=2
+
+      - name: Print Spin Server Logs on Failure
+        if: failure()
+        run: |
+          if [ -f /tmp/spin.log ]; then
+            echo "=== Spin Server Logs ==="
+            cat /tmp/spin.log
+          fi

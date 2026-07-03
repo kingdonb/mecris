@@ -71,13 +71,13 @@ jobs:
         with:
           path: |
             ~/.local/share/spin
-            ~/.cache/pip
-          key: ${{ runner.os }}-spin-pip-${{ hashFiles('**/requirements.txt', '**/spin.toml') }}
+            ~/.cache/uv
+          key: ${{ runner.os }}-spin-uv-${{ hashFiles('**/requirements.txt', '**/spin.toml') }}
           restore-keys: |
-            ${{ runner.os }}-spin-pip-
+            ${{ runner.os }}-spin-uv-
 
       - name: Setup Spin
-        uses: fermyon/actions/spin/setup@8849a6c41270af8e9f60f371982eddf33b8e35c9 # v1.x latest main
+        uses: spinframework/actions/spin/setup@06319d3612303cb558fabe9b13cc0d7256d0aeb9 # spinframework organization main branch SHA
 
       - name: Install uv
         run: |
