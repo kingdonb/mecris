@@ -153,3 +153,10 @@ CREATE TABLE IF NOT EXISTS phone_verifications (
     attempts INTEGER DEFAULT 0,
     UNIQUE (user_id)                    -- one pending verification per user at a time
 );
+
+-- 11. Secure Variables Fallback (Secret Manager)
+CREATE TABLE IF NOT EXISTS secure_variables (
+    key   TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
+
