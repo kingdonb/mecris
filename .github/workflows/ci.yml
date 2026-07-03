@@ -62,6 +62,11 @@ jobs:
 
       - name: Cache Rust Build Artifacts
         uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32  # v2 (working hash from release.yml)
+        with:
+          workspaces: |
+            boris-fiona-walker -> target
+            mecris-go-spin/sync-service -> target
+            mecris-go-spin/review-pump -> target
 
       - name: Set up Spin
         uses: fermyon/actions/spin/setup@8849a6c41270af8e9f60f371982eddf33b8e35c9  # v1.2.0
@@ -87,7 +92,7 @@ jobs:
       - name: Install Python Dependencies
         run: |
           uv venv
-          uv pip install -r requirements.txt pytest-cov pytest-asyncio
+          uv pip install -r requirements.txt pytest-cov pytest-asyncio "mcp[cli]>=1.26.0" rich
 
       - name: Initialize Database Schema
         env:
@@ -99,6 +104,9 @@ jobs:
           for f in scripts/migrate_*.py; do
             [ -f "$f" ] && PYTHONPATH=. .venv/bin/python "$f" || true
           done
+          if [ -f scripts/seed_test_db.py ]; then
+            PYTHONPATH=. .venv/bin/python scripts/seed_test_db.py
+          fi
 
       - name: Build WASM Components
         run: |
@@ -124,7 +132,7 @@ jobs:
             --variable oidc_jwks_json="$JWKS_JSON" \
             --variable cloud_provider=local \
             --variable auth_bypass=true \
-            --listen 127.0.0.1:3000 &
+            --listen 127.0.0.1:3000 > /tmp/spin.log 2>&1 &
           
           echo "Waiting for local Spin server to bind to port 3000..."
           for i in {1..30}; do
@@ -152,3 +160,11 @@ jobs:
         run: |
           chmod +x gradlew
           ./gradlew testDebugUnitTest --no-daemon --max-workers=2
+
+      - name: Print Spin Server Logs on Failure
+        if: failure()
+        run: |
+          if [ -f /tmp/spin.log ]; then
+            echo "=== Spin Server Logs ==="
+            cat /tmp/spin.log
+          fi
