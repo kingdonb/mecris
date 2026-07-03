@@ -101,6 +101,9 @@ jobs:
           if [ -f scripts/initialize_neon.py ]; then
             PYTHONPATH=. .venv/bin/python scripts/initialize_neon.py || true
           fi
+          if [ -f scripts/apply_sql_migrations.py ]; then
+            PYTHONPATH=. .venv/bin/python scripts/apply_sql_migrations.py
+          fi
           for f in scripts/migrate_*.py; do
             [ -f "$f" ] && PYTHONPATH=. .venv/bin/python "$f" || true
           done
