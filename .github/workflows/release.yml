@@ -77,7 +77,7 @@ jobs:
             ${{ runner.os }}-spin-uv-
 
       - name: Setup Spin
-        uses: spinframework/actions/spin/setup@v1 # spinframework organization v1.x
+        uses: spinframework/actions/spin/setup@06319d3612303cb558fabe9b13cc0d7256d0aeb9 # spinframework organization main branch SHA
 
       - name: Install uv
         run: |
