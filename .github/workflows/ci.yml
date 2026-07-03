@@ -69,7 +69,7 @@ jobs:
             mecris-go-spin/review-pump -> target
 
       - name: Set up Spin
-        uses: fermyon/actions/spin/setup@8849a6c41270af8e9f60f371982eddf33b8e35c9  # v1.2.0
+        uses: spinframework/actions/spin/setup@v1  # spinframework organization v1.x
 
       - name: Install uv
         run: |
