@@ -31,7 +31,7 @@ jobs:
 
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2 (working hash from release.yml)
         with:
           fetch-depth: 0
           submodules: false
@@ -40,13 +40,13 @@ jobs:
         run: git config --global submodule.recurse false
 
       - name: Set up JDK 17 for Android
-        uses: actions/setup-java@3a557551065961a128169992520635f791552591  # v4.7.0
+        uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654  # v5.2.0 (working hash from release.yml)
         with:
           java-version: '17'
           distribution: 'temurin'
 
       - name: Cache Gradle Packages
-        uses: actions/cache@0c45773b623bea8c8e75f6c82b208c3cf94ea3a9  # v4.2.2
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae  # v5 (working hash from release.yml)
         with:
           path: |
             ~/.gradle/caches
@@ -56,12 +56,12 @@ jobs:
             ${{ runner.os }}-gradle-
 
       - name: Set up Rust
-        uses: dtolnay/rust-toolchain@432247b99c438c82672322303043809bc4755a73  # v1.10.0
+        uses: dtolnay/rust-toolchain@stable  # (working version tag from pr-test.yml)
         with:
           targets: wasm32-wasip1
 
       - name: Cache Rust Build Artifacts
-        uses: Swatinem/rust-cache@f0739c3e4125b2908f2378f4b23235334d989f66  # v2.7.7
+        uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32  # v2 (working hash from release.yml)
 
       - name: Set up Spin
         uses: fermyon/actions/spin/setup@8849a6c41270af8e9f60f371982eddf33b8e35c9  # v1.2.0
@@ -72,7 +72,7 @@ jobs:
           echo "$HOME/.local/bin" >> $GITHUB_PATH
 
       - name: Cache Spin & Python Dependencies
-        uses: actions/cache@0c45773b623bea8c8e75f6c82b208c3cf94ea3a9  # v4.2.2
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae  # v5 (working hash from release.yml)
         with:
           path: |
             ~/.local/share/spin
