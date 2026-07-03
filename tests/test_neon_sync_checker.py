@@ -44,7 +44,7 @@ def test_neon_checker_has_walk_today_true(mock_psycopg2):
         query = args[0]
         params = args[1]
         
-        assert "US/Eastern" in query
+        assert "America/New_York" in query
         assert params[0] == expected_midnight
 
 @patch.dict("os.environ", {"NEON_DB_URL": "postgres://fake"})
