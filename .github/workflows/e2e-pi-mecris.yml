@@ -199,9 +199,12 @@ jobs:
           set +e
           set -o pipefail
           
-          # Run tests if they exist
+          # Run tests if they exist (skip beta9 tests that need external API on port 3000)
           if [ -d tests/ ] && find tests/ -name "test_*.py" -o -name "*_test.py" | grep -q . ; then
-            .venv/bin/pytest tests/ -q --tb=short 2>&1 | tee /tmp/pytest-output.txt
+            .venv/bin/pytest tests/ \
+              --ignore=tests/test_beta9_e2e.py \
+              --ignore=tests/test_beta9_regressions.py \
+              -q --tb=short 2>&1 | tee /tmp/pytest-output.txt
           else
             echo "No Python tests found, skipping"
             echo "No tests found" > /tmp/pytest-output.txt
