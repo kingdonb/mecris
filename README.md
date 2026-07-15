@@ -18,6 +18,22 @@ Mecris is now optimized for fast, local inference on **Ollama (Gemma 4)** with a
 PYTHONPATH=. .venv/bin/python3 py_harness/main.py
 ```
 
+### 🎯 Using Pi (Open-Source Agent)
+The **Pi coding agent** now drives Mecris as a TypeScript extension—bring your own model (Copilot, Groq, Anthropic, Google, local Ollama).
+
+```bash
+# One-time setup
+cd .pi/extensions/mecris && npm install && cd ../../..
+
+# Launch Pi with Mecris bridge
+pi  # Or: pi --provider groq --model llama-3.1-70b-versatile
+
+# In the chat, ask for a status update
+> What's my Mecris status?
+```
+
+See [docs/PI_MECRIS_GUIDE.md](docs/PI_MECRIS_GUIDE.md) for detailed configuration, lazy-loading, and troubleshooting.
+
 ### ☁️ Standard Setup
 For detailed setup instructions for different agents, see [docs/SETUP_GUIDE.md](docs/SETUP_GUIDE.md).
 
@@ -76,9 +92,28 @@ Mecris is a **cloud-coordinated, local-first** accountability system. It is desi
     *   **CI Triggers**: GitHub Actions and webhooks that drive periodic cloud synchronization.
 - **Robust startup/shutdown** with process management
 - **Enhanced error handling** and logging
-- **Industry-Leading Toolset**: Features **30 distinct MCP tools**—a larger specialized toolset than even the standard [GitHub MCP server](https://github.com/modelcontextprotocol/servers/tree/main/src/github) (which provides 20+).
+- **Industry-Leading Toolset**: Features **34 distinct MCP tools**—a larger specialized toolset than even the standard [GitHub MCP server](https://github.com/modelcontextprotocol/servers/tree/main/src/github) (which provides 20+).
 
-**Key Tool Categories:**
+## Agent Harnesses
+
+Mecris can be driven by multiple agent harnesses. Each has different tradeoffs (model choice, context size, local-first vs cloud-first, token efficiency).
+
+| Harness | Model Backend | Local-First? | Token Efficiency | Status | Docs |
+|---|---|---|---|---|---|
+| **py_harness** | Ollama (Gemma 4, Qwen) | ✅ Yes | ⭐⭐⭐ (1.5k core) | ✅ Active | [py_harness/README.md](py_harness/README.md) |
+| **Pi (TypeScript extension)** | Any (Copilot, Groq, Anthropic, Google, local) | Optional | ⭐⭐ (5 tools + loader) | ✅ Active | [docs/PI_MECRIS_GUIDE.md](docs/PI_MECRIS_GUIDE.md) |
+| **Claude Code** | Claude models | ❌ No | ⭐⭐ (all 34 tools) | ✅ Active | [.mcp.json](.mcp.json) |
+| **Gemini CLI** | Gemini models | ❌ No | ⭐⭐ (all 34 tools) | ✅ Active | [.gemini/settings.json](.gemini/settings.json) |
+| **Antigravity CLI** | Gemini models | ❌ No | ⭐⭐ (all 34 tools) | ✅ Active | [.gemini/antigravity-cli/](docs/) |
+
+**Pick your harness:**
+- **Local + fast?** Use `py_harness` (Ollama on your machine)
+- **Multi-model + vendor-agnostic?** Use **Pi** (bring your own model/provider)
+- **Specific vendor?** Use Claude Code (Claude), Gemini CLI (Gemini), or Antigravity (Gemini)
+
+See [docs/PI_HARNESS_ROADMAP.md](docs/PI_HARNESS_ROADMAP.md) for detailed parity matrix and architectural differences.
+
+**Tool Categories:**
 - **Strategic Context**: `get_narrator_context`, `get_coaching_insight`
 - **Goal Mastery**: `get_beeminder_status`, `trigger_language_sync`, `get_language_velocity_stats`
 - **Physical Accountability**: `get_daily_activity`, `get_weather_report`
