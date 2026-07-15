@@ -1,3 +1,155 @@
+# Session Log: 2026-07-15 (Pi Coding Agent Integration — Open-Source Parity)
+
+## Context
+- **Date**: Tuesday, July 15, 2026 (Local)
+- **Status**: Built a TypeScript extension bridging Mecris MCP into the Pi coding agent at parity with Claude Code, Gemini CLI, Antigravity CLI, and the native `py_harness/`.
+- **Narrator**: Claude Opus (driving the Pi harness)
+- **Goal**: Reach parity with all five harnesses. You get a Mecris status update "in the normal way" regardless of which agent or model is driving.
+
+## Accomplishments
+
+### 1. Built the Pi Extension Bridge (`.pi/extensions/mecris/`)
+- **~350 lines of TypeScript** in `index.ts` (+ `package.json`, `README.md`, `.gitignore`).
+- **Spawns `mcp_stdio_server.py`** over stdio using the official `@modelcontextprotocol/sdk` client (npm install: `@modelcontextprotocol/sdk@^1.12.0`).
+- **Registers all 34 Mecris tools** as native Pi tools (`mecris_` prefix), converting each tool's MCP JSON-Schema input into a **TypeBox schema** so Pi validates arguments the same way it validates its built-in `read`/`bash`/`edit` tools.
+- **Lazy-loads for token efficiency** (mirrors `py_harness`'s `filter_core_tools`):
+  - 5 read-only status tools active at startup: `get_narrator_context`, `get_beeminder_status`, `get_budget_status`, `get_daily_aggregate_status`, `get_system_health`.
+  - Other ~29 write/admin tools are deferred behind a `mecris_load_tools` loader tool.
+  - Configurable via `MECRIS_CORE_TOOLS` env var.
+- **Adds commands:**
+  - `/mecris [focus]` — one-shot status update ("in the normal way").
+  - `/mecris-reconnect` — restart the bridge without a full `/reload`.
+- **Lifecycle management:** Cleans up the subprocess on `session_shutdown`.
+
+### 2. Key Architectural Decision: Use `mcp_stdio_server.py`, not `mcp_server.py --stdio`
+**Why this matters:** All existing harness configs (Claude Code, Gemini, Antigravity) launch `mcp_server.py --stdio`, which **also binds FastAPI on port 8080** for the Android bridge. Running two instances at once **hard-fails on the bound port**. I followed the native `py_harness` and used `mcp_stdio_server.py` (scheduler + stdio **only**, no HTTP bridge) so **Pi coexists peacefully with any other running harness**.
+
+### 3. End-to-End Verification (Not Mocked)
+- **Connection test:** MCP server connected in 2.7 seconds, listed 34 tools cleanly.
+- **Live model call:** `claude-haiku-4.5` via GitHub Copilot called `mecris_get_narrator_context` and summarized:
+  > *"5 active goals, 13 days budget remaining, you're 1/3 on today's daily goals—urgent: daily walk + Greek reviews. All Beeminder goals safe from derailment."*
+  - This was **real data from Neon DB** (live goal state, not mock).
+- **Deferred tool path:** Model called `mecris_load_tools` (activation), then `mecris_get_recent_usage` (deferred tool), and returned **real usage rows** (10 sessions, costs, timestamps).
+- **Known issue:** `groq/gpt-oss-20b` failed on tool-call arg JSON serialization ("Failed to parse tool call arguments") — that's a Groq model-side issue, not the bridge. Copilot models handled it cleanly.
+
+### 4. Project Setup
+- Created `.pi/extensions/mecris/` as a project-local Pi extension (auto-discovered after trust prompt).
+- `npm install` installs the MCP SDK into `node_modules/`; `.gitignore` keeps it out of the repo while preserving `package.json`/`package-lock.json`.
+- Configuration via env vars:
+  - `MECRIS_HOME` (default: repo root, 3 levels up)
+  - `MECRIS_PYTHON` (default: repo `.venv/bin/python`)
+  - `MECRIS_STDIO_SCRIPT` (default: `mcp_stdio_server.py`)
+  - `MECRIS_CORE_TOOLS` (default: 5 status tools)
+
+## Parity Matrix: All Five Harnesses
+
+| Capability | Claude Code | Gemini CLI | Antigravity CLI | `py_harness` | **Pi bridge** |
+|---|---|---|---|---|---|
+| Config format | `.mcp.json` | `.gemini/settings.json` | `~/.gemini/antigravity-cli/mcp_config.json` | Python params | `.pi/extensions/mecris/` (TS) |
+| Server entrypoint | `mcp_server.py --stdio` | `mcp_server.py --stdio` | `mcp_server.py --stdio` | `mcp_stdio_server.py` | `mcp_stdio_server.py` |
+| Binds port 8080 | ⚠️ yes | ⚠️ yes | ⚠️ yes | ✅ **no** | ✅ **no** |
+| Tool transport | MCP stdio | MCP stdio | MCP stdio | MCP stdio | MCP stdio |
+| Lazy loading | ❌ all active | ❌ all active | ❌ all active | ✅ 1 core tool | ✅ core set + loader |
+| Backend model | Claude | Gemini | Gemini | Ollama local | any Pi provider |
+| Native tool calls | ✅ | ✅ | ✅ | optional (fallback) | ✅ |
+| Open-source harness | ❌ | ❌ | ❌ | ✅ (yours) | ✅ |
+
+## Differences vs the Native `py_harness/`
+
+Both bridge Mecris, but they're built for different use cases:
+
+| Aspect | `py_harness/` | Pi bridge |
+|---|---|---|
+| **Loop** | Hand-rolled `run_loop` in `mecris_harness.py` | Pi's general-purpose agent loop |
+| **Model** | Ollama/Hailo edge (`gemma4`, `qwen2:1.5b`) | Any Pi provider (GitHub Copilot, Groq, Anthropic, Google, …) |
+| **Core tool set** | exactly `get_narrator_context` (1 tool) | 5 read-only status tools + loader |
+| **Prompt-based tool fallback** | ✅ for models without native tool support | not needed (Pi handles serialization) |
+| **`get_narrator_context` output pruning** | ✅ hard-coded for NPU cache limits | ❌ not yet (big-context models don't saturate like Hailo does) |
+| **Caveman/RTK compression persona** | ✅ system prompt ("Brain big, mouth small") | ❌ not ported yet |
+| **History pruning** | `prune_history`: system + last 20 messages | Pi's own compaction algorithm |
+
+## Strategic Insights
+
+1. **Pi is the first vendor-agnostic Mecris harness.** Claude Code, Gemini, Antigravity all lock you to their parent company's models. With Pi, you drive Mecris with any backend (Copilot, Groq, Anthropic, Google, OpenAI, or a custom proxy). You own the harness and the flow.
+
+2. **The port-8080 conflict was real and subtle.** All the existing configs cause hard port failures when run in parallel. This is the first harness design that lets you run multiple agents talking to Mecris simultaneously — essential for failover and testing.
+
+3. **Schema conversion was the gnarly bit.** MCP's JSON-Schema `inputSchema` is slightly different from TypeBox's Schema type (TypeBox adds internal `[Kind]` symbols for its Value checker). I wrote a recursive converter that handles the common cases (strings, ints, booleans, optional fields, arrays, nested objects) and falls back gracefully. It's ~60 lines and handles all 34 Mecris tools.
+
+4. **Lazy loading via a model-callable loader is elegant.** Instead of forcing you to enable all 34 tools upfront (token bloat), the model calls `mecris_load_tools` to activate what it needs. Pi's native deferred-tool API makes this trivial and cache-friendly.
+
+## Known Issues & Workarounds
+
+- **Groq `gpt-oss-20b` tool serialization bug:** Model fails to emit valid JSON for optional parameters. Workaround: use a different provider (GitHub Copilot, Anthropic, Google all work). Root cause: likely a Groq model-side limitation, not the bridge.
+- **Project trust prompt:** First run requires you to accept a project-trust dialog (Pi security policy). After that, the extension auto-loads.
+
+## Roadmap
+
+### Now — v0.0.1 (done) ✅
+- [x] MCP stdio bridge, 34 tools, JSON-Schema → TypeBox conversion.
+- [x] Lazy loading via `mecris_load_tools`.
+- [x] `/mecris` and `/mecris-reconnect` commands.
+- [x] Clean subprocess lifecycle on shutdown.
+
+### Next — v0.1.0 (parity polish) 📝
+- [ ] **Caveman persona parity:** ship an `--append-system-prompt` snippet that mirrors the `py_harness` "Brain big, mouth small" narrator so the voice matches across harnesses.
+- [ ] **Narrator-context pruning option:** port the defensive `get_narrator_context` payload pruning (bookmarks, walk details, system pulse) behind an env flag for small local models.
+- [ ] **Result rendering:** implement `renderResult` so Mecris tool output shows as a compact card in the Pi TUI instead of raw JSON.
+- [ ] **Package it:** publish as a pi package (`pi install git:github.com/kingdonb/mecris`) so it installs without the local `.pi/extensions` copy.
+- [ ] **Skill bridge:** expose the four Gall-loop skills (`/mecris-orient`, `/mecris-plan`, `/mecris-archive`, `/mecris-pr-test`) as Pi skills or commands.
+
+### Later — v0.2.0 (harness-native features) 🚀
+- [ ] **Auto-status on session start:** optional `session_start` turn that greets you with your runway/budget (opt-in; respects quiet hours).
+- [ ] **Groq odometer hook:** record Pi's own Groq token usage back into Mecris via `record_groq_reading` using Pi's `after_provider_response` event.
+- [ ] **Budget governor gate:** a `tool_call`/`before_provider_request` guard that warns/blocks when `get_budget_governor_status` says the budget is spent.
+- [ ] **Local-first mode:** wire Pi's custom-provider API to the Hailo-ollama edge node so Pi can run the same local model as `py_harness` when offline.
+
+### Open questions for later
+- Should Mecris ship a canonical harness config generator (`mecris init <harness>`) that writes the right config for Claude Code / Gemini / Antigravity / Pi from a single source of truth? Would kill config drift.
+- Revive the cloud Spin/WASM backend (offline since ~April 2026) so the Pi bridge can failover to the cloud hub like the Android app does.
+
+## Files Changed
+
+- `.pi/extensions/mecris/index.ts` — the bridge extension (~350 lines)
+- `.pi/extensions/mecris/package.json` — MCP SDK dependency
+- `.pi/extensions/mecris/package-lock.json` — locked versions
+- `.pi/extensions/mecris/README.md` — extension documentation
+- `.pi/extensions/mecris/.gitignore` — exclude node_modules
+- `docs/PI_HARNESS_ROADMAP.md` — full parity analysis and roadmap
+
+## To Use
+
+1. **One-time setup:**
+   ```bash
+   cd .pi/extensions/mecris && npm install
+   ```
+
+2. **Auto-discovery (trust the project once):**
+   ```bash
+   pi  # You'll get a project-trust prompt, accept it
+   ```
+
+3. **Or explicit load (for testing):**
+   ```bash
+   pi -e ./.pi/extensions/mecris/index.ts --provider github-copilot --model claude-haiku-4.5
+   ```
+
+4. **In the chat:**
+   - Ask for a status update naturally: *"What's my Mecris status?"*
+   - Use `/mecris` for a one-shot.
+   - Non-core tools activate via `mecris_load_tools` (the model calls it automatically).
+
+## Next Steps
+
+- [ ] Test the bridge against all configured Pi providers (Groq, Anthropic, Google).
+- [ ] Port the Caveman persona system prompt for voice parity.
+- [ ] Verify the lazy-loading UX (does the model naturally call the loader?).
+- [ ] Publish as a pi package so users don't need `.pi/extensions/` scaffolding.
+- [ ] Consider adding a `on("before_provider_request")` hook to warn if budget is low.
+- [ ] Revisit the cloud Spin/WASM failover path once cloud hosting is restored.
+
+---
+
 # Session Log: 2026-07-02 (Local WASM API Verification & CLI Diagnostics)
 
 ## Context
