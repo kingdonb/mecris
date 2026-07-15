@@ -1,0 +1,20 @@
+{
+  "name": "pi-extension-mecris",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "description": "Bridges the Mecris MCP server into the Pi coding agent as native tools.",
+  "scripts": {
+    "clean": "echo 'nothing to clean'",
+    "build": "echo 'nothing to build'",
+    "check": "echo 'nothing to check'"
+  },
+  "pi": {
+    "extensions": [
+      "./index.ts"
+    ]
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.0"
+  }
+}
