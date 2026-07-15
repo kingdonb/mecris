@@ -14,14 +14,51 @@ has passed. Revival requires re-validating the cost model.
 
 ## 1. The Death Star Lineage
 
+> Numbering is disputed — the operator counts the Slovakia cluster as the
+> second or third depending on the day. We index by name, not number.
+
 | # | Name | What | Status |
 |---|---|---|---|
 | I | **First Death Star** | The original home lab: DD-WRT → Mikrotik dual-homed router → fileserver at `10.17.13.140` running the netboot stack (dnsmasq, matchbox, 5× registry pull-through caches, pihole), PXE-booting Talos nodes running CozyStack | ✅ Operational (reference topology) |
-| II | **Second Death Star** | The current Kubernetes cluster (Talos/CozyStack). Runs **CNPG (CloudNativePG)** — the self-hosted PostgreSQL option for Mecris (see [GETTING_STARTED.md](GETTING_STARTED.md) §3 Option B) | ✅ Operational |
-| III | **Third Death Star** | AWS free-tier replica of the home lab, ARM64, for validating the stack in the cloud before deploying to Raspberry Pi CM3 modules — and for the talk *"Home Lab to the Moon and Back"* | 🟡 Design only |
+| N | **cozybeby** (`beby.cloud`, Slovakia) | The production CozyStack Death Star: **9 Talos nodes** (3 control-plane), Cilium, Linstor/DRBD storage, Flux, VictoriaMetrics/Grafana, **CNPG operator**, **spin-operator (SpinKube)**, and — the distinguishing feature — **Hailo 10H NPU devices inlined**, serving `hailo-ollama` for edge LLM inference | ✅ Operational |
+| N+1 | **Third Death Star** (AWS) | Free-tier AWS replica of the home lab, ARM64, for validating the stack in the cloud before Raspberry Pi CM3 deployment — and for the talk *"Home Lab to the Moon and Back"* | 🟡 Design only |
 
 The naming convention holds up: each one is a moon-sized battle station that is
 definitely fully operational, except for the parts that aren't finished.
+
+## 1a. cozybeby: The Operational Death Star (observed 2026-07)
+
+A live `kubectl get po -A` (July 2026) confirms the battle station is, in
+fact, fully operational:
+
+- **9 Talos nodes** (`linstor-satellite.talos-*` ×9), 3 of them control-plane
+  (`kube-apiserver-talos-{1af89,2a952,53810}`), ~18–20 days since last reboot
+- **CozyStack platform**: operator, Cilium CNI + Envoy, Linstor/Piraeus
+  (DRBD replicated storage + CSI + NFS), cert-manager, Flux (with tenant
+  controller), VictoriaMetrics + Grafana operators, VPA (and, gloriously,
+  `cozy-vpa-for-vpa` — an autoscaler for the autoscaler), reloader,
+  snapshot-controller, metrics-server
+- **✅ CNPG operator running** (`cozy-postgres-operator`:
+  `postgres-operator-cloudnative-pg`) — the self-hosted Postgres path in
+  [GETTING_STARTED.md §3](GETTING_STARTED.md) is one `Cluster` manifest away
+- **✅ SpinKube already installed**: `spin-operator` namespace with the
+  controller-manager running, and a `simple-spinapp` pod alive in `default`
+  for ~20 days — the Mecris sync-service has a validated landing pad
+- **✅ `hailo` namespace: `hailo-ollama`** — the Hailo 10H NPU inference
+  service. This is (or is the cluster twin of) the edge endpoint the
+  `py_harness` local-first loop targets (`hailo-ollama`, qwen2:1.5b HEF).
+  The Death Star doesn't just host apps; it hosts the *narrator's brain*.
+- **Tenancy in action**: the `blackjack-exp1` namespace runs a nested
+  tenant (vcluster-style `-x-` pods: traefik, coredns, plan21
+  backend/frontend) — multi-tenant CozyStack working as designed
+- Charming telemetry quirk: several pods report restarts "(56y ago)" —
+  epoch-zero timestamps. Even Death Stars have off-by-1970 errors.
+
+**Implication for Mecris:** the "revive the cloud heartbeat" work is not
+greenfield. The operator, the runtime (SpinKube), the database (CNPG), and
+even the edge LLM are already running in Slovakia. What remains is deploying
+the `sync-service` SpinApp + a CNPG `Cluster` (or pointing at Neon) + cron
+triggers, then flipping the Android app's Tailnet backend to it.
 
 ## 2. What the Third Death Star Was Designed To Be
 
@@ -95,14 +132,14 @@ There is a real convergence with current pain points:
 
 | Option | Cost | Effort | Notes |
 |---|---|---|---|
-| **A. Host on the Second Death Star** (existing cluster, CNPG already there) | ~$0 marginal | Low | The pragmatic move. SpinKube or a Spintainer on the Tailnet cluster revives the Ghost Heartbeat without any AWS work. The session logs already point this way. |
+| **A. Host on cozybeby** (SpinKube + CNPG operators already running) | ~$0 marginal | **Low — lower than first assessed** | The pragmatic move, now confirmed: `spin-operator` is installed with a `simple-spinapp` validated for ~20 days, and the CNPG operator is live. Deploy the sync-service SpinApp + a database, wire cron, done. |
 | **B. Revive the Third DS as designed** | Unknown — t4g free tier is gone; re-price t4g.small on-demand/spot | Medium | Still valuable *as the talk demo and Pi CM3 rehearsal*, but no longer near-free. Spot + aggressive teardown could keep it in single-digit dollars/month. |
 | **C. Build the Pi CM3 cluster directly** (skip the AWS rehearsal) | Hardware already owned? | High | The Third DS was always a rehearsal; if the First DS netboot stack is trusted, the rehearsal may be optional. |
 
 **Recommendation:** A for Mecris's operational needs (revive the cloud
-heartbeat on the Second Death Star), and treat B as a talk-driven project with
-its own budget line — re-run the cost projection first, since every number in
-the original doc assumed free-tier compute.
+heartbeat on cozybeby — see §1a for how little remains), and treat B as a
+talk-driven project with its own budget line — re-run the cost projection
+first, since every number in the original doc assumed free-tier compute.
 
 ### If reviving (B), the checklist deltas
 
@@ -117,12 +154,16 @@ the original doc assumed free-tier compute.
 
 ## 5. Relationship to Mecris Documentation
 
-- **Database**: the Second Death Star's CNPG is Option B in
+- **Database**: cozybeby's CNPG operator is Option B in
   [GETTING_STARTED.md §3](GETTING_STARTED.md) — Mecris needs *a* Postgres;
   Neon and CNPG are the two battle-tested fulfillments.
+- **Edge inference**: the `hailo-ollama` service on cozybeby is the same
+  brain the `py_harness` local-first loop uses — and a candidate custom
+  provider for the Pi harness (see [PI_HARNESS_ROADMAP.md](PI_HARNESS_ROADMAP.md)
+  v0.2.0 "local-first mode").
 - **Cloud failover**: [PI_HARNESS_ROADMAP.md](PI_HARNESS_ROADMAP.md) and the
   session logs track "revive the Spin/WASM cloud backend" as an open item;
-  this doc names the candidate venues.
+  §1a shows the venue is already warmed up.
 - **Original design**: the full, unabridged plan (security groups, ENI
   layout, DNS phases, cost tables, netboot sequence) remains in
   [`tools/cozystack-moon-and-back/attic/CLAUDE.md`](../tools/cozystack-moon-and-back/attic/CLAUDE.md).
