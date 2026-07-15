@@ -10,6 +10,10 @@ Mecris is a **persistent cognitive agent system** that extends Claude's narrativ
 
 ## Quick Start
 
+> **New to Mecris? No `.env` yet?** Start with the from-zero guide:
+> [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md) — database setup, minimal
+> configuration, and your first working narrator in ~10 minutes.
+
 ### 🚀 Local-First (Optimized for Ollama)
 Mecris is now optimized for fast, local inference on **Ollama (Gemma 4)** with a token-efficient minimal harness (<1.5k context overhead).
 

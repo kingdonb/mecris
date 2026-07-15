@@ -2,6 +2,10 @@
 
 > Get Mecris running with your preferred agent harness in 5 minutes.
 
+> **First time here, with no `.env` or database?** Do
+> [docs/GETTING_STARTED.md](GETTING_STARTED.md) first — it covers database
+> setup and minimal configuration from a totally fresh clone.
+
 **Choose your path:**
 
 ## 🦑 Path 1: Pi (Multi-Model, Vendor-Agnostic)
