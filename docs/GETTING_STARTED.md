@@ -69,16 +69,69 @@ it until you need it (see [docs/AUTH_CONFIGURATION.md](AUTH_CONFIGURATION.md)).
 
 ## 3. Get a database (pick one)
 
-### Option A: Neon free tier (recommended, ~2 minutes)
+Mecris needs **a PostgreSQL** — where it lives is up to you. The two
+battle-tested options are **Neon** (managed, serverless) and **CNPG**
+(CloudNativePG on your own Kubernetes cluster — what powers the second Death
+Star cluster). A local Docker container works for kicking the tires.
+
+### Option A: Neon free tier (managed, ~2 minutes)
 
 1. Sign up at [neon.tech](https://neon.tech) (free tier is plenty)
 2. Create a project; copy the connection string it shows you
 3. Paste it into `.env` as `NEON_DB_URL`
 
-Neon is what Mecris is built against ("Neon DB" appears throughout the docs),
-and the free tier's autosuspend behavior is fine for personal use.
+Neon is what Mecris was originally built against ("Neon DB" appears throughout
+the docs), and the free tier's autosuspend behavior is fine for personal use.
 
-### Option B: Local PostgreSQL via Docker (fully offline)
+### Option B: CNPG on Kubernetes (self-hosted, production-grade)
+
+If you run a Kubernetes cluster (Talos/CozyStack, k3s, anything),
+[CloudNativePG](https://cloudnative-pg.io/) gives you a proper HA Postgres
+with backups — this is how the Mecris fleet runs on the Death Star cluster.
+
+```yaml
+# cnpg-mecris.yaml — minimal single-instance cluster
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: mecris-db
+  namespace: mecris
+spec:
+  instances: 1        # bump to 3 for HA
+  storage:
+    size: 5Gi
+  bootstrap:
+    initdb:
+      database: mecrisdb
+      owner: mecris
+```
+
+```bash
+# Install the operator (once per cluster), then the database
+kubectl apply --server-side -f \
+  https://raw.githubusercontent.com/cloudnative-pg/cloudnative-pg/main/releases/cnpg-1.24.1.yaml
+kubectl create namespace mecris
+kubectl apply -f cnpg-mecris.yaml
+
+# Get the generated credentials
+kubectl get secret -n mecris mecris-db-app \
+  -o jsonpath='{.data.uri}' | base64 -d
+```
+
+Reach it from your workstation via Tailscale/LoadBalancer, or for a quick test:
+
+```bash
+kubectl port-forward -n mecris svc/mecris-db-rw 5432:5432
+```
+
+Then in `.env` (yes, the variable is still called `NEON_DB_URL` — the name is
+historical; any Postgres 14+ works):
+
+```bash
+NEON_DB_URL="postgresql://mecris:<password>@localhost:5432/mecrisdb"
+```
+
+### Option C: Local PostgreSQL via Docker (quick trial, fully offline)
 
 ```bash
 docker run -d --name mecris-db \
@@ -95,7 +148,8 @@ Then in `.env`:
 NEON_DB_URL="postgresql://mecris:mecris@localhost:5432/mecrisdb"
 ```
 
-Any PostgreSQL 14+ works — "Neon" in the variable name is historical.
+Fine for evaluation; graduate to Neon or CNPG for anything you care about
+(backups, HA, surviving your laptop).
 
 ### Initialize the schema
 
