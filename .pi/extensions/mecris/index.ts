@@ -190,9 +190,9 @@ export default async function mecrisBridge(pi: ExtensionAPI) {
     if (!existsSync(STDIO_SCRIPT)) {
       return { ok: false, error: `Mecris stdio script not found: ${STDIO_SCRIPT}` };
     }
+    // Declare outside try/catch for scope
+    let stderrOutput = "";
     try {
-      // Capture stderr to surface import/startup errors
-      let stderrOutput = "";
       transport = new StdioClientTransport({
         command: resolvePython(),
         args: [STDIO_SCRIPT, ...STDIO_ARGS],
