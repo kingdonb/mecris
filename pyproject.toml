@@ -1,6 +1,6 @@
 [project]
 name = "mecris"
-version = "0.0.1-rc.1"
+version = "0.0.1-rc.2"
 description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12"
