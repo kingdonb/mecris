@@ -21,7 +21,7 @@ class TestPiBridgeSanity:
         required_patterns = [
             "mecris_load_tools",
             "registerTool",
-            "MCP_STDIO_SCRIPT",
+            "STDIO_SCRIPT",
             "session_shutdown",
         ]
         

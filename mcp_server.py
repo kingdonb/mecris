@@ -1903,28 +1903,61 @@ if __name__ == "__main__":
     import asyncio
     import uvicorn
     import threading
+    import os
+    import stat
+
+    def log(msg):
+        print(f"[MECRIS MAIN] {msg}", file=sys.stderr, flush=True)
+
+    log(f"Starting, argv={sys.argv}, pid={os.getpid()}")
 
     use_stdio = "--stdio" in sys.argv
     use_http = "--http" in sys.argv
 
     # Start HTTP server for Android Bridge by default (or if --http requested)
     def run_http_server():
-        logger.info("Starting Mecris Android Bridge on http://0.0.0.0:8080")
-        uvicorn.run(app, host="0.0.0.0", port=8080, log_level="error")
+        try:
+            log("HTTP server thread starting")
+            logger.info("Starting Mecris Android Bridge on http://0.0.0.0:8080")
+            uvicorn.run(app, host="0.0.0.0", port=8080, log_level="error")
+            log("HTTP server thread exited (uvicorn returned)")
+        except Exception as e:
+            log(f"HTTP SERVER ERROR: {e}")
+            import traceback
+            traceback.print_exc(file=sys.stderr)
 
     # Always launch HTTP bridge in a background thread to keep it independent of stdio/mcp
     http_thread = threading.Thread(target=run_http_server, daemon=True)
     http_thread.start()
+    log("HTTP thread started")
 
     if use_stdio:
+        # When --stdio is explicitly passed, ALWAYS run the stdio server.
+        # Pi's StdioClientTransport should provide a pipe, but in case it doesn't,
+        # we trust the flag over the stdin check.
+        log("Running MCP stdio server (--stdio flag)")
         async def run_stdio_with_scheduler():
+            log("Starting scheduler")
             scheduler.start()
             try:
+                log("Running mcp.run_stdio_async")
                 await mcp.run_stdio_async()
+                log("mcp.run_stdio_async returned")
             finally:
+                log("Shutting down scheduler")
                 scheduler.shutdown()
-            
-        asyncio.run(run_stdio_with_scheduler())
+        
+        try:
+            asyncio.run(run_stdio_with_scheduler())
+        except Exception as e:
+            log(f"STDIO SERVER ERROR: {e}")
+            import traceback
+            traceback.print_exc(file=sys.stderr)
+        finally:
+            log("stdio server exited, keeping process alive for HTTP server")
+            import time
+            while True:
+                time.sleep(3600)
     else:
         # Fallback to standard mcp.run() for manual terminal debugging
         scheduler.start()

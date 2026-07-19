@@ -10,9 +10,10 @@
  * expose its tools. This extension does the same for Pi.
  *
  * Design notes (see also docs/PI_HARNESS_ROADMAP.md):
- *  - Spawns `mcp_stdio_server.py` (scheduler + stdio, NO port-8080 HTTP bridge)
- *    to match the native py_harness and avoid the uvicorn 8080 port conflict
- *    that `mcp_server.py --stdio` causes when another instance is running.
+ *  - Spawns `mcp_server.py --stdio` — a single process that serves stdio MCP
+ *    (for Pi/py_harness) AND the HTTP bridge on :8080 (for Android app).
+ *    The uvicorn thread runs in the same process; no second scheduler.
+ *    When cozybeby (SpinKube in Slovakia) is back online, Android fails over there.
  *  - Registers every MCP tool but keeps only a small read-only "core" set
  *    active at startup, mirroring py_harness's filter_core_tools() lazy-loading
  *    for token efficiency. A `mecris_load_tools` loader activates the rest.
@@ -52,13 +53,18 @@ function resolvePython(): string {
   return "python3";
 }
 
-const STDIO_SCRIPT =
-  process.env.MECRIS_STDIO_SCRIPT || join(MECRIS_HOME, "mcp_stdio_server.py");
+const STDIO_SCRIPT = process.env.MECRIS_STDIO_SCRIPT || join(MECRIS_HOME, "mcp_server.py");
+const STDIO_ARGS = process.env.MECRIS_STDIO_ARGS?.split(" ").filter(Boolean) || ["--stdio"];
 
 /**
  * Core tools kept active at startup. py_harness ships only get_narrator_context;
  * on a large Pi model we can afford a slightly richer read-only status set while
  * still deferring the 25+ write/admin tools behind the loader.
+ *
+ * Design note: we now spawn `mcp_server.py --stdio` (not `mcp_stdio_server.py`)
+ * so the single process serves stdio MCP AND the HTTP bridge on :8080 for the
+ * Android app. The old uvicorn port-conflict concern was valid when a separate
+ * server was running, but here this IS the single canonical server.
  */
 const DEFAULT_CORE_TOOLS = [
   "get_narrator_context",
@@ -184,17 +190,25 @@ export default async function mecrisBridge(pi: ExtensionAPI) {
     if (!existsSync(STDIO_SCRIPT)) {
       return { ok: false, error: `Mecris stdio script not found: ${STDIO_SCRIPT}` };
     }
+    // Declare outside try/catch for scope
+    let stderrOutput = "";
     try {
       transport = new StdioClientTransport({
         command: resolvePython(),
-        args: [STDIO_SCRIPT],
+        args: [STDIO_SCRIPT, ...STDIO_ARGS],
         cwd: MECRIS_HOME,
         env: {
           ...(process.env as Record<string, string>),
           PYTHONPATH: MECRIS_HOME,
         },
-        stderr: "ignore",
+        stderr: "pipe",
       });
+      // Read stderr in background (don't block connect)
+      if (transport.stderr) {
+        transport.stderr.on("data", (chunk: Buffer) => {
+          stderrOutput += chunk.toString();
+        });
+      }
       client = new Client(
         { name: "pi-mecris-bridge", version: "0.0.1" },
         { capabilities: {} },
@@ -202,7 +216,10 @@ export default async function mecrisBridge(pi: ExtensionAPI) {
       await client.connect(transport);
       return { ok: true };
     } catch (err) {
-      return { ok: false, error: String(err) };
+      const errMsg = String(err);
+      return { ok: false, error: stderrOutput ? `${errMsg}
+--- Python stderr ---
+${stderrOutput}` : errMsg };
     }
   }
 
