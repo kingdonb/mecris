@@ -1903,28 +1903,98 @@ if __name__ == "__main__":
     import asyncio
     import uvicorn
     import threading
+    import os
+    import stat
+
+    def log(msg):
+        print(f"[MECRIS MAIN] {msg}", file=sys.stderr, flush=True)
+
+    log(f"Starting, argv={sys.argv}, pid={os.getpid()}")
 
     use_stdio = "--stdio" in sys.argv
     use_http = "--http" in sys.argv
 
     # Start HTTP server for Android Bridge by default (or if --http requested)
     def run_http_server():
-        logger.info("Starting Mecris Android Bridge on http://0.0.0.0:8080")
-        uvicorn.run(app, host="0.0.0.0", port=8080, log_level="error")
+        try:
+            log("HTTP server thread starting")
+            logger.info("Starting Mecris Android Bridge on http://0.0.0.0:8080")
+            uvicorn.run(app, host="0.0.0.0", port=8080, log_level="error")
+            log("HTTP server thread exited (uvicorn returned)")
+        except Exception as e:
+            log(f"HTTP SERVER ERROR: {e}")
+            import traceback
+            traceback.print_exc(file=sys.stderr)
 
     # Always launch HTTP bridge in a background thread to keep it independent of stdio/mcp
     http_thread = threading.Thread(target=run_http_server, daemon=True)
     http_thread.start()
+    log("HTTP thread started")
 
     if use_stdio:
-        async def run_stdio_with_scheduler():
-            scheduler.start()
-            try:
-                await mcp.run_stdio_async()
-            finally:
-                scheduler.shutdown()
+        # Check if stdin is connected to a pipe (client) vs terminal vs /dev/null
+        # When Pi spawns us via StdioClientTransport, stdin is a pipe (FIFO)
+        # When run interactively, stdin is a tty
+        # When backgrounded with &, stdin is /dev/null (char device, not tty)
+        stdin_mode = os.fstat(sys.stdin.fileno()).st_mode
+        is_pipe = stat.S_ISFIFO(stdin_mode)
+        is_tty = os.isatty(sys.stdin.fileno())
+        log(f"stdin: pipe={is_pipe}, tty={is_tty}, mode={oct(stdin_mode)}")
+        
+        if is_pipe:
+            log("Running MCP stdio server (client connected)")
+            async def run_stdio_with_scheduler():
+                log("Starting scheduler")
+                scheduler.start()
+                try:
+                    log("Running mcp.run_stdio_async")
+                    await mcp.run_stdio_async()
+                    log("mcp.run_stdio_async returned")
+                finally:
+                    log("Shutting down scheduler")
+                    scheduler.shutdown()
             
-        asyncio.run(run_stdio_with_scheduler())
+            try:
+                asyncio.run(run_stdio_with_scheduler())
+            except Exception as e:
+                log(f"STDIO SERVER ERROR: {e}")
+                import traceback
+                traceback.print_exc(file=sys.stderr)
+            finally:
+                log("stdio server exited, keeping process alive for HTTP server")
+                # Don't exit! Keep HTTP server alive
+                import time
+                while True:
+                    time.sleep(3600)
+        elif is_tty:
+            log("Interactive mode, keeping process alive for HTTP server")
+            # Keep process alive for HTTP server
+            try:
+                import signal
+                signal.signal(signal.SIGTERM, lambda s, f: sys.exit(0))
+                signal.signal(signal.SIGINT, lambda s, f: sys.exit(0))
+                signal.pause()
+            except KeyboardInterrupt:
+                pass
+            except Exception as e:
+                log(f"signal error: {e}")
+                import time
+                while True:
+                    time.sleep(3600)
+        else:
+            log("Background mode (stdin=/dev/null), keeping process alive for HTTP server")
+            try:
+                import signal
+                signal.signal(signal.SIGTERM, lambda s, f: sys.exit(0))
+                signal.signal(signal.SIGINT, lambda s, f: sys.exit(0))
+                signal.pause()
+            except Exception as e:
+                log(f"signal error: {e}")
+                import time
+                while True:
+                    time.sleep(3600)
+            except KeyboardInterrupt:
+                pass
     else:
         # Fallback to standard mcp.run() for manual terminal debugging
         scheduler.start()
