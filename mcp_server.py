@@ -1932,69 +1932,32 @@ if __name__ == "__main__":
     log("HTTP thread started")
 
     if use_stdio:
-        # Check if stdin is connected to a pipe (client) vs terminal vs /dev/null
-        # When Pi spawns us via StdioClientTransport, stdin is a pipe (FIFO)
-        # When run interactively, stdin is a tty
-        # When backgrounded with &, stdin is /dev/null (char device, not tty)
-        stdin_mode = os.fstat(sys.stdin.fileno()).st_mode
-        is_pipe = stat.S_ISFIFO(stdin_mode)
-        is_tty = os.isatty(sys.stdin.fileno())
-        log(f"stdin: pipe={is_pipe}, tty={is_tty}, mode={oct(stdin_mode)}")
-        
-        if is_pipe:
-            log("Running MCP stdio server (client connected)")
-            async def run_stdio_with_scheduler():
-                log("Starting scheduler")
-                scheduler.start()
-                try:
-                    log("Running mcp.run_stdio_async")
-                    await mcp.run_stdio_async()
-                    log("mcp.run_stdio_async returned")
-                finally:
-                    log("Shutting down scheduler")
-                    scheduler.shutdown()
-            
+        # When --stdio is explicitly passed, ALWAYS run the stdio server.
+        # Pi's StdioClientTransport should provide a pipe, but in case it doesn't,
+        # we trust the flag over the stdin check.
+        log("Running MCP stdio server (--stdio flag)")
+        async def run_stdio_with_scheduler():
+            log("Starting scheduler")
+            scheduler.start()
             try:
-                asyncio.run(run_stdio_with_scheduler())
-            except Exception as e:
-                log(f"STDIO SERVER ERROR: {e}")
-                import traceback
-                traceback.print_exc(file=sys.stderr)
+                log("Running mcp.run_stdio_async")
+                await mcp.run_stdio_async()
+                log("mcp.run_stdio_async returned")
             finally:
-                log("stdio server exited, keeping process alive for HTTP server")
-                # Don't exit! Keep HTTP server alive
-                import time
-                while True:
-                    time.sleep(3600)
-        elif is_tty:
-            log("Interactive mode, keeping process alive for HTTP server")
-            # Keep process alive for HTTP server
-            try:
-                import signal
-                signal.signal(signal.SIGTERM, lambda s, f: sys.exit(0))
-                signal.signal(signal.SIGINT, lambda s, f: sys.exit(0))
-                signal.pause()
-            except KeyboardInterrupt:
-                pass
-            except Exception as e:
-                log(f"signal error: {e}")
-                import time
-                while True:
-                    time.sleep(3600)
-        else:
-            log("Background mode (stdin=/dev/null), keeping process alive for HTTP server")
-            try:
-                import signal
-                signal.signal(signal.SIGTERM, lambda s, f: sys.exit(0))
-                signal.signal(signal.SIGINT, lambda s, f: sys.exit(0))
-                signal.pause()
-            except Exception as e:
-                log(f"signal error: {e}")
-                import time
-                while True:
-                    time.sleep(3600)
-            except KeyboardInterrupt:
-                pass
+                log("Shutting down scheduler")
+                scheduler.shutdown()
+        
+        try:
+            asyncio.run(run_stdio_with_scheduler())
+        except Exception as e:
+            log(f"STDIO SERVER ERROR: {e}")
+            import traceback
+            traceback.print_exc(file=sys.stderr)
+        finally:
+            log("stdio server exited, keeping process alive for HTTP server")
+            import time
+            while True:
+                time.sleep(3600)
     else:
         # Fallback to standard mcp.run() for manual terminal debugging
         scheduler.start()
