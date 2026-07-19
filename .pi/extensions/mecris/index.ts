@@ -203,11 +203,11 @@ export default async function mecrisBridge(pi: ExtensionAPI) {
         },
         stderr: "pipe",
       });
-      // Read stderr to capture any startup errors
+      // Read stderr in background (don't block connect)
       if (transport.stderr) {
-        for await (const chunk of transport.stderr) {
+        transport.stderr.on("data", (chunk: Buffer) => {
           stderrOutput += chunk.toString();
-        }
+        });
       }
       client = new Client(
         { name: "pi-mecris-bridge", version: "0.0.1" },
