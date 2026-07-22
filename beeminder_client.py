@@ -112,18 +112,35 @@ class BeeminderClient:
                     logger.warning(f"Using plaintext Beeminder username fallback for user {target_user_id}")
                 
                 if enc_token:
-                    self.auth_token = self.encryption.decrypt(enc_token)
-                    logger.info(f"Loaded encrypted Beeminder token for user {target_user_id}")
-                
+                    try:
+                        self.auth_token = self.encryption.decrypt(enc_token)
+                        logger.info(f"Loaded encrypted Beeminder token for user {target_user_id}")
+                    except Exception as dec_err:
+                        # Do NOT silently proceed to the legacy env token: a decrypt
+                        # failure almost always means a missing/wrong MASTER_ENCRYPTION_KEY
+                        # in this process's environment. Surfacing it here prevents the
+                        # failure from hiding behind a downstream Beeminder 401 bad_token.
+                        logger.error(
+                            f"Failed to decrypt Beeminder token for user {target_user_id} "
+                            f"(likely missing/incorrect MASTER_ENCRYPTION_KEY in this process): {dec_err}"
+                        )
+
                 if self.username and self.auth_token:
                     return
-                
-                # Final fallback to env
+
+                # Final fallback to env. Reaching here means DB credentials were absent
+                # or could not be decrypted -- a real problem, not routine. Log loudly so
+                # a stale/revoked legacy token can't masquerade as a healthy config.
                 self.username = os.getenv("BEEMINDER_USERNAME")
                 self.auth_token = os.getenv("BEEMINDER_AUTH_TOKEN")
                 if not (self.username and self.auth_token):
                     raise RuntimeError(f"No Beeminder credentials found in DB or ENV for user {target_user_id}")
-                logger.warning(f"Falling back to legacy env vars for user {target_user_id}")
+                logger.error(
+                    f"Falling back to LEGACY env Beeminder credentials for user {target_user_id}. "
+                    f"DB credentials were missing or undecryptable; the legacy token may be "
+                    f"stale/revoked and cause 401 bad_token. Check MASTER_ENCRYPTION_KEY and "
+                    f"per-user credentials in Neon."
+                )
         except Exception as e:
             logger.error(f"Failed to load Beeminder credentials: {e}")
             raise

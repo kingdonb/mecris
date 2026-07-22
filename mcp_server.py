@@ -10,18 +10,44 @@ import sys
 import random
 import hashlib
 
-# Configure logging to stderr with ERROR level immediately to prevent stdout pollution
-# Using force=True to ensure this configuration takes precedence over any defaults set by imports
-logging.basicConfig(
-    level=logging.ERROR,
-    stream=sys.stderr,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    force=True
-)
+# Logging configuration.
+#
+# Two sinks:
+#   1. stderr  -> ERROR only. Keeps the stdio MCP channel quiet and avoids
+#      flooding Pi's captured stderr, matching prior behavior.
+#   2. rotating file (logs/mecris_server.log) -> INFO+. Persists breadcrumbs and
+#      tracebacks so incidents can be diagnosed after the fact instead of
+#      scrolling off a launch terminal and being lost.
+#
+# force=True ensures this takes precedence over any config set by imports.
+import logging.handlers as _logging_handlers
 
-# Also explicitly set the levels for our namespaces
-logging.getLogger("mecris").setLevel(logging.ERROR)
-logging.getLogger("mcp").setLevel(logging.ERROR)
+_LOG_FORMAT = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+_LOG_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs")
+_LOG_FILE = os.path.join(_LOG_DIR, "mecris_server.log")
+
+_stderr_handler = logging.StreamHandler(sys.stderr)
+_stderr_handler.setLevel(logging.ERROR)
+_stderr_handler.setFormatter(logging.Formatter(_LOG_FORMAT))
+
+_log_handlers = [_stderr_handler]
+try:
+    os.makedirs(_LOG_DIR, exist_ok=True)
+    _file_handler = _logging_handlers.RotatingFileHandler(
+        _LOG_FILE, maxBytes=5 * 1024 * 1024, backupCount=5, encoding="utf-8"
+    )
+    _file_handler.setLevel(logging.INFO)
+    _file_handler.setFormatter(logging.Formatter(_LOG_FORMAT))
+    _log_handlers.append(_file_handler)
+except Exception as _log_setup_err:  # never let logging setup crash startup
+    print(f"[MECRIS] Could not open log file {_LOG_FILE}: {_log_setup_err}", file=sys.stderr)
+
+# Root at INFO so INFO records reach the file handler; each handler filters its own level.
+logging.basicConfig(level=logging.INFO, handlers=_log_handlers, force=True)
+
+# Namespace levels: our own code INFO+, noisy third-party MCP internals WARNING+.
+logging.getLogger("mecris").setLevel(logging.INFO)
+logging.getLogger("mcp").setLevel(logging.WARNING)
 
 from datetime import datetime, timedelta, date, timezone
 from typing import List, Dict, Any, Optional
