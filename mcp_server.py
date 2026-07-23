@@ -296,17 +296,34 @@ async def post_heartbeat(data: Dict[str, Any], user_id: str = Depends(get_author
 
 @app.post("/internal/cloud-sync")
 async def trigger_cloud_sync_endpoint(user_id: str = Depends(get_authorized_user)):
+    """
+    Trigger cloud sync asynchronously.
+    Returns 202 Accepted immediately with Retry-After header.
+    The sync runs in the background; client should poll /languages or /aggregate-status for updated data.
+    """
     logger.info(f"Android app triggered cloud sync for {user_id}")
+    
+    # Fire-and-forget: run the sync in background
+    asyncio.create_task(_run_cloud_sync_background(user_id))
+    
+    # Return 202 Accepted with Retry-After: 30 seconds
+    # Android app will see isSuccessful=true (2xx), then poll /languages
+    from fastapi import Response
+    return Response(
+        content='{"status": "accepted", "message": "Cloud sync started in background. Poll /languages for updated data."}',
+        media_type="application/json",
+        status_code=202,
+        headers={"Retry-After": "30"}
+    )
+
+
+async def _run_cloud_sync_background(user_id: str):
+    """Background task for cloud sync - runs without blocking the HTTP response."""
     try:
         await language_sync_service.sync_all(user_id=user_id)
-        logger.info(f"Cloud sync complete for {user_id}")
-        return {
-            "status": "success", 
-            "message": "Cloud sync complete"
-        }
+        logger.info(f"Background cloud sync complete for {user_id}")
     except Exception as e:
-        logger.error(f"Cloud sync failed for {user_id}: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Background cloud sync failed for {user_id}: {e}")
 
 @app.post("/intelligent-reminder/trigger")
 async def trigger_reminder_endpoint(user_id: str = Depends(get_authorized_user)):
