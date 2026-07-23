@@ -61,31 +61,31 @@ dependencies {
     debugImplementation(libs.androidx.compose.ui.tooling)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
 
-    testImplementation("io.mockk:mockk:1.13.12")
+    testImplementation("io.mockk:mockk:1.14.11")
 
     // AppAuth for OIDC (Pocket ID)
     implementation("net.openid:appauth:0.11.1")
 
     // Health Connect
-    implementation("androidx.health.connect:connect-client:1.1.0-alpha12")
+    implementation("androidx.health.connect:connect-client:1.1.0")
 
     // Location
-    implementation("com.google.android.gms:play-services-location:21.3.0")
+    implementation("com.google.android.gms:play-services-location:21.4.0")
 
     // WorkManager
-    implementation("androidx.work:work-runtime-ktx:2.9.0")
+    implementation("androidx.work:work-runtime-ktx:2.11.2")
 
     // Credentials (for Passkeys)
-    implementation("androidx.credentials:credentials:1.2.0-rc01")
-    implementation("androidx.credentials:credentials-play-services-auth:1.2.0-rc01")
+    implementation("androidx.credentials:credentials:1.6.0")
+    implementation("androidx.credentials:credentials-play-services-auth:1.6.0")
 
     // Retrofit for Beeminder API
-    implementation("com.squareup.retrofit2:retrofit:2.9.0")
-    implementation("com.squareup.retrofit2:converter-gson:2.9.0")
+    implementation("com.squareup.retrofit2:retrofit:2.12.0")
+    implementation("com.squareup.retrofit2:converter-gson:2.12.0")
 
     // Coroutines
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
 
     // Google AI Edge SDK for AICore (On-Device Gemini Nano)
-    implementation("com.google.ai.edge.aicore:aicore:0.0.1-exp01")
+    implementation("com.google.ai.edge.aicore:aicore:0.0.1-exp02")
 }
