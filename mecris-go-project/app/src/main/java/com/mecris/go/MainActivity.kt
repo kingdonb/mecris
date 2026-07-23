@@ -282,6 +282,18 @@ fun MecrisDashboard(
     var showProfileSettings by remember { mutableStateOf(false) }
     var showSovereignLab by remember { mutableStateOf(false) }
 
+    // Keep screen awake while fetching so user sees Fetching→Success transition
+    DisposableEffect(context, isFetching) {
+        val window = (context as ComponentActivity).window
+        window.setFlags(
+            if (isFetching) android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON else 0,
+            android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
+        )
+        onDispose {
+            window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        }
+    }
+
     // Proactive profile fetch when authenticated
     LaunchedEffect(authState) {
         if (authState is AuthState.Authenticated) {
