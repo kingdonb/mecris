@@ -1,85 +1,115 @@
 package com.mecris.go.sync
 
+/**
+ * ReviewPumpCalculator — Thin wrapper around ReviewPumpCore for Android UI.
+ *
+ * All math now lives in ReviewPumpCore (synced with Python review_pump_core.py).
+ * This object only provides convenience methods matching the old API surface.
+ */
 object ReviewPumpCalculator {
+
     fun getLeverName(multiplier: Double): String {
-        return when (multiplier.toInt()) {
-            1 -> "Maintenance"
-            2 -> "Steady"
-            3 -> "Brisk"
-            4 -> "Aggressive"
-            5 -> "High Pressure"
-            6 -> "Very High"
-            7 -> "The Blitz"
-            10 -> "System Overdrive"
-            else -> "Custom"
-        }
+        return ReviewPumpCore.leverName(multiplier)
     }
 
     fun getClearanceDays(multiplier: Double): Double? {
-        return when (multiplier.toInt()) {
-            1 -> null
-            2 -> 14.0
-            3 -> 10.0
-            4 -> 7.0
-            5 -> 5.0
-            6 -> 3.0
-            7 -> 2.0
-            10 -> 1.0
-            else -> null
-        }
+        return ReviewPumpCore.clearanceDays(multiplier)?.toDouble()
     }
 
     fun calculateTargetFlowRate(multiplier: Double, currentDebt: Int, tomorrowLiability: Int): Int {
-        val clearanceDays = getClearanceDays(multiplier)
-        val backlogPortion = if (clearanceDays != null) currentDebt.toDouble() / clearanceDays else 0.0
-        return (tomorrowLiability + backlogPortion).toInt()
+        val input = PumpInput(
+            currentDebt = currentDebt,
+            tomorrowLiability = tomorrowLiability,
+            dailyCompletions = 0,
+            multiplier = multiplier,
+            minTarget = 0
+        )
+        return ReviewPumpCore.calculateTargetFlowRate(input)
     }
 
-    /**
-     * Returns the fraction of outstanding debt covered by today's completions.
-     * 0.0 = no work done, 1.0+ = debt fully cleared.
-     * Returns 0.0 if outstandingDebt is zero (nothing to cover).
-     */
+    fun calculateTargetFlowRateWithMinTarget(
+        multiplier: Double,
+        currentDebt: Int,
+        tomorrowLiability: Int,
+        minTarget: Int
+    ): Int {
+        val input = PumpInput(
+            currentDebt = currentDebt,
+            tomorrowLiability = tomorrowLiability,
+            dailyCompletions = 0,
+            multiplier = multiplier,
+            minTarget = minTarget
+        )
+        return ReviewPumpCore.calculateTargetFlowRate(input)
+    }
+
     fun calculateDebtCoverageRatio(completedToday: Int, outstandingDebt: Int): Float {
-        if (outstandingDebt <= 0) return 0.0f
-        return (completedToday.toFloat() / outstandingDebt.toFloat()).coerceAtLeast(0.0f)
+        val input = PumpInput(
+            currentDebt = outstandingDebt,
+            tomorrowLiability = 0,
+            dailyCompletions = completedToday,
+            multiplier = 1.0,
+            minTarget = 0
+        )
+        return ReviewPumpCore.calculateDebtCoverageRatio(input)
     }
 
-    /**
-     * Returns the fraction of today's flow target covered by completions, capped at 1.0.
-     * 0.0 = no work done, 1.0 = target met or exceeded.
-     * Returns 0.0 if targetFlowRate is zero or negative.
-     */
     fun calculateFlowFillRatio(completedToday: Int, targetFlowRate: Int): Float {
-        if (targetFlowRate <= 0) return 0.0f
-        return (completedToday.toFloat() / targetFlowRate.toFloat()).coerceIn(0.0f, 1.0f)
+        val input = PumpInput(
+            currentDebt = 0,
+            tomorrowLiability = 0,
+            dailyCompletions = completedToday,
+            multiplier = 1.0,
+            minTarget = 0
+        )
+        return ReviewPumpCore.calculateFlowFillRatio(input, targetFlowRate)
     }
 
-    /**
-     * Returns true when outstanding debt is large relative to the daily flow target,
-     * signaling the user should "play" extra cards beyond the daily minimum.
-     * Threshold: outstandingDebt > targetFlowRate * 7 (more than one week of daily work remaining).
-     * Returns false if targetFlowRate is zero or negative.
-     */
     fun calculateIsPlayMode(outstandingDebt: Int, targetFlowRate: Int): Boolean {
-        if (targetFlowRate <= 0) return false
-        return outstandingDebt > targetFlowRate * 7
+        val input = PumpInput(
+            currentDebt = outstandingDebt,
+            tomorrowLiability = 0,
+            dailyCompletions = 0,
+            multiplier = 1.0,
+            minTarget = 0
+        )
+        return ReviewPumpCore.calculateIsPlayMode(input, targetFlowRate)
     }
 
-    /**
-     * Returns true when outstanding debt is large enough to warrant creating a new
-     * Beeminder reviewstack goal (≥ 300 cards outstanding).
-     */
     fun calculateBeckonSignal(outstandingDebt: Int): Boolean {
-        return outstandingDebt >= 300
+        val input = PumpInput(
+            currentDebt = outstandingDebt,
+            tomorrowLiability = 0,
+            dailyCompletions = 0,
+            multiplier = 1.0,
+            minTarget = 0
+        )
+        return ReviewPumpCore.calculateBeckonSignal(input)
+    }
+
+    fun calculateGoalMet(goalMetFromServer: Boolean, targetFlowRate: Double?): Boolean {
+        // This uses server-provided flag as primary, with fallback
+        return goalMetFromServer || (targetFlowRate != null && targetFlowRate <= 0.0)
     }
 
     /**
-     * Returns true when the language goal is satisfied for today.
-     * Mirrors the server-side semantics: goal_met flag from the API takes precedence;
-     * a non-null target_flow_rate <= 0 also signals completion (nothing left to do).
+     * Full pump calculation returning all fields for UI rendering.
+     * Mirrors ReviewPumpCore.runPump but with Android-friendly naming.
      */
-    fun calculateGoalMet(goalMetFromServer: Boolean, targetFlowRate: Double?): Boolean {
-        return goalMetFromServer || (targetFlowRate != null && targetFlowRate <= 0.0)
+    fun runPump(
+        currentDebt: Int,
+        tomorrowLiability: Int,
+        dailyCompletions: Int,
+        multiplier: Double,
+        minTarget: Int = 0
+    ): PumpOutput {
+        val input = PumpInput(
+            currentDebt = currentDebt,
+            tomorrowLiability = tomorrowLiability,
+            dailyCompletions = dailyCompletions,
+            multiplier = multiplier,
+            minTarget = minTarget
+        )
+        return ReviewPumpCore.runPump(input)
     }
 }
