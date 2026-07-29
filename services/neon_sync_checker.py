@@ -6,6 +6,7 @@ import psycopg2
 from dotenv import load_dotenv
 
 from services.credentials_manager import credentials_manager
+from services.timezone_service import day_start_eastern
 
 load_dotenv()
 logger = logging.getLogger("mecris.neon")
@@ -95,11 +96,8 @@ class NeonSyncChecker:
             conn = psycopg2.connect(self.db_url)
             cur = conn.cursor()
 
-            # Define 'today' in Eastern Time midnight
-            import zoneinfo
-            eastern = zoneinfo.ZoneInfo("US/Eastern")
-            local_now = datetime.now(eastern)
-            today_start = local_now.replace(hour=0, minute=0, second=0, microsecond=0)
+            # Define 'today' in Eastern Time midnight using TimezoneService
+            today_start = day_start_eastern()
 
             # A walk counts if:
             # 1. Step count >= threshold
@@ -115,7 +113,7 @@ class NeonSyncChecker:
                     OR distance_source LIKE '%%Activity%%'
                 )
             """
-            params = [today_start.replace(tzinfo=None), min_steps]
+            params = [today_start, min_steps]
 
             if target_user_id:
                 query += " AND user_id = %s"

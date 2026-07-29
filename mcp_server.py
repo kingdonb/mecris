@@ -1099,28 +1099,21 @@ async def record_groq_reading(value: float, notes: str = "", month: Optional[str
             GROQSPEND_START_DATE = "2026-04-13"
             
             # Use the timestamp from the result
-            import zoneinfo
-            eastern = zoneinfo.ZoneInfo("US/Eastern")
+            from services.timezone_service import daystamp, to_eastern
             
             if "timestamp" in result:
                 # result["timestamp"] is ISO format from groq_odometer_tracker
+                # groq_odometer_tracker uses datetime.now() (naive local/Eastern) or historical_date (naive)
+                # Treat naive as Eastern (tracker's local timezone)
                 ts_str = result["timestamp"]
-                # If it doesn't have TZ info, assume it's UTC or Local? 
-                # groq_odometer_tracker uses datetime.now() (naive local) or historical_date (naive)
-                # To be safe, let's treat it as naive and attach system local if it's missing
-                record_dt = datetime.fromisoformat(ts_str)
-                if record_dt.tzinfo is None:
-                    # Treat naive as UTC for consistent mapping if coming from DB, 
-                    # but groq_tracker uses .now() which is local.
-                    # Best to just use the date part if it's an odometer.
-                    record_dt = record_dt.replace(tzinfo=timezone.utc)
+                record_dt = to_eastern(datetime.fromisoformat(ts_str))
             else:
                 record_dt = datetime.now(timezone.utc)
             
-            daystamp = record_dt.astimezone(eastern).strftime("%Y%m%d")
+            daystamp_str = daystamp(record_dt)
             
-            if daystamp < GROQSPEND_START_DATE.replace("-", ""):
-                logger.info(f"Skipping Beeminder sync for {daystamp}: before goal start date {GROQSPEND_START_DATE}")
+            if daystamp_str < GROQSPEND_START_DATE.replace("-", ""):
+                logger.info(f"Skipping Beeminder sync for {daystamp_str}: before goal start date {GROQSPEND_START_DATE}")
                 return result
 
             # 2. Initialize Beeminder client
@@ -1130,12 +1123,12 @@ async def record_groq_reading(value: float, notes: str = "", month: Optional[str
             # 3. Handle @TARE reset if detected
             if result.get("reset_detected"):
                 tare_comment = f"@TARE reset for {result.get('month', 'new month')} Transition"
-                await bm_client.add_datapoint(goal_slug, 0.0, comment=tare_comment, daystamp=daystamp)
+                await bm_client.add_datapoint(goal_slug, 0.0, comment=tare_comment, daystamp=daystamp_str)
                 logger.info(f"Sent @TARE datapoint to Beeminder for {goal_slug}")
 
             # 4. Push the actual reading
             reading_comment = notes if notes else f"Manual update: {result.get('month', 'current month')} spend"
-            await bm_client.add_datapoint(goal_slug, value, comment=reading_comment, daystamp=daystamp)
+            await bm_client.add_datapoint(goal_slug, value, comment=reading_comment, daystamp=daystamp_str)
             logger.info(f"Sent reading {value} to Beeminder goal {goal_slug}")
             
             result["beeminder_sync"] = "success"

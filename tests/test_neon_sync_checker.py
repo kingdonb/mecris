@@ -27,17 +27,15 @@ def test_neon_checker_has_walk_today_true(mock_psycopg2):
     checker = NeonSyncChecker()
     mock_psycopg2.fetchone.return_value = [1] # 1 walk found
     
-    # Mock datetime to ensure stable test environment
-    eastern = zoneinfo.ZoneInfo("US/Eastern")
-    mock_now = datetime.datetime(2026, 3, 20, 15, 0, tzinfo=eastern)
-    
-    with patch("services.neon_sync_checker.datetime") as mock_dt:
-        mock_dt.now.return_value = mock_now
+    # Mock day_start_eastern to return a fixed datetime
+    from services import timezone_service
+    with patch("services.neon_sync_checker.day_start_eastern", 
+               return_value=datetime.datetime(2026, 3, 20, 0, 0, tzinfo=zoneinfo.ZoneInfo("US/Eastern"))):
         result = checker.has_walk_today()
         
         assert result is True
         # Verify it queries against Eastern midnight
-        expected_midnight = datetime.datetime(2026, 3, 20, 0, 0)
+        expected_midnight = datetime.datetime(2026, 3, 20, 0, 0, tzinfo=zoneinfo.ZoneInfo("US/Eastern"))
         
         # Check the execute call arguments
         args, kwargs = mock_psycopg2.execute.call_args
