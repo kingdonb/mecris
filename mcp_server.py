@@ -1975,6 +1975,14 @@ if __name__ == "__main__":
         async def run_stdio_with_scheduler():
             log("Starting scheduler")
             scheduler.start()
+            # Start walk cache listener (pg_notify invalidation)
+            try:
+                from services.walk_cache_listener import start_walk_cache_listener, set_cache_reference
+                set_cache_reference(daily_activity_cache)
+                asyncio.create_task(start_walk_cache_listener())
+                log("Walk cache listener started")
+            except Exception as e:
+                log(f"Walk cache listener not started: {e}")
             try:
                 log("Running mcp.run_stdio_async")
                 await mcp.run_stdio_async()
@@ -1997,6 +2005,15 @@ if __name__ == "__main__":
     else:
         # Fallback to standard mcp.run() for manual terminal debugging
         scheduler.start()
+        # Start walk cache listener (pg_notify invalidation)
+        try:
+            from services.walk_cache_listener import start_walk_cache_listener, set_cache_reference
+            set_cache_reference(daily_activity_cache)
+            import asyncio
+            asyncio.create_task(start_walk_cache_listener())
+            log("Walk cache listener started")
+        except Exception as e:
+            log(f"Walk cache listener not started: {e}")
         try:
             mcp.run()
         finally:
