@@ -1,5 +1,7 @@
 package com.mecris.go.sync
 
+import kotlin.math.max
+
 /**
  * ReviewPumpCore — Pure Kotlin math for language review velocity calculations.
  *
@@ -32,14 +34,14 @@ data class PumpOutput(
 object ReviewPumpCore {
 
     private val LEVER_CONFIG: Map<Int, Pair<String, Int?>> = mapOf(
-        1 to "Maintenance" to null,
-        2 to "Steady" to 14,
-        3 to "Brisk" to 10,
-        4 to "Aggressive" to 7,
-        5 to "High Pressure" to 5,
-        6 to "Very High" to 3,
-        7 to "The Blitz" to 2,
-        10 to "System Overdrive" to 1
+        1 to Pair("Maintenance", null),
+        2 to Pair("Steady", 14),
+        3 to Pair("Brisk", 10),
+        4 to Pair("Aggressive", 7),
+        5 to Pair("High Pressure", 5),
+        6 to Pair("Very High", 3),
+        7 to Pair("The Blitz", 2),
+        10 to Pair("System Overdrive", 1)
     )
 
     fun clearanceDays(multiplier: Double): Int? {
