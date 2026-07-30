@@ -294,9 +294,11 @@ fun MecrisDashboard(
         }
     }
 
-    // Proactive profile fetch when authenticated
+    // Proactive profile fetch when authenticated AND trigger a full data refresh
     LaunchedEffect(authState) {
         if (authState is AuthState.Authenticated) {
+            // Force a full data refresh when authentication state changes to Authenticated
+            onRefreshRequested()
             scope.launch {
                 try {
                     val token = auth.getAccessTokenSuspend()

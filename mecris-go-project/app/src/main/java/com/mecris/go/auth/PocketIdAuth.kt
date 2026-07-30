@@ -139,6 +139,17 @@ class PocketIdAuth(
         }
     }
 
+    /** Forces a token refresh and returns the new access token, or null if refresh failed. */
+    suspend fun forceTokenRefresh(): String? {
+        return kotlinx.coroutines.suspendCancellableCoroutine { continuation ->
+            // Force token refresh by using performActionWithFreshTokens which will
+            // automatically refresh if the access token is expired or missing
+            getValidAccessToken { token ->
+                continuation.resume(token, null)
+            }
+        }
+    }
+
     fun signOut() {
         prefs.edit().clear().apply()
         internalAuthState = net.openid.appauth.AuthState()
