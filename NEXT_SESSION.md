@@ -1,24 +1,47 @@
-# Next Session: Android Widget Alignment & Kubernetes Re-hosting
+# Next Session: Observability & Android Failover
 
 ## Context
-- **Last Session**: Live Android client sync via Python MCP server successfully verified. Raised discrepancies in Android widgets and Python MCP server latency.
+- **Last Session**: Akamai Spin API (`mecris-sync-v2` v64) restored to full Android sync readiness. First successful cloud walk sync since 2026-05-27.
 - **Current State**:
-  - **Android Client**: Successfully connected and showing 🟢 Healthy status. But UI widgets (Arabic cake progress, top 3x goal status) are out of sync.
-  - **MCP Bridge**: Functioning well, allowing Antigravity CLI to query database context directly.
-  - **Python API Latency**: Noticeable latency during syncs compared to the down Spin API.
+  - **Akamai API**: All authenticated routes working (200 OK with valid Pocket ID token). Test walk ingested, Beeminder "bike" goal updated.
+  - **Fermyon Cloud**: `mecris-sync-v2-r0r86pso.fermyon.app` → platform 404 (dead channel).
+  - **Python MCP Server**: Still running locally but now a fallback; Akamai is the canonical production path.
+  - **Android App**: Needs re-pointing to Akamai as default backend; failover behavior untested.
 
 ## High Priority Goals
-1. **Android UI/Widget Discrepancy**:
-   - Investigate why the Android app's "cake progress" widget registers Arabic as unmet even when the main app marks it met.
-   - Investigate why the top 3x goal widgets do not update when goals (like Greek) are completed.
-2. **Kubernetes Re-hosting (Rust/Spin API)**:
-   - Finalize plans to deploy the Spin API to the `Beby.cloud` 9-node Tailnet Kubernetes cluster.
-   - Aim to migrate off the temporary Python MCP bridge as the primary API host to eliminate sync latency.
-3. **Local AI loop (mecris_harness.py)**:
-   - Resolve console UI emoji rendering issues.
-   - Implement stdout token streaming to prevent black-box wait times during inference.
+1. **Add observability to Akamai deployment**
+   - Log `extract_user_id` failures to Neon `events` table (per Observability Mandate)
+   - Expose auth success/failure metric via `/internal/review-pump-status` or new `/internal/auth-health`
+   - Alert on sustained 401/500 rate on protected routes
+
+2. **Update `test_cloud_beta4_validation.py`**
+   - Currently expects `/health` → 500 (outdated)
+   - Now: `/health` with auth → 200, `/profile` → 200, `/walks` POST → 201
+   - Add authenticated smoke test suite
+
+3. **Android app: Point to Akamai + verify failover**
+   - Update `spinBaseUrl` default to `https://394b84e7-760c-4336-975b-653c17fdb446.fwf.app`
+   - Test: Local Python server OFF → Android sync still works via Akamai
+   - Test: Local ON → prefers local (lower latency), fails over to Akamai on error
+
+4. **Prompt 1 pipeline: Deployment truth inventory**
+   - Now that Akamai is verified, document the single canonical path
+   - Fermyon Cloud: decommission or re-deploy if needed for redundancy
 
 ## Notes for the Narrator
-- The Android client is back online.
-- No walk was completed today due to high outdoor temperatures—keep the doggies safe!
-- Keep pushing on database integrity and performance tuning.
+- The walk was real — 2500 steps at 22:46 UTC, synced to Beeminder via Akamai Spin API.
+- The Python MCP server has been doing all the work for 64 days while Akamai silently 401'd.
+- Fermyon Cloud channel is dead; Akamai is the only live edge deployment.
+- No code changes were needed — only runtime variable configuration.
+
+## Files to Watch
+- `mecris-go-spin/sync-service/spin.toml` — variable declarations
+- `mecris-go-spin/sync-service/src/lib.rs` — `extract_user_id`, needs error telemetry
+- `tests/test_cloud_beta4_validation.py` — outdated assertions
+- `tests/test_cron_validation.py` — still valid, hits Akamai cron
+- Android: `app/src/main/java/com/mecris/go/mesh/ServiceMeshClient.kt` (or equivalent)
+
+---
+
+*Session log updated: `session_log.md` (entry prepended)*
+*Envelopes in `tlonbot/envelopes/1-7/PROMPT.md` ready for Prompt 1*
