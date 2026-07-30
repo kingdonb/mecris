@@ -1,18 +1,21 @@
-# MCP Server Standards Update Plan (as of 2025-07-28)
+# MCP Server Standards Update Plan (as of 2025-11-25 spec)
 
 ## Executive Summary
 
-The current Mecris MCP server (`mcp_server.py`) implements a **FastMCP-based server** with **FastAPI HTTP bridge** and **stdio transport**. This document outlines the plan to bring it up to the **MCP Specification 2025-06-18 (v1.26.0+)** standards.
+**Current State**: Mecris MCP server (`mcp_server.py`) implements a **FastMCP-based server** with **stdio + FastAPI HTTP bridge** and **Pocket ID auth**. It has tools working but lacks Resources, Prompts, Subscriptions, and several 2025-11-25 spec features.
 
-**Current State**: 
-- Transport: stdio + FastAPI HTTP bridge (port 8080)
+**Current State**:
+- Transport: stdio (for Pi/Claude) + FastAPI HTTP bridge (port 8080) for Android
 - Auth: Pocket ID OIDC (multi-tenant) + standalone fallback
-- Transports: stdio (for Pi/Claude) + HTTP (for Android)
-- Auth: Pocket ID OIDC with JWT validation
+- Tools: 20+ tools working via `@mcp.tool()`
+- Auth: Pocket ID OIDC with JWT validation + standalone fallback
+- Transport: stdio (for Pi/Claude) + HTTP (port 8080) for Android
+
+**Target State**: Full MCP 2025-11-25 spec compliance with Streamable HTTP transport, Resources, Prompts, Subscriptions, Elicitation, Roots, Sampling, Tasks, and DPoP auth.
 
 ---
 
-## Current Implementation vs. MCP 2025-06-18 Spec
+## Current State vs. MCP 2025-11-25 Spec
 
 ### ✅ Already Compliant
 
@@ -20,34 +23,43 @@ The current Mecris MCP server (`mcp_server.py`) implements a **FastMCP-based ser
 |---------|--------|-------|
 | **Protocol Version** | ✅ | Uses `InitializeRequest/Result` with `protocolVersion` |
 | **Tools** | ✅ | 20+ tools via `@mcp.tool()` decorator |
-| **Resources** | ⚠️ Partial | No resource implementation yet |
-| **Prompts** | ⚠️ Partial | No prompt templates yet |
-| **Tools** | ✅ | 20+ tools registered via `@mcp.tool()` |
 | **Stdio Transport** | ✅ | `mcp_stdio_server.py` + `mcp.run_stdio_async()` |
 | **HTTP Bridge** | ✅ | FastAPI on :8080 for Android |
-| **Initialization** | ✅ | `InitializeRequest/Result` with capabilities |
+| **Initialization** | ⚠️ Partial | `InitializeRequest/Result` with capabilities |
 | **Ping/Pong** | ✅ | `PingRequest` handled |
 | **Tools Capability** | ✅ | `ToolsCapability` in `ServerCapabilities` |
-| **Auth** | ✅ | Pocket ID OIDC + standalone fallback |
-| **Notifications** | ⚠️ Partial | Resource updates, tool list changes not implemented |
+| **Auth** | ✅ | Pocket ID OIDC with JWT validation + standalone fallback |
 
-### ❌ Gaps to Address
+### ❌ Gaps to Address (MCP 2025-11-25)
 
 | Feature | Spec Requirement | Current State |
 |---------|------------------|---------------|
 | **Resources** | `ResourcesCapability` + `Resource` types | Not implemented |
 | **Prompts** | `PromptsCapability` + prompt templates | Not implemented |
-| **Resource Templates** | URI templates with variables | Not implemented |
-| **Resource Subscriptions** | `subscribe/unsubscribe` notifications | Not implemented |
-| **Elicitation** | `CreateMessageRequest` with `elicitation` | Not implemented |
-| **Roots** | `RootsCapability` for workspace roots | Not implemented |
+| **Resource Subscriptions** | `subscribe/unsubscribe` + `ResourceUpdatedNotification` | Not implemented |
+| **Prompts Capability** | `PromptsCapability` + `Prompt` types | Not implemented |
+| **Elicitation** | `ElicitationCapability` + `ElicitRequest`/`ElicitResult` | Not implemented |
+| **Roots** | `RootsCapability` for workspace awareness | Not implemented |
 | **Sampling** | `SamplingCapability` for LLM sampling | Not implemented |
-| **Progress Notifications** | `ProgressNotification` for long ops | Not implemented |
-| **Tool Annotations** | `ToolAnnotations` for UX hints | Not implemented |
-| **Structured Tool Output** | `ToolResultContent` structured types | Partial |
-| **Resource Templates** | URI templates with variables | Not implemented |
-| **Streamable HTTP** | New transport (replaces SSE) | Not implemented |
-| **OAuth 2.1 / DPoP** | Token binding, DPoP proof | Pocket ID only |
+| **Tasks** | `TasksCapability` for long-running ops | Not implemented |
+| **Elicitation** | `ElicitationCapability` + `ElicitRequest`/`ElicitResult` | Not implemented |
+| **Roots** | `RootsCapability` for workspace awareness | Not implemented |
+| **Sampling** | `SamplingCapability` for LLM sampling | Not implemented |
+| **Tasks** | `TasksCapability` for long-running ops | Not implemented |
+| **Streamable HTTP Transport** | New transport (replaces SSE) | Not implemented |
+| **Server Discovery** | `server/discover` RPC | Not implemented |
+| **Per-request Capabilities** | Client capabilities per-request in `_meta` | Not implemented |
+| **Per-request Version** | Protocol version in header + `_meta` | Not implemented |
+| **Elicitation** | `ElicitRequest`/`ElicitResult` | Not implemented |
+| **Roots** | `RootsCapability` for workspace awareness | Not implemented |
+| **Sampling** | `SamplingCapability` for LLM sampling | Not implemented |
+| **Tasks** | `TasksCapability` for long-running ops | Not implemented |
+| **Streamable HTTP Transport** | New transport (replaces SSE) | Not implemented |
+| **Server Discovery** | `server/discover` RPC | Not implemented |
+| **Per-request Capabilities** | Client capabilities per-request in `_meta` | Not implemented |
+| **Per-request Version** | Protocol version in header + `_meta` | Not implemented |
+| **DPoP Token Binding** | RFC 9449 token binding | Not implemented |
+| **OAuth 2.1 Auth** | MCP OAuth 2.1 authorization server | Pocket ID only |
 
 ---
 
@@ -60,7 +72,7 @@ The current Mecris MCP server (`mcp_server.py`) implements a **FastMCP-based ser
 ├─────────────────────────────────────────────────────────────────┤
 │  FastMCP (Tools)  +  FastAPI (HTTP Bridge)  +  Scheduler       │
 ├─────────────────────────────────────────────────────────────────┤
-│  Transports: stdio (Pi/Claude) + HTTP :8080 (Android)          │
+│  Transport: stdio (Pi/Claude) + HTTP :8080 (Android)           │
 ├─────────────────────────────────────────────────────────────────┤
 │  Auth: Pocket ID OIDC (multi-tenant) + standalone fallback     │
 ├─────────────────────────────────────────────────────────────────┤
@@ -68,7 +80,7 @@ The current Mecris MCP server (`mcp_server.py`) implements a **FastMCP-based ser
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-### Recommended Architecture (MCP 2025-06-18)
+### Target Architecture (MCP 2025-11-25)
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -81,17 +93,21 @@ The current Mecris MCP server (`mcp_server.py`) implements a **FastMCP-based ser
 │         │                │                │                     │
 │         └────────────────┼────────────────┘                     │
 │                          ▼                                     │
-│         ┌─────────────────────────────────────┐               │
-│         │        MCP Protocol Core            │               │
-│         │  (Initialize, Tools, Resources,     │               │
-│         │   Prompts, Sampling, Roots,         │               │
-│         │   Elicitation, Notifications)       │               │
-│         └────────────────┬────────────────────┘               │
+│         ┌─────────────────────────────────┐                   │
+│         │        MCP Protocol Core        │                   │
+│         │  (Initialize, Tools, Resources, │                   │
+│         │   Prompts, Sampling, Roots,     │                   │
+│         │   Elicitation, Notifications)   │                   │
+│         └────────────────┬────────────────┘                   │
 │                          │                                     │
 │         ┌────────────────┼────────────────────┐               │
 │         ▼                ▼                    ▼                │
 │  ┌─────────────┐  ┌─────────────┐    ┌─────────────┐          │
 │  │  Resources  │  │  Prompts    │    │  Sampling   │          │
+│  │  Manager    │  │  Manager    │    │  Manager    │          │
+│  └─────────────┘  └─────────────┘    └─────────────┘          │
+│  ┌─────────────┐  ┌─────────────┐    ┌─────────────┐          │
+│  │  Prompts    │  │  Roots      │    │  Sampling   │          │
 │  │  Manager    │  │  Manager    │    │  Manager    │          │
 │  └─────────────┘  └─────────────┘    └─────────────┘          │
 │  ┌─────────────┐  ┌─────────────┐    ┌─────────────┐          │
@@ -105,13 +121,13 @@ The current Mecris MCP server (`mcp_server.py`) implements a **FastMCP-based ser
 
 ## Implementation Plan
 
-### Phase 1: Core Protocol Compliance (Week 1-2)
+### Phase 1: Core Compliance (Week 1-2)
 
 #### 1.1 Add Resources Capability
 ```python
 # New: services/resource_manager.py
 class ResourceManager:
-    """Manages MCP Resources per spec."""
+    """Manages MCP Resources per 2025-11-25 spec."""
     
     async def list_resources(self) -> ListResourcesResult:
         """ListResourcesRequest -> ListResourcesResult"""
@@ -119,54 +135,87 @@ class ResourceManager:
     async def read_resource(self, uri: str) -> ReadResourceResult:
         """ReadResourceRequest -> ReadResourceResult"""
         
+    async def list_resource_templates(self) -> ListResourceTemplatesResult:
+        """ListResourceTemplatesRequest -> ListResourceTemplatesResult"""
+        
     async def subscribe(self, uri: str) -> None:
-        """SubscribeRequest -> subscribe to resource updates"""
+        """Subscribe to resource changes."""
         
     async def unsubscribe(self, uri: str) -> None:
-        """UnsubscribeRequest"""
-```
+        """Unsubscribe from resource changes."""
+        
+    async def notify_resource_changed(self, uri: str):
+        """Send ResourceUpdatedNotification to subscribers."""
 
-**Resources to expose:**
-- `mecris://walk/{date}` - Walk data for date
-- `mecris://language/{lang}` - Language stats
-- `mecris://budget` - Budget status
-- `mecris://health/{date}` - Health data
-- `mecris://aggregate` - Aggregate status
+# Resources to expose:
+# - mecris://walk/{date} - Walk data for date
+# - mecris://walk/today - Today's walk data
+# - mecris://language/{lang} - Language stats
+# - mecris://language/all - All languages
+# - mecris://budget - Budget status
+# - mecris://health/{date} - Health data
+# - mecris://aggregate - Aggregate status
+# - mecris://narrator/context - Full narrator context
+```
 
 #### 1.2 Add Prompts Capability
 ```python
 # New: services/prompt_manager.py
 class PromptManager:
-    """Manages MCP Prompt templates."""
+    """Manages MCP Prompts per 2025-11-25 spec."""
     
     async def list_prompts(self) -> ListPromptsResult:
-        """List available prompt templates."""
+        """ListPromptsRequest -> ListPromptsResult"""
         
-    async def get_prompt(self, name: str, args: dict) -> GetPromptResult:
-        """Render prompt template with arguments."""
-```
+    async def get_prompt(self, name: str, args: Dict[str, str]) -> GetPromptResult:
+        """GetPromptRequest -> GetPromptResult"""
 
-**Prompts to implement:**
-- `daily_briefing` - Morning briefing with walk, budget, language status
-- `evening_review` - Evening review with nag suggestions
-- `language_plan` - Language study plan based on pump status
-- `walk_recommendation` - Weather-aware walk recommendation
+# Prompts to implement:
+# - daily_briefing(date?, tone?, include_weather?)
+# - evening_review(date?, tone?)
+# - language_plan(language, days?, intensity?)
+# - walk_recommendation(lat, lon, preference?)
+# - weekly_review(week_start?)
+# - nag_response(nag_type, context, tone?)
+```
 
 #### 1.3 Add Resource Subscriptions
 ```python
-# In server session handling
-async def handle_subscribe(self, request: SubscribeRequest) -> SubscribeResult:
-    """Subscribe to resource URI changes."""
+# New: services/resource_subscription_manager.py
+class ResourceSubscriptionManager:
+    """Manages resource subscriptions per 2025-11-25 spec."""
     
-async def handle_unsubscribe(self, request: UnsubscribeRequest) -> UnsubscribeResult:
-    """Unsubscribe from resource changes."""
+    async def subscribe(self, uri: str, client_id: str) -> bool:
+        """Subscribe a client to resource changes."""
+        
+    def unsubscribe(self, uri: str, client_id: str) -> bool:
+        """Unsubscribe a client from resource changes."""
+        
+    async def notify_resource_changed(self, uri: str):
+        """Send ResourceUpdatedNotification to all subscribers."""
 ```
 
 #### 1.4 Add Progress Notifications
 ```python
-# For long-running operations (cloud sync, language sync)
-async def notify_progress(self, token: str, progress: float, total: Optional[float]) -> None:
+# In resource_manager.py / prompt_manager.py
+async def notify_progress(self, progress_token: str, progress: float, total: Optional[float] = None):
     """Send ProgressNotification to client."""
+```
+
+#### 1.5 Add Tool Annotations
+```python
+# Update all @mcp.tool() decorators to include annotations
+@mcp.tool(
+    annotations=ToolAnnotations(
+        title="Sync Walk Data",
+        readOnlyHint=False,
+        destructiveHint=False,
+        idempotentHint=False,
+        openWorldHint=True,
+    )
+)
+async def upload_walk(...):
+    ...
 ```
 
 ---
@@ -175,7 +224,7 @@ async def notify_progress(self, token: str, progress: float, total: Optional[flo
 
 #### 2.1 Implement Streamable HTTP Transport
 ```python
-# New: server/streamable_http.py
+# New: server/transports/streamable_http.py
 from mcp.server.streamable_http import StreamableHTTPServerTransport
 
 class MecrisStreamableTransport(StreamableHTTPServerTransport):
@@ -187,147 +236,225 @@ class MecrisStreamableTransport(StreamableHTTPServerTransport):
         # Forward to MCP core
 ```
 
-**Replace SSE with Streamable HTTP** (per 2025-06-18 spec)
+#### 2.2 Replace SSE with Streamable HTTP
+```python
+# In mcp_server.py
+# Replace SSE endpoint with Streamable HTTP
+# Keep stdio transport for Pi/Claude
+# Run both in same event loop via asyncio.gather()
+```
 
-#### 2.2 Transport Matrix
+#### 2.3 Transport Matrix
 | Transport | Status | Use Case |
 |-----------|--------|----------|
 | stdio | ✅ Keep | Pi, Claude CLI |
 | Streamable HTTP | 🔴 Add | Android, Web, Public API |
 | SSE | ⚠️ Deprecate | Legacy only |
-| stdio (stdio_server.py) | ✅ Keep | Pi/Claude CLI |
+
+---
+
+### Phase 3: Advanced Capabilities (Week 3-4)
+
+#### 3.1 Add Server Discovery
+```python
+# New: mcp_server.py - add server/discover RPC
+@mcp.tool(name="server/discover", description="Discover server capabilities")
+async def discover_server() -> DiscoverResult:
+    return DiscoverResult(
+        supportedVersions=["2025-11-25", "2025-06-18"],
+        capabilities=ServerCapabilities(...),
+        serverInfo=Implementation(name="mecris", version="0.0.1"),
+        instructions="Mecris personal accountability server..."
+    )
+```
+
+#### 3.2 Per-Request Capabilities & Version
+```python
+# In mcp_server.py - update get_authorized_user to extract _meta
+async def get_authorized_user(
+    user_id: Optional[str] = Depends(get_current_user),
+    protocol_version: str = Header(..., alias="MCP-Protocol-Version"),
+    client_info: Implementation = Body(..., alias="io.modelcontextprotocol/clientInfo"),
+    client_capabilities: ClientCapabilities = Body(..., alias="io.modelcontextprotocol/clientCapabilities"),
+    log_level: Optional[LoggingLevel] = Body(None, alias="io.modelcontextprotocol/logLevel"),
+):
+    # Validate protocol version matches header
+    # Store client_info and client_capabilities for this request
+    # Return user_id
+```
+
+#### 3.3 Add Server Discovery Endpoint
+```python
+@app.post("/server/discover")
+async def discover_server() -> DiscoverResult:
+    return DiscoverResult(
+        supportedVersions=["2025-11-25", "2025-06-18"],
+        capabilities=ServerCapabilities(...),
+        serverInfo=Implementation(name="mecris", version="0.0.1"),
+        instructions="Mecris personal accountability server..."
+    )
+```
+
+#### 3.4 Per-Request Client Capabilities
+```python
+# Update get_authorized_user to extract and validate per-request capabilities
+# Store in request.state for use by tool handlers
+```
 
 ---
 
 ### Phase 3: Advanced Capabilities (Week 5-6)
 
-#### 3.1 Sampling Capability (for AI-assisted features)
+#### 3.1 Add Elicitation Capability
 ```python
+# New: services/elicitation_manager.py
+class ElicitationManager:
+    """Handle server-to-client elicitation requests."""
+    
+    async def elicit(self, request: ElicitRequest) -> ElicitResult:
+        """Handle elicitation/create request from server."""
+```
+
+#### 3.2 Add Roots Capability
+```python
+# New: services/roots_manager.py
+class RootsManager:
+    """Manage workspace roots per SEP-2322."""
+    
+    async def list_roots(self) -> ListRootsResult:
+        """ListRootsRequest -> ListRootsResult"""
+        
+    async def subscribe_roots(self, client_id: str) -> None:
+        """Subscribe to root changes."""
+```
+
+#### 3.3 Add Sampling Capability
+```python
+# New: services/sampling_manager.py
 class SamplingManager:
-    """Handle CreateMessageRequest for LLM sampling."""
+    """Handle LLM sampling requests from server."""
     
     async def sample(self, request: CreateMessageRequest) -> CreateMessageResult:
-        # Delegate to local LLM or cloud provider
-        # Support structured output via ToolUseContent
+        """Handle sampling/createMessage request."""
 ```
 
-#### 3.2 Roots Capability (Workspace awareness)
+#### 3.4 Add Tasks Capability
 ```python
-class RootsManager:
-    async def list_roots(self) -> ListRootsResult:
-        """Return workspace roots for context."""
-```
-
-#### 3.3 Elicitation Support
-```python
-async def handle_elicitation(self, request: CreateMessageRequest) -> CreateMessageResult:
-    """Handle elicitation requests from client."""
+# New: services/task_manager.py
+class TaskManager:
+    """Manage long-running tasks per SEP-1686."""
+    
+    async def create_task(self, request: CreateTaskRequest) -> CreateTaskResult:
+        """Create a new background task."""
+        
+    async def get_task(self, task_id: str) -> Task:
+        """Get task status and result."""
+        
+    async def cancel_task(self, task_id: str) -> CancelTaskResult:
+        """Cancel a running task."""
+        
+    async def list_tasks(self) -> ListTasksResult:
+        """List all tasks for the current user."""
 ```
 
 ---
 
-## Authentication & Multi-Tenancy
+### Phase 4: Auth & Multi-tenancy (Week 7-8)
 
-### Current: Pocket ID OIDC
-- ✅ Working with Pocket ID
-- ✅ Multi-tenant via `sub` claim
-- ✅ JWT validation with JWKS
-- ⚠️ No DPoP token binding
-
-### Target: MCP OAuth 2.1 + DPoP
+#### 4.1 DPoP Token Binding (RFC 9449)
 ```python
-# New: auth/mcp_oauth.py
-class MCPOAuthManager:
-    """MCP 2025 OAuth 2.1 + DPoP implementation."""
+# New: services/auth/dpop.py
+class DPoPManager:
+    """DPoP token binding per RFC 9449."""
     
     async def validate_dpop_proof(self, dpop_header: str, token: str) -> bool:
-        """Validate DPoP proof per RFC 9449."""
+        """Validate DPoP proof."""
         
-    async def issue_access_token(self, client_id: str, scope: str) -> TokenResponse:
-        """Issue DPoP-bound access token."""
+    async def create_dpop_proof(self, token: str, method: str, url: str) -> str:
+        """Generate DPoP proof for request."""
+```
+
+#### 4.2 MCP OAuth 2.1 Authorization Server
+```python
+# New: auth/mcp_oauth.py
+class MCPOAuthServer:
+    """MCP OAuth 2.1 authorization server per spec."""
+    
+    async def authorize(self, request: AuthorizationRequest) -> AuthorizationResponse:
+        """Handle authorization request."""
+        
+    async def token(self, request: TokenRequest) -> TokenResponse:
+        """Issue access tokens."""
+        
+    async def revoke(self, request: RevokeRequest) -> RevokeResponse:
+        """Revoke tokens."""
+```
+
+#### 4.2 Device-bound Tokens for Android
+```python
+# In PocketIdAuth - add device binding
+# Generate DPoP keys on first auth, store in Android Keystore
+# Include DPoP proof in all API requests
 ```
 
 ---
 
-## Deployment Architecture
+### Phase 5: Deployment (Week 9-10)
 
-### Current
-```
-┌─────────────┐     ┌─────────────┐
-│   Pi/CLI    │────▶│  stdio      │
-└─────────────┘     └─────────────┘
-                    │
-                    ▼
-              ┌─────────────┐
-              │  mcp_server │
-              │   (stdio)   │
-              └─────────────┘
-                    │
-                    ▼
-              ┌─────────────┐
-              │   Neon PG   │
-              └─────────────┘
-```
+#### 5.1 Fly.io Deployment
+```toml
+# fly.toml
+app = "mecris-api"
+primary_region = "iad"
 
-### Target Deployment (Multi-Transport)
+[build]
+  image = "ghcr.io/kingdonb/mecris-api:latest"
 
-```
-                    ┌─────────────────────┐
-                    │   Load Balancer     │
-                    │   (Cloudflare)      │
-                    └──────────┬──────────┘
-                               │
-              ┌────────────────┼────────────────┐
-              ▼                ▼                ▼
-       ┌─────────────┐  ┌─────────────┐  ┌─────────────┐
-       │  Home Server│  │  Fly.io     │  │  Fermyon    │
-       │  (stdio)    │  │  (Streamable│  │  (SpinKube) │
-       │             │  │   HTTP)     │  │             │
-       └──────┬──────┘  └──────┬──────┘  └──────┬──────┘
-              │                │                │
-              └────────────────┼────────────────┘
-                               ▼
-                        ┌─────────────┐
-                        │  Neon PG    │
-                        │  (shared)   │
-                        └─────────────┘
+[env]
+  MECRIS_MODE = "multi-tenant"
+  NEON_DB_URL = "${NEON_DB_URL}"
+  POCKET_ID_URL = "https://auth.mecris.dev"
+
+[services]
+  internal_port = 8080
+  protocol = "tcp"
+  auto_stop_machines = true
+  auto_start_machines = true
+  min_machines_running = 1
 ```
 
----
+#### 5.2 Cloudflare Load Balancer
+```yaml
+# Cloudflare Load Balancer config
+origin_pools:
+  - name: fly-primary
+    origins:
+      - address: mecris-api.fly.dev
+        weight: 1
+    health_check: /health
 
-## Implementation Checklist
+  - name: fermyon-backup
+    origins:
+      - address: mecris-spin.fermyon.app
+        weight: 1
+    health_check: /health
+```
 
-### Phase 1: Core Compliance (Week 1-2)
-- [ ] Add `ResourcesCapability` + `ResourceManager`
-- [ ] Add `PromptsCapability` + `PromptManager`  
-- [ ] Implement `Resource` types for all data
-- [ ] Add `Subscribe/Unsubscribe` handlers
-- [ ] Add `ProgressNotification` for long ops
-- [ ] Add `ResourceUpdatedNotification` for live updates
-
-### Phase 2: Transport (Week 3)
-- [ ] Implement `StreamableHTTPServerTransport`
-- [ ] Replace SSE endpoint with Streamable HTTP
-- [ ] Add transport detection/negotiation
-- [ ] Keep stdio for Pi/Claude CLI
-
-### Phase 3: Advanced (Week 3-4)
-- [ ] Add `SamplingCapability` + `SamplingManager`
-- [ ] Add `RootsCapability` + `RootsManager`
-- [ ] Add `Elicitation` support
-- [ ] Add `ToolAnnotations` to all tools
-
-### Phase 4: Auth & Multi-tenancy
-- [ ] DPoP token binding
-- [ ] MCP OAuth 2.1 authorization server
-- [ ] Device-bound tokens for Android
-
-### Phase 5: Deployment
-- [ ] Fly.io deployment config
-- [ ] Cloudflare Load Balancer + TLS
-- [ ] SpinKube on Fly.io (backup)
-- [ ] Fermyon Cloud (backup)
-- [ ] Health checks + graceful shutdown
+#### 5.3 SpinKube on Fly.io
+```yaml
+# spin-deploy.yaml
+apiVersion: core.spinoperator.dev/v1alpha1
+kind: SpinApp
+metadata:
+  name: mecris-spin
+spec:
+  image: ghcr.io/kingdonb/mecris-spin:latest
+  replicas: 2
+  executor: spin
+  trigger:
+    http:
+      port: 8080
+```
 
 ---
 
@@ -341,12 +468,21 @@ async def test_list_resources():
     assert len(result.resources) > 0
     
 async def test_read_resource():
-    result = await resource_manager.read_resource("mecris://walk/2025-07-28")
-    assert result.contents[0].uri == "mecris://walk/2025-07-28"
+    result = await resource_manager.read_resource("mecris://walk/today")
+    assert result.contents[0].uri == "mecris://walk/today"
 
 async def test_subscribe_resource():
-    await resource_manager.subscribe("mecris://walk/2025-07-28")
+    await resource_manager.subscribe("mecris://walk/today", "client-1")
     # Verify notification on update
+
+# tests/test_mcp_prompts.py
+async def test_list_prompts():
+    result = await prompt_manager.list_prompts()
+    assert len(result.prompts) >= 6
+
+async def test_get_prompt():
+    result = await prompt_manager.get_prompt("morning_briefing", {"date": "2025-07-30"})
+    assert len(result.messages) == 1
 ```
 
 ### Integration Tests
@@ -356,15 +492,28 @@ async def test_full_initialize_flow():
     async with stdio_client() as (read, write):
         session = ClientSession(read, write)
         result = await session.initialize()
-        assert result.protocol_version == "2025-06-18"
+        assert result.protocol_version == "2025-11-25"
         assert result.capabilities.tools is not None
         assert result.capabilities.resources is not None
+        assert result.capabilities.prompts is not None
+
+async def test_streamable_http_transport():
+    async with streamable_http_client() as (read, write):
+        session = ClientSession(read, write)
+        await session.initialize()
+        tools = await session.list_tools()
 ```
 
 ### Transport Tests
 ```python
 async def test_streamable_http_transport():
-    async with streamable_http_client(url) as (read, write):
+    async with streamable_http_client() as (read, write):
+        session = ClientSession(read, write)
+        await session.initialize()
+        tools = await session.list_tools()
+        
+async def test_stdio_transport():
+    async with stdio_client() as (read, write):
         session = ClientSession(read, write)
         await session.initialize()
         tools = await session.list_tools()
@@ -372,15 +521,26 @@ async def test_streamable_http_transport():
 
 ---
 
-## Risks & Mitigations
+## Deployment Checklist
 
-| Risk | Likelihood | Impact | Mitigation |
-|------|------------|--------|------------|
-| Resource subscription complexity | High | Medium | Start with polling fallback |
-| Streamable HTTP adoption | Medium | High | Keep SSE as fallback |
-| DPoP implementation | Medium | High | Use established library |
-| Neon connection pooling | Low | High | PgBouncer + read replicas |
-| Android mesh + MCP | High | High | Feature flags, gradual rollout |
+### Pre-Deployment
+- [ ] Pocket ID public DNS + TLS (`auth.mecris.dev`)
+- [ ] API Gateway deployed (Fly.io + Cloudflare)
+- [ ] SpinKube cluster deployed
+- [ ] Android rebuild with mesh client
+- [ ] Load test: 1000 concurrent users
+- [ ] Chaos engineering: kill endpoints, verify failover
+
+### Launch Sequence
+1. **Staging**: Deploy to staging, run E2E tests
+2. **Canary**: 5% traffic to new cloud API
+3. **Rollout**: 100% to cloud, home server as fallback
+4. **Android**: Roll out mesh client via Play Store (staged rollout)
+
+### Rollback Plan
+- DNS failback to home server in < 60s
+- Android app falls back to local-only mode
+- Database unchanged (shared Neon)
 
 ---
 
@@ -407,16 +567,23 @@ mecris/
 │   │   └── notifications.py
 │   ├── auth/
 │   │   ├── __init__.py
+│   │   ├── pocket_id.py
 │   │   ├── mcp_oauth.py
-│   │   └── pocket_id.py
+│   │   └── dpop.py
 │   └── services/
 │       ├── resource_manager.py
 │       ├── prompt_manager.py
 │       ├── sampling_manager.py
-│       └── roots_manager.py
+│       ├── roots_manager.py
+│       ├── elicitation_manager.py
+│       └── task_manager.py
 ├── mcp_server.py              # Main entry
 ├── mcp_stdio_server.py        # Stdio entry
 ├── services/                  # Existing services
+├── docs/
+│   ├── MCP_STANDARDS_UPDATE_PLAN.md
+│   ├── CLOUD_DEPLOYMENT_PLAN.md
+│   └── ANDROID_MESH_CLIENT.md
 └── tests/
     ├── test_mcp_resources.py
     ├── test_mcp_prompts.py
@@ -426,36 +593,25 @@ mecris/
 
 ---
 
-## Migration Strategy
+## Appendix: Key Spec References
 
-### Branch Strategy
-```
-main (current stable)
-  └── feature/mcp-2025-update
-      ├── Phase 1: Core compliance
-      ├── Phase 2: Transport
-      ├── Phase 3: Advanced capabilities
-      └── main (merge after validation)
-```
-
-### Validation Gates
-1. **Protocol Tests**: All MCP protocol tests pass
-2. **Transport Tests**: stdio + Streamable HTTP both work
-3. **Android Integration**: App connects to all transports
-4. **Load Test**: 100 concurrent sessions
-5. **Chaos**: Kill endpoints, verify failover
-
----
-
-## Appendix: MCP Spec References
-
-- **MCP Spec 2025-06-18**: https://github.com/modelcontextprotocol/specification
-- **Python SDK 1.26.0**: https://github.com/modelcontextprotocol/python-sdk
+- **MCP Spec 2025-11-25**: https://github.com/modelcontextprotocol/specification/tree/main/specification/2025-11-25
+- **Schema**: https://github.com/modelcontextprotocol/specification/blob/main/schema/2025-11-25/schema.ts
 - **Transport Spec**: Streamable HTTP Transport (replaces SSE)
 - **Auth**: OAuth 2.1 + DPoP (RFC 9449)
+- **SEP-2567**: Sessionless MCP via Explicit State Handles
+- **SEP-2575**: Make MCP Stateless
+- **SEP-2567**: Sessionless MCP via Explicit State Handles
+- **SEP-2575**: Make MCP Stateless
+- **SEP-2322**: MRTR (Multi-Round-Trip Requests)
+- **SEP-2549**: TTL for List Results
+- **SEP-2322**: MRTR (Multi-Round-Trip Requests)
+- **SEP-2549**: TTL for List Results
+- **SEP-2322**: MRTR (Multi-Round-Trip Requests)
 
 ---
 
 *Document Version: 1.0*  
 *Author: Mecris Team*  
-*Date: 2025-07-28*
+*Date: 2025-07-30*  
+*Target Spec: MCP 2025-11-25 (latest as of 2025-07-28)*
