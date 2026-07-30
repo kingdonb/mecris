@@ -21,12 +21,21 @@ _jwks_client: Optional[PyJWKClient] = None
 
 def _get_jwks_client() -> PyJWKClient:
     global _jwks_client
+    import sys
+    print(f'DEBUG _get_jwks_client: creating new JWKS client', file=sys.stderr)
     if _jwks_client is None:
         jwks_uri = os.getenv("OIDC_JWKS_URI", f"{POCKET_ID_URL}/.well-known/jwks.json")
-        _jwks_client = PyJWKClient(jwks_uri, lifespan=300)
+        # Create a custom session with timeout and retry settings
+        import requests
+        session = requests.Session()
+        session.timeout = 30
+        _jwks_client = PyJWKClient(jwks_uri, lifespan=300, timeout=60)
+        _jwks_client.session = session
+        print(f'DEBUG _get_jwks_client: JWKS client created', file=sys.stderr)
     return _jwks_client
 
 
+# VERSION: 2026-07-30-FIX
 def verify_token(token: str) -> Dict[str, Any]:
     """
     Verify the JWT token from Pocket ID.
@@ -36,6 +45,8 @@ def verify_token(token: str) -> Dict[str, Any]:
     if not token:
         return {}
     try:
+        import sys
+        print(f'DEBUG verify_token: mode={is_standalone_mode()}', file=sys.stderr, flush=True)
         if is_standalone_mode():
             # Standalone: decode without signature verification, check expiry only
             unverified = jwt.decode(token, options={"verify_signature": False})

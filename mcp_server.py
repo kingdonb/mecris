@@ -2004,17 +2004,35 @@ if __name__ == "__main__":
                 time.sleep(3600)
     else:
         # Fallback to standard mcp.run() for manual terminal debugging
-        scheduler.start()
-        # Start walk cache listener (pg_notify invalidation)
+        # Run everything inside an event loop like the stdio branch
+        log("Running MCP stdio server (fallback)")
+        async def run_with_scheduler():
+            log("Starting scheduler")
+            scheduler.start()
+            # Start walk cache listener (pg_notify invalidation)
+            try:
+                from services.walk_cache_listener import start_walk_cache_listener, set_cache_reference
+                set_cache_reference(daily_activity_cache)
+                asyncio.create_task(start_walk_cache_listener())
+                log("Walk cache listener started")
+            except Exception as e:
+                log(f"Walk cache listener not started: {e}")
+            try:
+                log("Running mcp.run")
+                await mcp.run()
+                log("mcp.run returned")
+            finally:
+                log("Shutting down scheduler")
+                scheduler.shutdown()
+        
         try:
-            from services.walk_cache_listener import start_walk_cache_listener, set_cache_reference
-            set_cache_reference(daily_activity_cache)
-            import asyncio
-            asyncio.create_task(start_walk_cache_listener())
-            log("Walk cache listener started")
+            asyncio.run(run_with_scheduler())
         except Exception as e:
-            log(f"Walk cache listener not started: {e}")
-        try:
-            mcp.run()
+            log(f"MCP SERVER ERROR: {e}")
+            import traceback
+            traceback.print_exc(file=sys.stderr)
         finally:
-            scheduler.shutdown()
+            log("server exited, keeping process alive for HTTP server")
+            import time
+            while True:
+                time.sleep(3600)
