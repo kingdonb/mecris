@@ -41,7 +41,7 @@ def test_record_governor_spend_routes_gemini():
     env_patch, db_patch = _make_mcp_importable()
     with env_patch, db_patch:
         from mcp_server import _record_governor_spend
-        with patch("mcp_server._budget_governor") as mock_gov:
+        with patch("mcp_server._neon_budget_governor") as mock_gov:
             _record_governor_spend("gemini-1.5-pro", 0.05)
             mock_gov.record_spend.assert_called_once_with("gemini", 0.05)
 
@@ -53,7 +53,7 @@ def test_record_governor_spend_routes_groq():
     env_patch, db_patch = _make_mcp_importable()
     with env_patch, db_patch:
         from mcp_server import _record_governor_spend
-        with patch("mcp_server._budget_governor") as mock_gov:
+        with patch("mcp_server._neon_budget_governor") as mock_gov:
             _record_governor_spend("groq-llama3", 0.01)
             mock_gov.record_spend.assert_called_once_with("groq", 0.01)
 
@@ -65,7 +65,7 @@ def test_record_governor_spend_routes_helix():
     env_patch, db_patch = _make_mcp_importable()
     with env_patch, db_patch:
         from mcp_server import _record_governor_spend
-        with patch("mcp_server._budget_governor") as mock_gov, \
+        with patch("mcp_server._neon_budget_governor") as mock_gov, \
              patch.dict("os.environ", {"ANTHROPIC_BASE_URL": "https://helix.example.com/api"}):
             _record_governor_spend("claude-3-5-sonnet", 0.02)
             mock_gov.record_spend.assert_called_once_with("helix", 0.02)
@@ -78,7 +78,7 @@ def test_record_governor_spend_defaults_to_anthropic_api():
     env_patch, db_patch = _make_mcp_importable()
     with env_patch, db_patch:
         from mcp_server import _record_governor_spend
-        with patch("mcp_server._budget_governor") as mock_gov, \
+        with patch("mcp_server._neon_budget_governor") as mock_gov, \
              patch.dict("os.environ", {"ANTHROPIC_BASE_URL": ""}):
             _record_governor_spend("claude-3-5-haiku-20241022", 0.001)
             mock_gov.record_spend.assert_called_once_with("anthropic_api", 0.001)
@@ -91,7 +91,7 @@ def test_record_governor_spend_swallows_exceptions():
     env_patch, db_patch = _make_mcp_importable()
     with env_patch, db_patch:
         from mcp_server import _record_governor_spend
-        with patch("mcp_server._budget_governor") as mock_gov:
+        with patch("mcp_server._neon_budget_governor") as mock_gov:
             mock_gov.record_spend.side_effect = RuntimeError("governor down")
             # Must not raise
             _record_governor_spend("claude-3-5-haiku", 0.01)

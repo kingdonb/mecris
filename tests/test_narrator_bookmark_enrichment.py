@@ -185,7 +185,7 @@ async def _run_narrator_context(enrich_return_value=None):
                                                 with patch("mcp_server.language_sync_service", mocks["lang_sync"]):
                                                     with patch("mcp_server.weather_service", mocks["weather"]):
                                                         with patch("mcp_server.scheduler", mocks["scheduler"]):
-                                                            with patch("mcp_server._budget_governor", mocks["governor"]):
+                                                            with patch("mcp_server._neon_budget_governor", mocks["governor"]):
                                                                 with patch("mcp_server._get_presence_summary", AsyncMock(return_value={})):
                                                                     with patch("mcp_server.anthropic_cost_tracker", None):
                                                                         with patch("mcp_server.get_daily_aggregate_status", AsyncMock(return_value=aggregate)):
@@ -238,7 +238,7 @@ async def test_narrator_context_enrichment_failure_does_not_crash():
                                                 with patch("mcp_server.language_sync_service", mocks["lang_sync"]):
                                                     with patch("mcp_server.weather_service", mocks["weather"]):
                                                         with patch("mcp_server.scheduler", mocks["scheduler"]):
-                                                            with patch("mcp_server._budget_governor", mocks["governor"]):
+                                                            with patch("mcp_server._neon_budget_governor", mocks["governor"]):
                                                                 with patch("mcp_server._get_presence_summary", AsyncMock(return_value={})):
                                                                     with patch("mcp_server.anthropic_cost_tracker", None):
                                                                         with patch("mcp_server.get_daily_aggregate_status", AsyncMock(return_value=aggregate)):

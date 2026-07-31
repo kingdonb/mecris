@@ -109,7 +109,7 @@ async def test_get_narrator_context_includes_presence_status():
                                             with patch("mcp_server.neon_checker.get_latest_walk", return_value=None):
                                                 with patch("mcp_server.weather_service.get_weather", return_value={}):
                                                     with patch("mcp_server.weather_service.is_walk_appropriate", return_value=(True, "Good")):
-                                                        with patch("mcp_server._budget_governor") as mock_gov:
+                                                        with patch("mcp_server._neon_budget_governor") as mock_gov:
                                                             mock_gov.get_narrator_summary.return_value = {}
                                                             with patch("mcp_server.scheduler") as mock_sched:
                                                                 mock_sched.running = True

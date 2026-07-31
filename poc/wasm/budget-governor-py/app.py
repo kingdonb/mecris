@@ -2,13 +2,16 @@
 budget-governor-py: Python-native WASM component (componentize-py + spin_sdk, Phase 1.7.2 / kingdonb/mecris#214).
 
 Ports the spend envelope logic (5%/5% soft-cap/hard-cap) from services/budget_governor.py to a WASM component.
-Uses Spin Key-Value for spend log persistence and Spin Variables for limits.
+Uses Spin Key-Value for spend log persistence (primary) with pluggable storage for Neon when available.
+Spin Variables used for bucket limits and optional DATABASE_URL.
 
 HTTP trigger: POST /internal/budget-governor
 Body JSON: {
   "action": "status" | "check" | "record" | "recommend" | "gate",
   "bucket": <string>,
-  "cost": <float>
+  "cost": <float>,
+  "model": <string>,      # optional: model name for routing
+  "request_id": <string>  # optional: correlation ID
 }
 Returns JSON: Action-specific response dict
 """
@@ -22,6 +25,8 @@ try:
     from spin_sdk import http, variables
     from spin_sdk.http import Request, Response
     import spin_sdk.key_value as kv
+    # Note: spin_sdk.postgres is not yet available in Python SDK (as of 2025)
+    # When available, enable NEON_STORAGE = True and set DATABASE_URL in Spin Variables
     _SPIN_AVAILABLE = True
 except ImportError:
     _SPIN_AVAILABLE = False
@@ -51,8 +56,11 @@ _DEFAULT_LIMITS: Dict[str, Dict[str, Any]] = {
     "groq":          {"limit":  10.00, "type": "guard"},
 }
 
+# Toggle: set to True when spin_sdk.postgres becomes available
+_NEON_STORAGE_ENABLED = False
+
 # ---------------------------------------------------------------------------
-# Pure Logic & Data Models
+# Pure Logic & Data Models (identical to services/budget_governor.py)
 # ---------------------------------------------------------------------------
 
 def make_bucket_config(limits: Optional[Dict[str, float]] = None) -> Dict[str, Dict[str, Any]]:
@@ -193,7 +201,7 @@ def budget_gate(
 
 
 # ---------------------------------------------------------------------------
-# WASM Infrastructure Helpers
+# Storage Backends (pluggable)
 # ---------------------------------------------------------------------------
 
 class _DatetimeEncoder(json.JSONEncoder):
@@ -203,7 +211,9 @@ class _DatetimeEncoder(json.JSONEncoder):
         return super().default(obj)
 
 
-def _load_spend_log_from_json(raw_bytes: Optional[bytes]) -> List[Dict[str, Any]]:
+# --- Spin KV Backend (current, works on Fermyon Cloud) ---
+
+def _load_spend_log_kv(raw_bytes: Optional[bytes]) -> List[Dict[str, Any]]:
     if not raw_bytes:
         return []
     try:
@@ -212,10 +222,52 @@ def _load_spend_log_from_json(raw_bytes: Optional[bytes]) -> List[Dict[str, Any]
         return []
 
 
-def _dump_spend_log_to_json(spend_log: List[Dict[str, Any]]) -> bytes:
+def _dump_spend_log_kv(spend_log: List[Dict[str, Any]]) -> bytes:
     serializable = spend_log[-200:]  # Keep last 200 entries to prevent KV bloat
     return json.dumps(serializable, cls=_DatetimeEncoder).encode()
 
+
+# --- Test compatibility aliases (JSON file backend used by legacy BudgetGovernor) ---
+
+def _load_spend_log_from_json(raw_bytes: Optional[bytes]) -> List[Dict[str, Any]]:
+    return _load_spend_log_kv(raw_bytes)
+
+
+def _dump_spend_log_to_json(spend_log: List[Dict[str, Any]]) -> bytes:
+    return _dump_spend_log_kv(spend_log)
+
+
+# --- Neon Backend (future: when spin_sdk.postgres is available) ---
+# When enabled, requires DATABASE_URL in Spin Variables
+# and spin_sdk.postgres module with connect/execute support.
+#
+# async def _load_spend_log_neon(user_id: str) -> List[Dict[str, Any]]:
+#     import spin_sdk.postgres as pg
+#     db_url = await variables.get("database_url")
+#     if not db_url:
+#         return []
+#     conn = pg.connect(db_url)
+#     rows = conn.execute(
+#         "SELECT bucket, cost, ts FROM budget_governor_spend_log "
+#         "WHERE user_id = $1 ORDER BY ts ASC", (user_id,)
+#     )
+#     return [{"bucket": r[0], "cost": float(r[1]), "ts": r[2]} for r in rows]
+#
+# async def _persist_spend_neon(user_id: str, bucket: str, cost: float, model: str = "", request_id: str = "") -> None:
+#     import spin_sdk.postgres as pg
+#     db_url = await variables.get("database_url")
+#     if not db_url:
+#         return
+#     conn = pg.connect(db_url)
+#     conn.execute(
+#         "INSERT INTO budget_governor_spend_log (user_id, bucket, cost, model, request_id) "
+#         "VALUES ($1, $2, $3, $4, $5)",
+#         (user_id, bucket, cost, model, request_id)
+#     )
+
+# ---------------------------------------------------------------------------
+# Request/Response Helpers
+# ---------------------------------------------------------------------------
 
 def _parse_request(body_bytes: Optional[bytes]) -> Dict[str, Any]:
     try:
@@ -226,6 +278,8 @@ def _parse_request(body_bytes: Optional[bytes]) -> Dict[str, Any]:
         "action": str(data.get("action", "status")),
         "bucket": str(data.get("bucket", "")),
         "cost": float(data.get("cost", 0.01)),
+        "model": str(data.get("model", "")),
+        "request_id": str(data.get("request_id", "")),
     }
 
 
@@ -284,63 +338,87 @@ async def _fetch_helix_balance_spin(base_url: str, api_key: str) -> Optional[flo
     return None
 
 
+# ---------------------------------------------------------------------------
+# HTTP Handler
+# ---------------------------------------------------------------------------
+
 class HttpHandler(http.Handler):
     async def handle_request(self, request: Request) -> Response:
         try:
             params = _parse_request(request.body)
             action = params["action"]
 
-            with (await kv.open_default()) as store:
-                raw = await store.get(_KV_SPEND_LOG_KEY)
-                spend_log = _load_spend_log_from_json(raw)
-                bucket_config = await _get_bucket_config_from_spin_vars()
+            # Load spend log from KV (primary) or Neon (when enabled)
+            if _NEON_STORAGE_ENABLED:
+                # Neon storage path (future)
+                user_id = "default"  # Would come from auth context
+                # spend_log = await _load_spend_log_neon(user_id)
+                # For now fall back to KV
+                with (await kv.open_default()) as store:
+                    raw = await store.get(_KV_SPEND_LOG_KEY)
+                    spend_log = _load_spend_log_kv(raw)
+            else:
+                with (await kv.open_default()) as store:
+                    raw = await store.get(_KV_SPEND_LOG_KEY)
+                    spend_log = _load_spend_log_kv(raw)
 
-                if action == "status":
-                    helix_live = None
-                    try:
-                        base_url = (await variables.get("anthropic_base_url")) or ""
-                        api_key = (await variables.get("anthropic_api_key")) or ""
-                        if base_url and api_key:
-                            helix_live = await _fetch_helix_balance_spin(base_url, api_key)
-                    except Exception:
-                        pass
-                    result = get_status(spend_log, bucket_config, helix_live)
-                    return Response(200, {"content-type": "application/json"}, _json_ok(result))
+            bucket_config = await _get_bucket_config_from_spin_vars()
 
-                elif action == "check":
-                    bucket = params["bucket"]
-                    cost = params["cost"]
-                    if not bucket or bucket not in bucket_config:
-                        return Response(400, {"content-type": "application/json"}, _error_json(f"unknown bucket: {bucket!r}"))
-                    envelope = check_envelope(spend_log, bucket_config, bucket, cost)
-                    return Response(200, {"content-type": "application/json"}, _json_ok({"envelope": envelope, "bucket": bucket}))
+            if action == "status":
+                helix_live = None
+                try:
+                    base_url = (await variables.get("anthropic_base_url")) or ""
+                    api_key = (await variables.get("anthropic_api_key")) or ""
+                    if base_url and api_key:
+                        helix_live = await _fetch_helix_balance_spin(base_url, api_key)
+                except Exception:
+                    pass
+                result = get_status(spend_log, bucket_config, helix_live)
+                return Response(200, {"content-type": "application/json"}, _json_ok(result))
 
-                elif action == "record":
-                    bucket = params["bucket"]
-                    cost = params["cost"]
-                    if not bucket or bucket not in bucket_config:
-                        return Response(400, {"content-type": "application/json"}, _error_json(f"unknown bucket: {bucket!r}"))
-                    entry = make_spend_entry(bucket, cost)
-                    spend_log.append(entry)
-                    await store.set(_KV_SPEND_LOG_KEY, _dump_spend_log_to_json(spend_log))
-                    return Response(200, {"content-type": "application/json"}, _json_ok({"recorded": True, "bucket": bucket, "cost": cost}))
+            elif action == "check":
+                bucket = params["bucket"]
+                cost = params["cost"]
+                if not bucket or bucket not in bucket_config:
+                    return Response(400, {"content-type": "application/json"}, _error_json(f"unknown bucket: {bucket!r}"))
+                envelope = check_envelope(spend_log, bucket_config, bucket, cost)
+                return Response(200, {"content-type": "application/json"}, _json_ok({"envelope": envelope, "bucket": bucket}))
 
-                elif action == "recommend":
-                    recommendation = recommend_bucket(spend_log, bucket_config)
-                    return Response(200, {"content-type": "application/json"}, _json_ok({"recommendation": recommendation}))
+            elif action == "record":
+                bucket = params["bucket"]
+                cost = params["cost"]
+                model = params.get("model", "")
+                request_id = params.get("request_id", "")
+                if not bucket or bucket not in bucket_config:
+                    return Response(400, {"content-type": "application/json"}, _error_json(f"unknown bucket: {bucket!r}"))
+                
+                entry = make_spend_entry(bucket, cost)
+                spend_log.append(entry)
+                
+                if _NEON_STORAGE_ENABLED:
+                    # await _persist_spend_neon("default", bucket, cost, model, request_id)
+                    pass
+                
+                with (await kv.open_default()) as store:
+                    await store.set(_KV_SPEND_LOG_KEY, _dump_spend_log_kv(spend_log))
+                return Response(200, {"content-type": "application/json"}, _json_ok({"recorded": True, "bucket": bucket, "cost": cost}))
 
-                elif action == "gate":
-                    bucket = params["bucket"]
-                    cost = params["cost"]
-                    if not bucket or bucket not in bucket_config:
-                        return Response(400, {"content-type": "application/json"}, _error_json(f"unknown bucket: {bucket!r}"))
-                    gate_result = budget_gate(spend_log, bucket_config, bucket, cost)
-                    if gate_result is None:
-                        return Response(200, {"content-type": "application/json"}, _json_ok({"allowed": True}))
-                    return Response(200, {"content-type": "application/json"}, _json_ok(gate_result))
+            elif action == "recommend":
+                recommendation = recommend_bucket(spend_log, bucket_config)
+                return Response(200, {"content-type": "application/json"}, _json_ok({"recommendation": recommendation}))
 
-                else:
-                    return Response(400, {"content-type": "application/json"}, _error_json(f"unknown action: {action!r}"))
+            elif action == "gate":
+                bucket = params["bucket"]
+                cost = params["cost"]
+                if not bucket or bucket not in bucket_config:
+                    return Response(400, {"content-type": "application/json"}, _error_json(f"unknown bucket: {bucket!r}"))
+                gate_result = budget_gate(spend_log, bucket_config, bucket, cost)
+                if gate_result is None:
+                    return Response(200, {"content-type": "application/json"}, _json_ok({"allowed": True}))
+                return Response(200, {"content-type": "application/json"}, _json_ok(gate_result))
+
+            else:
+                return Response(400, {"content-type": "application/json"}, _error_json(f"unknown action: {action!r}"))
 
         except Exception as exc:
             print(f"budget_governor_py component error: {exc}")

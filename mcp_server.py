@@ -871,7 +871,7 @@ async def get_narrator_context(user_id: str = None) -> Dict[str, Any]:
             "time_window_end": time_window_end,
             "greek_backlog_boost": greek_backlog_boost,
             "greek_backlog_cards": greek_backlog_cards,
-            "budget_governor": _budget_governor.get_narrator_summary(),
+            "budget_governor": _neon_budget_governor.get_narrator_summary(),
             "presence": presence_info,
             "presence_status": presence_info.get("status", "unknown"),
             "related_bookmarks": related_bookmarks,
@@ -925,6 +925,12 @@ def record_usage_session(input_tokens: int, output_tokens: int, model: str = "cl
     if not target_user_id:
         return {"error": "Authentication Required"}
     try:
+        # Pre-flight budget gate check
+        bucket = _model_to_bucket(model)
+        gate = _neon_budget_governor.budget_gate(bucket, 0.01)  # minimal estimate for gate
+        if gate and gate.get("budget_halted"):
+            return gate  # Return blocking response
+        
         cost = record_usage(input_tokens, output_tokens, model, session_type, notes, target_user_id)
         _record_governor_spend(model, cost)
         return {"recorded": True, "estimated_cost": cost, "updated_status": usage_tracker.get_budget_status(target_user_id)}
@@ -939,6 +945,12 @@ def record_claude_code_usage(input_tokens: int, output_tokens: int, model: str =
     if not target_user_id:
         return {"error": "Authentication Required"}
     try:
+        # Pre-flight budget gate check
+        bucket = _model_to_bucket(model)
+        gate = _neon_budget_governor.budget_gate(bucket, 0.01)
+        if gate and gate.get("budget_halted"):
+            return gate
+        
         cost = record_usage(input_tokens, output_tokens, model, "claude-code", notes, target_user_id)
         _record_governor_spend(model, cost)
         return {
@@ -950,6 +962,17 @@ def record_claude_code_usage(input_tokens: int, output_tokens: int, model: str =
     except Exception as e:
         logger.error(f"Failed to record Claude Code usage: {e}")
         return {"error": str(e)}
+
+def _model_to_bucket(model: str) -> str:
+    """Map a model name to a BudgetGovernor bucket."""
+    m_lower = model.lower()
+    if "gemini" in m_lower:
+        return "gemini"
+    elif "groq" in m_lower:
+        return "groq"
+    elif os.getenv("ANTHROPIC_BASE_URL") and "helix" in os.getenv("ANTHROPIC_BASE_URL").lower():
+        return "helix"
+    return "anthropic_api"
 
 def _record_governor_spend(model: str, cost: float):
     """Internal helper to route spend to the correct BudgetGovernor bucket."""
@@ -963,14 +986,14 @@ def _record_governor_spend(model: str, cost: float):
         bucket = "helix"
     
     try:
-        _budget_governor.record_spend(bucket, cost)
+        _neon_budget_governor.record_spend(bucket, cost)
     except Exception as e:
         logger.warning(f"BudgetGovernor: Failed to record spend for {bucket}: {e}")
 
 @mcp.tool(description="Get real usage data from Anthropic Admin API (organization level).")
 async def get_real_anthropic_usage(days: int = 1) -> Dict[str, Any]:
     """Fetch actual usage data from Anthropic organization report."""
-    guard = _budget_governor.budget_gate("anthropic_api")
+    guard = _neon_budget_governor.budget_gate("anthropic_api")
     if guard and guard.get("budget_halted"):
         return guard
     if not anthropic_cost_tracker:
@@ -1054,7 +1077,7 @@ def get_weather_full_report() -> Dict[str, Any]:
 @mcp.tool(description="Force an immediate scrape of Clozemaster and push to Beeminder.")
 async def trigger_language_sync() -> Dict[str, Any]:
     """Manually trigger the Clozemaster to Beeminder sync process."""
-    guard = _budget_governor.budget_gate("anthropic_api")
+    guard = _neon_budget_governor.budget_gate("anthropic_api")
     if guard and guard.get("budget_halted"):
         return guard
     result = await language_sync_service.sync_all(dry_run=False)
@@ -1250,7 +1273,7 @@ async def get_coaching_insight(user_id: str = None) -> Dict[str, Any]:
     target_user_id = resolve_target_user(user_id)
     if not target_user_id:
         return {"error": "Authentication Required"}
-    guard = _budget_governor.budget_gate("anthropic_api")
+    guard = _neon_budget_governor.budget_gate("anthropic_api")
     if guard and guard.get("budget_halted"):
         return guard
     try:
@@ -1558,16 +1581,17 @@ async def get_walk_history(user_id: str = None) -> list:
 reminder_service = ReminderService(get_narrator_context, get_coaching_insight, get_last_sent_time, velocity_provider=get_language_velocity_stats, skip_count_provider=get_arabic_skip_count, walk_history_provider=get_walk_history)
 
 # ---------------------------------------------------------------------------
-# Budget Governor MCP tool (Plan: yebyen/mecris#26)
+# Budget Governor — Neon-backed (Phase 1 complete, Phase 2 MCP exposure)
 # ---------------------------------------------------------------------------
 import httpx
-from services.budget_governor import BudgetGovernor as _BudgetGovernor
+from services.budget_governor import NeonBudgetGovernor as _NeonBudgetGovernor
 
-_budget_governor = _BudgetGovernor(spend_log_path="mecris_spend_log.json")
+_neon_budget_governor = _NeonBudgetGovernor()
 
 @mcp.tool(description="Get per-bucket LLM spend envelope status and routing recommendation (Budget Governor).")
-def get_budget_governor_status() -> Dict[str, Any]:
+def get_budget_governor_status(user_id: str = None) -> Dict[str, Any]:
     """Returns per-bucket consumption, envelope status, and a routing recommendation."""
+    # Try cloud WASM component first
     try:
         response = httpx.post(
             "https://mecris-sync.fermyon.app/internal/budget-governor-py",
@@ -1578,9 +1602,32 @@ def get_budget_governor_status() -> Dict[str, Any]:
         return response.json()
     except Exception as e:
         logger.error(f"Failed to fetch BudgetGovernor status from cloud: {e}")
-        from services.budget_governor import BudgetGovernor as _BudgetGovernor
-        _budget_governor = _BudgetGovernor(spend_log_path="mecris_spend_log.json")
-        return _budget_governor.get_status()
+        # Fallback to local NeonBudgetGovernor
+        return _neon_budget_governor.get_status()
+
+@mcp.tool(description="Check if a spend would be allowed under the 5%/5% envelope (Budget Governor).")
+def budget_governor_check(bucket: str, cost_estimate: float = 0.01, user_id: str = None) -> Dict[str, Any]:
+    """Returns 'allow', 'defer', or 'deny' for the given bucket and estimated cost."""
+    return {"envelope": _neon_budget_governor.check_envelope(bucket, cost_estimate), "bucket": bucket}
+
+@mcp.tool(description="Record a spend event in the Budget Governor log (Neon-backed).")
+def budget_governor_record(bucket: str, cost: float, model: str = "", request_id: str = "", user_id: str = None) -> Dict[str, Any]:
+    """Persist a spend event; returns the envelope status after recording."""
+    _neon_budget_governor.record_spend(bucket, cost)
+    return {"recorded": True, "bucket": bucket, "cost": cost, "envelope": _neon_budget_governor.check_envelope(bucket, 0.01)}
+
+@mcp.tool(description="Get the recommended bucket for the next task (Helix Inversion: prefer SPEND buckets).")
+def budget_governor_recommend(user_id: str = None) -> Dict[str, Any]:
+    """Returns the best bucket to route the next request to."""
+    return {"recommendation": _neon_budget_governor.recommend_bucket()}
+
+@mcp.tool(description="Enforcement gate: returns a blocking response if the bucket is at hard limit (deny), or a warning if rate-limited (defer).")
+def budget_governor_gate(bucket: str, cost_estimate: float = 0.01, user_id: str = None) -> Dict[str, Any]:
+    """Pre-flight check for MCP handlers. Returns None if allowed, or a dict with budget_halted/warning if blocked/throttled."""
+    result = _neon_budget_governor.budget_gate(bucket, cost_estimate)
+    if result is None:
+        return {"allowed": True}
+    return result
 
 def get_modality_status(role: str, mins: float) -> str:
     """Determine healthy/degraded/offline status based on heartbeat age (minutes)."""
