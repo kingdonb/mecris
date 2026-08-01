@@ -1,71 +1,106 @@
-# Deploying Mecris-Go Backend
+# Mecris-Go Backend Deployment
 
-This guide covers deploying the **sync-service** to Fermyon Cloud and setting up the **Neon PostgreSQL** database.
+**Canonical target: Akamai Functions (edge) at `https://394b84e7-760c-4336-975b-653c17fdb446.fwf.app`**
 
-## 1. Database Setup (Neon)
+Fermyon Cloud channel (`mecris-sync-v2-glo0zpfm.fermyon.app`) returns platform 404 — deprecated.
+The `aka.fermyon.tech` hostname is deprecated and must not be probed.
 
-1.  Log in to your [Neon Console](https://console.neon.tech/).
-2.  Create a new project (e.g., `mecris-go`).
-3.  Open the **SQL Editor** in the Neon dashboard.
-4.  Copy the contents of `mecris-go-spin/schema.sql` and run it to initialize the tables.
-5.  Go to **Connection Details** and copy your connection string (it looks like `postgres://user:pass@host/neondb`).
+---
 
-## 2. Deploying to the Cloud
+## One-Command Deployment
 
-Mecris-Go supports dual-cloud deployment for high availability and edge performance.
-
-### A. Fermyon Cloud (Primary)
-Ensure you have the [Spin CLI](https://developer.fermyon.com/spin/v2/install) installed and are logged in.
-
-1.  **Login**:
-    ```bash
-    spin cloud login
-    ```
-2.  **Build & Deploy**:
-    ```bash
-    cd mecris-go-spin/sync-service
-    spin cloud deploy
-    ```
-
-### B. Akamai Functions (Edge)
-Akamai provides global edge performance via the `spin aka` plugin.
-
-1.  **Deploy**:
-    ```bash
-    cd mecris-go-spin/sync-service
-    spin aka deploy --build --no-confirm
-    ```
-
-## 3. Post-Deployment Configuration
-
-After deployment, you must provide the database connection string and other secrets to both providers.
-
-**Fermyon Cloud**:
 ```bash
-spin cloud variable set db_url="your_neon_connection_string"
-spin cloud variable set internal_api_key="your_secret_key"
+cd mecris-go-spin/sync-service
+./deploy-akamai.sh
 ```
 
-**Akamai Functions**:
-Secrets for Akamai are managed via the `aka` plugin or the Akamai dashboard.
+That's it. The script:
+1. Loads secrets from the project root `.env` (gitignored, local only)
+2. Validates all required variables are present
+3. Encrypts the Twilio auth token using the master encryption key
+4. Fetches the Pocket ID JWKS from the private network (Tailscale/home LAN)
+5. Deploys to Akamai with ALL variables in a single atomic command
 
-## 4. Android Configuration
+**No manual variable setting, no dashboard clicks, no missed secrets.**
 
-Update the `spinBaseUrl` in `MainActivity.kt` to point to either your Fermyon Cloud URL or your Akamai Functions URL. Using Akamai is recommended for users frequently off-VPN or traveling.
+---
 
-## 5. Setting up Cloud Mode (Autonomous)
+## Required Environment Variables (in project root `.env`)
 
-To ensure Beeminder and language stats continue to update even if your local Python MCP server goes offline, you can enable Cloud Mode:
+| Variable | Source | Purpose |
+|----------|--------|---------|
+| `NEON_DB_URL` | Neon Console | PostgreSQL connection string |
+| `MASTER_ENCRYPTION_KEY` | Generate once: `openssl rand -hex 32` | AES-256-GCM key for encrypting secrets |
+| `CLOZEMASTER_EMAIL` | Clozemaster account | Autonomous language sync |
+| `CLOZEMASTER_PASSWORD` | Clozemaster account | Autonomous language sync |
+| `TWILIO_ACCOUNT_SID` | Twilio Console | SMS notifications |
+| `TWILIO_AUTH_TOKEN` | Twilio Console | SMS notifications (plaintext in .env, encrypted at deploy) |
+| `OPENWEATHER_API_KEY` | OpenWeatherMap | Weather heuristic for walk reminders |
 
-1.  **Set Credentials**: In Fermyon Cloud, add your Clozemaster credentials to the application's variables:
-    ```bash
-    spin cloud variable set clozemaster_email="your_email@example.com"
-    spin cloud variable set clozemaster_password="your_password"
-    ```
+**Private network dependency:** The Pocket ID JWKS is fetched from `https://metnoom.urmanac.com/.well-known/jwks.json` which is only accessible on the Tailscale/home LAN. This is why deployment runs locally, not in GitHub Actions.
 
-2.  **Configure a Cron Trigger**: Because this app uses standard HTTP triggers, you must set up an external cron service (like [cron-job.org](https://cron-job.org) or a Akamai Spin Cron) to ping the cloud sync endpoint periodically (e.g., every 15-30 minutes):
-    ```
-    POST https://sync-service-xxxx.fermyon.app/internal/cloud-sync
-    ```
-    The endpoint will check the `scheduler_election` table in Neon. If the Python server's heartbeat is fresh (<90 seconds old), the Spin backend will safely ignore the request. If the heartbeat is missing or stale, the Spin backend will autonomously scrape Clozemaster and push updates.
+---
 
+## Verification After Deploy
+
+```bash
+# Get a valid token (via mecris CLI login)
+TOKEN=$(cat ~/.mecris/credentials.json | jq -r .access_token)
+
+# Test all authenticated routes
+curl -H "Authorization: Bearer $TOKEN" https://394b84e7-760c-4336-975b-653c17fdb446.fwf.app/health
+curl -H "Authorization: Bearer $TOKEN" https://394b84e7-760c-4336-975b-653c17fdb446.fwf.app/languages
+curl -H "Authorization: Bearer $TOKEN" https://394b84e7-760c-4336-975b-653c17fdb446.fwf.app/aggregate-status
+curl -H "Authorization: Bearer $TOKEN" https://394b84e7-760c-4336-975b-653c17fdb446.fwf.app/budget
+curl -H "Authorization: Bearer $TOKEN" https://394b84e7-760c-4336-975b-653c17fdb446.fwf.app/profile
+
+# Test internal endpoints
+curl -H "x-internal-api-key: test-internal-key" https://394b84e7-760c-4336-975b-653c17fdb446.fwf.app/internal/failover-sync
+
+# Component liveness (no auth required)
+curl -X POST -H "Content-Type: application/json" \
+  -d '{"debt":1138,"tomorrow_liability":37,"daily_completions":0,"multiplier_x10":10,"unit":"cards"}' \
+  https://394b84e7-760c-4336-975b-653c17fdb446.fwf.app/internal/review-pump-status
+```
+
+All authenticated routes must return **200** (not 401). A 401 means `oidc_jwks_json` was missing from the deploy.
+
+---
+
+## What Was Fixed (2026-07-31)
+
+### 1. Buggy `calculate_targets` Formula
+**File:** `mecris-go-spin/sync-service/src/lib.rs`
+
+**Wrong:** `target = (cur + tom) / rate`
+**Correct:** `target = tomorrow_liability + current_debt / clearance_days`
+
+Now matches the review-pump component and Python `review_pump_core.py`.
+
+### 2. Missing `oidc_jwks_json` Variable
+**Root cause of 64-day silent auth failure** (see `blog/2026-07-30-the-missing-variable.md`)
+
+The `extract_user_id()` function requires this variable to verify Pocket ID RS256 tokens. Without it, ALL authenticated routes return 401 even with valid tokens.
+
+---
+
+## Android App Configuration
+
+`mecris-go-project/app/src/main/java/com/mecris/go/BackendManager.kt`:
+```kotlin
+"Akamai Cloud" to "https://394b84e7-760c-4336-975b-653c17fdb446.fwf.app/"
+```
+
+---
+
+## Rollback / Redeploy
+
+Just run `./deploy-akamai.sh` again. It's idempotent and atomic.
+
+---
+
+## Files Modified in This Fix
+
+1. `mecris-go-spin/sync-service/src/lib.rs` — fixed `calculate_targets()` + added `clearance_days()`
+2. `mecris-go-spin/sync-service/deploy-akamai.sh` — new foolproof deployment script
+3. `mecris-go-spin/DEPLOYMENT.md` — this document

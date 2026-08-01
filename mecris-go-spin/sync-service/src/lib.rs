@@ -127,10 +127,44 @@ async fn handle_aggregate_status_get(req: Request) -> anyhow::Result<Response<St
     json_response(200, &AggResp { score: format!("{}/{}", goals_met, total_goals), goals_met, total_goals, all_clear: vaca.is_some() || goals_met >= total_goals, components: Comp { walk: walked, arabic: arabic_met, greek: greek_met }, vacation_mode_until: vaca, phone_verified: phone, modalities: mods })
 }
 
+fn clearance_days(mult: f64) -> Option<u32> {
+    // Match review-pump lever config: multiplier -> clearance days
+    // Multipliers are 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 10.0
+    match (mult * 10.0).round() as u32 {
+        10 => None,      // Maintenance: no debt clearing
+        20 => Some(14),  // Steady
+        30 => Some(10),  // Brisk
+        40 => Some(7),   // Aggressive
+        50 => Some(5),   // High Pressure
+        60 => Some(3),   // Very High
+        70 => Some(2),   // The Blitz
+        100 => Some(1),  // System Overdrive
+        _ => None,       // Unknown -> Maintenance
+    }
+}
+
 fn calculate_targets(cur: i32, tom: i32, mult: f64, done: i32) -> (i32, f64, bool) {
     let rate = if mult > 0.0 { mult } else { 1.0 };
-    let target = if cur + tom > 0 { ((cur + tom) as f64 / rate).ceil() as i32 } else { 0 };
-    (target, rate, done >= target)
+    let days = clearance_days(rate);
+    
+    let target = match days {
+        None => tom,  // Maintenance: target = tomorrow_liability only
+        Some(d) => tom + (cur / d as i32),
+    };
+    
+    // Goal met logic matching review-pump:
+    // - If no debt and no liability: vacuous success
+    // - If target > 0 OR (debt > 0 AND multiplier > 1.0): done >= target
+    // - Else (Maintenance with zero target): goal met only if no debt
+    let goal_met = if cur == 0 && tom == 0 {
+        true
+    } else if target > 0 || (cur > 0 && rate > 1.0) {
+        done >= target
+    } else {
+        cur == 0
+    };
+    
+    (target, rate, goal_met)
 }
 
 async fn handle_profile_post(req: Request) -> anyhow::Result<Response<String>> {
