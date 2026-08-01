@@ -50,10 +50,12 @@ _WINDOW_MINUTES = 39
 _ENVELOPE_SPEND_PCT = 5
 
 _DEFAULT_LIMITS: Dict[str, Dict[str, Any]] = {
-    "helix":         {"limit": 100.00, "type": "spend"},
-    "gemini":        {"limit":  50.00, "type": "spend"},
-    "anthropic_api": {"limit":  20.89, "type": "guard"},
-    "groq":          {"limit":  10.00, "type": "guard"},
+    "helix":         {"limit": 100.00, "type": "spend", "unit": "dollars"},
+    "gemini":        {"limit":  50.00, "type": "spend", "unit": "dollars"},
+    "anthropic_api": {"limit":  20.89, "type": "guard", "unit": "dollars"},
+    "groq":          {"limit":  10.00, "type": "guard", "unit": "dollars"},
+    "openrouter":    {"limit":  10.00, "type": "guard", "unit": "dollars"},
+    "openrouter_requests": {"limit": 1000.0, "type": "guard", "unit": "requests", "reset_cron": "0 0 * * *"},
 }
 
 # Toggle: set to True when spin_sdk.postgres becomes available

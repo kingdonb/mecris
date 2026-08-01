@@ -60,21 +60,38 @@ class BudgetGovernor:
                 "type": BucketType.SPEND,
                 "limit": float(os.getenv("HELIX_CREDIT_LIMIT", "100.00")),
                 "description": "Helix SaaS credits (use-it-or-lose-it)",
+                "unit": "dollars",
             },
             "gemini": {
                 "type": BucketType.SPEND,
                 "limit": float(os.getenv("GEMINI_FREE_LIMIT", "50.00")),
                 "description": "Gemini free-tier credits (use-it-or-lose-it)",
+                "unit": "dollars",
             },
             "anthropic_api": {
                 "type": BucketType.GUARD,
                 "limit": float(os.getenv("ANTHROPIC_BUDGET_LIMIT", "20.89")),
                 "description": "Anthropic paid API (ration carefully)",
+                "unit": "dollars",
             },
             "groq": {
                 "type": BucketType.GUARD,
                 "limit": float(os.getenv("GROQ_BUDGET_LIMIT", "10.00")),
                 "description": "Groq API (ration carefully)",
+                "unit": "dollars",
+            },
+            "openrouter": {
+                "type": BucketType.GUARD,
+                "limit": float(os.getenv("OPENROUTER_DOLLAR_LIMIT", "10.00")),
+                "description": "OpenRouter paid API ($10 limit)",
+                "unit": "dollars",
+            },
+            "openrouter_requests": {
+                "type": BucketType.GUARD,
+                "limit": float(os.getenv("OPENROUTER_REQUEST_LIMIT", "1000.0")),
+                "description": "OpenRouter free tier: 1000 req/day (resets midnight UTC)",
+                "unit": "requests",
+                "reset_cron": "0 0 * * *",
             },
         }
         self._spend_log_path: Optional[str] = spend_log_path
@@ -401,21 +418,38 @@ class NeonBudgetGovernor:
                 "type": BucketType.SPEND,
                 "limit": float(os.getenv("HELIX_CREDIT_LIMIT", "100.00")),
                 "description": "Helix SaaS credits (use-it-or-lose-it)",
+                "unit": "dollars",
             },
             "gemini": {
                 "type": BucketType.SPEND,
                 "limit": float(os.getenv("GEMINI_FREE_LIMIT", "50.00")),
                 "description": "Gemini free-tier credits (use-it-or-lose-it)",
+                "unit": "dollars",
             },
             "anthropic_api": {
                 "type": BucketType.GUARD,
                 "limit": float(os.getenv("ANTHROPIC_BUDGET_LIMIT", "20.89")),
                 "description": "Anthropic paid API (ration carefully)",
+                "unit": "dollars",
             },
             "groq": {
                 "type": BucketType.GUARD,
                 "limit": float(os.getenv("GROQ_BUDGET_LIMIT", "10.00")),
                 "description": "Groq API (ration carefully)",
+                "unit": "dollars",
+            },
+            "openrouter": {
+                "type": BucketType.GUARD,
+                "limit": float(os.getenv("OPENROUTER_DOLLAR_LIMIT", "10.00")),
+                "description": "OpenRouter paid API ($10 limit)",
+                "unit": "dollars",
+            },
+            "openrouter_requests": {
+                "type": BucketType.GUARD,
+                "limit": float(os.getenv("OPENROUTER_REQUEST_LIMIT", "1000.0")),
+                "description": "OpenRouter free tier: 1000 req/day (resets midnight UTC)",
+                "unit": "requests",
+                "reset_cron": "0 0 * * *",
             },
         }
         

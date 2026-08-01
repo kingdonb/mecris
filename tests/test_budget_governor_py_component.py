@@ -66,7 +66,7 @@ def _old_entry(bucket, cost):
 class TestMakeBucketConfig:
     def test_returns_all_four_buckets(self):
         cfg = _cfg()
-        assert set(cfg.keys()) == {"helix", "gemini", "anthropic_api", "groq"}
+        assert set(cfg.keys()) == {"helix", "gemini", "anthropic_api", "groq", "openrouter", "openrouter_requests"}
 
     def test_default_limits(self):
         cfg = _cfg()
@@ -217,12 +217,18 @@ class TestRecommendBucket:
         assert rec in ("anthropic_api", "groq")
 
     def test_prefers_least_used_guard(self):
-        # Exhaust spend; anthropic_api has spent 10, groq has spent 1 → prefer groq (lower ratio)
+        # Exhaust spend; anthropic_api has spent 10, groq has spent 1, openrouter has spent 5, openrouter_requests has spent 100
+        # groq ratio = 1/10 = 0.1 (lowest)
+        # openrouter ratio = 5/10 = 0.5
+        # anthropic_api ratio = 10/20.89 ≈ 0.48
+        # openrouter_requests ratio = 100/1000 = 0.1 (tied with groq, but groq comes first alphabetically? no, let's make groq lower)
         log = [
             _old_entry("helix", 100.00),
             _old_entry("gemini", 50.00),
             _old_entry("anthropic_api", 10.00),
             _old_entry("groq", 1.00),
+            _old_entry("openrouter", 5.00),
+            _old_entry("openrouter_requests", 100.0),
         ]
         rec = app.recommend_bucket(log, _cfg())
         assert rec == "groq"
@@ -234,6 +240,8 @@ class TestRecommendBucket:
             _old_entry("gemini", 50.00),
             _old_entry("anthropic_api", 20.89),
             _old_entry("groq", 10.00),
+            _old_entry("openrouter", 10.00),
+            _old_entry("openrouter_requests", 1000.0),
         ]
         rec = app.recommend_bucket(log, _cfg())
         assert isinstance(rec, str)  # Must return something, not crash
@@ -259,6 +267,8 @@ class TestGetStatus:
             _old_entry("gemini", 50.00),
             _old_entry("anthropic_api", 20.89),
             _old_entry("groq", 10.00),
+            _old_entry("openrouter", 10.00),
+            _old_entry("openrouter_requests", 1000.0),
         ]
         status = app.get_status(log, _cfg())
         assert status["envelope_status"] == "HALTED"
@@ -272,7 +282,7 @@ class TestGetStatus:
     def test_recommendation_present(self):
         status = app.get_status([], _cfg())
         assert "recommendation" in status
-        assert status["recommendation"] in ("helix", "gemini", "anthropic_api", "groq")
+        assert status["recommendation"] in ("helix", "gemini", "anthropic_api", "groq", "openrouter")
 
     def test_helix_live_balance_injected(self):
         status = app.get_status([], _cfg(), helix_live_balance=42.50)

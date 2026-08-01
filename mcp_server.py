@@ -970,23 +970,34 @@ def _model_to_bucket(model: str) -> str:
         return "gemini"
     elif "groq" in m_lower:
         return "groq"
+    elif "openrouter" in m_lower:
+        return "openrouter"
     elif os.getenv("ANTHROPIC_BASE_URL") and "helix" in os.getenv("ANTHROPIC_BASE_URL").lower():
         return "helix"
     return "anthropic_api"
 
-def _record_governor_spend(model: str, cost: float):
-    """Internal helper to route spend to the correct BudgetGovernor bucket."""
+def _record_governor_spend(model: str, cost: float, request_count: int = 0):
+    """Internal helper to route spend to the correct BudgetGovernor bucket.
+    For OpenRouter, cost is in dollars and request_count is the number of requests."""
     bucket = "anthropic_api" # Default
     m_lower = model.lower()
     if "gemini" in m_lower:
         bucket = "gemini"
     elif "groq" in m_lower:
         bucket = "groq"
+    elif "openrouter" in m_lower:
+        bucket = "openrouter"
     elif os.getenv("ANTHROPIC_BASE_URL") and "helix" in os.getenv("ANTHROPIC_BASE_URL").lower():
         bucket = "helix"
     
     try:
-        _neon_budget_governor.record_spend(bucket, cost)
+        if bucket == "openrouter" and request_count > 0:
+            # For OpenRouter, record both dollars and request count
+            _neon_budget_governor.record_spend(bucket, cost)
+            # Also track request count as a separate spend entry with unit=requests
+            _neon_budget_governor.record_spend("openrouter_requests", float(request_count))
+        else:
+            _neon_budget_governor.record_spend(bucket, cost)
     except Exception as e:
         logger.warning(f"BudgetGovernor: Failed to record spend for {bucket}: {e}")
 
@@ -1586,6 +1597,15 @@ reminder_service = ReminderService(get_narrator_context, get_coaching_insight, g
 import httpx
 from services.budget_governor import NeonBudgetGovernor as _NeonBudgetGovernor
 
+# OpenRouter Tracker
+# ---------------------------------------------------------------------------
+try:
+    from openrouter_tracker import OpenRouterTracker as _OpenRouterTracker
+    _openrouter_tracker = _OpenRouterTracker()
+except Exception as e:
+    logger.warning(f"OpenRouterTracker init failed: {e}")
+    _openrouter_tracker = None
+
 _neon_budget_governor = _NeonBudgetGovernor()
 
 @mcp.tool(description="Get per-bucket LLM spend envelope status and routing recommendation (Budget Governor).")
@@ -1628,6 +1648,48 @@ def budget_governor_gate(bucket: str, cost_estimate: float = 0.01, user_id: str 
     if result is None:
         return {"allowed": True}
     return result
+
+@mcp.tool(description="Record an OpenRouter request (increments request counter for free tier tracking).")
+def budget_governor_record_openrouter_request(count: int = 1, model: str = "", user_id: str = None) -> Dict[str, Any]:
+    """Record OpenRouter API requests for daily free-tier tracking (resets midnight UTC)."""
+    _neon_budget_governor.record_spend("openrouter_requests", float(count))
+    envelope = _neon_budget_governor.check_envelope("openrouter_requests", 0.01)
+    return {"recorded": True, "bucket": "openrouter_requests", "requests": count, "envelope": envelope}
+
+@mcp.tool(description="Record OpenRouter paid usage in dollars.")
+def budget_governor_record_openrouter_dollars(cost: float, model: str = "", user_id: str = None) -> Dict[str, Any]:
+    """Record OpenRouter paid API usage in dollars."""
+    _neon_budget_governor.record_spend("openrouter", cost)
+    envelope = _neon_budget_governor.check_envelope("openrouter", 0.01)
+    return {"recorded": True, "bucket": "openrouter", "cost": cost, "envelope": envelope}
+
+@mcp.tool(description="Get OpenRouter status: requests used today, dollar spend, and free tier remaining.")
+def budget_governor_openrouter_status(user_id: str = None) -> Dict[str, Any]:
+    """Get current OpenRouter usage: free requests used/remaining, paid dollars used/remaining."""
+    status = _neon_budget_governor.get_status()
+    buckets = status.get("buckets", {})
+    or_req = buckets.get("openrouter_requests", {})
+    or_dol = buckets.get("openrouter", {})
+    req_limit = or_req.get("limit", 1000)
+    req_used = or_req.get("spent_total", 0)
+    dol_limit = or_dol.get("limit", 10)
+    dol_used = or_dol.get("spent_total", 0)
+    return {
+        "requests": {
+            "limit": req_limit,
+            "used": req_used,
+            "remaining": max(0, req_limit - req_used),
+            "envelope": or_req.get("envelope", "allow"),
+            "resets_at": "midnight UTC",
+        },
+        "dollars": {
+            "limit": dol_limit,
+            "used": dol_used,
+            "remaining": max(0, dol_limit - dol_used),
+            "envelope": or_dol.get("envelope", "allow"),
+        },
+        "overall_recommendation": "use_free_tier" if req_used < req_limit * 0.8 else "consider_paid",
+    }
 
 def get_modality_status(role: str, mins: float) -> str:
     """Determine healthy/degraded/offline status based on heartbeat age (minutes)."""
