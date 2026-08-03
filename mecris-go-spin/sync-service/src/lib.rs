@@ -407,6 +407,19 @@ async fn handle_twilio_webhook_post(req: Request) -> anyhow::Result<Response<Str
     Ok(Response::builder().status(200).header("content-type", "text/xml").body(r#"<?xml version="1.0" encoding="UTF-8"?><Response></Response>"#.to_string())?)
 }
 
+// Parse reviewForecast array to extract tomorrow and next_7_days values
+fn parse_review_forecast(forecast: &serde_json::Value) -> (i32, i32) {
+    let parse = |v: &serde_json::Value| v.get("count").and_then(|v| v.as_i64()).unwrap_or_else(|| v.as_i64().unwrap_or(0)) as i32;
+    let empty_vec = vec![];
+    let f = forecast.as_array().unwrap_or(&empty_vec);
+    if f.is_empty() {
+        return (0, 0);
+    }
+    let tom = parse(&f[0]);
+    let n7 = f.iter().take(7).map(parse).sum();
+    (tom, n7)
+}
+
 async fn run_clozemaster_scraper(db: &str, uid: &str) -> anyhow::Result<()> {
     let conn = Connection::open(db).await?;
     let rs = conn.query("SELECT clozemaster_email_encrypted, clozemaster_password_encrypted FROM users WHERE pocket_id_sub = $1", &[ParameterValue::Str(uid.to_string())]).await?.collect().await?;
@@ -429,7 +442,7 @@ async fn run_clozemaster_scraper(db: &str, uid: &str) -> anyhow::Result<()> {
     let props: serde_json::Value = serde_json::from_str(&html_escape::decode_html_entities(props_escaped))?;
     if let Some(pairings) = props.get("languagePairings").and_then(|l| l.as_array()) {
         for p in pairings {
-            let id = p.get("id").and_then(|v| v.as_i64()).unwrap_or(0);
+            let id = p.get("id").and_then(|v| v.as_i64().or_else(|| v.as_str().and_then(|s| s.parse::<i64>().ok()))).unwrap_or(0);
             let slug_name = p.get("slug").and_then(|v| v.as_str()).unwrap_or("UNKNOWN").to_string();
             let cur = p.get("numReadyForReview").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
             let tot = p.get("score").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
@@ -446,12 +459,25 @@ async fn run_clozemaster_scraper(db: &str, uid: &str) -> anyhow::Result<()> {
             let (mut tom, mut n7) = (0, 0);
             if id > 0 {
                 let api_url = format!("https://www.clozemaster.com/api/v1/lp/{}/more-stats", id);
-                if let Ok(api_res) = spin_sdk::http::send(Request::builder().method(Method::GET).uri(api_url).header("User-Agent", ua).header("Cookie", &sess).header("X-CSRF-Token", fresh_csrf).header("X-Requested-With", "XMLHttpRequest").body(String::new())?).await {
+                let referer = format!("https://www.clozemaster.com/l/{}", slug_name);
+                if let Ok(api_res) = spin_sdk::http::send(Request::builder().method(Method::GET).uri(api_url)
+                    .header("User-Agent", ua)
+                    .header("Cookie", &sess)
+                    .header("X-CSRF-Token", fresh_csrf)
+                    .header("X-Requested-With", "XMLHttpRequest")
+                    .header("Accept", "*/*")
+                    .header("Referer", &referer)
+                    .header("Time-Zone-Offset-Hours", "-4")
+                    .header("sec-ch-ua-platform", "\"macOS\"")
+                    .header("sec-ch-ua", "\"Chromium\";v=\"146\", \"Not-A.Brand\";v=\"24\", \"Google Chrome\";v=\"146\"")
+                    .header("sec-ch-ua-mobile", "?0")
+                    .body(String::new())?).await {
                     let api_json: serde_json::Value = serde_json::from_str(&String::from_utf8(api_res.into_body().collect().await.map_err(|_| anyhow::anyhow!("body"))?.to_bytes().to_vec())?)?;
-                    if let Some(f) = api_json.get("reviewForecast").and_then(|v| v.as_array()) { if !f.is_empty() {
-                        let parse = |v: &serde_json::Value| v.get("count").and_then(|v| v.as_i64()).unwrap_or_else(|| v.as_i64().unwrap_or(0)) as i32;
-                        tom = parse(&f[0]); n7 = f.iter().take(7).map(parse).sum();
-                    } }
+                    if let Some(f) = api_json.get("reviewForecast") {
+                        let (parsed_tom, parsed_n7) = parse_review_forecast(f);
+                        tom = parsed_tom;
+                        n7 = parsed_n7;
+                    }
                 }
             }
             let rs = conn.query("SELECT current_reviews, (beeminder_last_sync AT TIME ZONE 'UTC')::TEXT FROM language_stats WHERE user_id = $1 AND language_name = $2", &[ParameterValue::Str(uid.to_string()), ParameterValue::Str(lang.to_uppercase())]).await?.collect().await?;
@@ -610,3 +636,49 @@ async fn handle_weather_heuristic_get(_r: Request) -> anyhow::Result<Response<St
 #[derive(Serialize)] struct StatusResponse { status: String, message: String }
 #[derive(Deserialize, Serialize, Debug)] struct Jwks { keys: Vec<JwKey> }
 #[derive(Deserialize, Serialize, Debug)] struct JwKey { kid: String, kty: String, alg: String, n: String, e: String }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn test_parse_review_forecast_with_objects() {
+        let forecast = json!([{"count": 5}, {"count": 3}, {"count": 2}, {"count": 1}, {"count": 1}, {"count": 1}, {"count": 0}]);
+        let (tom, n7) = parse_review_forecast(&forecast);
+        assert_eq!(tom, 5);
+        assert_eq!(n7, 13);
+    }
+
+    #[test]
+    fn test_parse_review_forecast_with_integers() {
+        let forecast = json!([4, 3, 2, 1, 1, 1, 1]);
+        let (tom, n7) = parse_review_forecast(&forecast);
+        assert_eq!(tom, 4);
+        assert_eq!(n7, 13);
+    }
+
+    #[test]
+    fn test_parse_review_forecast_empty() {
+        let forecast = json!([]);
+        let (tom, n7) = parse_review_forecast(&forecast);
+        assert_eq!(tom, 0);
+        assert_eq!(n7, 0);
+    }
+
+    #[test]
+    fn test_parse_review_forecast_not_array() {
+        let forecast = json!({});
+        let (tom, n7) = parse_review_forecast(&forecast);
+        assert_eq!(tom, 0);
+        assert_eq!(n7, 0);
+    }
+
+    #[test]
+    fn test_parse_review_forecast_mixed() {
+        let forecast = json!([{"count": 5}, 3, {"count": 2}, 1]);
+        let (tom, n7) = parse_review_forecast(&forecast);
+        assert_eq!(tom, 5);
+        assert_eq!(n7, 11);
+    }
+}
