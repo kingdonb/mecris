@@ -254,13 +254,23 @@ async fn handle_languages_get(req: Request) -> anyhow::Result<Response<String>> 
         let tom = db_to_i32(&r[2]);
         let n7 = db_to_i32(&r[3]);
         let rate = db_to_f64(&r[4]);
-        let sb = db_to_i32(&r[5]);
+        let sb = db_to_i32(&r[5]);   // safebuf: days of buffer (negative = deficit)
         let risk = db_to_str(&r[6]);
         let mult = if let DbValue::Floating64(f) = r[7] { Some(f) } else { None };
         let slug = db_to_str(&r[8]);
         let done = db_to_i32(&r[9]);
-        let (target, _, met) = calculate_targets(cur, tom, mult.unwrap_or(1.0), done);
-        langs.push(LangStat { name, current: cur, tomorrow: tom, next_7_days: n7, daily_rate: rate, safebuf: sb, derail_risk: risk, pump_multiplier: mult, daily_completions: done, goal_met: met, absolute_target: target, has_goal: !slug.is_empty(), target_flow_rate: Some(rate), outstanding_debt: Some(cur) });
+        let (review_pump_target, _, review_pump_met) = calculate_targets(cur, tom, mult.unwrap_or(1.0), done);
+        
+        // Effective target: max of review pump target and Beeminder buffer deficit
+        let has_goal = !slug.is_empty();
+        let beeminder_deficit = if has_goal && sb < 0 { -sb } else { 0 };
+        let effective_target = review_pump_target.max(beeminder_deficit);
+        let goal_met = done >= effective_target;
+        
+        // target_flow_rate = remaining today (for Android "remaining today" display)
+        let remaining = (effective_target - done).max(0);
+        
+        langs.push(LangStat { name, current: cur, tomorrow: tom, next_7_days: n7, daily_rate: rate, safebuf: sb, derail_risk: risk, pump_multiplier: mult, daily_completions: done, goal_met, absolute_target: effective_target, has_goal, target_flow_rate: Some(remaining as f64), outstanding_debt: Some(cur) });
     }
     #[derive(Serialize)] struct LangResp { languages: Vec<LangStat> }
     json_response(200, &LangResp { languages: langs })
