@@ -1,5 +1,7 @@
 uniffi::setup_scaffolding!();
 
+pub mod budget;
+
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize, uniffi::Record)]
