@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Fixed "Force sync" button layout.
+  Ensures label never collapses to "S" regardless of container width.
+  Uses ellipsize end with fixed min-width.
+-->
+<com.google.android.material.button.MaterialButton
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/btnForceSync"
+    android:layout_width="wrap_content"
+    android:layout_height="32dp"
+    android:minWidth="96dp"
+    android:text="@string/force_sync"
+    android:textAllCaps="false"
+    android:ellipsize="end"
+    android:maxLines="1"
+    android:insetTop="0dp"
+    android:insetBottom="0dp"
+    app:icon="@android:drawable/ic_popup_sync"
+    app:iconGravity="start"
+    app:iconPadding="8dp"
+    app:cornerRadius="16dp"
+    style="@style/Widget.Material3.Button.TextButton" />

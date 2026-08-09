@@ -1,3 +1,10 @@
 <resources>
     <string name="app_name">Mecris-Go</string>
+    <string name="force_sync">Force sync</string>
+    <string name="open_auth">Open auth</string>
+    <string name="auth_error_icon_desc">Authentication error</string>
+    <string name="sign_in_pocket_id">Sign in with Pocket ID</string>
+    <string name="auth_required">Authentication required</string>
+    <string name="network_error">Network error</string>
+    <string name="sync_failed">Sync failed</string>
 </resources>
