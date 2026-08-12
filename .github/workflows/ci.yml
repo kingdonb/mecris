@@ -122,8 +122,8 @@ jobs:
         env:
           NEON_DB_URL: postgresql://mecris:mecris@localhost:5432/mecrisdb
         run: |
-          # Fetch JWKS configuration for OIDC local mock variables
-          JWKS_JSON=$(curl -s https://metnoom.urmanac.com/.well-known/openid-configuration | jq -r .jwks_uri | xargs curl -s | jq -c .)
+          # Use local mock JWKS for CI (external URL not accessible from GitHub Actions)
+          JWKS_JSON=$(cat ../../tests/mock_jwks.json | jq -c .)
           
           cd mecris-go-spin/sync-service && spin up \
             --variable db_url="postgresql://mecris:mecris@localhost:5432/mecrisdb" \
