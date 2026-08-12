@@ -4,6 +4,7 @@ Tests for TimezoneService — single source of truth for US/Eastern operations.
 import random
 import pytest
 from datetime import datetime, date, timezone, timedelta
+from unittest.mock import patch
 from zoneinfo import ZoneInfo
 
 from services.timezone_service import (
@@ -110,10 +111,15 @@ class TestIsTodayEastern:
         dt = datetime.now(timezone.utc)
         assert is_today_eastern(dt) is True
 
-    def test_naive_treated_as_utc(self):
-        # Naive treated as UTC
-        dt = datetime.now(timezone.utc).replace(tzinfo=None)
-        assert is_today_eastern(dt) is True
+    def test_naive_treated_as_eastern(self):
+        # Naive datetime treated as Eastern (consistent with to_eastern)
+        # Use a fixed date and mock today_eastern to avoid flakiness
+        with patch('services.timezone_service.today_eastern') as mock_today:
+            mock_today.return_value = date(2026, 7, 30)
+            dt = datetime(2026, 7, 30, 15, 0)  # 3pm Eastern
+            assert is_today_eastern(dt) is True
+            dt = datetime(2026, 7, 29, 15, 0)  # previous day Eastern
+            assert is_today_eastern(dt) is False
 
     def test_yesterday_false(self):
         yesterday = (datetime.now(EASTERN) - timedelta(days=1)).replace(hour=12, minute=0)
