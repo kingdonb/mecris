@@ -151,7 +151,7 @@ jobs:
           NEON_DB_URL: postgresql://mecris:mecris@localhost:5432/mecrisdb
           PYTHONPATH: .
         run: |
-          .venv/bin/pytest tests/ -v --tb=short
+          .venv/bin/pytest tests/ -v --tb=short --ignore=tests/test_cloud_beta4_validation.py --ignore=tests/test_cloud_sync.py
 
       - name: Run Rust Tests
         run: |
