@@ -76,9 +76,9 @@ class ReviewPumpCalculatorTest {
     }
 
     @Test
-    fun `debt coverage ratio exceeds one when over-cleared`() {
+    fun `debt coverage ratio capped at one when over-cleared`() {
         val ratio = ReviewPumpCalculator.calculateDebtCoverageRatio(completedToday = 150, outstandingDebt = 80)
-        assertEquals("Over-cleared ratio is 150/80 = 1.875", 1.875f, ratio, 0.001f)
+        assertEquals("Over-cleared ratio should be capped at 1.0", 1.0f, ratio, 0.001f)
     }
 
     @Test
