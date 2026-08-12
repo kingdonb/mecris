@@ -123,7 +123,7 @@ jobs:
           NEON_DB_URL: postgresql://mecris:mecris@localhost:5432/mecrisdb
         run: |
           # Use local mock JWKS for CI (external URL not accessible from GitHub Actions)
-          JWKS_JSON=$(cat ../../tests/mock_jwks.json | jq -c .)
+          JWKS_JSON=$(cat tests/mock_jwks.json | jq -c .)
           
           cd mecris-go-spin/sync-service && spin up \
             --variable db_url="postgresql://mecris:mecris@localhost:5432/mecrisdb" \
