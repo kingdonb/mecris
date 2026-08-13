@@ -1,16 +1,18 @@
 plugins {
     alias(libs.plugins.android.application)
+    alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.ksp)
 }
 
 android {
     namespace = "com.mecris.go"
-    compileSdk = 35
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "com.mecris.go"
         minSdk = 31
-        targetSdk = 35
+        targetSdk = 37
         versionCode = 26
         versionName = "0.0.1-rc.2"
 
@@ -29,11 +31,14 @@ android {
         }
     }
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_11
-        targetCompatibility = JavaVersion.VERSION_11
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
     }
     buildFeatures {
         compose = true
+    }
+    kotlinOptions {
+        jvmTarget = "17"
     }
 
     packaging {
@@ -53,6 +58,7 @@ dependencies {
     implementation(libs.androidx.compose.ui.graphics)
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.compose.material3)
+    implementation(libs.androidx.compose.material.icons.core)
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
@@ -64,7 +70,7 @@ dependencies {
     testImplementation("io.mockk:mockk:1.13.12")
 
     // AppAuth for OIDC (Pocket ID)
-    implementation("net.openid:appauth:0.11.1")
+    implementation(libs.appauth)
 
     // Health Connect
     implementation("androidx.health.connect:connect-client:1.1.0-alpha12")
@@ -88,4 +94,21 @@ dependencies {
 
     // Google AI Edge SDK for AICore (On-Device Gemini Nano)
     implementation("com.google.ai.edge.aicore:aicore:0.0.1-exp01")
+
+    // Security: EncryptedSharedPreferences
+    implementation(libs.androidx.security.crypto)
+
+    // Room Database for error telemetry
+    implementation(libs.androidx.room.runtime)
+    implementation(libs.androidx.room.ktx)
+    ksp(libs.androidx.room.compiler)
+
+    // Kotlinx datetime for Instant
+    implementation(libs.kotlinx.datetime)
+
+    // Kotlinx serialization for AuthError
+    implementation(libs.kotlinx.serialization.json)
+
+    // Material3 for Snackbar
+    implementation(libs.material)
 }
