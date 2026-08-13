@@ -89,3 +89,13 @@ tools/talktype/talktype_whisper_server.pid
 .models/
 *.wasm
 mecris-core/target/
+
+# Stale nested git repos (submodules removed from tracking)
+tools/cozystack-moon-and-back/
+tools/devops-beby-cloud/
+tools/echokit/gpt_sovits_rs/
+tools/echokit/gsv_tts/
+tools/echokit/rust-sdk/
+tools/echokit/silero_vad_server/
+tools/moon-phase-clock/
+tools/talktype/talktype-repo/

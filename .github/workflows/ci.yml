@@ -72,7 +72,7 @@ jobs:
             mecris-go-spin/review-pump -> target
 
       - name: Set up Spin
-        uses: spinframework/actions/spin/setup@06319d3612303cb558fabe9b13cc0d7256d0aeb9  # spinframework organization main branch SHA
+        uses: spinframework/actions/spin/setup@8c914cf442a9bc12924e549d435fa126b0998aac  # PR 92 SHA (Node 24 upgrade)
 
       - name: Install uv
         run: |
