@@ -1,5 +1,7 @@
 # Mecris Release Process
 
+> **Note**: Main branch is now protected with mandatory CI checks. All releases must go through PR with successful CI before merging.
+
 ## Version Tagging Convention
 
 **All releases MUST use the `v` prefix:** `v0.0.1-rc.2`, `v0.0.1-beta.10`, `v1.0.0`, etc.
