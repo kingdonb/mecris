@@ -7,7 +7,7 @@ import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
-import com.mecris.go.auth.PocketIdAuth
+import com.mecris.go.auth.PocketIdAuthRepository
 import com.mecris.go.sync.HeartbeatRequestDto
 import com.mecris.go.sync.SyncServiceApi
 import com.mecris.go.sync.WalkDataSummaryDto
@@ -22,11 +22,11 @@ import kotlin.jvm.JvmOverloads
 class WalkHeuristicsWorker @JvmOverloads constructor(
     appContext: Context,
     workerParams: WorkerParameters,
-    private val injectedAuth: PocketIdAuth? = null,
+    private val injectedAuth: PocketIdAuthRepository? = null,
     private val injectedSyncApi: SyncServiceApi? = null
 ) : CoroutineWorker(appContext, workerParams) {
 
-    private val pocketIdAuth = injectedAuth ?: PocketIdAuth(applicationContext)
+    private val pocketIdAuth = injectedAuth ?: PocketIdAuthRepository(applicationContext)
     private val syncApi = injectedSyncApi ?: SyncServiceApi.create(com.mecris.go.BackendManager.getBaseUrl(applicationContext))
     
     private val prefs = applicationContext.getSharedPreferences("mecris_worker_state", Context.MODE_PRIVATE)
