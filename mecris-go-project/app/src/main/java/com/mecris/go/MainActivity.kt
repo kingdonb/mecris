@@ -97,9 +97,7 @@ class MainActivity : ComponentActivity() {
         val errorReporter = AuthErrorReporter(this)
         pocketIdAuth = PocketIdAuthRepository(
             context = this,
-            errorReporter = errorReporter,
-            lifecycleOwner = this,
-            snackbarAnchorView = findViewById(android.R.id.content)
+            errorReporter = errorReporter
         )
         healthConnectManager = HealthConnectManager(this)
         persistenceManager = PersistenceManager(this)
@@ -216,6 +214,11 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+    }
+
     private fun setupWorkManager() {
         val workManager = WorkManager.getInstance(this)
         val walkCheckRequest = PeriodicWorkRequestBuilder<WalkHeuristicsWorker>(
@@ -260,6 +263,7 @@ fun MecrisDashboard(
     onOpenSettings: () -> Unit,
     onOpenNotificationSettings: () -> Unit
 ) {
+    val snackbarHostState = remember { SnackbarHostState() }
     val authState by auth.authState.collectAsState()
     val scope = rememberCoroutineScope()
     val cache = remember { persistenceManager.loadDashboard() }
@@ -278,6 +282,38 @@ fun MecrisDashboard(
     var fetchError by remember { mutableStateOf<String?>(null) }
     var syncStatus by remember { mutableStateOf("Ready") }
     var lastSyncTime by remember { mutableStateOf(cache?.lastSyncTime ?: "") }
+
+    LaunchedEffect(auth) {
+        auth.errorEvents.collect { error ->
+            val message = "${error.errorCode}: ${error.message}"
+            val result = snackbarHostState.showSnackbar(
+                message = message,
+                actionLabel = "OPEN AUTH",
+                duration = SnackbarDuration.Indefinite
+            )
+            if (result == SnackbarResult.ActionPerformed) {
+                auth.authenticateWithPasskey(authResultLauncher)
+            }
+        }
+    }
+
+    LaunchedEffect(authState) {
+        if (authState is AuthState.Authenticated) {
+            snackbarHostState.currentSnackbarData?.dismiss()
+        }
+    }
+
+    val activity = context as? ComponentActivity
+    LaunchedEffect(activity?.intent) {
+        val intent = activity?.intent
+        if (intent?.getBooleanExtra("trigger_auth", false) == true) {
+            val email = intent.getStringExtra("prefill_email")
+            auth.authenticateWithPasskey(authResultLauncher, emailHint = email)
+            // Consume the intent so we don't trigger it again on config changes
+            intent.removeExtra("trigger_auth")
+            intent.removeExtra("prefill_email")
+        }
+    }
 
     // Proactive permission check for dashboard warning
     var hasForegroundPermission by remember { mutableStateOf(true) }
@@ -451,9 +487,7 @@ fun MecrisDashboard(
         // Only show full-screen "FETCHING..." if we have no cached data at all
         isFetching = languageStats.isEmpty() && budgetAmount == null
         isLoading = true
-        if (syncStatus == "Ready" || syncStatus == "Success" || syncStatus == "Error") {
-            syncStatus = "Fetching..."
-        }
+        syncStatus = "Fetching..."
         fetchError = null
         walkData = healthManager.fetchRecentWalkData()
         
@@ -562,6 +596,7 @@ fun MecrisDashboard(
     }
 
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
                 title = { 

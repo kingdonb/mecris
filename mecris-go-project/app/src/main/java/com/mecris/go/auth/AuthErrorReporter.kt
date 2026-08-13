@@ -10,14 +10,9 @@ import android.os.Build
 import androidx.annotation.RequiresApi
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
-import androidx.lifecycle.LifecycleOwner
-import com.google.android.material.snackbar.Snackbar
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
 import com.mecris.go.MainActivity
 import kotlinx.datetime.Instant
 import kotlinx.serialization.json.Json
@@ -34,8 +29,6 @@ class AuthErrorReporter(
     companion object {
         private const val CHANNEL_ID = "mecris_auth_errors"
         private const val NOTIFICATION_ID = 41001
-        private const val DEEP_LINK_SCHEME = "mecris"
-        private const val DEEP_LINK_AUTH_HOST = "auth"
     }
 
     init {
@@ -67,21 +60,20 @@ class AuthErrorReporter(
      */
     fun report(
         error: AuthError,
-        lastKnownEmail: String? = null,
-        lifecycleOwner: LifecycleOwner? = null,
-        snackbarAnchorView: android.view.View? = null
+        lastKnownEmail: String? = null
     ) {
         // 1. Persistent notification (always shown)
         showNotification(error, lastKnownEmail)
-
-        // 2. Snackbar if UI context available
-        if (lifecycleOwner != null && snackbarAnchorView != null) {
-            showSnackbar(error, snackbarAnchorView)
-        }
     }
 
     private fun showNotification(error: AuthError, lastKnownEmail: String? = null) {
-        val intent = createAuthDeepLinkIntent(lastKnownEmail)
+        val intent = Intent(context, MainActivity::class.java).apply {
+            action = Intent.ACTION_MAIN
+            addCategory(Intent.CATEGORY_LAUNCHER)
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+            putExtra("trigger_auth", true)
+            lastKnownEmail?.let { putExtra("prefill_email", it) }
+        }
         val pendingIntent = PendingIntent.getActivity(
             context,
             0,
@@ -108,38 +100,14 @@ class AuthErrorReporter(
         notificationManager.notify(NOTIFICATION_ID, notification)
     }
 
-    private fun showSnackbar(error: AuthError, anchorView: android.view.View) {
-        val snackbar = Snackbar.make(
-            anchorView,
-            "${error.errorCode}: ${error.message}",
-            Snackbar.LENGTH_INDEFINITE
-        ).apply {
-            setAction("OPEN AUTH") {
-                val intent = createAuthDeepLinkIntent(null)
-                context.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-            }
-            setActionTextColor(context.getColor(android.R.color.holo_blue_light))
-            setBackgroundTint(context.getColor(android.R.color.black))
-            setTextColor(context.getColor(android.R.color.white))
-        }
-        snackbar.show()
-    }
 
-    private fun createAuthDeepLinkIntent(lastKnownEmail: String? = null): Intent {
-        val uri = Uri.parse("$DEEP_LINK_SCHEME://$DEEP_LINK_AUTH_HOST").buildUpon().apply {
-            lastKnownEmail?.let { appendQueryParameter("email", it) }
-        }.build()
-        return Intent(Intent.ACTION_VIEW, uri).apply {
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
-            setPackage(context.packageName)
-        }
-    }
 
     /** Clears the persistent auth notification (e.g., after successful re-auth). */
     fun clearNotification() {
         notificationManager.cancel(NOTIFICATION_ID)
     }
 }
+
 
 /**
  * Composable helper to get AuthErrorReporter instance.
@@ -148,25 +116,4 @@ class AuthErrorReporter(
 fun rememberAuthErrorReporter(): AuthErrorReporter {
     val ctx = LocalContext.current
     return remember(ctx) { AuthErrorReporter(ctx) }
-}
-
-/**
- * Deep-link receiver Activity to handle `mecris://auth` links.
- * Should be registered in AndroidManifest.xml with intent-filter.
- */
-class AuthDeepLinkActivity : androidx.activity.ComponentActivity() {
-    override fun onCreate(savedInstanceState: android.os.Bundle?) {
-        super.onCreate(savedInstanceState)
-        val email = intent.data?.getQueryParameter("email")
-        
-        val mainIntent = Intent(this, MainActivity::class.java).apply {
-            action = Intent.ACTION_MAIN
-            addCategory(Intent.CATEGORY_LAUNCHER)
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
-            putExtra("deep_link_auth", true)
-            email?.let { putExtra("prefill_email", it) }
-        }
-        startActivity(mainIntent)
-        finish()
-    }
 }

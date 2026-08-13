@@ -10,9 +10,14 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlin.coroutines.resume
 import net.openid.appauth.AuthState as AppAuthAuthState
 import net.openid.appauth.AuthorizationException
@@ -35,8 +40,6 @@ class PocketIdAuthRepository(
     private val authService: AuthorizationService = AuthorizationService(context),
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
     private val errorReporter: AuthErrorReporter? = null,
-    private val lifecycleOwner: androidx.lifecycle.LifecycleOwner? = null,
-    private val snackbarAnchorView: android.view.View? = null,
     private val errorDatabase: AuthErrorDatabase? = null
 ) {
 
@@ -52,12 +55,38 @@ class PocketIdAuthRepository(
     // Internal AppAuth state
     private var internalAuthState = AppAuthAuthState()
 
+    // Mutex to prevent concurrent token refresh requests
+    private val refreshMutex = Mutex()
+
+    /** Clears transient network exception from AuthState so we can retry. */
+    private fun clearTransientException() {
+        val ex = internalAuthState.authorizationException
+        if (ex != null) {
+            val error = classifyTokenError(ex)
+            if (!error.isPermanent) {
+                try {
+                    val jsonStr = internalAuthState.jsonSerializeString()
+                    val jsonObj = org.json.JSONObject(jsonStr)
+                    jsonObj.remove("authorizationException")
+                    internalAuthState = AppAuthAuthState.jsonDeserialize(jsonObj.toString())
+                    saveAuthState()
+                } catch (e: Exception) {
+                    android.util.Log.e("PocketIdAuth", "Failed to clear transient exception", e)
+                }
+            }
+        }
+    }
+
     // Background refresh job
     private var refreshJob: Job? = null
 
     // UI state flow
     private val _authState = MutableStateFlow<AuthState>(AuthState.Idle)
     val authState: StateFlow<AuthState> = _authState
+
+    // Error events flow
+    private val _errorEvents = MutableSharedFlow<AuthError>(extraBufferCapacity = 1)
+    val errorEvents = _errorEvents.asSharedFlow()
 
     companion object {
         // Prefs keys
@@ -253,12 +282,15 @@ class PocketIdAuthRepository(
 
     /** Gets a valid access token, refreshing if necessary. */
     fun getValidAccessToken(callback: (String?) -> Unit) {
+        clearTransientException()
         internalAuthState.performActionWithFreshTokens(authService) { accessToken, _, ex ->
             if (ex != null) {
                 val error = classifyTokenError(ex)
                 reportError(error)
                 if (error.isPermanent) {
                     _authState.value = AuthState.Error(error.message, isPermanent = true)
+                } else {
+                    clearTransientException()
                 }
                 callback(null)
             } else {
@@ -272,8 +304,8 @@ class PocketIdAuthRepository(
     }
 
     /** Suspend version for coroutines. */
-    suspend fun getAccessTokenSuspend(): String? {
-        return kotlinx.coroutines.suspendCancellableCoroutine { continuation ->
+    suspend fun getAccessTokenSuspend(): String? = refreshMutex.withLock {
+        return@withLock kotlinx.coroutines.suspendCancellableCoroutine { continuation ->
             getValidAccessToken { token ->
                 continuation.resume(token)
             }
@@ -281,8 +313,8 @@ class PocketIdAuthRepository(
     }
 
     /** Forces an immediate token refresh. */
-    suspend fun forceTokenRefresh(): String? {
-        return kotlinx.coroutines.suspendCancellableCoroutine { continuation ->
+    suspend fun forceTokenRefresh(): String? = refreshMutex.withLock {
+        return@withLock kotlinx.coroutines.suspendCancellableCoroutine { continuation ->
             // Force AppAuth to treat the current access token as expired
             internalAuthState.setNeedsTokenRefresh(true)
 
@@ -309,10 +341,15 @@ class PocketIdAuthRepository(
                 val timeUntilRefresh = calculateTimeUntilProactiveRefresh()
                 if (timeUntilRefresh <= 0) {
                     // Time to refresh now
-                    refreshAccessToken { success ->
-                        if (!success) {
-                            // Error already reported via callback
+                    val success = refreshMutex.withLock {
+                        kotlinx.coroutines.suspendCancellableCoroutine<Boolean> { continuation ->
+                            refreshAccessToken { success ->
+                                continuation.resume(success)
+                            }
                         }
+                    }
+                    if (!success) {
+                        // Error already reported via callback
                     }
                     // Wait a bit before recalculating
                     delay(TimeUnit.HOURS.toMillis(1))
@@ -376,7 +413,8 @@ class PocketIdAuthRepository(
     /** Reports error via AuthErrorReporter if available. */
     private fun reportError(error: AuthError) {
         val email = getLastKnownEmail()
-        errorReporter?.report(error, email, lifecycleOwner, snackbarAnchorView)
+        errorReporter?.report(error, email)
+        _errorEvents.tryEmit(error)
 
         // Persist to Room DB for telemetry upload on next sync
         errorDatabase?.let { db ->

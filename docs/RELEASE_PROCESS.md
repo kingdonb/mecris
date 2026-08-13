@@ -4,7 +4,7 @@
 
 ## Version Tagging Convention
 
-**All releases MUST use the `v` prefix:** `v0.0.1-rc.2`, `v0.0.1-beta.10`, `v1.0.0`, etc.
+**All releases MUST use the `v` prefix:** `v0.0.1-rc.4`, `v0.0.1-beta.10`, `v1.0.0`, etc.
 
 The GitHub Actions Release workflow triggers on:
 ```yaml
@@ -15,8 +15,8 @@ on:
       - '0.*'
 ```
 
-While `0.*` would match `0.0.1-rc.2`, **always use `v0.0.1-rc.2`** to:
-- Match existing tag history (`v0.0.1-rc.1`, `v0.0.1-beta.*`)
+While `0.*` would match `0.0.1-rc.4`, **always use `v0.0.1-rc.4`** to:
+- Match existing tag history (`v0.0.1-rc.3`, `v0.0.1-beta.*`)
 - Ensure consistent GitHub Release naming
 - Avoid confusion with branch names or other refs
 
@@ -37,24 +37,32 @@ make test-rust
 
 All tests must pass. CI must be green on `main`.
 
-### 2. Bump Version
+### 2. Create Release Branch & Bump Version
 
-Use the official version bump script (updates 15+ version strings across the repo):
+Create a release branch from `main`:
+```bash
+git checkout main && git pull origin main
+git checkout -b release/v0.0.1-rc.4
+```
+
+Use the official version bump script (updates 15+ version strings across the repo, including Android `versionCode` via `VC=nn`):
 
 ```bash
-make bump-version VERSION=0.0.1-rc.2
+make bump-version VERSION=0.0.1-rc.4 VC=28
 ```
 
 This updates:
 - `VERSION_MANIFEST.json`
-- `mecris-go-project/app/build.gradle.kts` (Android)
+- `mecris-go-project/app/build.gradle.kts` (Android `versionName` + `versionCode`)
 - `boris-fiona-walker/spin.toml` (Spin/WASM)
 - `mecris-go-spin/sync-service/spin.toml` (Spin/WASM)
 - `pyproject.toml` (Python)
 - `web/package.json` (Web)
 - `ROADMAP.md` (version label + date)
 
-### 3. Commit Version Bump
+### 3. Commit, Push Branch & Open PR (Branch Protection)
+
+Because `main` is protected with mandatory CI checks, releases must go through a pull request:
 
 ```bash
 git add VERSION_MANIFEST.json \
@@ -63,21 +71,39 @@ git add VERSION_MANIFEST.json \
         mecris-go-spin/sync-service/spin.toml \
         pyproject.toml \
         web/package.json \
-        ROADMAP.md
-git commit -m "chore: bump version to 0.0.1-rc.2"
-git push origin main
+        ROADMAP.md \
+        docs/RELEASE_PROCESS.md
+
+git commit -m "chore(release): bump version to 0.0.1-rc.4 + VC=28"
+git push origin release/v0.0.1-rc.4
+
+# Open PR using GitHub CLI
+gh pr create --title "chore(release): release v0.0.1-rc.4" --body "Release preparation for v0.0.1-rc.4 (VC=28)." --base main
 ```
 
-### 4. Tag and Push Release
+### 4. Merge PR to Main
 
-**Critical: Use `v` prefix**
+Wait for CI to pass on the PR, then merge to `main`:
 
 ```bash
-git tag v0.0.1-rc.2
-git push origin v0.0.1-rc.2
+gh pr merge --squash --auto
+# Or merge once green:
+gh pr merge --squash --delete-branch
 ```
 
-### 5. Monitor Release Workflow
+### 5. Tag and Push Release on Main
+
+Once merged to `main`, checkout updated `main`, tag, and push the tag (**Critical: Use `v` prefix**):
+
+```bash
+git checkout main
+git pull origin main
+
+git tag v0.0.1-rc.4
+git push origin v0.0.1-rc.4
+```
+
+### 6. Monitor Release Workflow
 
 The GitHub Actions Release workflow will:
 1. Build Android APK (`mecris-go-project`)
@@ -89,9 +115,9 @@ Watch progress:
 gh run watch --repo kingdonb/mecris
 ```
 
-### 6. Verify Release
+### 7. Verify Release
 
-Check: https://github.com/kingdonb/mecris/releases/tag/v0.0.1-rc.2
+Check: https://github.com/kingdonb/mecris/releases/tag/v0.0.1-rc.4
 
 Assets should include:
 - `mecris-go-release-unsigned.apk`
@@ -103,9 +129,11 @@ Assets should include:
 
 | Mistake | Consequence | Fix |
 |---------|-------------|-----|
-| Tag `0.0.1-rc.2` (no `v`) | Release works but inconsistent with history | Delete tag, retag with `v` prefix |
+| Tag `0.0.1-rc.4` (no `v`) | Release works but inconsistent with history | Delete tag, retag with `v` prefix |
 | Skip `make bump-version` | Version strings out of sync | Always use the script |
-| Push tag before committing version bump | Release built with old version | Commit first, then tag |
+| Direct push to `main` | Rejected by branch protection | Use a release PR branch |
+| Forget `VC=nn` for Android | `versionCode` not incremented in APK | Specify `VC=nn` in `make bump-version` |
+| Push tag before merging version bump to `main` | Release built with old version | Merge PR to `main` first, then tag `main` |
 | Forget to run tests | Broken release | `make test` must pass |
 
 ---
@@ -116,17 +144,12 @@ If a release is pushed with wrong version:
 
 ```bash
 # Delete release (auto-deletes tag) or:
-gh release delete v0.0.1-rc.2 --yes
-git tag -d v0.0.1-rc.2
-git push origin :refs/tags/v0.0.1-rc.2
+gh release delete v0.0.1-rc.4 --yes
+git tag -d v0.0.1-rc.4
+git push origin :refs/tags/v0.0.1-rc.4
 
-# Fix version, recommit, retag
-make bump-version VERSION=0.0.1-rc.3
-git commit -am "chore: bump version to 0.0.1-rc.3"
-git push origin main
-git tag v0.0.1-rc.3
-git push origin v0.0.1-rc.3
-```
+# Fix version on a branch, open PR, merge, retag
+make bump-version VERSION=0.0.1-rc.5 VC=29
 
 ---
 
