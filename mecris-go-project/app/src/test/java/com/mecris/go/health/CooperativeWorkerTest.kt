@@ -5,7 +5,7 @@ import android.content.SharedPreferences
 import android.util.Log
 import androidx.work.ListenableWorker
 import androidx.work.WorkerParameters
-import com.mecris.go.auth.PocketIdAuth
+import com.mecris.go.auth.PocketIdAuthRepository
 import com.mecris.go.sync.HeartbeatResponseDto
 import com.mecris.go.sync.SyncResponse
 import com.mecris.go.sync.SyncServiceApi
@@ -20,7 +20,7 @@ class CooperativeWorkerTest {
     private val context = mockk<Context>(relaxed = true)
     private val workerParams = mockk<WorkerParameters>(relaxed = true)
     private val syncApi = mockk<SyncServiceApi>()
-    private val pocketIdAuth = mockk<PocketIdAuth>()
+    private val pocketIdAuth = mockk<PocketIdAuthRepository>()
     private val sharedPrefs = mockk<SharedPreferences>()
     private val prefsEditor = mockk<SharedPreferences.Editor>(relaxed = true)
 

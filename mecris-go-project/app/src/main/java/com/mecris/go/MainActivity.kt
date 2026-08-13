@@ -55,8 +55,10 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.lifecycleScope
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
+import com.mecris.go.auth.AuthErrorReporter
 import com.mecris.go.auth.AuthState
-import com.mecris.go.auth.PocketIdAuth
+import com.mecris.go.auth.PocketIdAuthRepository
+import net.openid.appauth.AuthState as AppAuthAuthState
 import com.mecris.go.health.DataQualityReport
 import com.mecris.go.health.HealthConnectManager
 import com.mecris.go.health.WalkDataSummary
@@ -80,7 +82,7 @@ import kotlin.math.sin
 
 class MainActivity : ComponentActivity() {
 
-    private lateinit var pocketIdAuth: PocketIdAuth
+    private lateinit var pocketIdAuth: PocketIdAuthRepository
     private lateinit var healthConnectManager: HealthConnectManager
     private lateinit var persistenceManager: PersistenceManager
 
@@ -92,7 +94,13 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
-        pocketIdAuth = PocketIdAuth(this)
+        val errorReporter = AuthErrorReporter(this)
+        pocketIdAuth = PocketIdAuthRepository(
+            context = this,
+            errorReporter = errorReporter,
+            lifecycleOwner = this,
+            snackbarAnchorView = findViewById(android.R.id.content)
+        )
         healthConnectManager = HealthConnectManager(this)
         persistenceManager = PersistenceManager(this)
         
@@ -238,7 +246,7 @@ fun MecrisTheme(content: @Composable () -> Unit) {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MecrisDashboard(
-    auth: PocketIdAuth,
+    auth: PocketIdAuthRepository,
     healthManager: HealthConnectManager,
     syncApi: SyncServiceApi,
     persistenceManager: PersistenceManager,
@@ -1348,7 +1356,7 @@ fun ReviewPumpWidget(
 
 @Composable
 fun SystemHealthScreen(
-    auth: PocketIdAuth,
+    auth: PocketIdAuthRepository,
     authState: AuthState,
     authResultLauncher: ActivityResultLauncher<Intent>,
     healthManager: HealthConnectManager,
@@ -1910,7 +1918,7 @@ fun GoalStatusIcon(label: String, met: Boolean) {
 fun ProfileSettingsScreen(
     context: android.content.Context, 
     manager: ProfilePreferencesManager,
-    auth: PocketIdAuth,
+    auth: PocketIdAuthRepository,
     syncApi: SyncServiceApi,
     aggregateStatus: com.mecris.go.sync.AggregateStatusResponseDto?,
     onLogOut: () -> Unit
@@ -2235,7 +2243,7 @@ fun ProfileSettingsScreen(
         OutlinedButton(
             onClick = {
                 manager.clearAll()
-                PocketIdAuth(context).signOut()
+                auth.signOut()
                 (context as? ComponentActivity)?.finish()
             },
             modifier = Modifier.fillMaxWidth(),
@@ -2275,7 +2283,7 @@ fun SovereignLabScreen(
     syncApi: SyncServiceApi,
     walkData: WalkDataSummary?,
     aggregateStatus: com.mecris.go.sync.AggregateStatusResponseDto?,
-    auth: PocketIdAuth
+    auth: PocketIdAuthRepository
 ) {
     val scope = rememberCoroutineScope()
     val brain = remember { com.mecris.go.ai.SovereignBrain(context) }

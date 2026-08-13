@@ -4,7 +4,7 @@ import android.content.Context
 import android.util.Log
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
-import com.mecris.go.auth.PocketIdAuth
+import com.mecris.go.auth.PocketIdAuthRepository
 import com.mecris.go.sync.SyncServiceApi
 import com.mecris.go.sync.NagNotificationManager
 import com.mecris.go.sync.ReviewPumpCalculator
@@ -19,7 +19,7 @@ class DelayedNagWorker(
     workerParams: WorkerParameters
 ) : CoroutineWorker(appContext, workerParams) {
 
-    private val pocketIdAuth = PocketIdAuth(applicationContext)
+    private val pocketIdAuth = PocketIdAuthRepository(applicationContext)
     private val syncApi = SyncServiceApi.create(com.mecris.go.BackendManager.getBaseUrl(applicationContext))
     private val prefs = applicationContext.getSharedPreferences("mecris_worker_state", Context.MODE_PRIVATE)
     private val profileManager = ProfilePreferencesManager(applicationContext)
