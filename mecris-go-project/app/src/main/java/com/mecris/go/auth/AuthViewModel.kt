@@ -26,9 +26,7 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
     // Repository will be injected via Hilt/Koin in production; for now we create it
     private val repository by lazy {
         PocketIdAuthRepository(
-            context = getApplication(),
-            lifecycleOwner = null, // Set by Activity/Fragment
-            snackbarAnchorView = null
+            context = getApplication()
         )
     }
 
