@@ -13,8 +13,8 @@ android {
         applicationId = "com.mecris.go"
         minSdk = 31
         targetSdk = 37
-        versionCode = 27
-        versionName = "0.0.1-rc.3"
+        versionCode = 28
+        versionName = "0.0.1-rc.4"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         
