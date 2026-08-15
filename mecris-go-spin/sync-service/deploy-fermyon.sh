@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Mecris Akamai Deployment Script
+# Mecris Fermyon Cloud Deployment Script
 # Single command deployment with ALL required variables.
-# Source this from the project root: ./mecris-go-spin/sync-service/deploy-akamai.sh
+# Source this from the project root: ./mecris-go-spin/sync-service/deploy-fermyon.sh
 
 set -euo pipefail
 
@@ -14,7 +14,7 @@ NC='\033[0m'
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
-echo -e "${GREEN}=== Mecris Akamai Deployment ===${NC}"
+echo -e "${GREEN}=== Mecris Fermyon Cloud Deployment ===${NC}"
 echo "Project root: $PROJECT_ROOT"
 
 # Load environment from project .env
@@ -67,10 +67,10 @@ OIDC_JWKS_JSON='{"keys":[{"alg":"RS256","e":"AQAB","kid":"tmUpnrhx6gk","kty":"RS
 TWILIO_WHATSAPP_TEMPLATE_SID="${TWILIO_WHATSAPP_TEMPLATE_SID:-HX638b7f9403e04c8fa880370f1b7a9ba1}"
 
 # Deploy
-echo -e "${YELLOW}Deploying to Akamai (Production WhatsApp Delivery Mode)...${NC}"
+echo -e "${YELLOW}Deploying to Fermyon Cloud (Production WhatsApp Delivery Mode)...${NC}"
 cd "$SCRIPT_DIR"
 
-spin aka deploy --build --no-confirm --skip-readiness-check \
+spin cloud deploy -f spin.fermyon.toml --build --link "kv:default=default" \
   --variable db_url="$NEON_DB_URL" \
   --variable neon_db_url="$NEON_DB_URL" \
   --variable master_encryption_key="$MASTER_ENCRYPTION_KEY" \
@@ -83,7 +83,6 @@ spin aka deploy --build --no-confirm --skip-readiness-check \
   --variable twilio_whatsapp_template_sid="$TWILIO_WHATSAPP_TEMPLATE_SID" \
   --variable openweather_api_key="$OPENWEATHER_API_KEY" \
   --variable oidc_jwks_json="$OIDC_JWKS_JSON" \
-  --variable cloud_provider="akamai"
+  --variable cloud_provider="fermyon"
 
-echo -e "${GREEN}=== Deployment Complete ===${NC}"
-echo "Test with: curl -H \"Authorization: Bearer \$TOKEN\" https://394b84e7-760c-4336-975b-653c17fdb446.fwf.app/health"
+echo -e "${GREEN}=== Fermyon Deployment Complete ===${NC}"

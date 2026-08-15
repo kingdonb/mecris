@@ -2,24 +2,33 @@
 
 **Canonical target: Akamai Functions (edge) at `https://394b84e7-760c-4336-975b-653c17fdb446.fwf.app`**
 
-Fermyon Cloud channel (`mecris-sync-v2-glo0zpfm.fermyon.app`) returns platform 404 — deprecated.
-The `aka.fermyon.tech` hostname is deprecated and must not be probed.
+### Cloud Architecture & Status
+- **Akamai Functions (`fwf.app`)**: **ACTIVE & AUTHORITATIVE**. Fully operational with Neon Postgres, encrypted Twilio tokens, and pre-approved WhatsApp Utility Templates.
+- **Fermyon Cloud (`fermyon.app`)**: **INACTIVE**. Multi-tenant runtime fails during WASM instantiation (`failed to prepare your Spin application`) due to capability/socket boundaries in their shared environment. All Fermyon deployments have been cleanly deprovisioned to prevent dangling broken endpoints.
 
 ---
 
-## One-Command Deployment
+## One-Command Cloud Deployments
 
+### 1. Akamai Functions (Edge — Primary)
 ```bash
 cd mecris-go-spin/sync-service
 ./deploy-akamai.sh
 ```
 
-That's it. The script:
-1. Loads secrets from the project root `.env` (gitignored, local only)
-2. Validates all required variables are present
-3. Encrypts the Twilio auth token using the master encryption key
-4. Fetches the Pocket ID JWKS from the private network (Tailscale/home LAN)
-5. Deploys to Akamai with ALL variables in a single atomic command
+### 2. Fermyon Cloud (Experimental / Inactive)
+```bash
+cd mecris-go-spin/sync-service
+./deploy-fermyon.sh
+```
+
+Both deployment scripts:
+1. Load secrets from the project root `.env` (gitignored, local only)
+2. Validate all required variables are present
+3. Encrypt the Twilio auth token using the master encryption key
+4. Fetch the Pocket ID JWKS from the private network (Tailscale/home LAN)
+5. Inject the pre-approved WhatsApp Utility Template SID (`TWILIO_WHATSAPP_TEMPLATE_SID`)
+6. Deploy with ALL variables in a single atomic command in **Production WhatsApp Delivery Mode**
 
 **No manual variable setting, no dashboard clicks, no missed secrets.**
 
@@ -33,9 +42,13 @@ That's it. The script:
 | `MASTER_ENCRYPTION_KEY` | Generate once: `openssl rand -hex 32` | AES-256-GCM key for encrypting secrets |
 | `CLOZEMASTER_EMAIL` | Clozemaster account | Autonomous language sync |
 | `CLOZEMASTER_PASSWORD` | Clozemaster account | Autonomous language sync |
-| `TWILIO_ACCOUNT_SID` | Twilio Console | SMS notifications |
-| `TWILIO_AUTH_TOKEN` | Twilio Console | SMS notifications (plaintext in .env, encrypted at deploy) |
+| `TWILIO_ACCOUNT_SID` | Twilio Console | WhatsApp & alert notifications |
+| `TWILIO_AUTH_TOKEN` | Twilio Console | WhatsApp notifications (plaintext in .env, encrypted at deploy) |
+| `TWILIO_WHATSAPP_TEMPLATE_SID` | Meta / Twilio Console | Pre-approved Utility Template SID (default: `HX638b7f9403e04c8fa880370f1b7a9ba1`) |
 | `OPENWEATHER_API_KEY` | OpenWeatherMap | Weather heuristic for walk reminders |
+
+### Production Delivery Mandate (No Console Mode)
+Akamai Functions must **never** be deployed in `console` mode. Cloud cron executions must dispatch outbound WhatsApp alerts via the approved Meta Utility template pool and record delivery status or stand-down rationale directly to Neon Postgres (`message_log` table).
 
 **Private network dependency:** The Pocket ID JWKS is fetched from `https://metnoom.urmanac.com/.well-known/jwks.json` which is only accessible on the Tailscale/home LAN. This is why deployment runs locally, not in GitHub Actions.
 

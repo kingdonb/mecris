@@ -15,7 +15,7 @@ const Dashboard: React.FC<DashboardProps> = ({ userToken }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [provider, setProvider] = useState<'Home' | 'Akamai' | 'Fermyon'>('Home');
-  const [baseUrl, setBaseUrl] = useState('http://localhost:8000');
+  const [baseUrl, setBaseUrl] = useState('http://localhost:8080');
   const [syncing, setSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
 
@@ -37,12 +37,11 @@ const Dashboard: React.FC<DashboardProps> = ({ userToken }) => {
     if (userToken) headers['Authorization'] = `Bearer ${userToken}`;
 
     const probes = [
-      { name: 'Home', url: 'http://localhost:8000' },
-      { name: 'Akamai', url: 'https://394b84e7-760c-4336-975b-653c17fdb446.fwf.app' },
-      { name: 'Fermyon', url: 'https://mecris-sync-v2-r0r86pso.fermyon.app' }
+      { name: 'Home', url: 'http://localhost:8080' },
+      { name: 'Akamai', url: 'https://394b84e7-760c-4336-975b-653c17fdb446.fwf.app' }
     ];
 
-    let bestUrl = 'https://mecris-sync-v2-r0r86pso.fermyon.app'; // Default
+    let bestUrl = 'https://394b84e7-760c-4336-975b-653c17fdb446.fwf.app'; // Default Akamai edge
     let found = false;
 
     for (const probe of probes) {
@@ -75,17 +74,30 @@ const Dashboard: React.FC<DashboardProps> = ({ userToken }) => {
       const headers: Record<string, string> = {};
       if (userToken) headers['Authorization'] = `Bearer ${userToken}`;
 
-      const [aggResp, langResp] = await Promise.all([
+      const [aggResp, langResp, budgetResp] = await Promise.all([
         fetch(`${url}/aggregate-status?full=true`, { headers }),
-        fetch(`${url}/languages`, { headers })
+        fetch(`${url}/languages`, { headers }),
+        fetch(`${url}/budget`, { headers }).catch(() => null)
       ]);
 
       if (!aggResp.ok || !langResp.ok) throw new Error('API Failure');
 
       const aggData = await aggResp.json();
       const langData = await langResp.json();
+      const budgetData = budgetResp && budgetResp.ok ? await budgetResp.json().catch(() => null) : null;
 
-      setData(aggData);
+      // Normalize data across multi-backend differences (Rust Spin vs Python FastMCP)
+      const normalizedData: AggregateStatusResponse = {
+        ...aggData,
+        satisfied_count: aggData.satisfied_count ?? aggData.goals_met ?? 0,
+        total_count: aggData.total_count ?? aggData.total_goals ?? 3,
+        budget_remaining: aggData.budget_remaining ?? budgetData?.remaining_budget ?? 0,
+        today_distance_miles: aggData.today_distance_miles ?? 0,
+        today_steps: aggData.today_steps ?? 0,
+        system_pulse: aggData.system_pulse ?? (aggData.modalities ? { modalities: aggData.modalities } : undefined)
+      };
+
+      setData(normalizedData);
       setLanguages(langData.languages || []);
       setError(null);
     } catch (e: any) {
