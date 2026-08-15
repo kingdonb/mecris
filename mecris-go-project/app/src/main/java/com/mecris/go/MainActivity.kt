@@ -285,14 +285,19 @@ fun MecrisDashboard(
 
     LaunchedEffect(auth) {
         auth.errorEvents.collect { error ->
-            val message = "${error.errorCode}: ${error.message}"
-            val result = snackbarHostState.showSnackbar(
-                message = message,
-                actionLabel = "OPEN AUTH",
-                duration = SnackbarDuration.Indefinite
-            )
-            if (result == SnackbarResult.ActionPerformed) {
-                auth.authenticateWithPasskey(authResultLauncher)
+            if (error.isPermanent) {
+                val message = "${error.errorCode}: ${error.message}"
+                val result = snackbarHostState.showSnackbar(
+                    message = message,
+                    actionLabel = "OPEN AUTH",
+                    duration = SnackbarDuration.Indefinite
+                )
+                if (result == SnackbarResult.ActionPerformed) {
+                    auth.authenticateWithPasskey(authResultLauncher)
+                }
+            } else {
+                Log.d("MainActivity", "Transient auth notice: ${error.errorCode} - ${error.message}")
+                syncStatus = "Offline (PocketID reconnecting)"
             }
         }
     }
