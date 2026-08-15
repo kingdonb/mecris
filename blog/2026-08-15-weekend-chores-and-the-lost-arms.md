@@ -119,7 +119,18 @@ Exploring the full repository catalog unearthed several forgotten satellite proj
 
 ---
 
-## 6. Next Step: Sunday Lookback & Continuous Streak
+## 6. Multi-Backend Parity & The Akamai Edge Deploy
+
+When play-testing the Web dashboard live, we uncovered a fascinating distributed microservice nuance:
+- **Android vs. Web Data Fetching**: The Android client was working seamlessly because it made dedicated Retrofit calls to `GET /budget` and queried local Health Connect sensors on-device. The Web app, conversely, assumed `GET /aggregate-status?full=true` was a monolithic snapshot containing everything.
+- **The Dual Fix**:
+  1. **Frontend Normalization**: Updated [`web/src/Dashboard.tsx`](file:///Users/yebyen/w/mecris/web/src/Dashboard.tsx) to fetch `GET /budget` in parallel, normalize system pulse modalities, and point local fallback to `http://localhost:8080` (FastMCP).
+  2. **Rust Backend Parity**: Updated [`mecris-go-spin/sync-service/src/lib.rs`](file:///Users/yebyen/w/mecris/mecris-go-spin/sync-service/src/lib.rs) to query `budget_tracking` and `walk_inferences` on Neon Postgres, returning `today_distance_miles`, `today_steps`, `budget_remaining`, and structured `system_pulse`.
+  3. **Live Akamai Deployment**: Bound `TWILIO_WHATSAPP_TEMPLATE_SID` (`HX638b7f9403e04c8fa880370f1b7a9ba1`) and deployed both WASM modules (`sync-service` + `review-pump`) live to Akamai Edge Functions (`https://394b84e7-760c-4336-975b-653c17fdb446.fwf.app`) in **Production WhatsApp Delivery Mode**.
+
+---
+
+## 7. Next Step: Sunday Lookback & Continuous Streak
 
 All skills have been authored in both [`.github/skills/`](file:///Users/yebyen/w/mecris/.github/skills/) and [`.claude/skills/`](file:///Users/yebyen/w/mecris/.claude/skills/):
 - `/chore-web-inventory`
