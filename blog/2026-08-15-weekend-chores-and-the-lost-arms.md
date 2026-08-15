@@ -130,13 +130,28 @@ When play-testing the Web dashboard live, we uncovered a fascinating distributed
 
 ---
 
-## 7. Next Step: Sunday Lookback & Continuous Streak
+## 7. The PocketID Breakthrough & Calm Auth UX
 
-All skills have been authored in both [`.github/skills/`](file:///Users/yebyen/w/mecris/.github/skills/) and [`.claude/skills/`](file:///Users/yebyen/w/mecris/.claude/skills/):
+During live field testing on Android, we encountered a classic mobile OIDC edge case: momentary Wi-Fi/DNS transitions were bubbling up as raw `UNKNOWN: AuthorizationException` modal snackbars, demanding unnecessary passkey logins even when the session was healthy.
+
+We tackled this with a comprehensive architectural overhaul:
+1. **Typed AppAuth Error Classification**: Updated `AuthError.kt` to inspect `AuthorizationException.TYPE_GENERAL_ERROR` and `GeneralErrors.NETWORK_ERROR`, correctly classifying transient transport hiccups as `NetworkUnreachable` (`isPermanent = false`).
+2. **Calm UI De-escalation**: In `MainActivity.kt`, modal "OPEN AUTH" snackbars are now strictly reserved for true permanent revocation (`invalid_grant` / passkey revoked). Transient drops quietly update the status to `"Offline (PocketID reconnecting)"` while background exponential backoff handles reconnection.
+3. **The 30-Day Refresh Token Secured (🎉)**: Under the fresh OIDC scope negotiation (`openid`, `profile`, `email`, `offline_access`), PocketID presented full user consent and successfully minted a hardware-encrypted 30-day sliding refresh token.
+
+We codified this into [`/chore-pocketid-inventory`](file:///Users/yebyen/w/mecris/.github/skills/chore-pocketid-inventory/SKILL.md) and tagged **`v0.0.1-rc.6` (versionCode 30)** for our weekend soak!
+
+---
+
+## 8. Next Step: Sunday Lookback & Continuous Streak
+
+Our weekend chore toolkit now spans 6 specialized inspection arms:
 - `/chore-web-inventory`
 - `/chore-android-inventory`
 - `/chore-cli-inventory`
 - `/chore-twilio-inventory`
+- `/chore-moon-clock-inventory`
+- `/chore-pocketid-inventory`
 - `/chore-weekend-master`
 
-Tomorrow, on Sunday morning, we run the second pass with `/chore-weekend-master`, verify the continuous streak, and generate the week's first completed chore flair!
+Tomorrow, on Sunday morning, we run the second pass with `/chore-weekend-master`, verify the continuous streak across all arms, and generate the week's first completed chore flair!
