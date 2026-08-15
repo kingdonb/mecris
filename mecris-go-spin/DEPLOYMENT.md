@@ -7,19 +7,27 @@ The `aka.fermyon.tech` hostname is deprecated and must not be probed.
 
 ---
 
-## One-Command Deployment
+## One-Command Cloud Deployments
 
+### 1. Akamai Functions (Edge)
 ```bash
 cd mecris-go-spin/sync-service
 ./deploy-akamai.sh
 ```
 
-That's it. The script:
-1. Loads secrets from the project root `.env` (gitignored, local only)
-2. Validates all required variables are present
-3. Encrypts the Twilio auth token using the master encryption key
-4. Fetches the Pocket ID JWKS from the private network (Tailscale/home LAN)
-5. Deploys to Akamai with ALL variables in a single atomic command
+### 2. Fermyon Cloud
+```bash
+cd mecris-go-spin/sync-service
+./deploy-fermyon.sh
+```
+
+Both deployment scripts:
+1. Load secrets from the project root `.env` (gitignored, local only)
+2. Validate all required variables are present
+3. Encrypt the Twilio auth token using the master encryption key
+4. Fetch the Pocket ID JWKS from the private network (Tailscale/home LAN)
+5. Inject the pre-approved WhatsApp Utility Template SID (`TWILIO_WHATSAPP_TEMPLATE_SID`)
+6. Deploy with ALL variables in a single atomic command in **Production WhatsApp Delivery Mode**
 
 **No manual variable setting, no dashboard clicks, no missed secrets.**
 
