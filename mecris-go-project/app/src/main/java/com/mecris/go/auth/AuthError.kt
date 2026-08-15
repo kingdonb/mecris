@@ -90,6 +90,25 @@ sealed interface AuthError {
 
     companion object {
         fun fromException(e: Exception, context: Context? = null): AuthError {
+            // Check AppAuth structured exception types first
+            if (e is net.openid.appauth.AuthorizationException) {
+                if (e.type == net.openid.appauth.AuthorizationException.TYPE_GENERAL_ERROR &&
+                    (e.code == net.openid.appauth.AuthorizationException.GeneralErrors.NETWORK_ERROR.code ||
+                     e.code == net.openid.appauth.AuthorizationException.GeneralErrors.SERVER_ERROR.code)
+                ) {
+                    return NetworkUnreachable(detail = e.errorDescription ?: e.message ?: "AppAuth Network/Server error")
+                }
+                if (e.type == net.openid.appauth.AuthorizationException.TYPE_OAUTH_TOKEN_ERROR) {
+                    val desc = (e.errorDescription ?: e.error ?: "").lowercase()
+                    if (desc.contains("invalid_grant") || desc.contains("revoked")) {
+                        return TokenRevoked(detail = e.errorDescription ?: e.message)
+                    }
+                    if (desc.contains("expired")) {
+                        return TokenExpired(detail = e.errorDescription ?: e.message)
+                    }
+                }
+            }
+
             val message = e.message ?: e.javaClass.simpleName
             val lower = message.lowercase()
 
@@ -110,7 +129,8 @@ sealed interface AuthError {
 
                 // Network unreachable
                 lower.contains("network") || lower.contains("connection") || lower.contains("timeout") ||
-                lower.contains("unreachable") || lower.contains("dns") || lower.contains("resolve") ->
+                lower.contains("unreachable") || lower.contains("dns") || lower.contains("resolve") ||
+                lower.contains("authorizationexception") ->
                     NetworkUnreachable(detail = message)
 
                 // OIDC endpoint HTTP errors
