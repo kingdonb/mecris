@@ -2,20 +2,21 @@
 
 **Canonical target: Akamai Functions (edge) at `https://394b84e7-760c-4336-975b-653c17fdb446.fwf.app`**
 
-Fermyon Cloud channel (`mecris-sync-v2-glo0zpfm.fermyon.app`) returns platform 404 — deprecated.
-The `aka.fermyon.tech` hostname is deprecated and must not be probed.
+### Cloud Architecture & Status
+- **Akamai Functions (`fwf.app`)**: **ACTIVE & AUTHORITATIVE**. Fully operational with Neon Postgres, encrypted Twilio tokens, and pre-approved WhatsApp Utility Templates.
+- **Fermyon Cloud (`fermyon.app`)**: **INACTIVE**. Multi-tenant runtime fails during WASM instantiation (`failed to prepare your Spin application`) due to capability/socket boundaries in their shared environment. All Fermyon deployments have been cleanly deprovisioned to prevent dangling broken endpoints.
 
 ---
 
 ## One-Command Cloud Deployments
 
-### 1. Akamai Functions (Edge)
+### 1. Akamai Functions (Edge — Primary)
 ```bash
 cd mecris-go-spin/sync-service
 ./deploy-akamai.sh
 ```
 
-### 2. Fermyon Cloud
+### 2. Fermyon Cloud (Experimental / Inactive)
 ```bash
 cd mecris-go-spin/sync-service
 ./deploy-fermyon.sh

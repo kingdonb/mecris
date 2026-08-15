@@ -70,7 +70,7 @@ TWILIO_WHATSAPP_TEMPLATE_SID="${TWILIO_WHATSAPP_TEMPLATE_SID:-HX638b7f9403e04c8f
 echo -e "${YELLOW}Deploying to Fermyon Cloud (Production WhatsApp Delivery Mode)...${NC}"
 cd "$SCRIPT_DIR"
 
-spin cloud deploy --build --link "kv:default=default" \
+spin cloud deploy -f spin.fermyon.toml --build --link "kv:default=default" \
   --variable db_url="$NEON_DB_URL" \
   --variable neon_db_url="$NEON_DB_URL" \
   --variable master_encryption_key="$MASTER_ENCRYPTION_KEY" \

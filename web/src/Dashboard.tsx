@@ -38,11 +38,10 @@ const Dashboard: React.FC<DashboardProps> = ({ userToken }) => {
 
     const probes = [
       { name: 'Home', url: 'http://localhost:8080' },
-      { name: 'Akamai', url: 'https://394b84e7-760c-4336-975b-653c17fdb446.fwf.app' },
-      { name: 'Fermyon', url: 'https://mecris-sync-v2-ursx2jjo.fermyon.app' }
+      { name: 'Akamai', url: 'https://394b84e7-760c-4336-975b-653c17fdb446.fwf.app' }
     ];
 
-    let bestUrl = 'https://394b84e7-760c-4336-975b-653c17fdb446.fwf.app'; // Default
+    let bestUrl = 'https://394b84e7-760c-4336-975b-653c17fdb446.fwf.app'; // Default Akamai edge
     let found = false;
 
     for (const probe of probes) {

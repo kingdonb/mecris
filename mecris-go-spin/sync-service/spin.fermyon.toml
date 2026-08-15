@@ -1,0 +1,68 @@
+#:schema https://schemas.spinframework.dev/spin/manifest-v2/latest.json
+
+spin_manifest_version = 2
+
+[application]
+name = "mecris-sync-fermyon"
+version = "0.0.1-rc.4"
+authors = ["Kingdon B <kingdon@urmanac.com>"]
+description = "Mecris Sync Service on Fermyon Cloud"
+
+[variables]
+db_url = { required = false, default = "" }
+auth_bypass = { required = false, default = "false" }
+oidc_discovery_url = { required = false, default = "https://metnoom.urmanac.com/.well-known/openid-configuration" }
+oidc_jwks_json = { required = false, default = "" }
+clozemaster_email = { required = false, default = "" }
+clozemaster_password = { required = false, default = "" }
+master_encryption_key = { required = false, default = "" }
+neon_db_url = { required = false, default = "" }
+twilio_account_sid = { required = false, default = "" }
+twilio_auth_token_encrypted = { required = false, default = "" }
+twilio_from_number = { required = false, default = "" }
+openweather_api_key = { required = false, default = "" }
+openweather_lat = { required = false, default = "" }
+openweather_lon = { required = false, default = "" }
+internal_api_key = { required = false, default = "" }
+twilio_whatsapp_template_sid = { required = false, default = "" }
+cloud_provider = { required = false, default = "fermyon" }
+
+[[trigger.http]]
+route = "/internal/review-pump-status"
+component = "review-pump"
+
+[[trigger.http]]
+route = "/..."
+component = "sync-service"
+
+[component.sync-service]
+source = "target/wasm32-wasip1/release/sync_service.wasm"
+allowed_outbound_hosts = ["postgres://*:*", "https://www.beeminder.com", "https://www.clozemaster.com", "https://api.twilio.com", "https://api.openweathermap.org", "https://metnoom.urmanac.com"]
+key_value_stores = ["default"]
+[component.sync-service.variables]
+db_url = "{{ db_url }}"
+auth_bypass = "{{ auth_bypass }}"
+oidc_discovery_url = "{{ oidc_discovery_url }}"
+oidc_jwks_json = "{{ oidc_jwks_json }}"
+clozemaster_email = "{{ clozemaster_email }}"
+clozemaster_password = "{{ clozemaster_password }}"
+master_encryption_key = "{{ master_encryption_key }}"
+twilio_account_sid = "{{ twilio_account_sid }}"
+twilio_auth_token_encrypted = "{{ twilio_auth_token_encrypted }}"
+twilio_from_number = "{{ twilio_from_number }}"
+openweather_api_key = "{{ openweather_api_key }}"
+openweather_lat = "{{ openweather_lat }}"
+openweather_lon = "{{ openweather_lon }}"
+internal_api_key = "{{ internal_api_key }}"
+twilio_whatsapp_template_sid = "{{ twilio_whatsapp_template_sid }}"
+cloud_provider = "{{ cloud_provider }}"
+[component.sync-service.build]
+command = "cargo build --target wasm32-wasip1 --release"
+watch = ["src/**/*.rs", "Cargo.toml"]
+
+[component.review-pump]
+source = "../review-pump/target/wasm32-wasip1/release/review_pump.wasm"
+[component.review-pump.build]
+command = "cargo build --target wasm32-wasip1 --release --features spin"
+workdir = "../review-pump"
+watch = ["src/**/*.rs", "Cargo.toml"]
