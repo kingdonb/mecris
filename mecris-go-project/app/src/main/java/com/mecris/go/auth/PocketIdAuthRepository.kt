@@ -332,15 +332,16 @@ class PocketIdAuthRepository(
         return AuthError.fromException(ex, context)
     }
 
-    /** Starts background proactive token refresh at 80% TTL. */
+    /** Starts background proactive token refresh at 80% TTL with exponential backoff on transient errors. */
     private fun startBackgroundRefresh() {
         stopBackgroundRefresh()
 
         refreshJob = scope.launch {
+            var consecutiveTransientFailures = 0
             while (true) {
                 val timeUntilRefresh = calculateTimeUntilProactiveRefresh()
-                if (timeUntilRefresh <= 0) {
-                    // Time to refresh now
+                if (timeUntilRefresh <= 0 || consecutiveTransientFailures > 0) {
+                    // Time to refresh now (or retrying after transient failure)
                     val success = refreshMutex.withLock {
                         kotlinx.coroutines.suspendCancellableCoroutine<Boolean> { continuation ->
                             refreshAccessToken { success ->
@@ -348,13 +349,23 @@ class PocketIdAuthRepository(
                             }
                         }
                     }
-                    if (!success) {
-                        // Error already reported via callback
+                    if (success) {
+                        consecutiveTransientFailures = 0
+                        // Wait a full hour before recalculating 80% TTL window
+                        delay(TimeUnit.HOURS.toMillis(1))
+                    } else {
+                        // If error was transient, apply exponential backoff (1m, 2m, 4m, 8m... up to 30m)
+                        consecutiveTransientFailures++
+                        val backoffMinutes = kotlin.math.min(1L shl (consecutiveTransientFailures - 1), 30L)
+                        android.util.Log.w(
+                            "PocketIdAuth",
+                            "Background refresh transient failure #$consecutiveTransientFailures; retrying in ${backoffMinutes}m"
+                        )
+                        delay(TimeUnit.MINUTES.toMillis(backoffMinutes))
                     }
-                    // Wait a bit before recalculating
-                    delay(TimeUnit.HOURS.toMillis(1))
                 } else {
                     // Sleep until refresh time (check every hour max)
+                    consecutiveTransientFailures = 0
                     val sleepTime = kotlin.math.min(timeUntilRefresh, TimeUnit.HOURS.toMillis(1))
                     delay(sleepTime)
                 }

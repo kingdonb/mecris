@@ -94,7 +94,9 @@ class ReminderService:
         if result.get("tier") != 1:
             return result
         hours_idle = await self._get_hours_since_last(result["type"], user_id)
-        if hours_idle < 999.0 and hours_idle >= TIER2_IDLE_HOURS:
+        # Only escalate to Tier 2 if the reminder was previously sent within the current active cycle (<= 24h)
+        # Stale historical logs from days/weeks ago should NOT trigger astronomical hours overdue
+        if TIER2_IDLE_HOURS <= hours_idle <= 24.0:
             result = dict(result)
             result["tier"] = 2
             result["use_template"] = False
