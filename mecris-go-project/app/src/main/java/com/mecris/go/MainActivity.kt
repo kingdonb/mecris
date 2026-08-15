@@ -893,19 +893,16 @@ fun MainNeuralDashboard(
             .fillMaxWidth()
             .height(200.dp)
     ) {
-        val hasWalked = walkData?.isWalkInferred == true
-        val hasSteps = (walkData?.totalSteps ?: 0L) >= 2000
-        val isStable = hasWalked || hasSteps
-
-        val momentumValue = if (isFetching) 0.5f else if (isStable) 0.9f else 0.2f
-        val momentumColor = if (isFetching) Color.White else if (isStable) Color(0xFF00C853) else Color(0xFFFF1744)
+        val momentumValue = calculateMomentum(isFetching, aggregateStatus, walkData)
+        val orbState = momentumOrbState(momentumValue, isAllClear = aggregateStatus?.all_clear == true)
+        val isStable = orbState == MomentumOrbState.STABLE || orbState == MomentumOrbState.ALL_CLEAR
 
         MomentumVisualizer(momentum = momentumValue, isAllClear = aggregateStatus?.all_clear == true, overrideColor = if (isFetching) Color.White else null)
 
         Column(modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 8.dp),
                horizontalAlignment = Alignment.CenterHorizontally) {
             Text(
-                text = if (isFetching) "FETCHING..." else if (isStable) "STABLE" else "CRITICAL",
+                text = if (isFetching) "FETCHING..." else if (orbState == MomentumOrbState.ALL_CLEAR) "ALL CLEAR" else if (isStable) "STABLE" else "CRITICAL",
                 style = MaterialTheme.typography.labelLarge,
                 color = if (isFetching) Color.White else if (isStable) Color(0xFF00C853) else Color(0xFFFF1744),
                 fontWeight = FontWeight.ExtraBold,
@@ -1596,7 +1593,7 @@ fun SystemHealthScreen(
 /** Three-state model for the MomentumVisualizer orb — testable without Compose. */
 enum class MomentumOrbState { DEBT, STABLE, ALL_CLEAR }
 
-/** Calculates momentum value from aggregate status and walk data (Legacy single-sensor walk implementation). */
+/** Calculates momentum value from aggregate status and walk data (matches Web parity). */
 fun calculateMomentum(
     isFetching: Boolean,
     aggregateStatus: com.mecris.go.sync.AggregateStatusResponseDto?,
@@ -1605,11 +1602,17 @@ fun calculateMomentum(
     if (isFetching) return 0.5f
     if (aggregateStatus?.all_clear == true) return 1.0f
 
-    // Legacy divergent behavior: strictly checks walk only!
-    val hasWalked = walkData?.isWalkInferred == true
-    val hasSteps = (walkData?.totalSteps ?: 0L) >= 2000
-    val isStable = hasWalked || hasSteps
-    return if (isStable) 0.9f else 0.2f
+    val satisfiedCount = aggregateStatus?.goals_met ?: run {
+        // Fallback when aggregate status is not yet available: evaluate walk heuristics
+        val hasWalked = walkData?.isWalkInferred == true || (walkData?.totalSteps ?: 0L) >= 2000
+        if (hasWalked) 1 else 0
+    }
+    val totalCount = aggregateStatus?.total_goals ?: 3
+    val ratio = satisfiedCount.toFloat() / totalCount.toFloat()
+
+    // >= 50% of goals satisfied (e.g. 2/3) produces 0.6f (STABLE / Green Orb)
+    // < 50% produces 0.3f (DEBT / Red Orb)
+    return if (ratio >= 0.5f) 0.6f else 0.3f
 }
 
 /** Pure function: derives orb state from momentum and all_clear flag. */
