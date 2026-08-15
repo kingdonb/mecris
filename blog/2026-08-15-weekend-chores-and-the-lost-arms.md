@@ -130,16 +130,15 @@ When play-testing the Web dashboard live, we uncovered a fascinating distributed
 
 ---
 
-## 7. The PocketID Breakthrough & Calm Auth UX
+## 7. The PocketID Breakthrough, Calm Auth & Cross-Arm Parity
 
-During live field testing on Android, we encountered a classic mobile OIDC edge case: momentary Wi-Fi/DNS transitions were bubbling up as raw `UNKNOWN: AuthorizationException` modal snackbars, demanding unnecessary passkey logins even when the session was healthy.
+During live field testing on Android, we encountered two subtle distributed edge cases:
 
-We tackled this with a comprehensive architectural overhaul:
-1. **Typed AppAuth Error Classification**: Updated `AuthError.kt` to inspect `AuthorizationException.TYPE_GENERAL_ERROR` and `GeneralErrors.NETWORK_ERROR`, correctly classifying transient transport hiccups as `NetworkUnreachable` (`isPermanent = false`).
-2. **Calm UI De-escalation**: In `MainActivity.kt`, modal "OPEN AUTH" snackbars are now strictly reserved for true permanent revocation (`invalid_grant` / passkey revoked). Transient drops quietly update the status to `"Offline (PocketID reconnecting)"` while background exponential backoff handles reconnection.
-3. **The 30-Day Refresh Token Secured (🎉)**: Under the fresh OIDC scope negotiation (`openid`, `profile`, `email`, `offline_access`), PocketID presented full user consent and successfully minted a hardware-encrypted 30-day sliding refresh token.
+1. **Transient Notification Silencing**: While we had calmed the in-app snackbars, `AuthErrorReporter.kt` was still posting high-priority system tray notifications (`"Mecris needs your attention"`) on transient socket timeouts. We updated `report()` to strictly gate system tray notifications on `error.isPermanent == true`, guaranteeing that background Wi-Fi reconnects remain 100% silent and non-intrusive.
+2. **Cross-Arm Momentum Orb Parity (Issue #283)**: A subtle semantic discrepancy arose where Web displayed **STABLE (Green Orb)** for 2/3 goals met, while Android displayed **CRITICAL (Red Orb)** because it evaluated physical walking exclusively. We formalized the [`/parity-arbitration`](file:///Users/yebyen/w/mecris/.github/skills/parity-arbitration/SKILL.md) protocol, completed a clean TDG Red-Green cycle, and aligned Android's `calculateMomentum` to the canonical 50% multi-goal threshold.
+3. **The 30-Day Refresh Token Secured (🎉)**: Under full OIDC scope negotiation (`openid`, `profile`, `email`, `offline_access`), PocketID presented complete user consent and minted a hardware-encrypted 30-day sliding refresh token.
 
-We codified this into [`/chore-pocketid-inventory`](file:///Users/yebyen/w/mecris/.github/skills/chore-pocketid-inventory/SKILL.md) and tagged **`v0.0.1-rc.6` (versionCode 30)** for our weekend soak!
+We codified both [`/chore-pocketid-inventory`](file:///Users/yebyen/w/mecris/.github/skills/chore-pocketid-inventory/SKILL.md) and [`/parity-arbitration`](file:///Users/yebyen/w/mecris/.github/skills/parity-arbitration/SKILL.md) into the codebase, ready for the release candidate soak!
 
 ---
 

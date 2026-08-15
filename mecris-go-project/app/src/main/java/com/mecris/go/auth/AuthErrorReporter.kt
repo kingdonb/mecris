@@ -62,8 +62,11 @@ class AuthErrorReporter(
         error: AuthError,
         lastKnownEmail: String? = null
     ) {
-        // 1. Persistent notification (always shown)
-        showNotification(error, lastKnownEmail)
+        // Only trigger system notifications for PERMANENT errors (e.g. revoked passkey or expired 30-day TTL).
+        // Transient network reconnects (NetworkUnreachable) are handled silently by background exponential backoff.
+        if (error.isPermanent) {
+            showNotification(error, lastKnownEmail)
+        }
     }
 
     private fun showNotification(error: AuthError, lastKnownEmail: String? = null) {
