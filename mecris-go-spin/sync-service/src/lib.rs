@@ -109,10 +109,48 @@ async fn handle_aggregate_status_get(req: Request) -> anyhow::Result<Response<St
         if n == "ARABIC" { total_goals += 1; arabic_met = met; if met { goals_met += 1; } }
         else if n == "GREEK" { total_goals += 1; greek_met = met; if met { goals_met += 1; } }
     }
+    let walk_detail_rs = conn.query("SELECT distance_meters, step_count FROM walk_inferences WHERE user_id = $1 AND (start_time::TIMESTAMPTZ AT TIME ZONE 'America/New_York')::DATE = (CURRENT_TIMESTAMP AT TIME ZONE 'America/New_York')::DATE ORDER BY start_time DESC LIMIT 1", &[ParameterValue::Str(uid.clone())]).await?.collect().await?;
+    let (today_distance_miles, today_steps) = if !walk_detail_rs.is_empty() {
+        let dm: f64 = match &walk_detail_rs[0][0] {
+            DbValue::Str(s) => s.parse().unwrap_or(0.0),
+            DbValue::Floating64(f) => *f,
+            _ => 0.0,
+        };
+        let st: i32 = match &walk_detail_rs[0][1] {
+            DbValue::Str(s) => s.parse().unwrap_or(0),
+            DbValue::Int32(i) => *i,
+            DbValue::Int64(i) => *i as i32,
+            _ => 0,
+        };
+        (dm * 0.000621371, st)
+    } else {
+        (0.0, 0)
+    };
+
+    let budget_rs = conn.query("SELECT remaining_budget FROM budget_tracking WHERE user_id = $1 LIMIT 1", &[ParameterValue::Str(uid.clone())]).await?.collect().await?;
+    let budget_remaining = if !budget_rs.is_empty() { db_to_f64(&budget_rs[0][0]) } else { 0.0 };
+
     #[derive(Serialize)] struct Comp { walk: bool, arabic: bool, greek: bool }
-    #[derive(Serialize)] struct Mod { role: String, status: String, last_seen: String }
-    #[derive(Serialize)] struct AggResp { score: String, goals_met: i32, total_goals: i32, all_clear: bool, components: Comp, vacation_mode_until: Option<String>, phone_verified: bool, modalities: Option<Vec<Mod>> }
+    #[derive(Serialize, Clone)] struct Mod { role: String, status: String, last_seen: String, minutes_since: u64 }
+    #[derive(Serialize)] struct Pulse { modalities: Vec<Mod> }
+    #[derive(Serialize)] struct AggResp { 
+        score: String, 
+        goals_met: i32, 
+        total_goals: i32, 
+        satisfied_count: i32,
+        total_count: i32,
+        all_clear: bool, 
+        components: Comp, 
+        budget_remaining: f64,
+        today_distance_miles: f64,
+        today_steps: i32,
+        vacation_mode_until: Option<String>, 
+        phone_verified: bool, 
+        modalities: Option<Vec<Mod>>,
+        system_pulse: Option<Pulse>
+    }
     let mut mods = None;
+    let mut pulse = None;
     if full {
         let p_rows = conn.query("SELECT role, heartbeat::TEXT, CAST(EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - heartbeat)) / 60 AS BIGINT) AS mins FROM scheduler_election WHERE user_id = $1 OR user_id IS NULL ORDER BY heartbeat DESC", &[ParameterValue::Str(uid.clone())]).await?.collect().await?;
         let mut ms = Vec::new();
@@ -120,11 +158,27 @@ async fn handle_aggregate_status_get(req: Request) -> anyhow::Result<Response<St
             let role = db_to_str(&r[0]);
             let display = match role.as_str() { "leader" => "MCP SERVER", "android_client" => "ANDROID", "akamai_functions" => "AKAMAI", "fermyon_cloud" => "FERMYON", _ => &role };
             let mins = match &r[2] { DbValue::Int64(i) => *i as u64, _ => 9999 };
-            ms.push(Mod { role: display.to_string(), status: get_modality_status(&role, mins).to_string(), last_seen: db_to_str(&r[1]) });
+            ms.push(Mod { role: display.to_string(), status: get_modality_status(&role, mins).to_string(), last_seen: db_to_str(&r[1]), minutes_since: mins });
         }
+        pulse = Some(Pulse { modalities: ms.clone() });
         mods = Some(ms);
     }
-    json_response(200, &AggResp { score: format!("{}/{}", goals_met, total_goals), goals_met, total_goals, all_clear: vaca.is_some() || goals_met >= total_goals, components: Comp { walk: walked, arabic: arabic_met, greek: greek_met }, vacation_mode_until: vaca, phone_verified: phone, modalities: mods })
+    json_response(200, &AggResp { 
+        score: format!("{}/{}", goals_met, total_goals), 
+        goals_met, 
+        total_goals, 
+        satisfied_count: goals_met,
+        total_count: total_goals,
+        all_clear: vaca.is_some() || goals_met >= total_goals, 
+        components: Comp { walk: walked, arabic: arabic_met, greek: greek_met }, 
+        budget_remaining,
+        today_distance_miles,
+        today_steps,
+        vacation_mode_until: vaca, 
+        phone_verified: phone, 
+        modalities: mods,
+        system_pulse: pulse
+    })
 }
 
 fn clearance_days(mult: f64) -> Option<u32> {
