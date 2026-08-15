@@ -21,6 +21,20 @@ The Moon Oracle is a mathematically precise lunar awareness system built on the 
 
 ---
 
+## The Two-Stage Release Protocol
+
+The Moon Oracle strictly separates open-source public releases from Google Play internal track distribution:
+
+1. **Stage 1: Open-Source CI Release (Automated via GitHub Actions)**:
+   - Triggered by pushing a version tag (e.g. `git tag 0.0.6 && git push origin 0.0.6`).
+   - GitHub Actions (`.github/workflows/ci.yml`) compiles `moon_phase_brain.wasm`, copies it to Android assets, runs `./gradlew assembleDebug`, extracts release notes from `CHANGELOG.md`, and drafts the public GitHub Release containing `app-debug.apk` and `moon_phase_brain.wasm`.
+2. **Stage 2: Play Store Internal Distribution (Manual Signed AAB)**:
+   - Once the open-source CI release is established, open the project in **Android Studio**.
+   - Build a production-signed `.aab` via **Build > Generate Signed Bundle / APK...** using your local hardware-secured release keystore.
+   - Upload the signed bundle to the **Google Play Console > Internal Testing** track for distribution to the tester list.
+
+---
+
 ## 5-Minute Guided Chore Routine
 
 ### Step 1: Verify the WASM Brain
