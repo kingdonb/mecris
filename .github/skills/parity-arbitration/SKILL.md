@@ -31,17 +31,22 @@ This skill outlines the standard operational protocol when two or more redundant
 - **Authoritative Ground Truth**: Define which interpretation represents the canonical Mecris business logic (e.g. holistic Majesty Cake multi-goal momentum vs legacy single-sensor rule).
 
 ### Step 2: Formulate Red-Green Test Specification & CI Red Verification (TDG)
-- Identify or create the unit test in the diverging client/service repository.
-- Write an explicit unit test capturing the holistic contract:
-  - *Example (Android)*: In `MomentumVisualizerTest.kt`, assert that 2/3 goals satisfied produces `isStable = true` (Green Orb) even if `walkData.totalSteps < 2000`.
-- Verify the test fails locally or push the test-first commit to verify that CI reports a **RED** failure pipeline. Document the red CI run link/log in the issue or PR description.
+- **Compilation vs. Assertion Failure**:
+  - A compilation error (unresolved symbol/type error) is **NOT** a valid RED state. Code must compile cleanly with all symbols/function signatures declared or stubbed.
+  - The RED state requires a genuine **test assertion failure** (e.g. `AssertionError: expected:<0.6> but was:<0.2>`) executing against the baseline implementation.
+- **TDG Commit Naming Convention**:
+  - The RED phase commit MUST use the prefix: `red: test spec for <feature/fix> (#<issue-number>)`
+  - The GREEN phase commit MUST use the prefix: `green: implement <feature/fix> (#<issue-number>)`
+  - The REFACTOR phase commit MUST use the prefix: `refactor: <details> (#<issue-number>)`
+- **CI Documentation Requirement**:
+  - Push the test-first commit to record the **RED** failure pipeline in CI, or document the exact failing assertion in the PR description before pushing the GREEN commit.
 
 ### Step 3: Implement Harmonized Implementation
 - Refactor the diverging arm to share the canonical formula or consume the unified backend contract from Neon/WASM.
 - Remove hardcoded client-side deviations unless explicitly governed by a local sensor exception.
 
 ### Step 4: Validate Green across All Arms in CI
-- Execute the unit suite on the modified arm locally.
+- Execute the unit suite on the modified arm locally and confirm all assertions pass.
 - Leverage the **GitHub Actions CI pipeline** (`ci.yml`) to verify that all cross-platform suites turn **GREEN**:
   - `make test-python` & `make test-rust`
   - `npm run test` (Web Vitest)
