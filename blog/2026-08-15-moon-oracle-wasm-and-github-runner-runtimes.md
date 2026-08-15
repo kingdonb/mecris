@@ -94,16 +94,22 @@ The Moon Oracle strictly decouples open-source public distribution from private 
 
 ---
 
-## 4. Live Release Outcome: 0.0.6 Shipped
+## 4. Live Release Outcome: 0.0.6 & 0.0.7 Shipped
 
-With PR #3 merged cleanly into `main` and tag `0.0.6` dispatched to GitHub Actions, the entire release pipeline executed with zero warnings:
+When release `0.0.6` was initially published, real-world deployment surfaced a critical R8 minification edge case:
 
-- **GitHub Release**: [`v0.0.6`](https://github.com/kingdonb/moon-phase-clock/releases/tag/0.0.6) containing `app-debug.apk` and `moon_phase_brain.wasm`.
-- **Google Play Internal Testing Track**: Signed production bundle built from commit `75f37df`:
-  > *"Background WorkManager periodic sync to keep launcher app icon fresh without requiring app launch, AAB from main branch at 75f37df https://github.com/kingdonb/moon-phase-clock/releases/tag/0.0.6"*
+- **The Release-Only Bug**: While `debug` builds executed flawlessly, the minified `release` build crashed on process initialization (`StartupException: Failed to create an instance of class androidx.work.impl.WorkDatabase.canonicalName`).
+- **The Room / WorkManager Reflection Boundary**: Under code and resource minification (`isMinifyEnabled = true`), R8 stripped internal Room database reflection constructors used by WorkManager's `androidx.startup.InitializationProvider`.
+- **The Hotfix (`0.0.7`)**: We opened PR #4 to inject explicit `-keep` rules for `androidx.work.**` and `androidx.room.**` into `proguard-rules.pro`.
+
+With PR #4 merged into `main` and tag `0.0.7` pushed:
+
+- **GitHub Release**: [`v0.0.7`](https://github.com/kingdonb/moon-phase-clock/releases/tag/0.0.7)
+- **Google Play Internal Testing Track**: Signed production bundle built from commit `d0ff8c4`:
+  > *"Fix release crash by keeping WorkManager & Room reflection classes under R8 minification, AAB from main branch at d0ff8c4 https://github.com/kingdonb/moon-phase-clock/releases/tag/0.0.7"*
 
 ---
 
 ## 5. Summary
 
-By fixing the passive icon update with a gentle 6-hour `WorkManager` background loop, modernizing Gradle properties to Java 17 / Kotlin 2.2 compiler DSLs, and aligning our CI pipelines, the Moon Oracle (`0.0.6`) now advances with the night sky accurately, autonomously, and reliably.
+By fixing the passive icon update with a gentle 6-hour `WorkManager` background loop, hardening our Proguard keep rules for Room/WorkManager reflection, modernizing Gradle properties to Java 17 / Kotlin 2.2 compiler DSLs, and aligning our CI pipelines, the Moon Oracle (`0.0.7`) now advances with the night sky accurately, autonomously, and reliably.
