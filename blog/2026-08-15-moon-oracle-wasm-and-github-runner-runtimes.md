@@ -94,6 +94,16 @@ The Moon Oracle strictly decouples open-source public distribution from private 
 
 ---
 
-## 4. Summary
+## 4. Live Release Outcome: 0.0.6 Shipped
+
+With PR #3 merged cleanly into `main` and tag `0.0.6` dispatched to GitHub Actions, the entire release pipeline executed with zero warnings:
+
+- **GitHub Release**: [`v0.0.6`](https://github.com/kingdonb/moon-phase-clock/releases/tag/0.0.6) containing `app-debug.apk` and `moon_phase_brain.wasm`.
+- **Google Play Internal Testing Track**: Signed production bundle built from commit `75f37df`:
+  > *"Background WorkManager periodic sync to keep launcher app icon fresh without requiring app launch, AAB from main branch at 75f37df https://github.com/kingdonb/moon-phase-clock/releases/tag/0.0.6"*
+
+---
+
+## 5. Summary
 
 By fixing the passive icon update with a gentle 6-hour `WorkManager` background loop, modernizing Gradle properties to Java 17 / Kotlin 2.2 compiler DSLs, and aligning our CI pipelines, the Moon Oracle (`0.0.6`) now advances with the night sky accurately, autonomously, and reliably.
