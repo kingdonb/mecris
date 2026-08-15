@@ -33,9 +33,13 @@ That's it. The script:
 | `MASTER_ENCRYPTION_KEY` | Generate once: `openssl rand -hex 32` | AES-256-GCM key for encrypting secrets |
 | `CLOZEMASTER_EMAIL` | Clozemaster account | Autonomous language sync |
 | `CLOZEMASTER_PASSWORD` | Clozemaster account | Autonomous language sync |
-| `TWILIO_ACCOUNT_SID` | Twilio Console | SMS notifications |
-| `TWILIO_AUTH_TOKEN` | Twilio Console | SMS notifications (plaintext in .env, encrypted at deploy) |
+| `TWILIO_ACCOUNT_SID` | Twilio Console | WhatsApp & alert notifications |
+| `TWILIO_AUTH_TOKEN` | Twilio Console | WhatsApp notifications (plaintext in .env, encrypted at deploy) |
+| `TWILIO_WHATSAPP_TEMPLATE_SID` | Meta / Twilio Console | Pre-approved Utility Template SID (default: `HX638b7f9403e04c8fa880370f1b7a9ba1`) |
 | `OPENWEATHER_API_KEY` | OpenWeatherMap | Weather heuristic for walk reminders |
+
+### Production Delivery Mandate (No Console Mode)
+Akamai Functions must **never** be deployed in `console` mode. Cloud cron executions must dispatch outbound WhatsApp alerts via the approved Meta Utility template pool and record delivery status or stand-down rationale directly to Neon Postgres (`message_log` table).
 
 **Private network dependency:** The Pocket ID JWKS is fetched from `https://metnoom.urmanac.com/.well-known/jwks.json` which is only accessible on the Tailscale/home LAN. This is why deployment runs locally, not in GitHub Actions.
 
