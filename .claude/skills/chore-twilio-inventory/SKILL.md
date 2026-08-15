@@ -53,13 +53,32 @@ grep -E "REMINDER_DELIVERY_METHOD|TWILIO_" .env || echo "REMINDER_DELIVERY_METHO
 ```
 - Fetches active approval statuses from Meta/Twilio and updates `data/approved_templates.json`.
 
-### Step 3: Run Nag Evaluation Test (Dry Run)
+### Step 3: Inspect Live Twilio Delivery State (Last 7 Days)
+```bash
+.venv/bin/python -c "
+from datetime import datetime, timedelta, timezone
+from twilio.rest import Client
+from dotenv import load_dotenv
+import os
+load_dotenv()
+client = Client(os.environ['TWILIO_ACCOUNT_SID'], os.environ['TWILIO_AUTH_TOKEN'])
+since = datetime.now(timezone.utc) - timedelta(days=7)
+messages = client.messages.list(date_sent_after=since.date())
+print(f'Twilio Messages (Past 7 Days): {len(messages)}')
+for m in messages:
+    print(f'  - [{m.date_sent}] Status: {m.status} | To: {m.to} | Error: {m.error_code} | Body: {m.body[:60]}...')
+"
+```
+- Verifies whether outbound messages were dispatched by local or cloud crons during the week.
+- Checks delivery status (`delivered`, `read`, `failed`, `undelivered`) and error codes to ensure carriers / WhatsApp have not rejected templates.
+
+### Step 4: Run Nag Evaluation Test (Dry Run)
 ```bash
 .venv/bin/python -m cli.main nag eval
 ```
 - Confirms the nag engine correctly matches the urgent trigger to an approved `template_sid` (e.g., `HX638b7f9403e04c8fa880370f1b7a9ba1`) and structured positional variables.
 
-### Step 4: Human Visual Confirmation (The Chore)
+### Step 5: Human Visual Confirmation (The Chore)
 1. Check your phone's WhatsApp chat with the Mecris bot.
 2. If no messages have been received recently, send a test ping to the bot to open the 24-hour conversational window.
 3. Review whether `REMINDER_DELIVERY_METHOD=whatsapp` should be enabled in your local `.env` or if Akamai Functions handles the cloud cron schedule.
