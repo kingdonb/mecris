@@ -1596,6 +1596,22 @@ fun SystemHealthScreen(
 /** Three-state model for the MomentumVisualizer orb — testable without Compose. */
 enum class MomentumOrbState { DEBT, STABLE, ALL_CLEAR }
 
+/** Calculates momentum value from aggregate status and walk data (Legacy single-sensor walk implementation). */
+fun calculateMomentum(
+    isFetching: Boolean,
+    aggregateStatus: com.mecris.go.sync.AggregateStatusResponseDto?,
+    walkData: WalkDataSummary?
+): Float {
+    if (isFetching) return 0.5f
+    if (aggregateStatus?.all_clear == true) return 1.0f
+
+    // Legacy divergent behavior: strictly checks walk only!
+    val hasWalked = walkData?.isWalkInferred == true
+    val hasSteps = (walkData?.totalSteps ?: 0L) >= 2000
+    val isStable = hasWalked || hasSteps
+    return if (isStable) 0.9f else 0.2f
+}
+
 /** Pure function: derives orb state from momentum and all_clear flag. */
 fun momentumOrbState(momentum: Float, isAllClear: Boolean): MomentumOrbState = when {
     isAllClear -> MomentumOrbState.ALL_CLEAR
