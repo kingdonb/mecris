@@ -19,7 +19,7 @@ The master orchestrator for the **Mecris Weekend Chores** protocol.
 
 ---
 
-## The 4-Arm Inventory Checklist
+## The 5-Arm Inventory Checklist
 
 | Arm | Chore Skill | Human Action |
 |---|---|---|
@@ -27,6 +27,7 @@ The master orchestrator for the **Mecris Weekend Chores** protocol.
 | **2. Android Client** | [`/chore-android-inventory`](file:///Users/yebyen/w/mecris/.github/skills/chore-android-inventory/SKILL.md) | Launch Mecris Go on phone, confirm daily step count and 30-day Health Connect sessions, verify home Wi-Fi check-in. |
 | **3. Mecris CLI** | [`/chore-cli-inventory`](file:///Users/yebyen/w/mecris/.github/skills/chore-cli-inventory/SKILL.md) | Run `.venv/bin/python -m cli.main pulse` to review the high-density terminal dashboard and goal runways. |
 | **4. Twilio / WhatsApp** | [`/chore-twilio-inventory`](file:///Users/yebyen/w/mecris/.github/skills/chore-twilio-inventory/SKILL.md) | Verify WhatsApp connectivity, check Meta Utility template approvals (`HX...`), and open the 24h conversational window if needed. |
+| **5. Moon Oracle** | [`/chore-moon-clock-inventory`](file:///Users/yebyen/w/mecris/.github/skills/chore-moon-clock-inventory/SKILL.md) | Check Moon Phase Clock app icon on home screen, verify WASM synodic math, and ensure icon matches current lunar phase. |
 
 ---
 
