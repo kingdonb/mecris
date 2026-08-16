@@ -48,6 +48,16 @@ sealed interface AuthError {
     }
 
     @Serializable
+    data class NoRefreshToken(
+        override val timestamp: Instant = Clock.System.now(),
+        override val message: String = "Session expired: no refresh token was issued",
+        val detail: String? = null
+    ) : AuthError {
+        override val isPermanent = true
+        override val errorCode = "NO_REFRESH_TOKEN"
+    }
+
+    @Serializable
     data class NetworkUnreachable(
         override val timestamp: Instant = Clock.System.now(),
         override val message: String = "Network unreachable: Tailscale tunnel down or no route to OIDC endpoint",
@@ -92,11 +102,15 @@ sealed interface AuthError {
         fun fromException(e: Exception, context: Context? = null): AuthError {
             // Check AppAuth structured exception types first
             if (e is net.openid.appauth.AuthorizationException) {
-                if (e.type == net.openid.appauth.AuthorizationException.TYPE_GENERAL_ERROR &&
-                    (e.code == net.openid.appauth.AuthorizationException.GeneralErrors.NETWORK_ERROR.code ||
-                     e.code == net.openid.appauth.AuthorizationException.GeneralErrors.SERVER_ERROR.code)
-                ) {
-                    return NetworkUnreachable(detail = e.errorDescription ?: e.message ?: "AppAuth Network/Server error")
+                if (e.type == net.openid.appauth.AuthorizationException.TYPE_GENERAL_ERROR) {
+                    if (e.code == net.openid.appauth.AuthorizationException.GeneralErrors.NETWORK_ERROR.code ||
+                        e.code == net.openid.appauth.AuthorizationException.GeneralErrors.SERVER_ERROR.code
+                    ) {
+                        return NetworkUnreachable(detail = e.errorDescription ?: e.message ?: "AppAuth Network/Server error")
+                    }
+                    if (e.code == net.openid.appauth.AuthorizationException.GeneralErrors.ID_TOKEN_VALIDATION_ERROR.code) {
+                        return NoRefreshToken(detail = e.errorDescription ?: e.message ?: "ID token validation failed")
+                    }
                 }
                 if (e.type == net.openid.appauth.AuthorizationException.TYPE_OAUTH_TOKEN_ERROR) {
                     val desc = (e.errorDescription ?: e.error ?: "").lowercase()
@@ -113,6 +127,10 @@ sealed interface AuthError {
             val lower = message.lowercase()
 
             return when {
+                // Missing refresh token / ID token expired
+                lower.contains("id token") && lower.contains("expired") ->
+                    NoRefreshToken(detail = message)
+
                 // TLS / certificate errors
                 lower.contains("certificate") || lower.contains("ssl") || lower.contains("tls") ||
                 lower.contains("hostname") || lower.contains("trust") || lower.contains("certpath") ->
@@ -178,6 +196,7 @@ val AuthError.detail: String?
         is AuthError.TlsHandshakeFailed -> detail
         is AuthError.TokenRevoked -> detail
         is AuthError.TokenExpired -> detail
+        is AuthError.NoRefreshToken -> detail
         is AuthError.NetworkUnreachable -> detail
         is AuthError.OidcEndpointError -> responseBody
         is AuthError.PasskeyValidationFailed -> detail

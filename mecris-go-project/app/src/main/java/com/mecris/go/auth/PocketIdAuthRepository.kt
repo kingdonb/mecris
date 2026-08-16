@@ -104,7 +104,7 @@ class PocketIdAuthRepository(
 
     init {
         loadAuthState()
-        if (internalAuthState.isAuthorized) {
+        if (internalAuthState.isAuthorized && internalAuthState.refreshToken != null) {
             startBackgroundRefresh()
         }
     }
@@ -240,10 +240,22 @@ class PocketIdAuthRepository(
                 if (tokenResponse != null) {
                     val jwt = tokenResponse.accessToken ?: tokenResponse.idToken
                     if (jwt != null) {
-                        saveRefreshTokenTimestamp()
+                        val hasRefreshToken = tokenResponse.refreshToken != null
+                        android.util.Log.i(
+                            "PocketIdAuth",
+                            "Token exchange successful. Access token received. Refresh token present: $hasRefreshToken"
+                        )
+                        if (hasRefreshToken) {
+                            saveRefreshTokenTimestamp()
+                            startBackgroundRefresh()
+                        } else {
+                            android.util.Log.w(
+                                "PocketIdAuth",
+                                "No refresh token issued by PocketID; session will expire when access token TTL ends"
+                            )
+                        }
                         saveLastKnownEmail(tokenResponse.idToken?.let { parseEmailFromIdToken(it) } ?: "")
                         _authState.value = AuthState.Authenticated(jwt)
-                        startBackgroundRefresh()
                     } else {
                         val error = AuthError.Unknown(message = "No access token received")
                         reportError(error)
