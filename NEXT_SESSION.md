@@ -1,47 +1,26 @@
-# Next Session: Observability & Android Failover
+# Next Session: Release v0.0.1 GA & Continuous Multi-Arm Soak
 
-## Context
-- **Last Session**: Akamai Spin API (`mecris-sync-v2` v64) restored to full Android sync readiness. First successful cloud walk sync since 2026-05-27.
-- **Current State**:
-  - **Akamai API**: All authenticated routes working (200 OK with valid Pocket ID token). Test walk ingested, Beeminder "bike" goal updated.
-  - **Fermyon Cloud**: `mecris-sync-v2-r0r86pso.fermyon.app` → platform 404 (dead channel).
-  - **Python MCP Server**: Still running locally but now a fallback; Akamai is the canonical production path.
-  - **Android App**: Needs re-pointing to Akamai as default backend; failover behavior untested.
-
-## High Priority Goals
-1. **Add observability to Akamai deployment**
-   - Log `extract_user_id` failures to Neon `events` table (per Observability Mandate)
-   - Expose auth success/failure metric via `/internal/review-pump-status` or new `/internal/auth-health`
-   - Alert on sustained 401/500 rate on protected routes
-
-2. **Update `test_cloud_beta4_validation.py`**
-   - Currently expects `/health` → 500 (outdated)
-   - Now: `/health` with auth → 200, `/profile` → 200, `/walks` POST → 201
-   - Add authenticated smoke test suite
-
-3. **Android app: Point to Akamai + verify failover**
-   - Update `spinBaseUrl` default to `https://394b84e7-760c-4336-975b-653c17fdb446.fwf.app`
-   - Test: Local Python server OFF → Android sync still works via Akamai
-   - Test: Local ON → prefers local (lower latency), fails over to Akamai on error
-
-4. **Prompt 1 pipeline: Deployment truth inventory**
-   - Now that Akamai is verified, document the single canonical path
-   - Fermyon Cloud: decommission or re-deploy if needed for redundancy
-
-## Notes for the Narrator
-- The walk was real — 2500 steps at 22:46 UTC, synced to Beeminder via Akamai Spin API.
-- The Python MCP server has been doing all the work for 64 days while Akamai silently 401'd.
-- Fermyon Cloud channel is dead; Akamai is the only live edge deployment.
-- No code changes were needed — only runtime variable configuration.
-
-## Files to Watch
-- `mecris-go-spin/sync-service/spin.toml` — variable declarations
-- `mecris-go-spin/sync-service/src/lib.rs` — `extract_user_id`, needs error telemetry
-- `tests/test_cloud_beta4_validation.py` — outdated assertions
-- `tests/test_cron_validation.py` — still valid, hits Akamai cron
-- Android: `app/src/main/java/com/mecris/go/mesh/ServiceMeshClient.kt` (or equivalent)
+## 📌 Active Context & Release Status
+- **Current Target**: `v0.0.1` GA (Android `versionCode = 32`, `versionName = "0.0.1"`)
+- **Release Branch**: `release/v0.0.1`
+- **Key Accomplishments in this Session**:
+  1. **PocketID v2.13.0 Upgrade**: Upgraded the containerized Synology PocketID identity provider from `v2.4.0` to OpenID Connect Certified™ `v2.13.0`. Confirmed that `offline_access` is actively advertised in `scopes_supported` and client settings configure 1-day access tokens with 30-day sliding refresh tokens.
+  2. **ADB Forensics & Android Error Hardening**:
+     - Identified root cause of the 300ms immediate `TOKEN_EXPIRED` failure: `refreshToken` was null in `v2.4.0`, causing AppAuth to synchronously throw `ID_TOKEN_VALIDATION_ERROR` locally on resume.
+     - Added `AuthError.NoRefreshToken` (`NO_REFRESH_TOKEN`) taxonomy variant in `AuthError.kt` to differentiate missing refresh tokens from true 30-day window expirations.
+     - Hardened `PocketIdAuthRepository.kt` with explicit refresh token logging and gated background workers on valid refresh token availability.
+     - Added full test suite `AuthErrorTest.kt` (100% green).
+  3. **Documentation & Blog**: Authored [`blog/2026-08-16-pocketid-v2-13-and-the-30-day-refresh-token.md`](file:///Users/yebyen/w/mecris/blog/2026-08-16-pocketid-v2-13-and-the-30-day-refresh-token.md).
+  4. **Full Ecosystem Version Bump**: Synced version `0.0.1` (VC=32) across `VERSION_MANIFEST.json`, Android `build.gradle.kts`, Spin manifests, `pyproject.toml`, and Web `package.json`.
 
 ---
 
-*Session log updated: `session_log.md` (entry prepended)*
-*Envelopes in `tlonbot/envelopes/1-7/PROMPT.md` ready for Prompt 1*
+## 🎯 Next Steps Checklist
+1. **Pull Request & CI Validation**:
+   - Push `release/v0.0.1` and open pull request targeting `main`.
+   - Monitor CI pipeline checks across Android, Rust, and Python.
+2. **Merge & Tag v0.0.1**:
+   - Merge `release/v0.0.1` to `main`.
+   - Create and push tag `v0.0.1` to trigger GitHub Actions release distribution.
+3. **Multi-Arm Weekend Chore Soak**:
+   - Run `/chore-weekend-master` across Android, Web, CLI, Twilio, and Akamai WASM edge to celebrate the first official `v0.0.1` milestone.

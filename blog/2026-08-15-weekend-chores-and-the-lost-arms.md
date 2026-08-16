@@ -142,9 +142,9 @@ We codified both [`/chore-pocketid-inventory`](file:///Users/yebyen/w/mecris/.gi
 
 ---
 
-## 8. Next Step: Sunday Lookback & Continuous Streak
+## 8. Next Step: Sunday Lookback & 24-Hour Soak Checkpoints (4:00 PM)
 
-Our weekend chore toolkit now spans 6 specialized inspection arms:
+Our weekend chore toolkit now spans 7 specialized inspection arms:
 - `/chore-web-inventory`
 - `/chore-android-inventory`
 - `/chore-cli-inventory`
@@ -152,5 +152,16 @@ Our weekend chore toolkit now spans 6 specialized inspection arms:
 - `/chore-moon-clock-inventory`
 - `/chore-pocketid-inventory`
 - `/chore-weekend-master`
+- `/parity-arbitration`
 
-Tomorrow, on Sunday morning, we run the second pass with `/chore-weekend-master`, verify the continuous streak across all arms, and generate the week's first completed chore flair!
+### 🕯️ Sunday 4:00 PM Soak Checklist
+When the next session kicks off tomorrow at 4:00 PM to evaluate `v0.0.1-rc.6` (versionCode 31):
+1. **PocketID Refresh Token Stability**:
+   - Verify that zero `UNKNOWN: AuthorizationException` modal interruptions occurred across the 24-hour window.
+   - Confirm background token refreshes executed silently via hardware keystore.
+2. **Physical Activity & Majesty Cake Status**:
+   - Check the walk goal transition from 1,798 steps (car ride & hot-day pacing with Boris) past the 2,000-step threshold.
+   - Verify all 3 daily goals (`arabic`, `greek`, `walk`) reflect **ALL_CLEAR (🍰 Gold Orb)** across both Android and Web.
+3. **Cross-Arm Parity Validation**:
+   - Run `/chore-weekend-master` to verify that Android, Web, and Akamai WASM edge agree on all aggregate metrics.
+   - Evaluate whether `0.0.1-rc.6` is ready for GA promotion or if one more chore pass is warranted.
