@@ -17,12 +17,17 @@
    - Implemented thread-safe `PocketIdAuthRepository.getInstance(...)` singleton pattern across all activities, view models, and WorkManager background workers.
    - Synchronized refresh token timestamp persistence across `getValidAccessToken()` and proactive background loops to ensure the sliding window metadata stays aligned.
    - Fixed `calculateTimeUntilProactiveRefresh()` to prevent eager immediate token refresh triggers when `KEY_REFRESH_TOKEN_ISSUED_AT` is uninitialized.
-3. **AppAuth Error-Lock Fixed**:
+3. **AppAuth Error-Lock & Service Disposal Fix**:
    - Resolved sticky error state in `PocketIdAuthRepository.kt` by instantiating fresh `AppAuthAuthState(resp, ex)` on passkey authorization.
+   - Resolved `Auth refresh failed: Service has been disposed and rendered inoperable` by removing `pocketIdAuth.dispose()` from `MainActivity.onDestroy()`, keeping the shared singleton's `AuthorizationService` alive across activity recreation lifecycles.
 4. **Auth Notification & Re-Auth UI Flow Hardening**:
-   - Fixed stale `OPEN AUTH` snackbar remaining visible after successful re-authentication by guarding `errorEvents` against active `Authenticated` state and dismissing snackbars/consuming `trigger_auth` extras on state transition.
-   - Cleared persistent `41001` auth error notification on successful token exchange, access token fetch, and cached auth load.
-5. **`uv.lock` Release Parity**:
+   - Fixed order of operations in `PocketIdAuthRepository.kt`: updated `_authState.value = AuthState.Error(...)` *before* broadcasting to `_errorEvents` so `MainActivity`'s collector never evaluates against stale `Authenticated` state and drops the re-auth snackbar.
+   - Added direct `LaunchedEffect(authState)` observation for permanent `AuthState.Error` transitions to ensure the `"OPEN AUTH"` snackbar is always displayed.
+   - Replaced false `lower.contains("authorizationexception")` transient network mapping in `AuthError.fromException` with exhaustive `TYPE_OAUTH_TOKEN_ERROR` handling.
+   - Added 15-second timeout on `getAccessTokenSuspend()` and `forceTokenRefresh()` to prevent unresponsive token endpoints from freezing UI or workers.
+5. **Live 24h Refresh Token Verification**:
+   - Verified live on-device refresh after 24h soak: access token refreshed silently without re-auth, health sync succeeded, and background workers scheduled normally.
+6. **`uv.lock` Release Parity**:
    - Automated `uv lock` in `scripts/bump_version.py` and updated release workflow documentation.
 
 ---
