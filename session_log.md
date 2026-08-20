@@ -19,7 +19,10 @@
    - Fixed `calculateTimeUntilProactiveRefresh()` to prevent eager immediate token refresh triggers when `KEY_REFRESH_TOKEN_ISSUED_AT` is uninitialized.
 3. **AppAuth Error-Lock Fixed**:
    - Resolved sticky error state in `PocketIdAuthRepository.kt` by instantiating fresh `AppAuthAuthState(resp, ex)` on passkey authorization.
-4. **`uv.lock` Release Parity**:
+4. **Auth Notification & Re-Auth UI Flow Hardening**:
+   - Fixed stale `OPEN AUTH` snackbar remaining visible after successful re-authentication by guarding `errorEvents` against active `Authenticated` state and dismissing snackbars/consuming `trigger_auth` extras on state transition.
+   - Cleared persistent `41001` auth error notification on successful token exchange, access token fetch, and cached auth load.
+5. **`uv.lock` Release Parity**:
    - Automated `uv lock` in `scripts/bump_version.py` and updated release workflow documentation.
 
 ---

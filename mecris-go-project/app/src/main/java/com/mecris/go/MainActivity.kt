@@ -285,6 +285,10 @@ fun MecrisDashboard(
 
     LaunchedEffect(auth) {
         auth.errorEvents.collect { error ->
+            if (auth.authState.value is AuthState.Authenticated) {
+                // Ignore errors if we have already re-established an Authenticated session
+                return@collect
+            }
             if (error.isPermanent) {
                 val message = "${error.errorCode}: ${error.message}"
                 val result = snackbarHostState.showSnackbar(
@@ -305,6 +309,10 @@ fun MecrisDashboard(
     LaunchedEffect(authState) {
         if (authState is AuthState.Authenticated) {
             snackbarHostState.currentSnackbarData?.dismiss()
+            (context as? ComponentActivity)?.let { act ->
+                act.intent?.removeExtra("trigger_auth")
+                act.intent?.removeExtra("prefill_email")
+            }
         }
     }
 
@@ -312,8 +320,10 @@ fun MecrisDashboard(
     LaunchedEffect(activity?.intent) {
         val intent = activity?.intent
         if (intent?.getBooleanExtra("trigger_auth", false) == true) {
-            val email = intent.getStringExtra("prefill_email")
-            auth.authenticateWithPasskey(authResultLauncher, emailHint = email)
+            if (auth.authState.value !is AuthState.Authenticated) {
+                val email = intent.getStringExtra("prefill_email")
+                auth.authenticateWithPasskey(authResultLauncher, emailHint = email)
+            }
             // Consume the intent so we don't trigger it again on config changes
             intent.removeExtra("trigger_auth")
             intent.removeExtra("prefill_email")

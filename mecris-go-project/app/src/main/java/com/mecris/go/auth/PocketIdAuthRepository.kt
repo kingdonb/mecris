@@ -156,6 +156,7 @@ class PocketIdAuthRepository(
                     val jwt = internalAuthState.accessToken ?: internalAuthState.idToken
                     if (jwt != null) {
                         _authState.value = AuthState.Authenticated(jwt)
+                        errorReporter?.clearNotification()
                     } else {
                         // Has refresh token but no access token — trigger silent refresh
                         refreshAccessToken { _ -> }
@@ -277,6 +278,7 @@ class PocketIdAuthRepository(
                         }
                         saveLastKnownEmail(tokenResponse.idToken?.let { parseEmailFromIdToken(it) } ?: "")
                         _authState.value = AuthState.Authenticated(jwt)
+                        errorReporter?.clearNotification()
                     } else {
                         val error = AuthError.Unknown(message = "No access token received")
                         reportError(error)
@@ -333,6 +335,7 @@ class PocketIdAuthRepository(
                     saveAuthState()
                     saveRefreshTokenTimestamp()
                     _authState.value = AuthState.Authenticated(accessToken)
+                    errorReporter?.clearNotification()
                 }
                 callback(accessToken)
             }
