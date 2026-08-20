@@ -228,10 +228,11 @@ class PocketIdAuthRepository(
         val resp = AuthorizationResponse.fromIntent(intent)
         val ex = AuthorizationException.fromIntent(intent)
 
-        internalAuthState.update(resp, ex)
-        saveAuthState()
-
         if (resp != null) {
+            // Initialize fresh AuthState from response to clear any prior error lock
+            internalAuthState = AppAuthAuthState(resp, ex)
+            saveAuthState()
+
             // Exchange authorization code for tokens
             authService.performTokenRequest(resp.createTokenExchangeRequest()) { tokenResponse, tokenException ->
                 internalAuthState.update(tokenResponse, tokenException)
@@ -297,6 +298,7 @@ class PocketIdAuthRepository(
         clearTransientException()
         internalAuthState.performActionWithFreshTokens(authService) { accessToken, _, ex ->
             if (ex != null) {
+                android.util.Log.e("PocketIdAuth", "performActionWithFreshTokens error: ${ex.message}", ex)
                 val error = classifyTokenError(ex)
                 reportError(error)
                 if (error.isPermanent) {
@@ -307,6 +309,7 @@ class PocketIdAuthRepository(
                 callback(null)
             } else {
                 if (accessToken != null) {
+                    android.util.Log.d("PocketIdAuth", "Fresh access token retrieved successfully.")
                     saveAuthState()
                     _authState.value = AuthState.Authenticated(accessToken)
                 }
