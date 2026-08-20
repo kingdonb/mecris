@@ -39,8 +39,8 @@ class PocketIdAuthRepository(
     private val context: Context,
     private val authService: AuthorizationService = AuthorizationService(context),
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
-    private val errorReporter: AuthErrorReporter? = null,
-    private val errorDatabase: AuthErrorDatabase? = null
+    var errorReporter: AuthErrorReporter? = null,
+    var errorDatabase: AuthErrorDatabase? = null
 ) {
 
     // EncryptedSharedPreferences keys
@@ -100,6 +100,26 @@ class PocketIdAuthRepository(
         private const val REFRESH_TOKEN_TTL_DAYS = 30L
         // Proactive refresh at 80% TTL (24 days)
         private const val PROACTIVE_REFRESH_THRESHOLD_PERCENT = 0.8
+
+        @Volatile
+        private var INSTANCE: PocketIdAuthRepository? = null
+
+        fun getInstance(
+            context: Context,
+            errorReporter: AuthErrorReporter? = null,
+            errorDatabase: AuthErrorDatabase? = null
+        ): PocketIdAuthRepository {
+            return INSTANCE ?: synchronized(this) {
+                INSTANCE ?: PocketIdAuthRepository(
+                    context.applicationContext,
+                    errorReporter = errorReporter,
+                    errorDatabase = errorDatabase
+                ).also { INSTANCE = it }
+            }.apply {
+                if (errorReporter != null) this.errorReporter = errorReporter
+                if (errorDatabase != null) this.errorDatabase = errorDatabase
+            }
+        }
     }
 
     init {
@@ -311,6 +331,7 @@ class PocketIdAuthRepository(
                 if (accessToken != null) {
                     android.util.Log.d("PocketIdAuth", "Fresh access token retrieved successfully.")
                     saveAuthState()
+                    saveRefreshTokenTimestamp()
                     _authState.value = AuthState.Authenticated(accessToken)
                 }
                 callback(accessToken)
@@ -396,7 +417,12 @@ class PocketIdAuthRepository(
     /** Calculates milliseconds until proactive refresh (80% of TTL). */
     private fun calculateTimeUntilProactiveRefresh(): Long {
         val issuedAt = prefs.getLong(KEY_REFRESH_TOKEN_ISSUED_AT, 0L)
-        if (issuedAt == 0L) return 0 // No timestamp, refresh immediately
+        if (issuedAt == 0L) {
+            saveRefreshTokenTimestamp()
+            val ttlDays = prefs.getLong(KEY_REFRESH_TOKEN_TTL_DAYS, REFRESH_TOKEN_TTL_DAYS)
+            val ttlMillis = Duration.ofDays(ttlDays).toMillis()
+            return (ttlMillis * PROACTIVE_REFRESH_THRESHOLD_PERCENT).toLong()
+        }
 
         val ttlDays = prefs.getLong(KEY_REFRESH_TOKEN_TTL_DAYS, REFRESH_TOKEN_TTL_DAYS)
         val ttlMillis = Duration.ofDays(ttlDays).toMillis()

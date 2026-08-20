@@ -19,7 +19,7 @@ class DelayedNagWorker(
     workerParams: WorkerParameters
 ) : CoroutineWorker(appContext, workerParams) {
 
-    private val pocketIdAuth = PocketIdAuthRepository(applicationContext)
+    private val pocketIdAuth = PocketIdAuthRepository.getInstance(applicationContext)
     private val syncApi = SyncServiceApi.create(com.mecris.go.BackendManager.getBaseUrl(applicationContext))
     private val prefs = applicationContext.getSharedPreferences("mecris_worker_state", Context.MODE_PRIVATE)
     private val profileManager = ProfilePreferencesManager(applicationContext)

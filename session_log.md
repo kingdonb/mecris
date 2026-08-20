@@ -1,6 +1,6 @@
-# Session Log: AppAuth Sticky Error-Lock Resolution & Release Lockfile Parity
+# Session Log: PocketID Refresh Token Rotation & Singleton Repository Architecture
 
-**Date:** 2026-08-19  
+**Date:** 2026-08-20  
 **Branch:** `fix/appauth-state-reset` (PR #289)  
 **Primary Model:** Gemini 3.7 Flash  
 **Human:** yebyen  
@@ -9,8 +9,18 @@
 
 ## Summary
 
-1. **AppAuth Error-Lock Fixed**: Investigated live ADB logcat traces showing `W AppAuth: AuthState.update should not be called in an error state`. Fixed `PocketIdAuthRepository.kt` to instantiate a fresh `AppAuthAuthState(resp, ex)` on passkey authorization, wiping any previous sticky `invalid_grant` error-lock state.
-2. **`uv.lock` Release Parity Plan & Implementation**: Identified why `uv.lock` drifted during the `0.0.1` release (`bump_version.py` updated `pyproject.toml` without running `uv lock`). Automated `uv lock` in `scripts/bump_version.py` and updated `docs/RELEASE_PROCESS.md` and `/release-workflow` skills to include `uv.lock` in version definitions and git staging.
+1. **Root Cause Analysis (`invalid_grant` / Stale Refresh Token Replay)**:
+   - Investigated live background failure from `WalkHeuristicsWorker` returning `invalid_grant: The refresh token is malformed or not valid`.
+   - Identified that PocketID issues 1-hour access tokens (`expires_in = 3600`) alongside 30-day sliding refresh tokens, requiring periodic background refresh grants.
+   - Discovered that `PocketIdAuthRepository` was being instantiated separately across `MainActivity`, `AuthViewModel`, `WalkHeuristicsWorker`, and `DelayedNagWorker`. Because PocketID v2.13 rotates refresh tokens on each exchange (single-use), independent uncoordinated instances replayed revoked in-memory refresh tokens, causing PocketID to reject subsequent requests with `invalid_grant` and permanently lock out the session.
+2. **Process Singleton Pattern & State Synchronization**:
+   - Implemented thread-safe `PocketIdAuthRepository.getInstance(...)` singleton pattern across all activities, view models, and WorkManager background workers.
+   - Synchronized refresh token timestamp persistence across `getValidAccessToken()` and proactive background loops to ensure the sliding window metadata stays aligned.
+   - Fixed `calculateTimeUntilProactiveRefresh()` to prevent eager immediate token refresh triggers when `KEY_REFRESH_TOKEN_ISSUED_AT` is uninitialized.
+3. **AppAuth Error-Lock Fixed**:
+   - Resolved sticky error state in `PocketIdAuthRepository.kt` by instantiating fresh `AppAuthAuthState(resp, ex)` on passkey authorization.
+4. **`uv.lock` Release Parity**:
+   - Automated `uv lock` in `scripts/bump_version.py` and updated release workflow documentation.
 
 ---
 

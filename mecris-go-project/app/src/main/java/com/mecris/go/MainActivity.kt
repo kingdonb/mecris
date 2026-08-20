@@ -95,7 +95,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         
         val errorReporter = AuthErrorReporter(this)
-        pocketIdAuth = PocketIdAuthRepository(
+        pocketIdAuth = PocketIdAuthRepository.getInstance(
             context = this,
             errorReporter = errorReporter
         )
