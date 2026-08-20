@@ -34,7 +34,7 @@ make bump-version VERSION={VERSION} VC={VERSION_CODE}
 
 ### Step 3: Commit, Push & Open Pull Request
 ```bash
-git add VERSION_MANIFEST.json mecris-go-project/app/build.gradle.kts boris-fiona-walker/spin.toml mecris-go-spin/sync-service/spin.toml pyproject.toml web/package.json ROADMAP.md
+git add VERSION_MANIFEST.json mecris-go-project/app/build.gradle.kts boris-fiona-walker/spin.toml mecris-go-spin/sync-service/spin.toml pyproject.toml uv.lock web/package.json ROADMAP.md
 git commit -m "chore(release): bump version to {VERSION} + VC={VERSION_CODE}"
 git push origin release/v{VERSION}
 gh pr create --title "chore(release): release v{VERSION}" --body "Release preparation for v{VERSION} (VC={VERSION_CODE})." --base main

@@ -1,8 +1,24 @@
+# Session Log: AppAuth Sticky Error-Lock Resolution & Release Lockfile Parity
+
+**Date:** 2026-08-19  
+**Branch:** `fix/appauth-state-reset` (PR #289)  
+**Primary Model:** Gemini 3.7 Flash  
+**Human:** yebyen  
+
+---
+
+## Summary
+
+1. **AppAuth Error-Lock Fixed**: Investigated live ADB logcat traces showing `W AppAuth: AuthState.update should not be called in an error state`. Fixed `PocketIdAuthRepository.kt` to instantiate a fresh `AppAuthAuthState(resp, ex)` on passkey authorization, wiping any previous sticky `invalid_grant` error-lock state.
+2. **`uv.lock` Release Parity Plan & Implementation**: Identified why `uv.lock` drifted during the `0.0.1` release (`bump_version.py` updated `pyproject.toml` without running `uv lock`). Automated `uv lock` in `scripts/bump_version.py` and updated `docs/RELEASE_PROCESS.md` and `/release-workflow` skills to include `uv.lock` in version definitions and git staging.
+
+---
+
 # Session Log: Akamai API Restored — Android Sync Unblocked
 
-**Date:** 2026-07-30
-**Branch:** `main`
-**Primary Model:** nemotron-3-ultra-550b-a55b:free (via OpenRouter) + Pi coding agent
+**Date:** 2026-07-30  
+**Branch:** `main`  
+**Primary Model:** nemotron-3-ultra-550b-a55b:free (via OpenRouter) + Pi coding agent  
 **Human:** yebyen
 
 ---

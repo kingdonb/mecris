@@ -57,6 +57,7 @@ This updates:
 - `boris-fiona-walker/spin.toml` (Spin/WASM)
 - `mecris-go-spin/sync-service/spin.toml` (Spin/WASM)
 - `pyproject.toml` (Python)
+- `uv.lock` (Auto-synchronized via `uv lock`)
 - `web/package.json` (Web)
 - `ROADMAP.md` (version label + date)
 
@@ -70,6 +71,7 @@ git add VERSION_MANIFEST.json \
         boris-fiona-walker/spin.toml \
         mecris-go-spin/sync-service/spin.toml \
         pyproject.toml \
+        uv.lock \
         web/package.json \
         ROADMAP.md \
         docs/RELEASE_PROCESS.md
@@ -159,6 +161,7 @@ make bump-version VERSION=0.0.1-rc.5 VC=29
 |------|-----------|-------|
 | `VERSION_MANIFEST.json` | Master manifest | All components listed |
 | `pyproject.toml` | Python package | `version = "..."` |
+| `uv.lock` | Python lockfile | Auto-locked via `uv lock` |
 | `mecris-go-project/app/build.gradle.kts` | Android | `versionName`, `versionCode` |
 | `mecris-go-spin/sync-service/spin.toml` | Spin sync-service | `version = "..."` |
 | `boris-fiona-walker/spin.toml` | Spin walker | `version = "..."` |
