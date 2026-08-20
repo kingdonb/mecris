@@ -33,17 +33,24 @@ class DelayedNagWorker(
         val nagManager = NagNotificationManager(applicationContext, syncApi)
 
         try {
+            var status: com.mecris.go.sync.AggregateStatusResponseDto? = null
             if (token != null) {
-                // 1. RE-VERIFY: Fetch latest status from cloud
-                val statusResponse = syncApi.getAggregateStatus("Bearer $token")
-                if (statusResponse.isSuccessful) {
-                    val status = statusResponse.body()
-                    if (status != null) {
-                        // 2. PIVOT: Decide what to nag about based on fresh data
-                        val healthManager = HealthConnectManager(applicationContext)
-                        val summary = if (healthManager.hasForegroundPermissions()) healthManager.fetchRecentWalkData() else null
-                        val result = evaluateNagHierarchy(status, token, summary)
-                        if (result != null) {
+                try {
+                    val statusResponse = syncApi.getAggregateStatus("Bearer $token")
+                    if (statusResponse.isSuccessful) {
+                        status = statusResponse.body()
+                    }
+                } catch (e: java.io.IOException) {
+                    Log.d("DelayedNagWorker", "Cloud aggregate status unreachable (offline): ${e.message}")
+                }
+            }
+
+            if (status != null) {
+                // 2. PIVOT: Decide what to nag about based on fresh data
+                val healthManager = HealthConnectManager(applicationContext)
+                val summary = if (healthManager.hasForegroundPermissions()) healthManager.fetchRecentWalkData() else null
+                val result = evaluateNagHierarchy(status, token!!, summary)
+                if (result != null) {
                             val (title, message, prefKey, packageName, llmMessage) = result
                             
                             // Check cooldowns: 
@@ -86,8 +93,6 @@ class DelayedNagWorker(
                         } else {
                             Log.i("DelayedNagWorker", "All clear or suppressed. No nag needed.")
                         }
-                    }
-                }
             } else {
                 // 3. SOVEREIGN FALLBACK: Basic local walk check
                 val localHourFallback = java.time.LocalDateTime.now().hour
