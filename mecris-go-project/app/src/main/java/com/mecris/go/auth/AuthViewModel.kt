@@ -166,6 +166,5 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
     override fun onCleared() {
         super.onCleared()
         cancelAutoRetry()
-        repository.dispose()
     }
 }

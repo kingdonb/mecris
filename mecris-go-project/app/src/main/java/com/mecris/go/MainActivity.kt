@@ -209,9 +209,6 @@ class MainActivity : ComponentActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
-        if (::pocketIdAuth.isInitialized) {
-            pocketIdAuth.dispose()
-        }
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -285,10 +282,6 @@ fun MecrisDashboard(
 
     LaunchedEffect(auth) {
         auth.errorEvents.collect { error ->
-            if (auth.authState.value is AuthState.Authenticated) {
-                // Ignore errors if we have already re-established an Authenticated session
-                return@collect
-            }
             if (error.isPermanent) {
                 val message = "${error.errorCode}: ${error.message}"
                 val result = snackbarHostState.showSnackbar(
@@ -300,8 +293,10 @@ fun MecrisDashboard(
                     auth.authenticateWithPasskey(authResultLauncher)
                 }
             } else {
-                Log.d("MainActivity", "Transient auth notice: ${error.errorCode} - ${error.message}")
-                syncStatus = "Offline (PocketID reconnecting)"
+                if (auth.authState.value !is AuthState.Authenticated) {
+                    Log.d("MainActivity", "Transient auth notice: ${error.errorCode} - ${error.message}")
+                    syncStatus = "Offline (PocketID reconnecting)"
+                }
             }
         }
     }
@@ -312,6 +307,16 @@ fun MecrisDashboard(
             (context as? ComponentActivity)?.let { act ->
                 act.intent?.removeExtra("trigger_auth")
                 act.intent?.removeExtra("prefill_email")
+            }
+        } else if (authState is AuthState.Error && (authState as AuthState.Error).isPermanent) {
+            val err = authState as AuthState.Error
+            val result = snackbarHostState.showSnackbar(
+                message = "${err.message}",
+                actionLabel = "OPEN AUTH",
+                duration = SnackbarDuration.Indefinite
+            )
+            if (result == SnackbarResult.ActionPerformed) {
+                auth.authenticateWithPasskey(authResultLauncher)
             }
         }
     }
