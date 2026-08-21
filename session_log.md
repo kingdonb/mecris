@@ -1,8 +1,42 @@
+# Session Log: PocketID Refresh Token Rotation & Singleton Repository Architecture
+
+**Date:** 2026-08-20  
+**Branch:** `fix/appauth-state-reset` (PR #289)  
+**Primary Model:** Gemini 3.7 Flash  
+**Human:** yebyen  
+
+---
+
+## Summary
+
+1. **Root Cause Analysis (`invalid_grant` / Stale Refresh Token Replay)**:
+   - Investigated live background failure from `WalkHeuristicsWorker` returning `invalid_grant: The refresh token is malformed or not valid`.
+   - Identified that PocketID issues 1-hour access tokens (`expires_in = 3600`) alongside 30-day sliding refresh tokens, requiring periodic background refresh grants.
+   - Discovered that `PocketIdAuthRepository` was being instantiated separately across `MainActivity`, `AuthViewModel`, `WalkHeuristicsWorker`, and `DelayedNagWorker`. Because PocketID v2.13 rotates refresh tokens on each exchange (single-use), independent uncoordinated instances replayed revoked in-memory refresh tokens, causing PocketID to reject subsequent requests with `invalid_grant` and permanently lock out the session.
+2. **Process Singleton Pattern & State Synchronization**:
+   - Implemented thread-safe `PocketIdAuthRepository.getInstance(...)` singleton pattern across all activities, view models, and WorkManager background workers.
+   - Synchronized refresh token timestamp persistence across `getValidAccessToken()` and proactive background loops to ensure the sliding window metadata stays aligned.
+   - Fixed `calculateTimeUntilProactiveRefresh()` to prevent eager immediate token refresh triggers when `KEY_REFRESH_TOKEN_ISSUED_AT` is uninitialized.
+3. **AppAuth Error-Lock & Service Disposal Fix**:
+   - Resolved sticky error state in `PocketIdAuthRepository.kt` by instantiating fresh `AppAuthAuthState(resp, ex)` on passkey authorization.
+   - Resolved `Auth refresh failed: Service has been disposed and rendered inoperable` by removing `pocketIdAuth.dispose()` from `MainActivity.onDestroy()`, keeping the shared singleton's `AuthorizationService` alive across activity recreation lifecycles.
+4. **Auth Notification & Re-Auth UI Flow Hardening**:
+   - Fixed order of operations in `PocketIdAuthRepository.kt`: updated `_authState.value = AuthState.Error(...)` *before* broadcasting to `_errorEvents` so `MainActivity`'s collector never evaluates against stale `Authenticated` state and drops the re-auth snackbar.
+   - Added direct `LaunchedEffect(authState)` observation for permanent `AuthState.Error` transitions to ensure the `"OPEN AUTH"` snackbar is always displayed.
+   - Replaced false `lower.contains("authorizationexception")` transient network mapping in `AuthError.fromException` with exhaustive `TYPE_OAUTH_TOKEN_ERROR` handling.
+   - Added 15-second timeout on `getAccessTokenSuspend()` and `forceTokenRefresh()` to prevent unresponsive token endpoints from freezing UI or workers.
+5. **Live 24h Refresh Token Verification**:
+   - Verified live on-device refresh after 24h soak: access token refreshed silently without re-auth, health sync succeeded, and background workers scheduled normally.
+6. **`uv.lock` Release Parity**:
+   - Automated `uv lock` in `scripts/bump_version.py` and updated release workflow documentation.
+
+---
+
 # Session Log: Akamai API Restored — Android Sync Unblocked
 
-**Date:** 2026-07-30
-**Branch:** `main`
-**Primary Model:** nemotron-3-ultra-550b-a55b:free (via OpenRouter) + Pi coding agent
+**Date:** 2026-07-30  
+**Branch:** `main`  
+**Primary Model:** nemotron-3-ultra-550b-a55b:free (via OpenRouter) + Pi coding agent  
 **Human:** yebyen
 
 ---

@@ -114,12 +114,10 @@ sealed interface AuthError {
                 }
                 if (e.type == net.openid.appauth.AuthorizationException.TYPE_OAUTH_TOKEN_ERROR) {
                     val desc = (e.errorDescription ?: e.error ?: "").lowercase()
-                    if (desc.contains("invalid_grant") || desc.contains("revoked")) {
-                        return TokenRevoked(detail = e.errorDescription ?: e.message)
-                    }
                     if (desc.contains("expired")) {
                         return TokenExpired(detail = e.errorDescription ?: e.message)
                     }
+                    return TokenRevoked(detail = e.errorDescription ?: e.error ?: e.message)
                 }
             }
 
@@ -147,8 +145,7 @@ sealed interface AuthError {
 
                 // Network unreachable
                 lower.contains("network") || lower.contains("connection") || lower.contains("timeout") ||
-                lower.contains("unreachable") || lower.contains("dns") || lower.contains("resolve") ||
-                lower.contains("authorizationexception") ->
+                lower.contains("unreachable") || lower.contains("dns") || lower.contains("resolve") ->
                     NetworkUnreachable(detail = message)
 
                 // OIDC endpoint HTTP errors

@@ -26,7 +26,7 @@ class WalkHeuristicsWorker @JvmOverloads constructor(
     private val injectedSyncApi: SyncServiceApi? = null
 ) : CoroutineWorker(appContext, workerParams) {
 
-    private val pocketIdAuth = injectedAuth ?: PocketIdAuthRepository(applicationContext)
+    private val pocketIdAuth = injectedAuth ?: PocketIdAuthRepository.getInstance(applicationContext)
     private val syncApi = injectedSyncApi ?: SyncServiceApi.create(com.mecris.go.BackendManager.getBaseUrl(applicationContext))
     
     private val prefs = applicationContext.getSharedPreferences("mecris_worker_state", Context.MODE_PRIVATE)
@@ -69,6 +69,8 @@ class WalkHeuristicsWorker @JvmOverloads constructor(
                             if (!remindersResponse.isSuccessful) {
                                 Log.w("WalkHeuristicsWorker", "Reminders trigger returned: ${remindersResponse.code()}")
                             }
+                        } catch (e: java.io.IOException) {
+                            Log.d("WalkHeuristicsWorker", "Reminders trigger skipped (offline): ${e.message}")
                         } catch (e: Exception) {
                             Log.e("WalkHeuristicsWorker", "Reminders trigger failed: ${e.message}")
                         }
@@ -78,6 +80,8 @@ class WalkHeuristicsWorker @JvmOverloads constructor(
                     Log.w("WalkHeuristicsWorker", "Heartbeat failed with code: ${hbResponse.code()}")
                 }
             }
+        } catch (e: java.io.IOException) {
+            Log.d("WalkHeuristicsWorker", "Cooperative check skipped (offline): ${e.message}")
         } catch (e: Exception) {
             Log.e("WalkHeuristicsWorker", "Cooperative check failed: ${e.message}")
         }
@@ -133,6 +137,8 @@ class WalkHeuristicsWorker @JvmOverloads constructor(
                     }
                 }
             }
+        } catch (e: java.io.IOException) {
+            Log.d("WalkHeuristicsWorker", "Nag scheduling skipped (offline): ${e.message}")
         } catch (e: Exception) {
             Log.e("WalkHeuristicsWorker", "Nag scheduling failed: ${e.message}")
         }
@@ -184,6 +190,9 @@ class WalkHeuristicsWorker @JvmOverloads constructor(
             }
             
             return Result.success()
+        } catch (e: java.io.IOException) {
+            Log.d("WalkHeuristicsWorker", "Health data cloud sync skipped (offline): ${e.message}")
+            return Result.retry()
         } catch (e: Exception) {
             Log.e("WalkHeuristicsWorker", "Execution error: ${e.message}")
             return Result.retry()

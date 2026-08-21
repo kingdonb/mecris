@@ -25,7 +25,7 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
 
     // Repository will be injected via Hilt/Koin in production; for now we create it
     private val repository by lazy {
-        PocketIdAuthRepository(
+        PocketIdAuthRepository.getInstance(
             context = getApplication()
         )
     }
@@ -166,6 +166,5 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
     override fun onCleared() {
         super.onCleared()
         cancelAutoRetry()
-        repository.dispose()
     }
 }

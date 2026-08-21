@@ -95,7 +95,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         
         val errorReporter = AuthErrorReporter(this)
-        pocketIdAuth = PocketIdAuthRepository(
+        pocketIdAuth = PocketIdAuthRepository.getInstance(
             context = this,
             errorReporter = errorReporter
         )
@@ -209,9 +209,6 @@ class MainActivity : ComponentActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
-        if (::pocketIdAuth.isInitialized) {
-            pocketIdAuth.dispose()
-        }
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -296,8 +293,10 @@ fun MecrisDashboard(
                     auth.authenticateWithPasskey(authResultLauncher)
                 }
             } else {
-                Log.d("MainActivity", "Transient auth notice: ${error.errorCode} - ${error.message}")
-                syncStatus = "Offline (PocketID reconnecting)"
+                if (auth.authState.value !is AuthState.Authenticated) {
+                    Log.d("MainActivity", "Transient auth notice: ${error.errorCode} - ${error.message}")
+                    syncStatus = "Offline (PocketID reconnecting)"
+                }
             }
         }
     }
@@ -305,6 +304,20 @@ fun MecrisDashboard(
     LaunchedEffect(authState) {
         if (authState is AuthState.Authenticated) {
             snackbarHostState.currentSnackbarData?.dismiss()
+            (context as? ComponentActivity)?.let { act ->
+                act.intent?.removeExtra("trigger_auth")
+                act.intent?.removeExtra("prefill_email")
+            }
+        } else if (authState is AuthState.Error && (authState as AuthState.Error).isPermanent) {
+            val err = authState as AuthState.Error
+            val result = snackbarHostState.showSnackbar(
+                message = "${err.message}",
+                actionLabel = "OPEN AUTH",
+                duration = SnackbarDuration.Indefinite
+            )
+            if (result == SnackbarResult.ActionPerformed) {
+                auth.authenticateWithPasskey(authResultLauncher)
+            }
         }
     }
 
@@ -312,8 +325,10 @@ fun MecrisDashboard(
     LaunchedEffect(activity?.intent) {
         val intent = activity?.intent
         if (intent?.getBooleanExtra("trigger_auth", false) == true) {
-            val email = intent.getStringExtra("prefill_email")
-            auth.authenticateWithPasskey(authResultLauncher, emailHint = email)
+            if (auth.authState.value !is AuthState.Authenticated) {
+                val email = intent.getStringExtra("prefill_email")
+                auth.authenticateWithPasskey(authResultLauncher, emailHint = email)
+            }
             // Consume the intent so we don't trigger it again on config changes
             intent.removeExtra("trigger_auth")
             intent.removeExtra("prefill_email")

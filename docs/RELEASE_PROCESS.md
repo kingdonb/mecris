@@ -37,18 +37,23 @@ make test-rust
 
 All tests must pass. CI must be green on `main`.
 
-### 2. Create Release Branch & Bump Version
+### 2. Bump Version on PR / Release Branch
 
-Create a release branch from `main`:
+You can release directly from an active PR branch (to avoid redundant CI runs) or create a dedicated release branch:
+
 ```bash
+# Option A: Direct from active feature/fix PR branch (Recommended for faster turnaround)
+# Simply apply the bump directly on the working branch before merging.
+
+# Option B: Dedicated release branch from main
 git checkout main && git pull origin main
-git checkout -b release/v0.0.1-rc.4
+git checkout -b release/v0.0.2
 ```
 
 Use the official version bump script (updates 15+ version strings across the repo, including Android `versionCode` via `VC=nn`):
 
 ```bash
-make bump-version VERSION=0.0.1-rc.4 VC=28
+make bump-version VERSION=0.0.2 VC=33
 ```
 
 This updates:
@@ -57,12 +62,13 @@ This updates:
 - `boris-fiona-walker/spin.toml` (Spin/WASM)
 - `mecris-go-spin/sync-service/spin.toml` (Spin/WASM)
 - `pyproject.toml` (Python)
+- `uv.lock` (Auto-synchronized via `uv lock`)
 - `web/package.json` (Web)
 - `ROADMAP.md` (version label + date)
 
-### 3. Commit, Push Branch & Open PR (Branch Protection)
+### 3. Commit, Push & Run CI (1st CI Run: Before Merge)
 
-Because `main` is protected with mandatory CI checks, releases must go through a pull request:
+Commit and push the version bump to the PR branch:
 
 ```bash
 git add VERSION_MANIFEST.json \
@@ -70,16 +76,16 @@ git add VERSION_MANIFEST.json \
         boris-fiona-walker/spin.toml \
         mecris-go-spin/sync-service/spin.toml \
         pyproject.toml \
+        uv.lock \
         web/package.json \
         ROADMAP.md \
         docs/RELEASE_PROCESS.md
 
-git commit -m "chore(release): bump version to 0.0.1-rc.4 + VC=28"
-git push origin release/v0.0.1-rc.4
-
-# Open PR using GitHub CLI
-gh pr create --title "chore(release): release v0.0.1-rc.4" --body "Release preparation for v0.0.1-rc.4 (VC=28)." --base main
+git commit -m "chore(release): bump version to 0.0.2 + VC=33"
+git push origin <branch-name>
 ```
+
+Wait for CI to run and pass on the PR. Mandatory checks run automatically.
 
 ### 4. Merge PR to Main
 
@@ -159,6 +165,7 @@ make bump-version VERSION=0.0.1-rc.5 VC=29
 |------|-----------|-------|
 | `VERSION_MANIFEST.json` | Master manifest | All components listed |
 | `pyproject.toml` | Python package | `version = "..."` |
+| `uv.lock` | Python lockfile | Auto-locked via `uv lock` |
 | `mecris-go-project/app/build.gradle.kts` | Android | `versionName`, `versionCode` |
 | `mecris-go-spin/sync-service/spin.toml` | Spin sync-service | `version = "..."` |
 | `boris-fiona-walker/spin.toml` | Spin walker | `version = "..."` |

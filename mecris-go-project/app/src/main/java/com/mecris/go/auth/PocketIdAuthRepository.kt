@@ -18,6 +18,7 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.coroutines.resume
 import net.openid.appauth.AuthState as AppAuthAuthState
 import net.openid.appauth.AuthorizationException
@@ -39,8 +40,8 @@ class PocketIdAuthRepository(
     private val context: Context,
     private val authService: AuthorizationService = AuthorizationService(context),
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
-    private val errorReporter: AuthErrorReporter? = null,
-    private val errorDatabase: AuthErrorDatabase? = null
+    var errorReporter: AuthErrorReporter? = null,
+    var errorDatabase: AuthErrorDatabase? = null
 ) {
 
     // EncryptedSharedPreferences keys
@@ -100,6 +101,26 @@ class PocketIdAuthRepository(
         private const val REFRESH_TOKEN_TTL_DAYS = 30L
         // Proactive refresh at 80% TTL (24 days)
         private const val PROACTIVE_REFRESH_THRESHOLD_PERCENT = 0.8
+
+        @Volatile
+        private var INSTANCE: PocketIdAuthRepository? = null
+
+        fun getInstance(
+            context: Context,
+            errorReporter: AuthErrorReporter? = null,
+            errorDatabase: AuthErrorDatabase? = null
+        ): PocketIdAuthRepository {
+            return INSTANCE ?: synchronized(this) {
+                INSTANCE ?: PocketIdAuthRepository(
+                    context.applicationContext,
+                    errorReporter = errorReporter,
+                    errorDatabase = errorDatabase
+                ).also { INSTANCE = it }
+            }.apply {
+                if (errorReporter != null) this.errorReporter = errorReporter
+                if (errorDatabase != null) this.errorDatabase = errorDatabase
+            }
+        }
     }
 
     init {
@@ -134,10 +155,11 @@ class PocketIdAuthRepository(
                 internalAuthState = AppAuthAuthState.jsonDeserialize(json)
                 if (internalAuthState.isAuthorized) {
                     val jwt = internalAuthState.accessToken ?: internalAuthState.idToken
-                    if (jwt != null) {
+                    if (jwt != null && !internalAuthState.needsTokenRefresh) {
                         _authState.value = AuthState.Authenticated(jwt)
+                        errorReporter?.clearNotification()
                     } else {
-                        // Has refresh token but no access token — trigger silent refresh
+                        // Has refresh token or expired access token — trigger silent refresh
                         refreshAccessToken { _ -> }
                     }
                 }
@@ -228,10 +250,11 @@ class PocketIdAuthRepository(
         val resp = AuthorizationResponse.fromIntent(intent)
         val ex = AuthorizationException.fromIntent(intent)
 
-        internalAuthState.update(resp, ex)
-        saveAuthState()
-
         if (resp != null) {
+            // Initialize fresh AuthState from response to clear any prior error lock
+            internalAuthState = AppAuthAuthState(resp, ex)
+            saveAuthState()
+
             // Exchange authorization code for tokens
             authService.performTokenRequest(resp.createTokenExchangeRequest()) { tokenResponse, tokenException ->
                 internalAuthState.update(tokenResponse, tokenException)
@@ -256,6 +279,7 @@ class PocketIdAuthRepository(
                         }
                         saveLastKnownEmail(tokenResponse.idToken?.let { parseEmailFromIdToken(it) } ?: "")
                         _authState.value = AuthState.Authenticated(jwt)
+                        errorReporter?.clearNotification()
                     } else {
                         val error = AuthError.Unknown(message = "No access token received")
                         reportError(error)
@@ -297,41 +321,53 @@ class PocketIdAuthRepository(
         clearTransientException()
         internalAuthState.performActionWithFreshTokens(authService) { accessToken, _, ex ->
             if (ex != null) {
+                android.util.Log.e("PocketIdAuth", "performActionWithFreshTokens error: ${ex.message}", ex)
                 val error = classifyTokenError(ex)
-                reportError(error)
                 if (error.isPermanent) {
                     _authState.value = AuthState.Error(error.message, isPermanent = true)
                 } else {
                     clearTransientException()
                 }
+                reportError(error)
                 callback(null)
             } else {
                 if (accessToken != null) {
+                    android.util.Log.d("PocketIdAuth", "Fresh access token retrieved successfully.")
                     saveAuthState()
+                    saveRefreshTokenTimestamp()
                     _authState.value = AuthState.Authenticated(accessToken)
+                    errorReporter?.clearNotification()
                 }
                 callback(accessToken)
             }
         }
     }
 
-    /** Suspend version for coroutines. */
-    suspend fun getAccessTokenSuspend(): String? = refreshMutex.withLock {
-        return@withLock kotlinx.coroutines.suspendCancellableCoroutine { continuation ->
-            getValidAccessToken { token ->
-                continuation.resume(token)
+    /** Suspend version for coroutines with timeout to prevent hanging UI/workers. */
+    suspend fun getAccessTokenSuspend(): String? = withTimeoutOrNull(15000L) {
+        refreshMutex.withLock {
+            kotlinx.coroutines.suspendCancellableCoroutine { continuation ->
+                getValidAccessToken { token ->
+                    if (continuation.isActive) {
+                        continuation.resume(token)
+                    }
+                }
             }
         }
     }
 
     /** Forces an immediate token refresh. */
-    suspend fun forceTokenRefresh(): String? = refreshMutex.withLock {
-        return@withLock kotlinx.coroutines.suspendCancellableCoroutine { continuation ->
-            // Force AppAuth to treat the current access token as expired
-            internalAuthState.setNeedsTokenRefresh(true)
+    suspend fun forceTokenRefresh(): String? = withTimeoutOrNull(15000L) {
+        refreshMutex.withLock {
+            kotlinx.coroutines.suspendCancellableCoroutine { continuation ->
+                // Force AppAuth to treat the current access token as expired
+                internalAuthState.setNeedsTokenRefresh(true)
 
-            getValidAccessToken { token ->
-                continuation.resume(token)
+                getValidAccessToken { token ->
+                    if (continuation.isActive) {
+                        continuation.resume(token)
+                    }
+                }
             }
         }
     }
@@ -393,7 +429,12 @@ class PocketIdAuthRepository(
     /** Calculates milliseconds until proactive refresh (80% of TTL). */
     private fun calculateTimeUntilProactiveRefresh(): Long {
         val issuedAt = prefs.getLong(KEY_REFRESH_TOKEN_ISSUED_AT, 0L)
-        if (issuedAt == 0L) return 0 // No timestamp, refresh immediately
+        if (issuedAt == 0L) {
+            saveRefreshTokenTimestamp()
+            val ttlDays = prefs.getLong(KEY_REFRESH_TOKEN_TTL_DAYS, REFRESH_TOKEN_TTL_DAYS)
+            val ttlMillis = Duration.ofDays(ttlDays).toMillis()
+            return (ttlMillis * PROACTIVE_REFRESH_THRESHOLD_PERCENT).toLong()
+        }
 
         val ttlDays = prefs.getLong(KEY_REFRESH_TOKEN_TTL_DAYS, REFRESH_TOKEN_TTL_DAYS)
         val ttlMillis = Duration.ofDays(ttlDays).toMillis()
@@ -409,11 +450,11 @@ class PocketIdAuthRepository(
         internalAuthState.performActionWithFreshTokens(authService) { accessToken, _, ex ->
             if (ex != null) {
                 val error = classifyTokenError(ex)
-                reportError(error)
                 if (error.isPermanent) {
                     _authState.value = AuthState.Error(error.message, isPermanent = true)
                     stopBackgroundRefresh()
                 }
+                reportError(error)
                 callback(false)
             } else {
                 if (accessToken != null) {

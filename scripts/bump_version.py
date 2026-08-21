@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import json
 import re
+import subprocess
 import sys
 import os
 from datetime import datetime
@@ -43,13 +44,20 @@ def bump_version(new_version, version_code=None):
             content = re.sub(r'version\s*=\s*".*?"', f'version = "{new_version}"', content)
             spin_toml.write_text(content)
 
-    # 4. Update pyproject.toml
+    # 4. Update pyproject.toml and uv.lock
     pyproject = root / "pyproject.toml"
     if pyproject.exists():
         print(f"Updating {pyproject}...")
         content = pyproject.read_text()
         content = re.sub(r'^version\s*=\s*".*?"', f'version = "{new_version}"', content, flags=re.MULTILINE)
         pyproject.write_text(content)
+
+        # Keep uv.lock in sync with pyproject.toml version
+        try:
+            print("Updating uv.lock via uv lock...")
+            subprocess.run(["uv", "lock"], cwd=root, check=True)
+        except Exception as e:
+            print(f"Warning: Failed to run uv lock: {e}")
 
     # 5. Update web/package.json
     web_pkg = root / "web/package.json"
