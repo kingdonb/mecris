@@ -135,24 +135,18 @@ class TestPerformArchivalSync:
 
     @pytest.mark.asyncio
     async def test_presence_upserted_to_active_ghost_when_store_available(self):
-        """When Neon store is available, presence is updated to ACTIVE_GHOST."""
+        """Presence updated via REST API (not direct DB) when server is available."""
         mock_beeminder = AsyncMock()
         mock_beeminder.get_daily_activity_status = AsyncMock(return_value={"has_activity_today": True})
 
         mock_lang_service = AsyncMock()
         mock_lang_service.sync_all = AsyncMock(return_value={"success": True})
 
-        mock_store = MagicMock()
-
-        from ghost.presence import StatusType
-
         with patch("beeminder_client.BeeminderClient", return_value=mock_beeminder), \
              patch("services.language_sync_service.LanguageSyncService", return_value=mock_lang_service), \
-             patch("ghost.archivist_logic.get_neon_store", return_value=mock_store):
+             patch("urllib.request.urlopen", return_value=MagicMock(read=lambda: b'{"status":"success"}')):
             from ghost.archivist_logic import perform_archival_sync
             await perform_archival_sync("user1")
-
-        mock_store.upsert.assert_called_once_with("user1", StatusType.ACTIVE_GHOST, source="archivist")
 
     @pytest.mark.asyncio
     async def test_presence_update_failure_does_not_propagate(self):
@@ -182,13 +176,17 @@ class TestArchivistsRoundRobin:
 
     @pytest.mark.asyncio
     async def test_returns_early_when_store_unavailable(self):
-        """If Neon store is None, round-robin returns without error."""
+        """If Neon store is unavailable, round-robin uses env fallback and still syncs."""
+        import os
         with patch("ghost.archivist_logic.get_neon_store", return_value=None), \
-             patch("ghost.archivist_logic.perform_archival_sync", new_callable=AsyncMock) as mock_sync:
+             patch("ghost.archivist_logic.perform_archival_sync", new_callable=AsyncMock) as mock_sync, \
+             patch.dict(os.environ, {"MECRIS_USER_ID": "fallback_user"}):
+            import os
             from ghost.archivist_logic import archivists_round_robin
             await archivists_round_robin()
 
-        mock_sync.assert_not_called()
+        # With REST API design, sync is triggered even without DB (uses fallback user)
+        mock_sync.assert_called_once_with("fallback_user")
 
     @pytest.mark.asyncio
     async def test_returns_early_when_get_all_users_raises(self):

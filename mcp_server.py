@@ -292,6 +292,18 @@ async def post_heartbeat(data: Dict[str, Any], user_id: str = Depends(get_author
     
     # scheduler manages the election table
     await asyncio.to_thread(scheduler._update_heartbeat, role, process_id, user_id)
+    
+    # Ghost archivist also updates presence table for ACTIVE_GHOST tracking
+    if role == "active_ghost":
+        try:
+            store = get_neon_store()
+            if store:
+                await asyncio.to_thread(
+                    store.upsert, user_id, StatusType.ACTIVE_GHOST, source="archivist"
+                )
+        except Exception as e:
+            logger.warning(f"Heartbeat: Could not update ACTIVE_GHOST presence: {e}")
+    
     return {"status": "success", "mcp_server_active": True}
 
 @app.post("/internal/cloud-sync")

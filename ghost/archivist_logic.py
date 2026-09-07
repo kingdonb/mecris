@@ -62,37 +62,68 @@ async def perform_archival_sync(user_id: str):
     except Exception as e:
         logger.error(f"Archivist: Physical activity sync check failed for {user_id}: {e}")
 
-    # 3. Update Presence
-    store = get_neon_store()
-    if store:
-        try:
-            store.upsert(user_id, StatusType.ACTIVE_GHOST, source="archivist")
-            logger.info(f"Archivist: Presence updated to ACTIVE_GHOST for {user_id}")
-        except Exception as e:
-            logger.error(f"Archivist: Failed to update presence for {user_id}: {e}")
+    # 3. Update Presence via REST API (multi-tenant/API-first design)
+    # Using localhost:8000 instead of direct psycopg2 to avoid NEON_DB_URL dependency
+    try:
+        import urllib.request
+        import json
+        req = urllib.request.Request(
+            f"http://localhost:8000/heartbeat",
+            data=json.dumps({
+                "role": "active_ghost",
+                "process_id": "archivist",
+                "user_id": user_id
+            }).encode(),
+            headers={
+                "Content-Type": "application/json",
+                "Accept": "application/json"
+            },
+            method="POST"
+        )
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            result = json.loads(resp.read())
+            if result.get("status") == "success":
+                logger.info(f"Archivist: Presence updated via REST API for {user_id} (ACTIVE_GHOST pulse)")
+            else:
+                logger.warning(f"Archivist: REST heartbeat returned non-success for {user_id}: {result}")
+    except Exception as e:
+        logger.error(f"Archivist: REST heartbeat failed for {user_id}: {e}")
 
 async def archivists_round_robin():
     """
     Iterates through all users and performs archival sync if needed.
     """
     store = get_neon_store()
-    if not store:
-        logger.warning("Archivist: Neon store unavailable.")
-        return
-        
-    try:
-        user_ids = store.get_all_users()
-    except Exception as e:
-        logger.error(f"Archivist: Failed to fetch users: {e}")
-        return
+    user_ids = []
+    if store:
+        try:
+            user_ids = store.get_all_users()
+        except Exception as e:
+            logger.error(f"Archivist: Failed to fetch users from Neon: {e}")
+    if not user_ids:
+        # Fallback to current user from environment (multi-tenant/API-first mode)
+        import os
+        default_user = os.getenv("MECRIS_USER_ID") or os.getenv("USER", "default")
+        logger.info(f"Archivist: Using fallback user for round-robin: {default_user}")
+        user_ids = [default_user]
 
     current_time = datetime.now(timezone.utc)
     
     for user_id in user_ids:
         try:
-            record = store.get(user_id)
-            if record and should_ghost_wake_up(record, current_time):
+            record = None
+            if store:
+                try:
+                    record = store.get(user_id)
+                except Exception as e:
+                    logger.warning(f"Archivist: Could not fetch presence record for {user_id}: {e}")
+            # If no store or no record, assume wake-up needed (reality enforcement)
+            # The ghost runs continuously regardless of human presence.
+            should_wake = (record is None) or (record and should_ghost_wake_up(record, current_time))
+            if should_wake:
                 logger.info(f"Archivist: Waking up for user {user_id}")
                 await perform_archival_sync(user_id)
+            else:
+                logger.info(f"Archivist: Cooldown active for user {user_id}, skipping sync")
         except Exception as e:
             logger.error(f"Archivist: Failed processing user {user_id}: {e}")
