@@ -1,12 +1,20 @@
 ---
+
 okf_version: "0.2"
-concept_id: "architecture/ghost-heartbeat-restoration"
+concept_id: "ghost/heartbeat/restoration"
 type: "Architecture"
 status: "stable"
 title: "Ghost Heartbeat Restoration via REST API (Multi-Tenant/API-First)"
-inbound: ["architecture/narrator-context", "architecture/mcp-server", "runbooks/agent-bootstrap"]
-outbound: ["decisions/2026-09-06-ghost-heartbeat-restoration", "decisions/2026-09-06-release-process"]
+inbound: ["knowledge/index", "architecture/narrator-context", "runbooks/agent-bootstrap"]
+outbound: ["knowledge/index", "decisions/2026-09-06-ghost-heartbeat-restoration", "decisions/2026-09-06-release-process", "runbooks/authorization-mechanism"]
+
+  relationships:
+    - target: "decisions/2026-09-06-ghost-heartbeat-restoration"
+      description: "documents mechanism change"
+    - target: "decisions/2026-09-06-release-process"
+      description: "included in v0.0.3 release"
 ---
+
 
 
 **Intent**: Restore the ghost archivist's heartbeat functionality through the REST API (`localhost:8000/heartbeat`) instead of direct Neon database access (`NEON_DB_URL`), aligning with the multi-tenant/API-first design.

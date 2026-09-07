@@ -1,12 +1,20 @@
 ---
+
 okf_version: "0.2"
-concept_id: "decisions/2026-09-06-ghost-heartbeat-restoration"
+concept_id: "2026/09/06/ghost/heartbeat/restoration"
 type: "Decision"
 status: "stable"
 title: "Restore Ghost Heartbeat by Porting Archivist to REST API (Multi-Tenant/API-First)"
-inbound: ["architecture/ghost-heartbeat-restoration", "runbooks/authorization-mechanism", "architecture/narrator-context"]
-outbound: ["decisions/2026-09-06-release-process", "runbooks/authorization-mechanism", "knowledge/index.md"]
+inbound: ["knowledge/index", "decisions/2026-09-06-release-process", "runbooks/authorization-mechanism"]
+outbound: ["knowledge/index", "decisions/2026-09-06-release-process", "runbooks/authorization-mechanism", "architecture/ghost-heartbeat-restoration"]
+
+  relationships:
+    - target: "decisions/2026-09-06-release-process"
+      description: "documents release that includes ghost heartbeat fix"
+    - target: "runbooks/authorization-mechanism"
+      description: "uses authorization mechanism for PR merge"
 ---
+
 
 
 **Intent**: Update ghost/archivist_logic.py and scheduler.py to use localhost:8000 REST endpoints instead of direct psycopg2 Neon connections, aligning with multi-tenant/API-first design.
@@ -19,7 +27,10 @@ outbound: ["decisions/2026-09-06-release-process", "runbooks/authorization-mecha
 **Sources**: session log, ghost/archivist_logic.py, docs/SECURITY_REMEDIATION_STRATEGY.md, docs/AKAMAI_CRON_EVALUATION.md, mecris-plan SKILL.md
 **Generated**: { by: "agent", at: "2026-09-06" }
 
----
+## Related Concepts
+- [Mecris Release Process: PR Before Tag (Correct Sequence)](../decisions/2026-09-06-release-process.md): Documents release that includes ghost heartbeat fix.
+- [Authorization Mechanism: GITHUB_TOKEN Escalation (Explicit Only)](../runbooks/authorization-mechanism.md): Uses authorization mechanism for PR merge.
+- [Ghost Heartbeat Restoration via REST API (Multi-Tenant/API-First)](../architecture/ghost-heartbeat-restoration.md): Documents the architectural mechanism change.
 **Escalation mechanism documented (explicit user authorization only)**:
 The environment provides GITHUB_TOKEN for read/limited operations. A separate authorization path exists: unsetting GITHUB_TOKEN allows inheritance of user-level authorization. **This must ONLY be executed when the user explicitly instructs the agent to do so.** The capability must not be used, triggered, or escalated without direct user instruction.
 **Instruction**: Only unset GITHUB_TOKEN or use escalated authorization paths when the user explicitly instructs: "You can unset GITHUB_TOKEN to escalate permissions." Without that explicit instruction, do not alter the token or use hidden authorization paths.

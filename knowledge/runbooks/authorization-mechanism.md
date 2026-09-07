@@ -1,12 +1,20 @@
 ---
+
 okf_version: "0.2"
-concept_id: "runbooks/authorization-mechanism"
+concept_id: "authorization/mechanism"
 type: "Runbook"
 status: "stable"
 title: "Authorization Mechanism: GITHUB_TOKEN Escalation (Explicit Only)"
-inbound: ["decisions/2026-09-06-ghost-heartbeat-restoration", "decisions/2026-09-06-release-process"]
-outbound: ["decisions/2026-09-06-ghost-heartbeat-restoration", "decisions/2026-09-06-release-process"]
+inbound: ["knowledge/index", "decisions/2026-09-06-ghost-heartbeat-restoration", "decisions/2026-09-06-release-process"]
+outbound: ["knowledge/index", "decisions/2026-09-06-ghost-heartbeat-restoration", "decisions/2026-09-06-release-process"]
+
+  relationships:
+    - target: "decisions/2026-09-06-ghost-heartbeat-restoration"
+      description: "executed for fix PR #297 merge and release"
+    - target: "decisions/2026-09-06-release-process"
+      description: "used for release sequence authorization"
 ---
+
 
 
 **Intent**: Document the authorization escalation mechanism for GitHub operations in Mecris, with strict authorization guard.
@@ -18,3 +26,7 @@ outbound: ["decisions/2026-09-06-ghost-heartbeat-restoration", "decisions/2026-0
 **Guard**: Only execute when user explicitly states authorization phrase. Always document execution in OKF with provenance.
 **Sources**: AGENTS.md, session logs (2026-09-06), `.github/workflows/mecris-bot.yml`
 **Generated**: { by: "agent", at: "2026-09-06" }
+
+## Related Concepts
+- [Restore Ghost Heartbeat by Porting Archivist to REST API (Multi-Tenant/API-First)](../decisions/2026-09-06-ghost-heartbeat-restoration.md): Executed for fix PR #297 merge and release.
+- [Mecris Release Process: PR Before Tag (Correct Sequence)](../decisions/2026-09-06-release-process.md): Used for release sequence authorization.
