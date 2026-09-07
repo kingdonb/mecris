@@ -183,3 +183,23 @@ make bump-version VERSION=0.0.1-rc.5 VC=29
 - **Release (tag pushes)**: `.github/workflows/release.yml` — builds artifacts, publishes release
 
 The release workflow only runs on tag push — merging to main does NOT trigger it.
+---
+
+## Canonical Releases and Repository Designation
+
+**Canonical repository**: `kingdonb/mecris` (primary, protected `main` branch).
+**User/fork repository**: `yebyen/mecris` (same operator; fork for development/workflow isolation).
+
+This distinction is intentional: the user (`yebyen`) operates through the fork for autonomous agent turns (`mecris-bot` workflow, Pi harness extensions, session logs), while releases, CI triggers, and production artifacts are published from the canonical repo (`kingdonb/mecris`). Both repositories are controlled by the same operator; the separation is architectural, not organizational.
+
+### Verified Releases (as of this document's last update: 2026-09-06)
+
+| Tag | Date | Canonical Repo | Source PR | Notes |
+|-----|------|---------------|-----------|-------|
+| `v0.0.1` (historical) | Prior releases | `kingdonb/mecris` | Previous releases | Base version for project initialization |
+| `v0.0.2` | 2026-08-20 | `kingdonb/mecris` | Previous release cycle | Pre-transition version |
+| `v0.0.3` | 2026-09-06 | `kingdonb/mecris` | PR `#297` (fix), PR `#298` (release) | Restores ghost heartbeat via REST API; updates all 15+ version references (`VERSION_MANIFEST`, Android `VC=34`, Spin, web, Python, docs, `ROADMAP.md`) |
+
+**Note**: This table reflects releases verified at the time of this document's creation. For the most current release state, consult `VERSION_MANIFEST.json`, the `main` branch tags (`v*`), and the active PR list on `kingdonb/mecris`. This document is evergreen — it is not guaranteed to remain up-to-date without manual verification.
+
+**Reference**: Issue `#340` (ghost heartbeat discovery) and decision `2026-09-06-ghost-heartbeat-restoration` document the mechanism change (direct Neon DB → REST API via `localhost:8000/heartbeat`) that enabled the `v0.0.3` restoration.

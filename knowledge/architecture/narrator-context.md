@@ -9,6 +9,7 @@ sources:
   - resource: .pi/extensions/mecris/index.ts
   - resource: decisions/2026-09-06-deterministic-status.md
 ---
+concept_id: "architecture/narrator-context"
 
 # Narrator Context
 

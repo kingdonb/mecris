@@ -10,6 +10,7 @@ sources:
   - resource: .pi/extensions/mecris/index.ts
   - resource: docs/MCP_INTEGRATION_SPEC.md
 ---
+concept_id: "architecture/mcp-server"
 
 # MCP Server
 
