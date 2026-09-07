@@ -1,7 +1,7 @@
 {
   "suite_name": "Mecris Personal Accountability Suite",
   "release_date": "2026-08-20",
-  "total_version": "0.0.2",
+  "total_version": "0.0.3",
   "components": {
     "android_app": {
       "name": "Mecris-Go Android",
