@@ -13,7 +13,7 @@ Usage::
 
 Environment::
 
-    MECRIS_MCP_URL  — Override MCP server URL (default: http://localhost:8000)
+    MECRIS_MCP_URL  — Override MCP server URL (default: http://localhost:8080)
     GHOST_LOCK_PATH — Override presence lock path
     GHOST_LOG_PATH  — Override log file path
 """
@@ -32,7 +32,7 @@ from ghost.archivist_logic import perform_archival_sync, should_ghost_wake_up, a
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 DEFAULT_LOG_PATH = os.path.join(_REPO_ROOT, "logs", "ghost_archivist.log")
-DEFAULT_MCP_URL = "http://localhost:8000"
+DEFAULT_MCP_URL = "http://localhost:8080"
 
 
 def pulse(mcp_url: str = DEFAULT_MCP_URL) -> dict:
