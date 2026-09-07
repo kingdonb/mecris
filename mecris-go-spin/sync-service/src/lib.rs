@@ -411,7 +411,7 @@ async fn handle_request_phone_verification_post(req: Request) -> anyhow::Result<
     let vr: Req = serde_json::from_slice(&body)?;
     let db = match variables::get("db_url").await { Ok(v) if !v.is_empty() => v, _ => variables::get("neon_db_url").await? };
     let conn = Connection::open(&db).await?;
-    let mut rb = [0u8; 4]; getrandom::getrandom(&mut rb).map_err(|e| anyhow::anyhow!("getrandom: {}", e))?;
+    let mut rb = [0u8; 4]; getrandom::fill(&mut rb).map_err(|e| anyhow::anyhow!("getrandom: {}", e))?;
     let code = format!("{:06}", (u32::from_be_bytes(rb) % 1000000));
     let hash = hex::encode(Sha256::digest(code.as_bytes()));
     let exp = (chrono::Utc::now() + chrono::Duration::minutes(15)).to_rfc3339();
@@ -632,7 +632,7 @@ async fn encrypt_token(plain: &str) -> anyhow::Result<String> {
     let key_str = variables::get("master_encryption_key").await?;
     let key_bytes = hex::decode(key_str.trim())?;
     let cipher = Aes256Gcm::new_from_slice(&key_bytes)?;
-    let mut nonce = [0u8; 12]; getrandom::getrandom(&mut nonce).map_err(|_| anyhow::anyhow!("rand"))?;
+    let mut nonce = [0u8; 12]; getrandom::fill(&mut nonce).map_err(|_| anyhow::anyhow!("rand"))?;
     let ct = cipher.encrypt(Nonce::from_slice(&nonce), plain.as_bytes()).map_err(|_| anyhow::anyhow!("Enc fail"))?;
     let mut comb = nonce.to_vec(); comb.extend_from_slice(&ct);
     Ok(hex::encode(comb))
