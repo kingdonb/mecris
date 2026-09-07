@@ -304,3 +304,9 @@ The cluster is on the private Tailnet, so authentication is Tailscale + kubeconf
 ---
 
 *Welcome to the operational Death Star. The Ghost Heartbeat is ready to beat again.* 🐗
+
+---
+
+## Post-Release Note: v0.0.3 (2026-09-06)
+
+**Ghost Heartbeat Restored**: The cloud cron/nagging path (`Akamai Functions`) and the autonomous `ghost/archivist_logic.py` were reconnected via REST API (`localhost:8000/heartbeat`). The 404.6-hour silence (last `ACTIVE_GHOST` activity: Aug 21) is resolved through the multi-tenant/API-first transition (no direct `NEON_DB_URL` dependency required for the client-side writer). See `docs/RELEASE_PROCESS.md`, issue `#340`, PR `#297`, PR `#298`.
