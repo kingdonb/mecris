@@ -80,7 +80,7 @@ jobs:
           cd ../../..
 
       - name: Set up Python with uv
-        uses: astral-sh/setup-uv@v2
+        uses: astral-sh/setup-uv@v10.0.1
 
       - name: Install Python dependencies
         run: |
