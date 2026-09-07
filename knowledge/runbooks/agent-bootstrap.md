@@ -11,6 +11,7 @@ sources:
   - resource: AGENTS.md
   - resource: session_log.md
 ---
+concept_id: "runbooks/agent-bootstrap"
 
 # Agent Session Bootstrap
 
