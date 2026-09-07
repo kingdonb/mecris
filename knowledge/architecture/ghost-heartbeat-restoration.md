@@ -5,13 +5,13 @@ concept_id: "ghost/heartbeat/restoration"
 type: "Architecture"
 status: "stable"
 title: "Ghost Heartbeat Restoration via REST API (Multi-Tenant/API-First)"
-inbound: ["knowledge/index", "architecture/narrator-context", "runbooks/agent-bootstrap"]
-outbound: ["knowledge/index", "decisions/2026-09-06-ghost-heartbeat-restoration", "decisions/2026-09-06-release-process", "runbooks/authorization-mechanism"]
+inbound: ["knowledge/index", "architecture/narrator-context", "runbooks/agent-bootstrap", "runbooks/multi-model-collaboration"]
+outbound: ["knowledge/index", "2026/09/06/ghost/heartbeat/restoration", "2026/09/06/release/process", "authorization/mechanism", "runbooks/multi-model-collaboration"]
 
   relationships:
-    - target: "decisions/2026-09-06-ghost-heartbeat-restoration"
+    - target: "2026/09/06/ghost/heartbeat/restoration"
       description: "documents mechanism change"
-    - target: "decisions/2026-09-06-release-process"
+    - target: "2026/09/06/release/process"
       description: "included in v0.0.3 release"
 ---
 

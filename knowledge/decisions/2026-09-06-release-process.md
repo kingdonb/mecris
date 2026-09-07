@@ -5,13 +5,13 @@ concept_id: "2026/09/06/release/process"
 type: "Decision"
 status: "stable"
 title: "Mecris Release Process: PR Before Tag (Correct Sequence)"
-inbound: ["knowledge/index", "decisions/2026-09-06-ghost-heartbeat-restoration", "runbooks/authorization-mechanism"]
-outbound: ["knowledge/index", "decisions/2026-09-06-ghost-heartbeat-restoration", "runbooks/authorization-mechanism"]
+inbound: ["knowledge/index", "2026/09/06/ghost/heartbeat/restoration", "authorization/mechanism", "runbooks/multi-model-collaboration"]
+outbound: ["knowledge/index", "2026/09/06/ghost/heartbeat/restoration", "authorization/mechanism"]
 
   relationships:
-    - target: "architecture/ghost-heartbeat-restoration"
+    - target: "ghost/heartbeat/restoration"
       description: "documents verified release sequence for v0.0.3"
-    - target: "runbooks/authorization-mechanism"
+    - target: "authorization/mechanism"
       description: "references authorization mechanism documentation"
 ---
 

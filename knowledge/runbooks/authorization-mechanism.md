@@ -5,13 +5,13 @@ concept_id: "authorization/mechanism"
 type: "Runbook"
 status: "stable"
 title: "Authorization Mechanism: GITHUB_TOKEN Escalation (Explicit Only)"
-inbound: ["knowledge/index", "decisions/2026-09-06-ghost-heartbeat-restoration", "decisions/2026-09-06-release-process"]
-outbound: ["knowledge/index", "decisions/2026-09-06-ghost-heartbeat-restoration", "decisions/2026-09-06-release-process"]
+inbound: ["knowledge/index", "2026/09/06/ghost/heartbeat/restoration", "2026/09/06/release/process", "runbooks/multi-model-collaboration"]
+outbound: ["knowledge/index", "2026/09/06/ghost/heartbeat/restoration", "2026/09/06/release/process", "runbooks/multi-model-collaboration"]
 
   relationships:
-    - target: "decisions/2026-09-06-ghost-heartbeat-restoration"
+    - target: "2026/09/06/ghost/heartbeat/restoration"
       description: "executed for fix PR #297 merge and release"
-    - target: "decisions/2026-09-06-release-process"
+    - target: "2026/09/06/release/process"
       description: "used for release sequence authorization"
 ---
 

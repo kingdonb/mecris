@@ -5,13 +5,13 @@ concept_id: "2026/09/06/ghost/heartbeat/restoration"
 type: "Decision"
 status: "stable"
 title: "Restore Ghost Heartbeat by Porting Archivist to REST API (Multi-Tenant/API-First)"
-inbound: ["knowledge/index", "decisions/2026-09-06-release-process", "runbooks/authorization-mechanism"]
-outbound: ["knowledge/index", "decisions/2026-09-06-release-process", "runbooks/authorization-mechanism", "architecture/ghost-heartbeat-restoration"]
+inbound: ["knowledge/index", "2026/09/06/release/process", "authorization/mechanism", "runbooks/multi-model-collaboration"]
+outbound: ["knowledge/index", "2026/09/06/release/process", "authorization/mechanism", "ghost/heartbeat/restoration", "runbooks/multi-model-collaboration"]
 
   relationships:
-    - target: "decisions/2026-09-06-release-process"
+    - target: "2026/09/06/release/process"
       description: "documents release that includes ghost heartbeat fix"
-    - target: "runbooks/authorization-mechanism"
+    - target: "authorization/mechanism"
       description: "uses authorization mechanism for PR merge"
 ---
 
