@@ -1,7 +1,7 @@
 # HCAT Sandbox — Hardened Container for Autonomous Turns
 # Alpine 3.21 pinned by SHA256 digest (amd64, fetched 2026-04-24).
 # To refresh the digest: docker pull alpine:3.21 && docker inspect --format='{{index .RepoDigests 0}}' alpine:3.21
-FROM alpine@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b
+FROM alpine@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6
 
 # Install only the dependencies needed for autonomous agent turns.
 # py3-pip is NOT installed — uv manages all Python package installation.
