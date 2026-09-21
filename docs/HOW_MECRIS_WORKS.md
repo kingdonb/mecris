@@ -4,10 +4,16 @@
 
 > Generated 2026-09-19 by `agent/qwen3.8-flash-next` (Helix Bunker) — authorship confirmed by
 > the operator, superseding the founding brief's "Opus 5" alias. Planning deliverable for
-> SpecTask 588, rev 3 (revised after operator Spec-Review feedback; billing date confirmed
-> Oct 17, 2026). Every claim below is grounded in the code and documents cited
-> in the [Source Map](#appendix-a-source-map). Where the code contradicts a common telling of
-> the story, the code wins, and the discrepancy is called out in
+> SpecTask 588, **rev 4** (revs 2–3 after operator Spec-Review; rev 4 dated 2026-09-21 after an
+> external review round). **Pinned to commit `8a42915`**: every `file:line` claim below refers
+> to that tree; changes since this rev are documentation-only. Dated facts (balances, dates,
+> goal parameters) are point-in-time as marked; their *maintained* copies live in
+> `helix-specs/design/tasks/000588_the-mecris-repo-has-some/` — task-specific acceptance tests
+> and the decision log deliberately live there, not here. §§1–5 describe the machine and age
+> slowly; §§6–10 apply the lens to the money subsystem and age faster — the date-stamps are the
+> warranty. Every claim is grounded in the code and documents cited in the
+> [Source Map](#appendix-a-source-map). Where the code contradicts a common telling of the
+> story, the code wins, and the discrepancy is called out in
 > [Corrections and Open Questions](#corrections-and-open-questions).
 
 ---
@@ -116,7 +122,9 @@ JWT signature against a JWKS that was **fetched once at deploy time and frozen i
 `deploy-akamai.sh:64`**; it skips `iss`/`aud`/`exp` checks and has an `auth_bypass` debug path.
 The missing JWKS variable caused a **64-day silent 401 outage** (`blog/2026-07-30-the-missing-variable.md`).
 The Python side runs `MECRIS_MODE=standalone` (default) which decodes tokens **without signature
-verification** — acceptable on your own laptop, and the same endpoint code ships everywhere.
+verification** (`cli/main.py:63-69, 161-165`) — acceptable on your own laptop, and the same
+endpoint code ships everywhere. These two facts are tracked as findings **S2/S3** in
+[Corrections and Open Questions](#corrections-and-open-questions).
 
 **Identity mapping is trivially clean:** the JWT `sub` is literally the primary key
 `users.pocket_id_sub` (`schema.sql:5`); user rows auto-create on first `/walks` POST.
@@ -177,7 +185,9 @@ Shared Preferences is aspirational; in code they are simply never retained).
 Note one real-world wrinkle worth fixing: the local scheduler deliberately uses a daystamp-only
 requestid "so Beeminder overwrites the day's total instead of summing snapshots"
 (`scheduler.py:99-120`), while the Rust path embeds `distance_meters` in the requestid — so on
-the cloud path successive larger snapshots would each be new datapoints.
+the cloud path successive larger snapshots would each be new datapoints. Depending on the `bike`
+goal's aggregation, that is a double-count waiting to happen — the same bug family as the March
+`ellinika` corruption. Tracked as **W1** in [Corrections and Open Questions](#corrections-and-open-questions).
 
 ### The SMS loop (the nag ladder)
 
@@ -189,7 +199,9 @@ nagged first, so the cloud shuts up). Texts say *"...Reply YES to log 1 mile."* 
 without validating `X-Twilio-Signature`), then pushes a 1.0-mile datapoint
 (`sync-service/src/lib.rs:365-392, 450-472`). Reminder tiers escalate: Tier 1 → Tier 2 after 6h
 idle → "IGNORED Nx" after 3 skips (`services/reminder_service.py`), and Arabic nudges inject the
-pump's remaining-card count into the message template (`reminder_service.py:213-242`).
+pump's remaining-card count into the message template (`reminder_service.py:213-242`). The
+literal-key guard and the missing webhook signature are tracked as findings **S1/S4** in
+[Corrections and Open Questions](#corrections-and-open-questions).
 
 The phone also has a **Sovereign Brain**: Gemini Nano via AICore runs on-device to generate nag
 narratives that never leave the hardware (`ai/SovereignBrain.kt`).
@@ -311,12 +323,22 @@ There are literally four implementations, and knowing which one runs is half the
 | WASM component | `poc/wasm/budget-governor-py/app.py` | Spin KV | max-rate | **dead path** — Fermyon deprovisioned, no spin.toml, yet `get_budget_governor_status` still tries its URL first and silently falls back (`mcp_server.py:1629`) |
 | Rust `mecris-budget-governor` | `mecris-core/src/budget/` (~1100 lines) | SQLite ledger | **min-rate (anti-waste)** — *spend credits before they expire* | fully coded binary, 13 passing tests, **zero wiring**: no CI, Makefile, or deploy references |
 
-The last row matters: Python governor = **anti-binge** (5% of the period quota per rolling
-39-minute window, deny when exhausted). Rust governor = **anti-waste**
-(`is_due_for_soak = is_expiring ∧ spend_fraction < 0.05 ∧ period_elapsed_fraction < 0.05`,
-`expiry_policy.rs:64-80`; soak tasks trickle-spend via Ollama/OpenRouter). They share the "5/5"
-name and opposite souls. The steady-state goal — *be the cool cousin who always has $500 and
-always picks up the phone* — needs **both** bounds, and today they don't know each other.
+The last row matters — and the split is *by design*, not an oversight. Python governor =
+**anti-binge**, and it runs **in-session**: its job is to be a truthful meter of what today's
+spend has actually been — in aggregate, across everyone who shares the dollar — so a
+card-counting agent (budget the session up front, re-triangulate when felt spend nears the
+soft cap) can check real numbers instead of guessing from felt duration. Rust governor =
+**anti-waste** (`is_due_for_soak = is_expiring ∧ spend_fraction < 0.05 ∧
+period_elapsed_fraction < 0.05`, `expiry_policy.rs:64-80`), and it belongs **in the cloud,
+where the Android app can call it**: the app spends no paid inference (the Sovereign Brain is
+on-device AICore, §4), so its prompts are free and the governor's money-job there is noticing
+credits going stale and feeding the *gentle* persistent nudge — "keep at it," never alarming.
+Alarm discipline belongs to Beeminder alone: it is the only organ that says *"you are
+derailing"*; Mecris prods, Beeminder bills ("it was your goal after all"). The two governors
+share the "5/5" name and opposite souls, which is the point: the cool-cousin invariant
+(*always have $500, always pick up the phone*) needs both bounds, and each bound lives next to
+the organ that must enforce it. And the datapoint is the datapoint: whichever governor reads it,
+the only duty is to write it faithfully through to the sink (§8).
 
 ### Buckets, and the Helix Inversion
 
@@ -380,6 +402,13 @@ timeout), and parses `balance` or `credit_balance`. Findings:
 - It surfaces **only** through the `get_budget_governor_status` MCP tool (as
   `bucket_report["helix"].live_balance`) — *not* in `get_narrator_context`, so the per-turn
   narrator never sees the true remaining balance.
+- When the fetch yields nothing, the field is **silently omitted**
+  (`budget_governor.py:264-268, 642-646`: `if helix_live is not None:`). An external reviewer's
+  read-only smoke test (2026-09-21) got six buckets, all at $0 spent, no `live_balance` key, and
+  nothing marking the `$100` limits as defaults — an unattended card-counter could read those
+  defaults as live truth. The automation ticket must fix this (spec requirement **R9**,
+  gap **G10**): status output carries `source: live|manual|default` per bucket and an explicit
+  `live_balance: null` + reason when absent.
 - **It has never been proven against the real API.** The response shape is guesswork; the host
   is env-driven and the docs disagree with each other (`app.tryhelix.ai` in guidance vs
   `api.helixml.tech` in the analysis doc vs `app.helix.ml/v1` in the benchmark scripts — the
@@ -401,6 +430,7 @@ timeout), and parses `balance` or `credit_balance`. Findings:
 | G7 | Reconciliation scripts POST to HTTP endpoints (`/usage/update_budget`, `/budget/reconcile`) that no longer exist — budget updates are MCP-tool-only now | `mcp_reconcile_budget.py:19-64` vs live `mcp_server.py` routes |
 | G8 | Rust soak governor (anti-waste) unwired to Neon/MCP; `openrouter_requests` `reset_cron` metadata never honored (all-time sums ⇒ ratchets to deny) | `mecris-core/`, `budget_governor.py:92-94` |
 | G9 | Goal-type safety valve (spec 003) implemented but not wired between push paths and Beeminder | `goal-type-rs/src/lib.rs` vs `beeminder_client.py` |
+| G10 | Status output can't distinguish live/manual/default values; missing `live_balance` is silently omitted rather than declared absent | `budget_governor.py:264-268, 642-646`; reviewer smoke test 2026-09-21 |
 
 ---
 
@@ -416,7 +446,8 @@ the next landing **Oct 17, 2026** — periodicity is the 17th, ~28 days out; pos
 ≈$400 pre-grant / ≈$500 post-grant (the "cool cousin" steady state); Beeminder goal
 `yebyenw/helix-ml` is a do-less odometer (yaw −1, `aggday: last`, $0 pledge, tare ceiling
 ≈$600) whose road provides only **downward pressure** (~$1/day minimum spend); the +$100
-inflow produces an *expected benign* overshoot — never a spend signal.)
+inflow produces an *expected benign* overshoot — never a spend signal. Point-in-time planning
+values; the maintained copies are the spec's `requirements.md`.)
 
 ### The isomorphism
 
@@ -428,19 +459,19 @@ inflow produces an *expected benign* overshoot — never a spend signal.)
 | Lever = days to clear the pile | Soak horizon = days to spend down the surplus before expiry |
 | `safebuf` days vs the road | Burn-rate days left vs the yellow line |
 | Cavitation (velocity < tomorrow's floor) | **Credit-wasting** — below minimum useful spend (the Rust governor's soak-deficit) |
-| Turbulent (velocity ≥ target) | **Binge** — the envelope's 5%/39-min window is already the hard ceiling ($25/39min at $500) |
+| Turbulent (velocity ≥ target) | **Binge** — but the envelope's 5%/39-min window is only a *backstop*, not the pace control: $25/39min at $500 ≈ 7× the planned day, `defer` is advisory (G4), and the $247 drain ran entirely outside metered call sites. The pace control is the allowance merge below |
 | `beckon_signal` (pile ≥ 300 ⇒ create a goal) | Balance above steady state ⇒ raise the soak lever |
 
 The pump's formula transplants directly. Define, for the balance `B`, floor `F` (the cool-cousin
 reserve, $400) and horizon `H` (days to next inflow):
 
 ```text
-urgency_floor   = max( soak_pace,                     # pump-side: normal-month ≈$3.5/day
-                       beeminder_required_today,      # road pressure: ≈$1 pace, or deficit
-                       1.00 )                         # keep-the-pulse floor
-allowed_today   = min( envelope_allowance,            # anti-binge hard ceiling (exists)
-                       cap,                           # know-better sanity ceiling ≈$5
-                       urgency_floor )                # max()-merge: reviewstack's own shape
+required_today    = max( pump_pace,                   # pump-side: normal-month ≈$3.5/day
+                         beeminder_required_today,    # road pressure: ≈$1 pace, or deficit
+                         1.00 )                       # keep-the-pulse floor
+allowed_today     = min( envelope_allowance,          # anti-binge backstop (advisory → G4)
+                         cap,                         # know-better sanity ceiling ≈$5
+                         required_today )
 ```
 
 Three dials, three implementations: the **envelope** (live, Python) is the ceiling; the **soak**
@@ -453,7 +484,12 @@ beeminder_deficit)` (`sync-service/src/lib.rs:316-321`), so *whichever dial is m
 wins*: 12 cards when the multiplier demands it, 2 dollars when the road does. The budget case
 copies that shape with **one deliberate divergence**: the `min(cap)` sanity ceiling, which exists
 for the single state pure `max()` cannot survive — top-up day, when Beeminder's honest required
-pace is ≈$100 and the correct answer is a firm *no*. The rule that keeps it honest: **the sink
+pace is ≈$100. Note precisely *what* the cap refuses: **the $100 number, not the work.** A
+capped top-up day degrades to an ordinary day (allowance = min(cap, pump ≈$3.5) — an ordinary
+spend on an ordinary Wednesday), and the know-better rule costs the operator nothing extra.
+(The variable was renamed 2026-09-21: a name ending in `_floor` sitting inside a `min()`
+described its input, not its effect — an external reviewer caught the naming bug.) The rule
+that keeps it honest: **the sink
 may set the tempo, never the wealth** (R8 — position comes from the provider + Neon; the
 required-pace field is read server-side, exactly as reviewstack reads `safebuf`).
 
@@ -503,14 +539,15 @@ records the actual `odometer/yaw/aggday` config), never assumed.
 ### The October 19 check-in, as an acceptance test
 
 The design's success criterion is a date, not a deploy: **October 19, 2026** — two days after
-the now-confirmed **Oct 17** billing date — when the operator looks at the Beeminder graph and
-finds (a) the balance *charted* daily from Sept 19, (b) the Oct 17 top-up overshoot arrived on
-schedule, was read as benign, and was answered with **zero reactive spending**, (c) the
-normal-month pace held (≈$3.3–3.6/day, comfortably below the ~$1/day road — and observed by
-the operator and the governor, *not* policed by Beeminder, which structurally cannot see
-overspend), and (d) the read pulse never flatlined. (a) and (d) require closing **G1 + G2 +
-G3**, and the odometer *read* itself to be a scheduled, heartbeat-visible job — the ghost
-lesson: every organ needs a pulse.
+the **Oct 17** billing anniversary (as pinned at planning time, 2026-09-19) — when the operator
+reads the graph: (a) the balance charted daily since Sept 19; (b) the top-up overshoot arrived
+on schedule, was read as benign, and was answered with zero reactive spending; (c) the
+normal-month pace held below the road, observed by the operator and the governor — Beeminder
+structurally cannot police overspend; (d) the read pulse never flatlined. (a) and (d) require
+closing **G1 + G2 + G3**, with the odometer *read* itself a scheduled, heartbeat-visible job —
+the ghost lesson: every organ needs a pulse. The itemized test with pass conditions now lives
+in the spec's `tasks.md` Phase 3 (moved out of this guide 2026-09-21 — a dated acceptance test
+should not fossilize inside an evergreen document).
 
 ---
 
@@ -579,6 +616,18 @@ and the Gall/bonsai backlog governance pruned the feature to `attic/DORMANT_BACK
 productivity hack, not a life accountability tool." The only shipped pathway was the very thing
 that hurt; the dormant state is a *decision*, not an absence.
 
+**Precise dormancy status** (asked in external review, 2026-09-21): on the server the arms are
+live, not inert. Both tools remain registered and functional (`mcp_server.py:2038, 2053`) and
+the narrator enrichment of `5be5a79` is still wired (`mcp_server.py:857-891`). Dormancy is
+enforced in two places *outside* this repo: the agent launch config hides the tools
+(`--mcp-disabled-tools`), and the thing that actually defangs the narrator pathway is file
+absence — the Chrome `Bookmarks` JSON doesn't exist in server/sandbox environments, so the
+enrichment no-ops gracefully when the file is missing. Meanwhile `EXCLUDE_CHROME_BOOKMARKS`, the
+000459 vetting mandate, has **zero implementations in code** (docs-only grep hits). The honest
+answer to "inert or merely unadvertised": **unadvertised but functional, quarantined by client
+config and file absence — not by the server.** A deployment that mounts a real Chrome profile
+on a box running the MCP server without the disable list re-arms the 5be5a79 pathway silently.
+
 **What a real Google-account bookmarks integration would require** (beyond the original spec):
 a cloud API/authorization layer (new scope — the spec explicitly chose local file reading);
 a landing place in Neon (no bookmarks table exists; every surface except the laptop needs
@@ -589,7 +638,10 @@ issue, not a silent code drop.
 
 ---
 
-## 10. Operationalization checklist (ordering for the In-Progress stage)
+## 10. Follow-ups the machine owes itself (evergreen)
+
+Ordering and gates for the *current* ticket live in the spec's `tasks.md`; this list is the
+subsystem's standing honey-do list, independent of any one task.
 
 1. **Verify the Helix billing endpoint** — probe `GET {HELIX_BASE}/api/v1/me` with the bot key,
    confirm the real JSON shape, pin the host (`app.helix.ml` is the only proven one). Closes the
@@ -609,11 +661,20 @@ issue, not a silent code drop.
    not fixed $0.01 (G4); remove or revive the dead WASM first-hop (G5); repair or retire the
    broken HTTP reconciliation scripts (G7); wire or delete the zombie `VirtualBudgetManager` /
    `BillingReconciliation` / `OpenRouterTracker` (G6) and honor `openrouter_requests` reset (G8).
-6. **Adopt the soak governor** (Rust `mecris-core`) — the anti-waste floor for the cool-cousin
-   invariant; at minimum port its `soak_deficit` math into the Python governor so the narrator
-   can recommend *spending* when the surplus is aging.
+6. **Adopt the soak governor *where it lives*** (Rust `mecris-core`, cloud-side) — the anti-waste
+   floor for the cool-cousin invariant, wired next to the Android nudge machinery it serves
+   (§6). Do **not** port `soak_deficit` into the Python in-session meter: that organ's job is
+   truthful spend reporting, not spend advocacy, and blending advocacy into the meter would
+   poison the card-counting it exists to serve. (Corrected 2026-09-21 after external review —
+   an earlier draft of this list proposed exactly that port, against the operator's division
+   of labor.)
 7. **Bookmarks** (deferred, deliberate) — decide dormant-vs-revive as a plan issue; if revived,
-   Google-account scope + Neon table + hygiene caps land together, never piecemeal.
+   Google-account scope + Neon table + hygiene caps land together, never piecemeal. If *kept*
+   dormant, enforce it in the server, not only in client launch flags (§9).
+8. **Security & fidelity findings** — S1–S5 and W1 (tabled in
+   [Corrections and Open Questions](#corrections-and-open-questions)) now have IDs so they are
+   tracked rather than narrated. None blocks items 1–5; triage and disposition are the
+   operator's.
 
 ---
 
@@ -625,27 +686,64 @@ Premises from the founding brief, checked against the tree (kept honest, per the
 |---|---|
 | "OIDC token enables the API service to decrypt the user's data" | OIDC authenticates; decryption is by a **single operator-held master key**. There is no per-user key, so OIDC unlocks *access*, not *crypto* (§3) |
 | "the app collects Google Fit data" | Health Connect (Google's on-device store); Fit can only enter as one `DataOrigin` among others (§4) |
-| "bookmarks in my Google account … no integration exists" | Chrome *local-file* bookmarks: shipped, then deliberately quarantined; Google *cloud* Bookmarks: never existed (§8) |
+| "bookmarks in my Google account … no integration exists" | Chrome *local-file* bookmarks: shipped, then deliberately quarantined (dormant by client config + file absence, not server-side); Google *cloud* Bookmarks: never existed (§9) |
 | "budget is a singular entity we query" | Four governors + three checkbooks, one live path, several zombies (§6) |
 | "$200+ blown through in a couple of days" | The documented incident is the **$247** drain over ~five days of cron, Mar–May 2026 — close enough, and more precisely horrifying |
 | `budget_governor_analysis.md` (root) phase table | **Stale in both directions**: says Neon log "not wired" and Phase 2 "not started" — both were already true/false in the same commit that added the file; its "Generated 2025-07-08" header is a year off. Treat §6 of this article as the corrected successor |
 
-Open questions for Spec Review:
-1. **[RESOLVED 2026-09-19]** **Attribution.** Operator confirmed: the article's author is
-   `agent/qwen3.8-flash-next`, not the founding brief's "Opus 5" alias. Header updated.
-2. **[RESOLVED at Spec Review 2026-09-19]** **Datapoint encoding** — the operator rejected
-   delta-encoded pushes outright: datapoints are a **straight copy of the balance**,
-   change-gated (unchanged → no rewrite; moved → new datapoint; duplicates impossible).
-   Deltas are computed from the Neon reading history for *exposure* only. Locked as decision
-   D2 in `helix-specs/design/tasks/000588_the-mecris-repo-has-some/design.md`; goal internals
-   (odometer/tare/`aggday`) are discovered from the Beeminder API, never assumed.
-3. **Where the odometer job runs** — local leader APScheduler vs Akamai `spin aka cron`
+Open questions:
+1. **Where the odometer job runs** — local leader APScheduler vs Akamai `spin aka cron`
    ($100/mo verdict: "marginal") vs GHA (none exists for cron today).
-4. **[RESOLVED at plan time]** The Beeminder graph screenshots *did* arrive — they were
-   delivered as task attachments in
-   `helix-specs/design/tasks/000588_the-mecris-repo-has-some/attachments/` (not inline in the
-   conversation). Road shape pinned: flat ~499 until the Sep-25 akrasia horizon, then ≈$1/day
-   descent to ≈491 by Oct 3 — the graph enforces a burn ceiling *and* a spend floor.
+
+Resolved during review — attribution (`agent/qwen3.8-flash-next`), datapoint encoding
+(**straight copy, change-gated**; delta pushes rejected; goal internals discovered from the
+API, never assumed), billing periodicity (the 17th, next Oct 17 2026), and screenshot delivery
+(task attachments, not inline — road shape: flat ~499 to the Sep-25 akrasia horizon, then
+≈$1/day descent). These now live, with dates and alternatives considered, in the spec's
+`design.md` §8 decision log (moved out of the guide 2026-09-21 so this section stays
+open-question-only).
+
+### Security & fidelity findings (S1–S5, W1)
+
+Surfaced by code study and the 2026-09-21 external review, IDed here so they are *tracked*,
+not just narrated. None is budget-related; none blocks §10 items 1–5. The numbering
+deliberately avoids the `G` namespace: G1–G10 are budget operationalization gaps, **S\*** are
+security findings, **W\*** are write-path fidelity findings.
+
+| # | Finding | Where | Status |
+|---|---|---|---|
+| S1 | Internal endpoints guarded by the literal key `test-internal-key` — a real value committed in the deploy scripts (`handle_trigger_reminders_post` and friends) | `deploy-akamai.sh` / `deploy-fermyon.sh` (`internal_api_key`), §4 | open |
+| S2 | Edge JWT validation against a **deploy-frozen JWKS**, skipping `iss`/`aud`/`exp`; ships with an `auth_bypass` debug path (variable default `false`, but one deploy flag away from `true` — the Makefile's local run turns it on while listening on 0.0.0.0) | `sync-service/src/lib.rs:641-672`, `spin.toml`, §3 | open |
+| S3 | Python standalone mode decodes tokens with `verify_signature: False` | `cli/main.py:63-69, 161-165`, §3 | open (laptop-tolerated) |
+| S4 | Twilio webhook accepts "YES" with **no `X-Twilio-Signature` validation** — anyone who can reach the URL can text a fake mile onto the `bike` goal. The signature validator exists, but only in `lib.rs.beta4`; it was never wired into the live `lib.rs` | `sync-service/src/lib.rs:450-472` vs `.beta4` | open |
+| S5 | Platform note (*not this repo*): Helix's `GET /api/v1/users/<id>` echoes the caller's own token in the response body — the reason the automation asks for a read-only-scoped key rather than reusing a session token | Helix-side; upstream awareness | noted |
+| W1 | Walk push `requestid` divergence: local scheduler = daystamp-only (overwrite semantics, deliberately), Rust cloud path embeds `distance_meters` (append semantics) — successive larger cloud snapshots could **double-count miles** on a summing goal; severity depends on the `bike` goal's aggregation type. Same bug family as the March `ellinika` corruption | `scheduler.py:99-120` vs `sync-service/src/lib.rs:343-363`, §4; `docs/postmortems/2026-03-31-greek-data-corruption.md` | open |
+
+---
+
+## Glossary (Beeminder and house vocabulary)
+
+Cold readers: the shorthand you need.
+
+| Term | Meaning |
+|---|---|
+| **yaw** | A goal's allowed daily slope; `yaw: −1` = the road *falls* $1/day — a "do less" goal |
+| **safe side below** | On descending goals the safe zone is *under* the red line: overspend can never derail; underspend (or a credit inflow) can |
+| **`aggday`** | Same-day aggregation rule; `last` = today's newest datapoint replaces earlier ones |
+| **odometer** | A goal whose datapoints sum toward a monotone total; **tare** = operator-side reset/adjust of that sum without rewriting history |
+| **deadline / akrasia horizon** | The date by which the road's requirement must be met; the akrasia horizon (~a month out) is how far ahead a road may legally demand anything — inside it, today's requirement is fixed |
+| **`safebuf`** | Days of cushion between the current projection and the road ("safe for 7d") |
+| **`curval`** | The goal's current value as of today |
+| **`requestid`** | Beeminder's idempotency key for datapoint writes: a re-push with the same id dedupes (HTTP 422 means the guard fired, treated as success) |
+| **F&F** | Friends & family — the $100/month Helix credit grant tier |
+| **cool cousin** | The money steady state: always ~$500 in the bank *and* always picking up the phone — spend the grant, waste none |
+| **SPEND / GUARD bucket** | Use-it-or-lose-it credits (spend *on purpose*) vs rationed real money (`budget_governor.py:39-40`) |
+| **Helix Inversion** | Prefer SPEND buckets (Helix/Gemini) first, so paid dollars are the last resort |
+| **card-counting** | A session budgeting itself: set a soft cap at start, re-triangulate against the live meter when felt spend nears it (§6) |
+| **sink tempo vs wealth** | R8 shorthand: the Beeminder road may set the *tempo* (required pace, read server-side) but never the *wealth* (position/headroom — provider + Neon only) |
+| **odometer a source** | The §8 pattern: find position → headless read → cache readings → straight-copy push → expose scalars → give it a pulse |
+| **ghost heartbeat** | A scheduler organ that died silently; the lesson that every loop needs visible pulse + failure-streak alerts (`knowledge/architecture/ghost-heartbeat-restoration.md`) |
+| **Type 1 / 2 / 3** | Contribution taxonomy (spec `design.md` §0.5): new levers (build) / pre-existing bugs (log, don't fix) / unattended automation (document, build later) |
 
 ---
 
@@ -663,5 +761,7 @@ Open questions for Spec Review:
 | Walk/SMS | `HealthConnectManager.kt`, `WalkHeuristicsWorker.kt`, `services/reminder_service.py`, `scheduler.py:99-120` |
 | Durable memory | `knowledge/architecture/*` (overview, neon-db, mcp-server, narrator-context, edge-and-clients, ghost, gall-loop), `knowledge/decisions/*` |
 
-*Prepared for Spec Review. The article should be updated — not replaced — as the In-Progress
-stage proves or disproves the §7 design.*
+*Prepared for Spec Review; rev 4 incorporates the 2026-09-21 external review round (governor
+split-by-design, formula rename, findings IDs, glossary, volatile facts moved to the spec).
+The article should be updated — not replaced — as the In-Progress stage proves or disproves the
+§7 design.*
