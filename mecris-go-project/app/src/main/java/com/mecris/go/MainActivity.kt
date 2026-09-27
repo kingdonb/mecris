@@ -88,17 +88,19 @@ class MainActivity : ComponentActivity() {
 
     private lateinit var syncApi: SyncServiceApi
     private val authResultLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
-        pocketIdAuth.handleAuthorizationResponse(result.data)
+        Log.i("MainActivity", "authResultLauncher callback: resultCode=${result.resultCode}, data=${result.data}, extras=${result.data?.extras}")
+        result.data?.let { pocketIdAuth.handleAuthorizationResponse(it) }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        
+        Log.i("MainActivity", "onCreate called with intent=$intent, data=${intent?.data}")
         val errorReporter = AuthErrorReporter(this)
         pocketIdAuth = PocketIdAuthRepository.getInstance(
             context = this,
             errorReporter = errorReporter
         )
+        intent?.let { pocketIdAuth.handleAuthorizationResponse(it) }
         healthConnectManager = HealthConnectManager(this)
         persistenceManager = PersistenceManager(this)
         
@@ -213,7 +215,9 @@ class MainActivity : ComponentActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
+        Log.i("MainActivity", "onNewIntent called with intent=$intent, data=${intent.data}, extras=${intent.extras}")
         setIntent(intent)
+        pocketIdAuth.handleAuthorizationResponse(intent)
     }
 
     private fun setupWorkManager() {
@@ -503,13 +507,20 @@ fun MecrisDashboard(
             return@LaunchedEffect
         }
 
-        Log.d("MecrisDashboard", "Refreshing walk data (Trigger: $refreshTrigger, Stale: $isStale)")
+        walkData = healthManager.fetchRecentWalkData()
+        
+        if (authState !is AuthState.Authenticated) {
+            isFetching = false
+            isLoading = false
+            syncStatus = "Auth Required"
+            return@LaunchedEffect
+        }
+
         // Only show full-screen "FETCHING..." if we have no cached data at all
         isFetching = languageStats.isEmpty() && budgetAmount == null
         isLoading = true
         syncStatus = "Fetching..."
         fetchError = null
-        walkData = healthManager.fetchRecentWalkData()
         
         try {
             val token = auth.getAccessTokenSuspend()

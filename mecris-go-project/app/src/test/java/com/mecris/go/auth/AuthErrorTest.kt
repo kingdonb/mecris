@@ -39,6 +39,34 @@ class AuthErrorTest {
     }
 
     @Test
+    fun fromException_code1007WithNoRefreshTokenCause_returnsNoRefreshToken() {
+        val rootEx = IllegalStateException("No refresh token available and token have expired")
+        val ex = AuthorizationException(
+            AuthorizationException.TYPE_GENERAL_ERROR,
+            1007,
+            null,
+            null,
+            null,
+            rootEx
+        )
+        val result = AuthError.fromException(ex)
+
+        assertTrue(result is AuthError.NoRefreshToken)
+        assertTrue(result.isPermanent)
+        assertEquals("NO_REFRESH_TOKEN", result.errorCode)
+    }
+
+    @Test
+    fun fromException_noRefreshTokenString_returnsNoRefreshToken() {
+        val ex = Exception("No refresh token available and token have expired")
+        val result = AuthError.fromException(ex)
+
+        assertTrue(result is AuthError.NoRefreshToken)
+        assertTrue(result.isPermanent)
+        assertEquals("NO_REFRESH_TOKEN", result.errorCode)
+    }
+
+    @Test
     fun fromException_idTokenExpiredString_returnsNoRefreshToken() {
         val ex = Exception("General error: ID token expired")
         val result = AuthError.fromException(ex)
