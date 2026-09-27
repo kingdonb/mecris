@@ -93,3 +93,52 @@ Checking `.venv/bin/python3` revealed Python `3.14.7`. Renovate had previously b
 - `1f4f4a8`: `docs(net): document mikrotik discovery, backup runbook, and wireguard WAN roadmap`
 - `465de7d`: `docs(net): refine mikrotik README to focus strictly on as-is network topology and applied fixes`
 - `27bcd2a`: `fix(env): pin python version to 3.13 in .python-version and sync uv venv`
+
+---
+
+## 5. Part 4: Local MCP Configuration Normalization
+
+### Context & Requirements
+- Prior configs contained `@modelcontextprotocol/server-github` passing through `${GITHUB_TOKEN}` / `GITHUB_PERSONAL_ACCESS_TOKEN`.
+- Sharing personal access tokens into subprocess environments violates local privacy boundaries and is forbidden under vMLX harnesses.
+- Standardized all local configuration files (`.mcp.json`, `.gemini/settings.json`, and `.mcp/mecris.json`) to invoke `uv run` against `/Users/yebyen/w/mecris/mcp_server.py` with `PYTHONPATH` set cleanly.
+
+### Commit
+- `97f175c`: `fix(mcp): normalize all local MCP configs and remove github server`
+
+---
+
+## 6. Next Steps & Morning Move Roadmap (Site-to-Site WireGuard)
+
+### Context: The New House Move
+In the morning, the MikroTik router (`10.17.13.0/24`) is moving to the new house over Comcast 1Gbit (~2 miles away). The goal is to establish a seamless, transparent Site-to-Site WireGuard tunnel connecting the **13-net** and **14-net** so devices communicate without running VPN software on individual clients.
+
+### Operational Blueprint (Phased Plan):
+
+#### Phase 1: Addressing & DDNS Foundations
+1. **MikroTik Dynamic DNS (IP Cloud)**:
+   - Enable built-in MikroTik DDNS: `/ip/cloud/set ddns-enabled=yes`.
+   - Generates a permanent unique DNS name (`*.sn.mynetname.net`) resolving to the router's current public IP.
+2. **14-net DDNS Endpoint**:
+   - Establish dynamic DNS on the 14-net gateway or via an internal lightweight agent/container to track WAN changes.
+3. **Subnet Non-Overlap Verification**:
+   - Confirmed: 13-net (`10.17.13.0/24`) vs 14-net (`10.17.14.0/24`) have zero IP overlap.
+4. **Comcast NAT Traversal / Bridge Mode**:
+   - Put residential Comcast gateway into Bridge Mode where possible, or configure port forwarding for WireGuard UDP (e.g., port 13231) to the router's WAN interface to prevent double NAT handshake stalls.
+
+#### Phase 2: WireGuard Tunnel Interface & Peering
+1. **Transit Network**:
+   - Point-to-point transit block: `10.254.1.0/30`
+     - MikroTik Peer IP: `10.254.1.1/30`
+     - 14-net Gateway Peer IP: `10.254.1.2/30`
+2. **AllowedIPs Routing**:
+   - MikroTik peer definition: `AllowedIPs=10.254.1.2/32, 10.17.14.0/24`
+   - 14-net peer definition: `AllowedIPs=10.254.1.1/32, 10.17.13.0/24`
+
+#### Phase 3: Route Orchestration & Firewall Policies
+1. **Static Routing**:
+   - MikroTik route: `/ip/route/add dst-address=10.17.14.0/24 gateway=wireguard-tunnel`
+   - 14-net route: dst-address `10.17.13.0/24` gateway point to tunnel peer.
+2. **Firewall Adjustments**:
+   - In MikroTik `forward` chain, permit `in-interface=wireguard-tunnel out-interface=bridgeLocal` (and reverse).
+   - Exempt inter-subnet site-to-site traffic from FastTrack if needed so established tunnel packets are not prematurely dropped or mangled.
