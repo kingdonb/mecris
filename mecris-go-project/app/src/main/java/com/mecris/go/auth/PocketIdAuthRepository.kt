@@ -417,11 +417,24 @@ class PocketIdAuthRepository(
                 val error = classifyTokenError(ex)
                 if (error.isPermanent) {
                     _authState.value = AuthState.Error(error.message, isPermanent = true)
+                    reportError(error)
+                    callback(null)
                 } else {
                     clearTransientException()
+                    // Roaming / transient error: if current access token is still valid by JWT exp, return it!
+                    val currentJwt = internalAuthState.accessToken ?: internalAuthState.idToken
+                    if (currentJwt != null && isAccessTokenJwtValid(currentJwt)) {
+                        android.util.Log.i(
+                            "PocketIdAuth",
+                            "performActionWithFreshTokens transient error, but cached token is still valid by JWT exp. Returning cached token."
+                        )
+                        _authState.value = AuthState.Authenticated(currentJwt)
+                        callback(currentJwt)
+                    } else {
+                        reportError(error)
+                        callback(null)
+                    }
                 }
-                reportError(error)
-                callback(null)
             } else {
                 if (accessToken != null) {
                     android.util.Log.d("PocketIdAuth", "Fresh access token retrieved successfully.")
