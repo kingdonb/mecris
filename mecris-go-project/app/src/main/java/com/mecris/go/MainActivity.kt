@@ -1480,11 +1480,9 @@ fun SystemHealthScreen(
                 status = if (state.isPermanent) "Auth Failed" else "Network Unavailable",
                 description = state.message
             )
-            if (state.isPermanent) {
-                Spacer(modifier = Modifier.height(8.dp))
-                Button(onClick = { auth.authenticateWithPasskey(authResultLauncher) }, modifier = Modifier.fillMaxWidth()) {
-                    Text("Sign In with Pocket ID")
-                }
+            Spacer(modifier = Modifier.height(8.dp))
+            Button(onClick = { auth.authenticateWithPasskey(authResultLauncher) }, modifier = Modifier.fillMaxWidth()) {
+                Text("Sign In with Pocket ID")
             }
         }
         AuthState.Loading -> CircularProgressIndicator()
@@ -1494,6 +1492,13 @@ fun SystemHealthScreen(
                 status = "Authenticated",
                 description = "Identity & Access Management Active"
             )
+            Spacer(modifier = Modifier.height(8.dp))
+            OutlinedButton(
+                onClick = { auth.signOut() },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Sign Out (Keep Cache)")
+            }
         }
     }
 
@@ -2325,6 +2330,21 @@ fun ProfileSettingsScreen(
         }
         
         Spacer(modifier = Modifier.height(8.dp))
+        Button(
+            onClick = {
+                auth.signOut()
+                (context as? ComponentActivity)?.finish()
+            },
+            modifier = Modifier.fillMaxWidth(),
+            colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                containerColor = Color(0xFFC62828),
+                contentColor = Color.White
+            )
+        ) {
+            Text("LOG OUT (KEEP CACHE)", fontWeight = FontWeight.Bold)
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
         OutlinedButton(
             onClick = {
                 manager.clearAll()
@@ -2332,9 +2352,9 @@ fun ProfileSettingsScreen(
                 (context as? ComponentActivity)?.finish()
             },
             modifier = Modifier.fillMaxWidth(),
-            colors = androidx.compose.material3.ButtonDefaults.outlinedButtonColors(contentColor = Color.Red)
+            colors = androidx.compose.material3.ButtonDefaults.outlinedButtonColors(contentColor = Color.Gray)
         ) {
-            Text("LOGOUT & CLEAR CACHE")
+            Text("WIPE ALL DATA & LOGOUT")
         }
 
         if (saveStatus.isNotEmpty()) {

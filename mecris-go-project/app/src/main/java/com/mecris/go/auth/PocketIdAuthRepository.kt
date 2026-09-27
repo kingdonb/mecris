@@ -192,21 +192,8 @@ class PocketIdAuthRepository(
                         // Access token is fresh per AppAuth — use it directly.
                         _authState.value = AuthState.Authenticated(jwt)
                         errorReporter?.clearNotification()
-                    } else if (jwt != null && isAccessTokenJwtValid(jwt)) {
-                        // AppAuth says refresh needed, but the JWT exp hasn't elapsed yet.
-                        // Emit Authenticated immediately so the user stays logged in while
-                        // roaming or while the token endpoint is temporarily unreachable.
-                        // Kick off a best-effort background refresh.
-                        android.util.Log.i(
-                            "PocketIdAuth",
-                            "loadAuthState: AppAuth needsTokenRefresh but JWT exp still valid — " +
-                                "emitting Authenticated immediately, refreshing in background"
-                        )
-                        _authState.value = AuthState.Authenticated(jwt)
-                        errorReporter?.clearNotification()
-                        scope.launch { refreshAccessTokenSilent() }
                     } else {
-                        // Access token is truly expired — must refresh before showing content.
+                        // Access token expired or refresh needed — refresh before showing content.
                         refreshAccessToken { _ -> }
                     }
                 }
@@ -301,8 +288,6 @@ class PocketIdAuthRepository(
 
         if (resp != null) {
             android.util.Log.i("PocketIdAuth", "AuthorizationResponse received! Exchanging code for tokens at $tokenEndpoint")
-            // Keep a backup of existing state so a transient network error doesn't wipe existing tokens
-            val previousAuthState = internalAuthState
 
             scope.launch(Dispatchers.IO) {
                 try {
@@ -382,21 +367,6 @@ class PocketIdAuthRepository(
                 } else {
                     val error = AuthError.fromException(tokenException ?: Exception("Unknown token exchange error"), context)
                     reportError(error)
-                    if (!error.isPermanent) {
-                        // Transient network failure during code exchange (e.g. timeout on 13-net).
-                        // If we already had a valid JWT access token, restore it so we don't break auth!
-                        val previousJwt = previousAuthState.accessToken ?: previousAuthState.idToken
-                        if (previousJwt != null && isAccessTokenJwtValid(previousJwt)) {
-                            android.util.Log.i(
-                                "PocketIdAuth",
-                                "Token exchange failed transiently, but restoring previous valid JWT session!"
-                            )
-                            internalAuthState = previousAuthState
-                            saveAuthState()
-                            _authState.value = AuthState.Authenticated(previousJwt)
-                            return@performTokenRequest
-                        }
-                    }
                     _authState.value = AuthState.Error(error.message, error.isPermanent)
                 }
             }
@@ -438,19 +408,8 @@ class PocketIdAuthRepository(
                     callback(null)
                 } else {
                     clearTransientException()
-                    // Roaming / transient error: if current access token is still valid by JWT exp, return it!
-                    val currentJwt = internalAuthState.accessToken ?: internalAuthState.idToken
-                    if (currentJwt != null && isAccessTokenJwtValid(currentJwt)) {
-                        android.util.Log.i(
-                            "PocketIdAuth",
-                            "performActionWithFreshTokens transient error, but cached token is still valid by JWT exp. Returning cached token."
-                        )
-                        _authState.value = AuthState.Authenticated(currentJwt)
-                        callback(currentJwt)
-                    } else {
-                        reportError(error)
-                        callback(null)
-                    }
+                    reportError(error)
+                    callback(null)
                 }
             } else {
                 if (accessToken != null) {
