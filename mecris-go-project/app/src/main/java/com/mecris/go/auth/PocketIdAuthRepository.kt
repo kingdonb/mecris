@@ -301,9 +301,8 @@ class PocketIdAuthRepository(
 
         if (resp != null) {
             android.util.Log.i("PocketIdAuth", "AuthorizationResponse received! Exchanging code for tokens at $tokenEndpoint")
-            // Initialize fresh AuthState from response to clear any prior error lock
-            internalAuthState = AppAuthAuthState(resp, ex)
-            saveAuthState()
+            // Keep a backup of existing state so a transient network error doesn't wipe existing tokens
+            val previousAuthState = internalAuthState
 
             scope.launch(Dispatchers.IO) {
                 try {
@@ -349,10 +348,13 @@ class PocketIdAuthRepository(
                     "Token exchange callback: tokenResponse=$tokenResponse, tokenException=$tokenException, cause=${tokenException?.cause}",
                     tokenException?.cause
                 )
-                internalAuthState.update(tokenResponse, tokenException)
-                saveAuthState()
 
                 if (tokenResponse != null) {
+                    val newAuthState = AppAuthAuthState(resp, ex)
+                    newAuthState.update(tokenResponse, tokenException)
+                    internalAuthState = newAuthState
+                    saveAuthState()
+
                     val jwt = tokenResponse.accessToken ?: tokenResponse.idToken
                     if (jwt != null) {
                         val hasRefreshToken = tokenResponse.refreshToken != null
@@ -380,6 +382,21 @@ class PocketIdAuthRepository(
                 } else {
                     val error = AuthError.fromException(tokenException ?: Exception("Unknown token exchange error"), context)
                     reportError(error)
+                    if (!error.isPermanent) {
+                        // Transient network failure during code exchange (e.g. timeout on 13-net).
+                        // If we already had a valid JWT access token, restore it so we don't break auth!
+                        val previousJwt = previousAuthState.accessToken ?: previousAuthState.idToken
+                        if (previousJwt != null && isAccessTokenJwtValid(previousJwt)) {
+                            android.util.Log.i(
+                                "PocketIdAuth",
+                                "Token exchange failed transiently, but restoring previous valid JWT session!"
+                            )
+                            internalAuthState = previousAuthState
+                            saveAuthState()
+                            _authState.value = AuthState.Authenticated(previousJwt)
+                            return@performTokenRequest
+                        }
+                    }
                     _authState.value = AuthState.Error(error.message, error.isPermanent)
                 }
             }
