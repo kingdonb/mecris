@@ -293,6 +293,7 @@ async def sync_helix_balance_to_beeminder(
     as fetch_status='failed' (balance NULL) and pushes NOTHING.
     """
     global _CONSECUTIVE_FETCH_FAILURES
+    _ensure_env()  # tokens/env must be loaded BEFORE the first wallet fetch
     from scripts import helix_billing
 
     now = datetime.now(timezone.utc)
@@ -386,6 +387,7 @@ def get_helix_scalars_sync(user_id: str,
     """
     from scripts import helix_billing
 
+    _ensure_env()
     last = _fetch_last_ok_row(user_id)
     wallet = helix_billing.get_wallet()
     balance = float(wallet["balance"]) if wallet and wallet.get("balance") is not None \
