@@ -244,6 +244,10 @@ class PocketIdAuthRepository(
         launcher: androidx.activity.result.ActivityResultLauncher<android.content.Intent>,
         emailHint: String? = null
     ) {
+        if (_authState.value is AuthState.Loading) {
+            android.util.Log.w("PocketIdAuth", "authenticateWithPasskey ignored: already loading")
+            return
+        }
         android.util.Log.i("PocketIdAuth", "authenticateWithPasskey started. redirectUri=$redirectUri, authEndpoint=$authEndpoint")
         _authState.value = AuthState.Loading
 
@@ -288,43 +292,6 @@ class PocketIdAuthRepository(
 
         if (resp != null) {
             android.util.Log.i("PocketIdAuth", "AuthorizationResponse received! Exchanging code for tokens at $tokenEndpoint")
-
-            scope.launch(Dispatchers.IO) {
-                try {
-                    val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
-                    val activeNet = cm.activeNetwork
-                    val caps = cm.getNetworkCapabilities(activeNet)
-                    android.util.Log.i("PocketIdAuth", "DIAG ActiveNetwork: $activeNet, caps: $caps")
-
-                    // Test 1: Raw socket directly to 10.17.13.140:443
-                    try {
-                        val s = java.net.Socket()
-                        s.connect(java.net.InetSocketAddress("10.17.13.140", 443), 3000)
-                        android.util.Log.i("PocketIdAuth", "DIAG Raw socket to 10.17.13.140:443 SUCCESS! localPort=${s.localPort}")
-                        s.close()
-                    } catch (e: Exception) {
-                        android.util.Log.e("PocketIdAuth", "DIAG Raw socket to 10.17.13.140:443 FAILED: ${e.message}")
-                    }
-
-                    // Test 2: Active network connection
-                    if (activeNet != null) {
-                        try {
-                            val url = java.net.URL("https://metnoom.urmanac.com/api/oidc/token")
-                            val conn = activeNet.openConnection(url) as java.net.HttpURLConnection
-                            conn.connectTimeout = 3000
-                            conn.readTimeout = 3000
-                            conn.requestMethod = "POST"
-                            conn.doOutput = true
-                            conn.outputStream.write("client_id=test".toByteArray())
-                            android.util.Log.i("PocketIdAuth", "DIAG activeNet.openConnection HTTP code: ${conn.responseCode}")
-                        } catch (e: Exception) {
-                            android.util.Log.e("PocketIdAuth", "DIAG activeNet.openConnection FAILED: ${e.message}")
-                        }
-                    }
-                } catch (e: Exception) {
-                    android.util.Log.e("PocketIdAuth", "DIAG probe error: ${e.message}", e)
-                }
-            }
 
             // Exchange authorization code for tokens
             authService.performTokenRequest(resp.createTokenExchangeRequest()) { tokenResponse, tokenException ->

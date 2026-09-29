@@ -1470,7 +1470,11 @@ fun SystemHealthScreen(
                 description = "Login required for cloud sync"
             )
             Spacer(modifier = Modifier.height(8.dp))
-            Button(onClick = { auth.authenticateWithPasskey(authResultLauncher) }, modifier = Modifier.fillMaxWidth()) {
+            Button(
+                onClick = { auth.authenticateWithPasskey(authResultLauncher) },
+                enabled = authState !is AuthState.Loading,
+                modifier = Modifier.fillMaxWidth()
+            ) {
                 Text("Sign In with Pocket ID")
             }
         }
@@ -1481,7 +1485,11 @@ fun SystemHealthScreen(
                 description = state.message
             )
             Spacer(modifier = Modifier.height(8.dp))
-            Button(onClick = { auth.authenticateWithPasskey(authResultLauncher) }, modifier = Modifier.fillMaxWidth()) {
+            Button(
+                onClick = { auth.authenticateWithPasskey(authResultLauncher) },
+                enabled = authState !is AuthState.Loading,
+                modifier = Modifier.fillMaxWidth()
+            ) {
                 Text("Sign In with Pocket ID")
             }
         }
