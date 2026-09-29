@@ -392,7 +392,8 @@ def get_helix_scalars_sync(user_id: str,
         else (last["balance"] if last else None)
     day = _daystamp()
     sod = _fetch_start_of_day_balance(user_id, day)
-    period_end = wallet.get("subscription_current_period_end") if wallet else None
+    # C1a normalizes the raw API keys to period_start/period_end
+    period_end = wallet.get("period_end") if wallet else None
     scalars = compute_scalars(balance, sod, float(period_end) if period_end else None,
                               beeminder_required_today=beeminder_required_today)
     if wallet:
