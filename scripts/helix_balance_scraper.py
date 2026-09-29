@@ -34,8 +34,14 @@ import json
 import logging
 import math
 import os
+import sys
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
+
+# Direct invocation (python scripts/helix_balance_scraper.py) puts scripts/ on
+# sys.path, not the repo root — make `from scripts import ...` resolvable.
+if __package__ in (None, ""):
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 try:
     from zoneinfo import ZoneInfo
