@@ -209,7 +209,7 @@ class TestSchedulerPresenceGuard:
 
     @pytest.mark.asyncio
     async def test_idempotent_all_jobs_already_registered(self):
-        """When all five jobs already exist, add_job is never called."""
+        """When all six jobs already exist, add_job is never called."""
         s = _make_minimal_scheduler()
         s.scheduler.get_job.return_value = MagicMock()  # every job appears registered
         with patch("ghost.presence.is_human_present", return_value=False):
@@ -221,10 +221,10 @@ class TestSchedulerPresenceGuard:
         """When only some jobs exist, add_job is called only for the missing ones."""
         s = _make_minimal_scheduler()
         # First two get_job calls return truthy (registered), rest return None
-        s.scheduler.get_job.side_effect = [MagicMock(), MagicMock(), None, None, None]
+        s.scheduler.get_job.side_effect = [MagicMock(), MagicMock(), None, None, None, None]
         with patch("ghost.presence.is_human_present", return_value=False):
             await s._start_leader_jobs()
-        assert s.scheduler.add_job.call_count == 3
+        assert s.scheduler.add_job.call_count == 4
 
     @pytest.mark.asyncio
     async def test_locked_db_retries_and_eventually_succeeds(self):
@@ -244,8 +244,9 @@ class TestSchedulerPresenceGuard:
             await s._start_leader_jobs()
         # Must have slept once for the retry
         assert mock_sleep.await_count == 1
-        # Must have registered all 5 jobs on the successful retry
-        assert s.scheduler.add_job.call_count == 5
+        # Must have registered all 6 jobs on the successful retry (helix
+        # balance job added by task 588)
+        assert s.scheduler.add_job.call_count == 6
 
     @pytest.mark.asyncio
     async def test_locked_db_all_retries_exhausted(self):

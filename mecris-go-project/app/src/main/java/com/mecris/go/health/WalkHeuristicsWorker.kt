@@ -57,6 +57,22 @@ class WalkHeuristicsWorker @JvmOverloads constructor(
                     val body = hbResponse.body()
                     Log.i("WalkHeuristicsWorker", "Heartbeat SUCCESS. MCP Active: ${body?.mcp_server_active}")
 
+                    // Task 588 Android hook: ask the backend for a Helix balance sync.
+                    // The laptop leader polls helix_balance_requests and pushes the
+                    // change-gated straight-copy datapoint to the helix-ml Beeminder goal.
+                    try {
+                        val hlx = syncApi.requestHelixBalanceSync("Bearer $token")
+                        if (hlx.isSuccessful) {
+                            Log.i("WalkHeuristicsWorker", "Helix balance sync requested; last known: ${hlx.body()?.last_balance ?: "none"} @ ${hlx.body()?.last_reading_ts ?: "n/a"}")
+                        } else {
+                            Log.w("WalkHeuristicsWorker", "Helix balance request code: ${hlx.code()}")
+                        }
+                    } catch (e: java.io.IOException) {
+                        Log.d("WalkHeuristicsWorker", "Helix balance request skipped (offline): ${e.message}")
+                    } catch (e: Exception) {
+                        Log.e("WalkHeuristicsWorker", "Helix balance request failed: ${e.message}")
+                    }
+
                     val twoHoursAgo = Instant.now().minusSeconds(7200).toEpochMilli()
                     if (body?.mcp_server_active == false && lastCloudSyncTrigger < twoHoursAgo) {
                         Log.w("WalkHeuristicsWorker", "MCP Server is DARK. Triggering Autonomous Cloud Sync + Reminders.")

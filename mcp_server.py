@@ -1108,6 +1108,32 @@ async def trigger_language_sync() -> Dict[str, Any]:
         return {"error": result.get("error", "Sync failed")}
     return result
 
+
+@mcp.tool(description="Force an immediate Helix wallet read + change-gated straight-copy push to the helix-ml Beeminder goal (task 588).")
+async def sync_helix_balance(force: bool = False, dry_run: bool = False, user_id: str = None) -> Dict[str, Any]:
+    """Hand-drive the Helix balance odometer (M3/M4 gate, Android-hook parity).
+
+    Deliberately NO budget_gate guard: the odometer is read+chart of a
+    provider-side truth; gating it on the self-reported (era-stale, G3) bucket
+    limits would blind the very instrument that audits them. R8: reads come
+    from the wallet + Neon log only; the goal is a sink.
+    """
+    target_user_id = resolve_target_user(user_id)
+    if not target_user_id:
+        return {"error": "Authentication Required"}
+    from scripts.helix_balance_scraper import sync_helix_balance_to_beeminder
+    return await sync_helix_balance_to_beeminder(target_user_id, force=force, dry_run=dry_run)
+
+
+@mcp.tool(description="Read the three Helix budget scalars (live_balance / burned_today / burn_allowance) without pushing anything.")
+async def get_helix_balance_status(user_id: str = None) -> Dict[str, Any]:
+    """Scalar view of the Helix tank (R7 trio + provenance), Neon history + wallet only."""
+    target_user_id = resolve_target_user(user_id)
+    if not target_user_id:
+        return {"error": "Authentication Required"}
+    from scripts.helix_balance_scraper import get_helix_scalars
+    return await get_helix_scalars(target_user_id)
+
 @mcp.tool(description="Add a new goal to the local database.")
 def add_goal(title: str, description: str = "", priority: str = "medium", due_date: Optional[str] = None, user_id: str = None) -> Dict[str, Any]:
     target_user_id = resolve_target_user(user_id)

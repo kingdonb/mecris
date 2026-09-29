@@ -317,15 +317,17 @@ def test_stop_leader_jobs_when_scheduler_not_running_is_silent():
     s._stop_leader_jobs()
 
 
-def test_stop_leader_jobs_removes_all_five_jobs():
-    """_stop_leader_jobs calls remove_job for all 5 expected job IDs."""
+def test_stop_leader_jobs_removes_all_six_jobs():
+    """_stop_leader_jobs calls remove_job for all 6 expected job IDs (helix
+    balance job added by task 588)."""
     s = _fresh_scheduler(user_id="u1")
     s.scheduler.running = True
     s._stop_leader_jobs()
-    assert s.scheduler.remove_job.call_count == 5
+    assert s.scheduler.remove_job.call_count == 6
     job_ids_called = {c.args[0] for c in s.scheduler.remove_job.call_args_list}
     assert "auto_reminder_check_u1" in job_ids_called
     assert "auto_archivist_u1" in job_ids_called
+    assert "auto_helix_balance_u1" in job_ids_called
 
 
 # ═════════════════════════════════════════════════════════════════════════════

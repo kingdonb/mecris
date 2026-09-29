@@ -46,6 +46,12 @@ interface SyncServiceApi {
         @Body heartbeatData: HeartbeatRequestDto
     ): retrofit2.Response<HeartbeatResponseDto>
 
+    // Task 588 Android hook: ask the backend for a Helix balance sync (leader runs the read+chart)
+    @POST("helix-balance/request")
+    suspend fun requestHelixBalanceSync(
+        @Header("Authorization") authHeader: String
+    ): retrofit2.Response<HelixBalanceRequestDto>
+
     @POST("languages/multiplier")
     suspend fun updateMultiplier(
         @Header("Authorization") authHeader: String,
@@ -165,6 +171,14 @@ data class HeartbeatRequestDto(
 data class HeartbeatResponseDto(
     val status: String,
     val mcp_server_active: Boolean
+)
+
+// Task 588 Android hook: response to POST helix-balance/request
+data class HelixBalanceRequestDto(
+    val status: String,
+    val requested: Boolean,
+    val last_balance: String?,
+    val last_reading_ts: String?
 )
 
 data class MultiplierRequestDto(

@@ -67,6 +67,7 @@ async fn handle_sync_service(req: Request) -> anyhow::Result<Response<String>> {
         ("/languages/multiplier", &Method::POST) => handle_multiplier_post(req).await?,
         ("/health", &Method::GET) => handle_health_get(req).await?,
         ("/heartbeat", &Method::POST) => handle_heartbeat_post(req).await?,
+        ("/helix-balance/request", &Method::POST) => handle_helix_balance_request_post(req).await?,
         ("/internal/cloud-sync", &Method::POST) => handle_cloud_sync(req).await?,
         ("/aggregate-status", &Method::GET) => handle_aggregate_status_get(req).await?,
         ("/profile", &Method::POST) => handle_profile_post(req).await?,
@@ -280,6 +281,24 @@ async fn handle_heartbeat_post(req: Request) -> anyhow::Result<Response<String>>
     let conn = Connection::open(&db).await?;
     conn.execute("INSERT INTO scheduler_election (user_id, role, process_id, heartbeat) VALUES ($1, $2, $3, CURRENT_TIMESTAMP) ON CONFLICT (user_id, role) DO UPDATE SET heartbeat = EXCLUDED.heartbeat, process_id = EXCLUDED.process_id", &[ParameterValue::Str(uid), ParameterValue::Str(role.to_string()), ParameterValue::Str(pid.to_string())]).await?;
     json_response(200, &StatusResponse { status: "success".to_string(), message: "Heartbeat received".to_string() })
+}
+
+// Task 588 Android hook: the app asks for a Helix balance sync; the laptop leader
+// polls helix_balance_requests and runs the read+chart (the walk-sync pattern).
+async fn handle_helix_balance_request_post(req: Request) -> anyhow::Result<Response<String>> {
+    let uid = match extract_user_id(req.headers().get("authorization")).await { Some(id) => id, None => return Ok(text_response(401, "Unauthorized")?) };
+    let db = match variables::get("db_url").await { Ok(v) if !v.is_empty() => v, _ => variables::get("neon_db_url").await? };
+    let conn = Connection::open(&db).await?;
+    conn.execute("INSERT INTO helix_balance_requests (user_id, requested_at) VALUES ($1, CURRENT_TIMESTAMP) ON CONFLICT (user_id) DO UPDATE SET requested_at = CURRENT_TIMESTAMP", &[ParameterValue::Str(uid.clone())]).await?;
+    // Newest ok reading for app display + E2E confirmation; TEXT projection avoids timestamp DbValue parsing.
+    let rs = conn.query("SELECT COALESCE(balance::TEXT, ''), TO_CHAR(ts AT TIME ZONE 'UTC', '%Y-%m-%dT%H:%M:%SZ') FROM helix_balance_log WHERE user_id = $1 AND fetch_status = 'ok' ORDER BY ts DESC LIMIT 1", &[ParameterValue::Str(uid)]).await?.collect().await?;
+    let (last_balance, last_ts) = if rs.is_empty() { (None, None) } else {
+        let b = match &rs[0][0] { DbValue::Str(s) if !s.is_empty() => Some(s.clone()), _ => None };
+        let t = match &rs[0][1] { DbValue::Str(s) => Some(s.clone()), _ => None };
+        (b, t)
+    };
+    #[derive(Serialize)] struct HelixBalanceRequestResp { status: String, requested: bool, last_balance: Option<String>, last_reading_ts: Option<String> }
+    json_response(200, &HelixBalanceRequestResp { status: "success".to_string(), requested: true, last_balance, last_reading_ts: last_ts })
 }
 
 async fn handle_multiplier_post(req: Request) -> anyhow::Result<Response<String>> {

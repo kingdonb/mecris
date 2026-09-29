@@ -466,6 +466,18 @@ fun MecrisDashboard(
                                 if (!hbResponse.isSuccessful) {
                                     Log.w("MecrisDashboard", "Heartbeat failed: ${hbResponse.code()}")
                                 }
+                                // Task 588 Android hook: opening the dashboard also asks the
+                                // backend for a Helix balance sync (leader charts helix-ml).
+                                try {
+                                    val hlx = syncApi.requestHelixBalanceSync("Bearer $token")
+                                    if (hlx.isSuccessful) {
+                                        Log.i("MecrisDashboard", "Helix balance sync requested; last known: ${hlx.body()?.last_balance ?: "none"} @ ${hlx.body()?.last_reading_ts ?: "n/a"}")
+                                    } else {
+                                        Log.w("MecrisDashboard", "Helix balance request code: ${hlx.code()}")
+                                    }
+                                } catch (e: Exception) {
+                                    Log.w("MecrisDashboard", "Helix balance request exception (non-fatal): ${e.message}")
+                                }
                             } catch (e: Exception) {
                                 Log.w("MecrisDashboard", "Heartbeat exception (non-fatal): ${e.message}")
                             }
