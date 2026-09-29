@@ -442,23 +442,42 @@ async def _alert_balance_dark(user_id: str, count: int) -> None:
         logger.warning("helix balance dark alert failed: %s", exc)
 
 
+def _resolve_cli_user_id() -> Optional[str]:
+    """Same identity the live system uses: env override, else the logged-in
+    credentials (pocket_id_sub), exactly like MecrisScheduler.__init__."""
+    v = os.getenv("MECRIS_USER_ID") or os.getenv("DEFAULT_USER_ID")
+    if v:
+        return v
+    try:
+        from services.credentials_manager import credentials_manager
+        return credentials_manager.resolve_user_id()
+    except Exception:
+        return None
+
+
 def main() -> None:
     import argparse
     parser = argparse.ArgumentParser(description="Hand-drive the Helix balance → Beeminder sync")
-    parser.add_argument("--user-id",
-                        default=os.getenv("MECRIS_USER_ID") or os.getenv("DEFAULT_USER_ID", "yebyen@gmail.com"))
+    parser.add_argument("--user-id", default=None,
+                        help="defaults to MECRIS_USER_ID/DEFAULT_USER_ID env, "
+                             "else the logged-in pocket_id_sub")
     parser.add_argument("--force", action="store_true", help="push even if unchanged")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--scalars", action="store_true", help="print scalars only, no write")
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO)
+    _ensure_env()
+    user_id = args.user_id or _resolve_cli_user_id()
+    if not user_id:
+        print(json.dumps({"error": "no user_id: pass --user-id, set DEFAULT_USER_ID, "
+                                    "or run `mecris login`"}, indent=2))
+        sys.exit(1)
 
     async def _run():
         if args.scalars:
-            return await get_helix_scalars(args.user_id)
-        return await sync_helix_balance_to_beeminder(
-            args.user_id, force=args.force, dry_run=args.dry_run)
+            return await get_helix_scalars(user_id)
+        return await sync_helix_balance_to_beeminder(user_id, force=args.force, dry_run=args.dry_run)
 
     print(json.dumps(asyncio.run(_run()), indent=2, default=str))
 
