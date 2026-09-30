@@ -26,6 +26,7 @@ openweather_lon = { required = false, default = "" }
 internal_api_key = { required = false, default = "" }
 twilio_whatsapp_template_sid = { required = false, default = "" }
 helix_api_base_url = { required = false, default = "https://app.helix.ml" }
+helix_billing_org_id = { required = false, default = "mecris" }
 cloud_provider = { required = false, default = "unknown_cloud" }
 
 [[trigger.http]]
@@ -79,6 +80,7 @@ openweather_lon = "{{ openweather_lon }}"
 internal_api_key = "{{ internal_api_key }}"
 twilio_whatsapp_template_sid = "{{ twilio_whatsapp_template_sid }}"
 helix_api_base_url = "{{ helix_api_base_url }}"
+helix_billing_org_id = "{{ helix_billing_org_id }}"
 cloud_provider = "{{ cloud_provider }}"
 [component.sync-service.build]
 command = "cargo build --target wasm32-wasip1 --release"

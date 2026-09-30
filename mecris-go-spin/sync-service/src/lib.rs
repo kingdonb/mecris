@@ -316,7 +316,11 @@ fn helix_daystamp() -> String {
 }
 
 async fn fetch_helix_wallet(base: &str, token: &str) -> Option<f64> {
-    let req = Request::builder().method(Method::GET).uri(format!("{}/api/v1/wallet", base)).header("authorization", format!("Bearer {}", token)).body(String::new()).ok()?;
+    // Mirror scripts/helix_billing.py's proven header set EXACTLY (M1 observation card):
+    // Cloudflare in front of app.helix.ml 403/1010'd the bare spin client; the lever UA
+    // + Accept + org_id param are what the door-trace pinned as Cloudflare-safe.
+    let org = { let o = variables::get("helix_billing_org_id").await.unwrap_or_default(); if o.is_empty() { "mecris".to_string() } else { o } };
+    let req = Request::builder().method(Method::GET).uri(format!("{}/api/v1/wallet?org_id={}", base, org)).header("authorization", format!("Bearer {}", token)).header("accept", "application/json").header("user-agent", "helix-billing-lever/1.0 (Mecris; task-588)").body(String::new()).ok()?;
     let res = spin_sdk::http::send(req).await.ok()?;
     if !(200..300).contains(&res.status().as_u16()) { return None; }
     let bytes = res.into_body().collect().await.ok()?.to_bytes();
