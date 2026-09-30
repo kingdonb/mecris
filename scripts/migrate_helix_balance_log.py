@@ -82,6 +82,15 @@ def main():
                     print(f"\nSchema of {table}:")
                     for name, dtype in rows:
                         print(f"  - {name}: {dtype}")
+
+                cur.execute("""
+                    SELECT column_name FROM information_schema.columns
+                    WHERE table_name = 'users' AND column_name = 'helix_api_token_encrypted'
+                """)
+                ok = bool(cur.fetchall())
+                print(f"\nusers.helix_api_token_encrypted: {'OK' if ok else 'MISSING'}")
+                if not ok:
+                    sys.exit(1)
     except Exception as e:
         print(f"❌ Migration failed: {e}")
         sys.exit(1)
