@@ -297,7 +297,7 @@ async fn handle_helix_balance_request_post(req: Request) -> anyhow::Result<Respo
         let _ = conn.execute("UPDATE helix_balance_requests SET processed_at = CURRENT_TIMESTAMP WHERE user_id = $1", &[ParameterValue::Str(uid.clone())]).await;
     }
     // Newest ok reading for app display + E2E confirmation; TEXT projection avoids timestamp DbValue parsing.
-    let rs = conn.query("SELECT COALESCE(balance::TEXT, ''), TO_CHAR(ts AT TIME ZONE 'UTC', '%Y-%m-%dT%H:%M:%SZ') FROM helix_balance_log WHERE user_id = $1 AND fetch_status = 'ok' ORDER BY ts DESC LIMIT 1", &[ParameterValue::Str(uid.clone())]).await?.collect().await?;
+    let rs = conn.query("SELECT COALESCE(balance::TEXT, ''), TO_CHAR(ts AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"') FROM helix_balance_log WHERE user_id = $1 AND fetch_status = 'ok' ORDER BY ts DESC LIMIT 1", &[ParameterValue::Str(uid.clone())]).await?.collect().await?;
     let (last_balance, last_ts) = if rs.is_empty() { (None, None) } else {
         let b = match &rs[0][0] { DbValue::Str(s) if !s.is_empty() => Some(s.clone()), _ => None };
         let t = match &rs[0][1] { DbValue::Str(s) => Some(s.clone()), _ => None };
