@@ -48,7 +48,9 @@ race dedupes at Beeminder (422 = already in).
   422 dedupe = success — races with the edge dedupe, not double).
 - Fetch failures log `fetch_status='failed'` rows and push **nothing**; ≥2 in a
   row fires one SMS/day (`message_log` type `helix_balance_dark`) — the ghost
-  lesson.
+  lesson. The edge persists *why* in `last_error` (status code + response snippet,
+  decrypt/build/parse reasons) — witness it with
+  `SELECT id, fetch_status, last_error FROM helix_balance_log ORDER BY id DESC LIMIT 3;`
 - Top-up day (the 17th): the straight copy lifts the plot over the road.
   Expected, benign, **nobody spends** because of it.
 - Narrator + `get_budget_governor_status` now carry `live_balance`

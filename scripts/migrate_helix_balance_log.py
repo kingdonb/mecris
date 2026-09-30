@@ -61,6 +61,9 @@ CREATE TABLE IF NOT EXISTS helix_balance_requests (
 -- The laptop leader provisions this column from HELIX_BILLING_API_TOKEN via
 -- scripts/helix_balance_scraper.provision_helix_token (AES-256-GCM, Rust-compatible).
 ALTER TABLE users ADD COLUMN IF NOT EXISTS helix_api_token_encrypted TEXT NOT NULL DEFAULT '';
+
+-- Failure diagnostics (rev 7 debug): every edge-side failure persists its reason here.
+ALTER TABLE helix_balance_log ADD COLUMN IF NOT EXISTS last_error TEXT;
 """
 
 
@@ -85,11 +88,13 @@ def main():
 
                 cur.execute("""
                     SELECT column_name FROM information_schema.columns
-                    WHERE table_name = 'users' AND column_name = 'helix_api_token_encrypted'
+                    WHERE table_name IN ('users', 'helix_balance_log')
+                      AND column_name IN ('helix_api_token_encrypted', 'last_error')
                 """)
-                ok = bool(cur.fetchall())
-                print(f"\nusers.helix_api_token_encrypted: {'OK' if ok else 'MISSING'}")
-                if not ok:
+                found = {r[0] for r in cur.fetchall()}
+                for col in ("helix_api_token_encrypted", "last_error"):
+                    print(f"{col}: {'OK' if col in found else 'MISSING'}")
+                if not all(c in found for c in ("helix_api_token_encrypted", "last_error")):
                     sys.exit(1)
     except Exception as e:
         print(f"❌ Migration failed: {e}")
