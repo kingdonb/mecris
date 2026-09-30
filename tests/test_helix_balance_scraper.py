@@ -82,8 +82,8 @@ class FakeBM:
 
 @pytest.fixture
 def neon(monkeypatch):
-    """In-memory Neon: rows list + last_ok + requests processed flag."""
-    state = {"rows": [], "last_ok": None, "processed": 0, "pushed": []}
+    """In-memory Neon: rows list + last_ok + last_pushed + requests processed flag."""
+    state = {"rows": [], "last_ok": None, "last_pushed": None, "processed": 0, "pushed": []}
 
     async def to_thread_noop(fn, *a, **k):
         return fn(*a, **k)
@@ -92,6 +92,12 @@ def neon(monkeypatch):
 
     def fake_last_ok(user_id):
         return state["last_ok"]
+
+    def fake_last_pushed(user_id):
+        # Mirrors production: the newest row ANYWHERE with a non-null
+        # pushed_value — NOT the newest ok row (silent laps log ok rows with
+        # pushed_value NULL; reading the newest row made the gate oscillate).
+        return state["last_pushed"]
 
     def fake_insert(user_id, *, day, balance, delta, source, fetch_status, inflow):
         row = {"id": len(state["rows"]) + 1, "day": day, "balance": balance,
@@ -105,6 +111,7 @@ def neon(monkeypatch):
 
     def fake_mark_pushed(row_id, value):
         state["pushed"].append((row_id, value))
+        state["last_pushed"] = value
         for r in state["rows"]:
             if r["id"] == row_id:
                 r["pushed_value"] = value
@@ -115,6 +122,7 @@ def neon(monkeypatch):
         state["processed"] += 1
 
     monkeypatch.setattr(scr, "_fetch_last_ok_row", fake_last_ok)
+    monkeypatch.setattr(scr, "_fetch_last_pushed", fake_last_pushed)
     monkeypatch.setattr(scr, "_insert_row", fake_insert)
     monkeypatch.setattr(scr, "_mark_pushed", fake_mark_pushed)
     monkeypatch.setattr(scr, "_mark_requests_processed", fake_processed)
@@ -157,6 +165,21 @@ def test_unchanged_value_is_silence(monkeypatch, neon):
     assert "unchanged" in result["reason"]
     assert bm.calls == []                                # second run pushed nothing
     assert len(neon["rows"]) == 2                        # reading still logged (R2)
+
+
+def test_silence_survives_silent_laps(monkeypatch, neon):
+    """Regression (v0.1.0 overnight, 15 duplicate datapoints): every silent
+    lap logs a new ok row with pushed_value NULL. The gate must compare
+    against the last ACTUAL push anywhere in history, not the newest ok row
+    — otherwise it oscillates push/silent/push every other lap."""
+    run(monkeypatch, neon, [499.11])                     # lap 1: pushes
+    r2, bm2 = run(monkeypatch, neon, [499.11])           # lap 2: silence
+    r3, bm3 = run(monkeypatch, neon, [499.11])           # lap 3: must stay silent
+    assert r2["pushed"] is False and r3["pushed"] is False
+    assert "unchanged" in r3["reason"]
+    assert bm3.calls == []                               # lap 3 pushed nothing
+    assert len(neon["rows"]) == 3                        # all readings logged (R2)
+    assert neon["pushed"] == [(1, 499.11)]               # exactly one push ever
 
 
 def test_moved_value_pushes_new_datapoint_same_day(monkeypatch, neon):

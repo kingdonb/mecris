@@ -2,6 +2,22 @@
 
 All notable changes to Mecris are documented here.
 
+## [0.1.1] — 2026-09-30 — The Odometer, steady-state fix
+
+### Fixed
+
+- **R3 change-gate oscillation (post-mortem):** the gate anchored `last_pushed`
+  on the *newest* `ok` log row — and every silent lap logs a new `ok` row with
+  `pushed_value` NULL, so the next lap saw no anchor and re-pushed an unchanged
+  value (each with a fresh minute-resolution `requestid`, invisible to Beeminder's
+  422 dedupe). Cadence: push → silence → push, every other heartbeat. The frozen
+  overnight balance exposed it (15 duplicate datapoints); daytime spending masked
+  it. Both twins fixed in lockstep (Python `_fetch_last_pushed`; Rust same SQL
+  shape): the gate anchors on the newest **actual push** anywhere in history.
+  Lap-three regression test added (fails on the old code). Charted values were
+  never harmed — same-day odometer updates aggregate (`aggday: last`).
+- Version bump only; no Android behavior change (VC 35 → 36 for install parity).
+
 ## [0.1.0] — 2026-09-30 — "The Odometer"
 
 The release that made the money systems real: the Helix billing balance became an
