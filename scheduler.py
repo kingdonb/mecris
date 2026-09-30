@@ -8,6 +8,7 @@ from typing import Dict, Any, Optional, Callable, Coroutine
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.date import DateTrigger
 from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
+from apscheduler.jobstores.memory import MemoryJobStore
 
 logger = logging.getLogger("mecris.scheduler")
 
@@ -239,12 +240,28 @@ class MecrisScheduler:
         
         # Configure jobstore
         if self.neon_url:
-            # APScheduler uses sqlalchemy, so we can use the same URL
-            # but we need to replace postgres:// with postgresql:// if needed
-            db_url = self.neon_url.replace("postgres://", "postgresql://")
-            jobstores = {
-                'default': SQLAlchemyJobStore(url=db_url)
-            }
+            # Pin psycopg2 — the driver this project ships. SQLAlchemy >= 2.1
+            # resolves plain postgresql:// to the psycopg (v3) dialect first,
+            # which is not a dependency; that crashed import-time scheduler
+            # construction in CI (ModuleNotFoundError 'psycopg' at pytest
+            # collection, via mcp_server's module-level MecrisScheduler()).
+            # An explicit +dialect in the URL is respected.
+            scheme, _, rest = self.neon_url.partition("://")
+            if "+psycopg" in scheme:
+                db_url = self.neon_url
+            else:
+                db_url = f"postgresql+psycopg2://{rest}"
+            try:
+                jobstores = {'default': SQLAlchemyJobStore(url=db_url)}
+            except Exception as e:
+                # mcp_server constructs the scheduler at import; an exotic URL
+                # (unsupported dialect) must not take down every consumer of
+                # the module. Degrade loudly: jobs won't survive restarts.
+                logger.warning(
+                    f"MecrisScheduler: persistent jobstore unavailable ({e}); "
+                    "falling back to MemoryJobStore — jobs will NOT survive restarts."
+                )
+                jobstores = {'default': MemoryJobStore()}
         else:
             logger.error("MecrisScheduler: NEON_DB_URL not found. Scheduler will not persist jobs.")
             raise EnvironmentError("NEON_DB_URL must be set for persistent scheduler operation.")
