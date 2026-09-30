@@ -204,6 +204,28 @@ def _fetch_last_ok_row(user_id: str) -> Optional[Dict[str, Any]]:
             "pushed_value": float(row[3]) if row[3] is not None else None}
 
 
+def _fetch_last_pushed(user_id: str) -> Optional[float]:
+    """Newest NON-NULL pushed_value anywhere in history — the R3 gate anchor.
+
+    NOT the newest ok row: every silent lap logs a new ok row with
+    pushed_value NULL, so anchoring on the newest row lets the gate
+    oscillate push/silent/push (v0.1.0 overnight: 15 duplicate datapoints).
+    """
+    url = _neon_url()
+    if not url or psycopg2 is None:
+        return None
+    with psycopg2.connect(url) as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT pushed_value FROM helix_balance_log "
+                "WHERE user_id = %s AND pushed_value IS NOT NULL "
+                "ORDER BY ts DESC LIMIT 1",
+                (user_id,),
+            )
+            row = cur.fetchone()
+    return float(row[0]) if row and row[0] is not None else None
+
+
 def _fetch_start_of_day_balance(user_id: str, day: str) -> Optional[float]:
     """First ok reading with day == today; else the newest ok reading before today."""
     url = _neon_url()
@@ -351,7 +373,7 @@ async def sync_helix_balance_to_beeminder(
     result: Dict[str, Any] = {"ok": True, "balance": balance, "row_id": row_id,
                               "delta": delta, "pushed": False}
 
-    last_pushed = last["pushed_value"] if last else None
+    last_pushed = await asyncio.to_thread(_fetch_last_pushed, user_id)
     if not force and last_pushed is not None and value == last_pushed:
         result["reason"] = f"unchanged since last push ({value}) — silence (R3)"
         await asyncio.to_thread(_mark_requests_processed, user_id)

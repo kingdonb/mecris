@@ -354,9 +354,14 @@ async fn sync_helix_balance_inline(uid: &str, conn: &Connection) -> (bool, bool,
             return (false, false, Some(e));
         }
     };
-    let prs = match conn.query("SELECT balance::TEXT, COALESCE(pushed_value::TEXT, '') FROM helix_balance_log WHERE user_id = $1 AND fetch_status = 'ok' ORDER BY ts DESC LIMIT 1", &[ParameterValue::Str(uid.to_string())]).await { Ok(q) => q.collect().await.unwrap_or_default(), Err(_) => Vec::new() };
+    let prs = match conn.query("SELECT balance::TEXT FROM helix_balance_log WHERE user_id = $1 AND fetch_status = 'ok' ORDER BY ts DESC LIMIT 1", &[ParameterValue::Str(uid.to_string())]).await { Ok(q) => q.collect().await.unwrap_or_default(), Err(_) => Vec::new() };
     let prev: Option<f64> = prs.first().and_then(|r| match &r[0] { DbValue::Str(s) => s.parse().ok(), _ => None });
-    let last_pushed: Option<f64> = prs.first().and_then(|r| match &r[1] { DbValue::Str(s) if !s.is_empty() => s.parse().ok(), _ => None });
+    // R3 gate anchor: newest NON-NULL pushed_value ANYWHERE in history, not the
+    // newest ok row — silent laps log ok rows with pushed_value NULL, so
+    // anchoring there oscillates push/silent/push (v0.1.0 overnight duplicate
+    // datapoints; Python twin fixed in lockstep).
+    let lps = match conn.query("SELECT pushed_value::TEXT FROM helix_balance_log WHERE user_id = $1 AND pushed_value IS NOT NULL ORDER BY ts DESC LIMIT 1", &[ParameterValue::Str(uid.to_string())]).await { Ok(q) => q.collect().await.unwrap_or_default(), Err(_) => Vec::new() };
+    let last_pushed: Option<f64> = lps.first().and_then(|r| match &r[0] { DbValue::Str(s) => s.parse().ok(), _ => None });
     let delta = prev.map(|p| bal - p);
     let inflow = delta.map(|d| d > 0.0).unwrap_or(false);
     // ParameterValue has no Null variant in spin-sdk 6: two INSERT shapes (delta omitted on first reading).
