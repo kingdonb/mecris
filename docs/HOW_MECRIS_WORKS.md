@@ -82,7 +82,7 @@ agent loop.*
 |---|---|---|
 | **Neon DB** | hosted Postgres | The only truth. Tables: `users`, `token_bank`, `walk_inferences`, `language_stats`, `goals`, `message_log`, `usage_sessions`, `autonomous_turns`, `budget_tracking`, `budget_governor_spend_log`, `scheduler_election` (`knowledge/architecture/data/neon-db.md`) |
 | **Local MCP** | `mcp_server.py`, `scheduler.py` | The primary interactive backend since the June 2026 Cloud Easing. ~40 MCP tools registered; the Pi bridge activates only `get_narrator_context` + `mecris_load_tools` at startup and lazy-loads capabilities (`knowledge/decisions/2026-09-06-deterministic-status.md`) |
-| **Cloud edge** | `mecris-go-spin/sync-service/src/lib.rs` (748 lines of Rust on Spin) | Deployed to **Akamai Functions** (`*.fwf.app`) via `deploy-akamai.sh`. Live but explicitly "MARGINAL (FAILOVER ONLY)" (`docs/AKAMAI_CRON_EVALUATION.md`). Runs the Clozemaster scraper failover, SMS reminders, heartbeats |
+| **Cloud edge** | `mecris-go-spin/sync-service/src/lib.rs` (748+ lines of Rust on Spin) | Deployed to **Akamai Functions** (`*.fwf.app`) via `deploy-akamai.sh`. "MARGINAL (FAILOVER ONLY)" for *scheduled cron* (`docs/AKAMAI_CRON_EVALUATION.md`) — a verdict that holds; request-served work is different, and since 2026-09-29 the edge is the **PRIMARY** for the Helix balance odometer (inline sync on `POST /helix-balance/request`, task 588). Also runs the Clozemaster scraper failover, SMS reminders, heartbeats |
 | **Android app** | `mecris-go-project/` | Kotlin/Compose, v0.0.3 (versionCode 34). NOT a submodule stub — real code. "Mecris-go" means "Mecris **on the go**", not the language |
 | **The bus** | JSON at every boundary; WIT contracts per WASM component | The repo-level `wit/empty.wit` is literally empty; WIT lives per component (`wit/review-pump.wit` etc.) |
 | **Harnesses** | Pi (official), Claude Code, Antigravity, py_harness/Ollama | Each has different token-efficiency tradeoffs (`README.md` harness table) |
@@ -504,7 +504,9 @@ grant:
 
 ```mermaid
 flowchart TD
-    A[Helix billing API<br/>endpoint pinned by the door-trace] -->|headless, cached| B[get_helix_balance<br/>+ Neon balance log]
+    A[Helix wallet API<br/>GET /api/v1/wallet, Bearer hl- key] -->|edge-primary, inline| B[helix_balance_log<br/>Neon, source-tagged]
+    A2[Android app opens / 15-min heartbeat<br/>POST /helix-balance/request JWT] -.->|triggers sync| B
+    A3[laptop leader fallback job<br/>hourly + queue-pending] -.->|fills gaps| B
     Y[operator manual read<br/>interim: source=manual] -.-> B
     B --> C[straight-copy push, change-gated<br/>value = the balance itself]
     C --> D[Beeminder goal yebyenw/helix-ml<br/>SINK ONLY - no edge back]
@@ -566,7 +568,7 @@ The recipe, six steps, each already demonstrated somewhere in the repo:
 | Step | Move | Proven by |
 |---|---|---|
 | 1. **find the position** | a machineable reading of "how much is left"; prefer an API — a browser DevTools trace is the *discovery* technique that finds it, never the mechanism itself | Clozemaster dashboard scrape (`clozemaster_scraper.py`) |
-| 2. **read headless** | scoped read-only credential in deployment config (final form); a supervised human read is the legitimate MVP while doors are being traced | in progress — task 588 door-trace |
+| 2. **read headless** | scoped read-only credential in deployment config (final form); a supervised human read is the legitimate MVP while doors are being traced | **task 588 shipped**: `GET {HELIX_BASE}/api/v1/wallet` with a Bearer `hl-` key (`helix_billing.py`); the key lives in `.env` on the laptop and, after first sync, encrypted per-user in `users.helix_api_token_encrypted` so the edge can read it too |
 | 3. **cache the readings** | Neon table, `user_id`-scoped, source-tagged; **velocity is computed here**, by differencing your own history | `language_stats`; `groq_odometer_tracker.py` |
 | 4. **straight-copy push** | the most primary data, change-gated: unchanged → silence, moved → a new datapoint, same value → never twice | `reviewstack` idempotent pushes (`beeminder_client.py`) |
 | 5. **expose scalars** | position / velocity / allowance — capped scalars only into agent context | `budget_governor` narrator field |
@@ -643,20 +645,23 @@ issue, not a silent code drop.
 Ordering and gates for the *current* ticket live in the spec's `tasks.md`; this list is the
 subsystem's standing honey-do list, independent of any one task.
 
-1. **Verify the Helix billing endpoint** — probe `GET {HELIX_BASE}/api/v1/me` with the bot key,
-   confirm the real JSON shape, pin the host (`app.helix.ml` is the only proven one). Closes the
-   biggest unverified guess in §6. *(Owner: pairing session — operator has the console.)*
-2. **Schedule the balance odometer** — daily (or hourly-cached) `get_helix_balance` job on the
-   leader, persisted to Neon, heartbeat-visible; cache + replace the stale `$100` default with
-   the live value. Closes G2, G3.
-3. **Wire budget → Beeminder** — straight-copy, change-gated daily datapoints (unique
-   requestid per reading; never re-push an unchanged value). Operator reuse posture: exercise
-   the existing aggregate `budget` MCP/CLI surface first and let it absorb the Helix pull if
-   it fits — no functionally duplicate arm. Spec-003 valve wiring deferred:
-   its odometer taxonomy doesn't yet describe the billing goal (G9 remains a taxonomy
-   follow-up — see task 588 design §3–§4).
-4. **Expose live balance to the narrator** — one field added to
-   `get_narrator_summary()`/`budget_status` so per-turn reasoning depth sees position + velocity.
+1. **Verify the Helix billing endpoint** — ✅ closed 2026-09-29 (task 588): the endpoint is
+   `GET https://app.helix.ml/api/v1/wallet` with `Authorization: Bearer <hl- key>`; response
+   carries `balance` (+ `subscription_current_period_end`, which feeds the pump-pace scalar).
+   Proven headless from the laptop, from the Rust edge, and against the live Beeminder goal.
+2. **Schedule the balance odometer** — ✅ closed 2026-09-29: `helix_balance_log` persists every
+   reading; the edge syncs inline on app request (primary), the leader job keeps an hourly
+   cadence + drains queued requests (fallback, R6 pulse included); the stale `$100` envelope
+   default now carries a `limit_source: env|default` provenance tag (R9) and the live balance
+   flows beside it.
+3. **Wire budget → Beeminder** — ✅ closed 2026-09-29: straight-copy, change-gated datapoints
+   (`requestid = helix-balance-{ET-day}T{UTC-HHMM}`, unique per reading; 422 = dedupe = success;
+   unchanged value = silence). Reuse posture honored: the aggregate `budget` surface absorbed the
+   live-balance display (C3 delegate + R9 provenance); the *write* path is the new edge endpoint
+   — not a duplicate governor arm. Spec-003 valve wiring stays deferred (G9, taxonomy follow-up).
+4. **Expose live balance to the narrator** — ✅ closed 2026-09-29: `budget_governor` narrator
+   field now carries `live_balance` / `burned_today` / `burn_allowance` (capped scalars; velocity
+   from Neon history, allowance from the normal-month rule clamped floor $1 / cap $5).
 5. **Fix the metering honesty gap** — pre-flight with a real cost estimate (tokens × price),
    not fixed $0.01 (G4); remove or revive the dead WASM first-hop (G5); repair or retire the
    broken HTTP reconciliation scripts (G7); wire or delete the zombie `VirtualBudgetManager` /
@@ -692,8 +697,11 @@ Premises from the founding brief, checked against the tree (kept honest, per the
 | `budget_governor_analysis.md` (root) phase table | **Stale in both directions**: says Neon log "not wired" and Phase 2 "not started" — both were already true/false in the same commit that added the file; its "Generated 2025-07-08" header is a year off. Treat §6 of this article as the corrected successor |
 
 Open questions:
-1. **Where the odometer job runs** — local leader APScheduler vs Akamai `spin aka cron`
-   ($100/mo verdict: "marginal") vs GHA (none exists for cron today).
+1. ~~**Where the odometer job runs**~~ — **resolved by the build (2026-09-29)**: neither pure
+   option. The **edge syncs inline** on the Android request (the phone is the clock; no laptop,
+   no cron), the **leader job is the fallback** (hourly cadence + queue drain while the laptop
+   lives), and Akamai platform cron stays unused for this organ — "marginal for cron" aged true;
+   request-served edge work aged false, and that distinction is the finding.
 
 Resolved during review — attribution (`agent/qwen3.8-flash-next`), datapoint encoding
 (**straight copy, change-gated**; delta pushes rejected; goal internals discovered from the
