@@ -80,3 +80,41 @@ Precondition: you've spent Helix credits today (this session counts).
 4. Laptop-off test (the point of this rev): spend in a Helix session, open the
    app, number drops **with the laptop shut** — edge-primary proven.
 5. Leader (laptop on, ≤15 min): no duplicate datapoint on the next tick.
+
+## E2E verdict (2026-09-30): PASS
+
+The inversion is proven. Beeminder `helix-ml` moved **497.36 → 497.06** with the
+laptop's MCP/leader verifiably NOT running: the datapoint came up the Android →
+edge path (wallet fetch → `helix_balance_log` → change gate → straight-copy push).
+The final blocker — `send: ErrorCode::HttpRequestDenied` — was named in one lap by
+the `last_error` instrumentation, and the fix was one manifest line:
+`allowed_outbound_hosts` += `https://app.helix.ml` (c7b90f7).
+
+Stamp the witnesses any time with
+`python .agents/skills/mecris-edge-sync-e2e/scripts/check_witnesses.py`
+→ expect the edge's log row: `fetch_status='ok'`, `pushed_value=497.06`, fresh
+`requested_at` + non-NULL `processed_at`.
+
+## How this was debugged: an informal A2A protocol
+
+This feature was closed by an **agent-to-agent (A2A) team**, each agent seated on
+the side of a boundary none of the others could cross:
+
+| Agent | Seat | Job in the laps |
+| :-- | :-- | :-- |
+| Qwen (Helix sandbox) | this repo / PR | code, commits, root-cause ledger, runbooks |
+| Gemini 3.1 Pro (Antigravity CLI, operator's Mac) | phone + adb + witnesses | cold-starts, witness queries, logcat reading |
+| Gemini 3.8 Flash (Antigravity CLI) | the handoff | finishing passes, doc absorption |
+| Operator (human) | deploys + consent gates | `make deploy-akamai`, installs, approvals |
+
+The protocol was informal — no direct agent↔agent channel. The transport is the
+shared artifacts: a git branch (code + runbooks + skills), the Neon witness tables
+as a message bus (UTC timestamps; artifacts attributed to *deploys*, never assumed
+— the row-9 lesson), and the skill pair as the standing interface between agents:
+`.agents/skills/mecris-edge-sync-e2e/` (concrete runbook, authored by Gemini) and
+`.agents/skills/witness-driven-debugging/` (transferable method, authored by Qwen).
+
+It worked: three agents and one human closed a cross-boundary bug class — opaque
+runtime denials, allowlist gaps, stale-deploy attribution — in a single evening,
+at well under a day's budgeted spend. The repo is the A2A transport; the witnesses
+are the acknowledgements.
