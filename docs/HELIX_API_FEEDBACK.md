@@ -33,6 +33,16 @@ own token in the response body — hostile-echo hazard for exactly this class of
 - 2026-09-30 production: the same request from **Akamai Functions egress fails**
   (`fetch_status='failed'`; root cause being pinned to the byte by our `last_error`
   witness — status-code snippet included, will follow up).
+- **RESOLVED (2026-09-30, same evening):** the Akamai failure was **not** Cloudflare —
+  our `last_error` witness surfaced `send: ErrorCode::HttpRequestDenied`, and the gate
+  was our own runtime: the Spin component's `allowed_outbound_hosts` in `spin.toml`
+  didn't list `app.helix.ml`, so the packets never left the edge. One manifest line
+  (c7b90f7) later, wallet fetches from Akamai Functions succeed. **Cloudflare passed
+  both the datacenter sandbox probe and the Akamai egress all along** — our
+  browser-shaped-UA client was unnecessary paranoia on those paths. The Ask below
+  stands (a documented server-to-server posture so integrators don't have to guess),
+  but the evidence tilts friendly: CF honors honest `Bearer hl-…` traffic from
+  serverless platforms today.
 
 **Ask:** a documented server-to-server posture — CF rules that honor requests bearing a
 valid `Authorization: Bearer hl-…`, and/or an allowlist process for known serverless
