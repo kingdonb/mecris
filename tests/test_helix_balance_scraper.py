@@ -199,3 +199,37 @@ def test_real_push_failure_marks_nothing(monkeypatch, neon):
     result, _ = run(monkeypatch, neon, [499.11], bm=bm)
     assert result["pushed"] is False and "push failed" in result["reason"]
     assert neon["pushed"] == []  # must retry later; row stays unpushed
+
+
+# ---------------------------------------------------------------------------
+# Edge-primary enablement: provision_helix_token (users.helix_api_token_encrypted)
+# ---------------------------------------------------------------------------
+
+def test_provision_helix_token_stores_encrypted(monkeypatch):
+    calls = []
+
+    class FakeCur:
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+        def execute(self, q, p): calls.append((q, p))
+
+    class FakeConn:
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+        def cursor(self): return FakeCur()
+        def commit(self): calls.append(("commit", None))
+
+    monkeypatch.setattr(scr.psycopg2, "connect", lambda url: FakeConn())
+    monkeypatch.setenv("NEON_DB_URL", "postgres://fake/db")
+    monkeypatch.setenv("HELIX_BILLING_API_TOKEN", "hl-secretkey")
+    monkeypatch.setenv("MASTER_ENCRYPTION_KEY",
+                       "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f")
+    assert scr.provision_helix_token("uuid-1") is True
+    q, p = calls[0]
+    assert "helix_api_token_encrypted" in q and p[1] == "uuid-1"
+    assert "hl-secretkey" not in p[0]  # AES-GCM hex, never plaintext (C6)
+
+
+def test_provision_helix_token_noop_without_env(monkeypatch):
+    monkeypatch.delenv("HELIX_BILLING_API_TOKEN", raising=False)
+    assert scr.provision_helix_token("uuid-1") is False
