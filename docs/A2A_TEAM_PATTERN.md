@@ -75,12 +75,37 @@ artifacts, which makes every claim inspectable by the next agent in the relay:
   fix (`c7b90f7`), docs, CHANGELOG, the method skill.
 - Operator seat: the adb force-stop+monkey invention (only the Mac seat could
   iterate on a phone), witness queries, logcat reading, the runbook skill, and
-  the CI fix in progress.
+  the CI-fix investigation (the sandbox seat shipped `b859492` the same night).
 - Human seat: deploys (×N), APK installs, the two corrections above, merge.
 - Cost: ~$0.56 of the day's budget at the halfway mark.
 
+## The release laps (v0.1.0, v0.1.1)
+
+The pattern kept earning its keep through shipping:
+
+- **Gemini 3.1 Pro (operator seat)** carried the bulk of the E2E grind —
+  cold-starts, witness stamps (rows 10/11, 21 minutes apart: the
+  heartbeat self-drive proof with zero human trigger), the field reports.
+- **Gemini 3.8 Flash (operator seat)** executed the entire release procedure
+  verbatim: `make bump-version`, the release suite, PR #331 — the gated seat's
+  strength is precisely runbook execution with a human eye on every step.
+- **The human gate paid for itself the same day:** a pasted `#` comment made
+  `gh pr merge` no-op, the `v0.1.0` tag landed on a stale local `main`, and the
+  release workflow began building old code. The operator cancelled the CI, ran
+  the docs' rollback, and re-tagged from the true tip. Every autonomous seat
+  missed it; the Enter-key stream caught it. Gate justified: day one.
+- **The v0.1.1 lap:** the overnight R3 oscillation (15 duplicate datapoints)
+  was reported → the sandbox seat localized and fixed it in one pass → the
+  operator rebased the squash-merged branch (a maneuver the harness doesn't
+  pin) → release prep rode the same PR. One lap per bug, witnesses first.
+
+Even the friction flows back into the loop: the ticket was reused for v0.1.1
+because a mobile UX bug blocked opening a new one — the bug was reported
+upstream the same hour, alongside the read-only-billing-token ask.
+
 ## Next applications
 
-Android canon onboarding, long-distance (Tailscale) MCP serving, Beeminder
-goal-type awareness — same topology: sandbox seat builds, operator seat probes
-the device/runtime, witnesses settle every claim.
+The Android Client Handoff's 5 asks (canon onboarding first), long-distance
+(Tailscale) MCP serving, Beeminder goal-type awareness — same topology:
+sandbox seat builds, operator seat probes the device/runtime, witnesses settle
+every claim.

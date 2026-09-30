@@ -4,14 +4,18 @@
 
 > Generated 2026-09-19 by `agent/qwen3.8-flash-next` (Helix Bunker) — authorship confirmed by
 > the operator, superseding the founding brief's "Opus 5" alias. Planning deliverable for
-> SpecTask 588, **rev 4** (revs 2–3 after operator Spec-Review; rev 4 dated 2026-09-21 after an
-> external review round). **Pinned to commit `8a42915`**: every `file:line` claim below refers
-> to that tree; changes since this rev are documentation-only. Dated facts (balances, dates,
-> goal parameters) are point-in-time as marked; their *maintained* copies live in
-> `helix-specs/design/tasks/000588_the-mecris-repo-has-some/` — task-specific acceptance tests
-> and the decision log deliberately live there, not here. §§1–5 describe the machine and age
-> slowly; §§6–10 apply the lens to the money subsystem and age faster — the date-stamps are the
-> warranty. Every claim is grounded in the code and documents cited in the
+> SpecTask 588, **rev 5** (revs 2–3 after operator Spec-Review; rev 4 after an external review
+> round; rev 5 after v0.1.0/v0.1.1 shipped). **Pinned to commit `6afea5d` (tag `v0.1.1`)**.
+> §§1–5 describe the machine and age slowly; §§6–10 apply the lens to the money subsystem and
+> age faster — the date-stamps are the warranty. The odometer of §§7–8 is no longer a plan: it
+> shipped as v0.1.0 (edge-primary, E2E-proven) with steady-state fix v0.1.1 (R3 gate anchored
+> on the last *actual* push — post-mortem in `CHANGELOG.md` [0.1.1] and
+> `docs/HELIX_BALANCE_SYNC.md`). §6's code citations keep their rev-4 anchors (`8a42915`);
+> v0.1.x commits shifted lines there — trust symbols, not line numbers, in that section.
+> Dated facts (balances, dates, goal parameters) are point-in-time as marked; their *maintained*
+> copies live in `helix-specs/design/tasks/000588_the-mecris-repo-has-some/` — task-specific
+> acceptance tests and the decision log deliberately live there, not here. Every claim is
+> grounded in the code and documents cited in the
 > [Source Map](#appendix-a-source-map). Where the code contradicts a common telling of the
 > story, the code wins, and the discrepancy is called out in
 > [Corrections and Open Questions](#corrections-and-open-questions).

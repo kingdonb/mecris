@@ -95,6 +95,23 @@ Stamp the witnesses any time with
 → expect the edge's log row: `fetch_status='ok'`, `pushed_value=497.06`, fresh
 `requested_at` + non-NULL `processed_at`.
 
+Heartbeat confirmation followed: row 11 pushed **497.04** twenty-one minutes
+later with no human trigger — the "daily behavior: no action needed" claim,
+witnessed.
+
+## Steady-state fix (v0.1.1): the gate oscillation post-mortem
+
+Overnight, the fleet pushed the *unchanged* value 15×. The R3 gate anchored
+`last_pushed` on the newest `ok` row — and every silent lap logs a new `ok` row
+with `pushed_value` NULL — so the gate oscillated push/silent/push on every
+other heartbeat (each duplicate carried a fresh minute-resolution `requestid`,
+invisible to Beeminder's 422 dedupe). Daytime spending masked it; the frozen
+overnight balance exposed it. Fixed in **both twins** (PR #332): the gate
+anchors on the newest **actual push** anywhere in history; a lap-three
+regression test guards it. Signature of the fix in the witness table: runs of
+`ok` rows with `pushed_value = NULL` and **no** new datapoints while the
+balance sits unmoved. Full post-mortem: `CHANGELOG.md` [0.1.1].
+
 ## How this was debugged: an informal A2A protocol
 
 This feature was closed by an **agent-to-agent (A2A) team**, each agent seated on
@@ -104,7 +121,7 @@ the side of a boundary none of the others could cross:
 | :-- | :-- | :-- |
 | Qwen (Helix sandbox) | this repo / PR | code, commits, root-cause ledger, runbooks |
 | Gemini 3.1 Pro (Antigravity CLI, operator's Mac) | phone + adb + witnesses | cold-starts, witness queries, logcat reading |
-| Gemini 3.8 Flash (Antigravity CLI) | the handoff | finishing passes, doc absorption |
+| Gemini 3.8 Flash (Antigravity CLI) | the handoff | finishing passes, doc absorption, release-suite execution (v0.1.0 + v0.1.1) |
 | Operator (human) | deploys + consent gates | `make deploy-akamai`, installs, approvals |
 
 The protocol was informal — no direct agent↔agent channel. The transport is the
