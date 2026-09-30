@@ -676,7 +676,7 @@ subsystem's standing honey-do list, independent of any one task.
 7. **Bookmarks** (deferred, deliberate) — decide dormant-vs-revive as a plan issue; if revived,
    Google-account scope + Neon table + hygiene caps land together, never piecemeal. If *kept*
    dormant, enforce it in the server, not only in client launch flags (§9).
-8. **Security & fidelity findings** — S1–S5 and W1 (tabled in
+8. **Security & fidelity findings** — S1–S6 and W1 (tabled in
    [Corrections and Open Questions](#corrections-and-open-questions)) now have IDs so they are
    tracked rather than narrated. None blocks items 1–5; triage and disposition are the
    operator's.
@@ -711,7 +711,7 @@ API, never assumed), billing periodicity (the 17th, next Oct 17 2026), and scree
 `design.md` §8 decision log (moved out of the guide 2026-09-21 so this section stays
 open-question-only).
 
-### Security & fidelity findings (S1–S5, W1)
+### Security & fidelity findings (S1–S6, W1)
 
 Surfaced by code study and the 2026-09-21 external review, IDed here so they are *tracked*,
 not just narrated. None is budget-related; none blocks §10 items 1–5. The numbering
@@ -725,6 +725,7 @@ security findings, **W\*** are write-path fidelity findings.
 | S3 | Python standalone mode decodes tokens with `verify_signature: False` | `cli/main.py:63-69, 161-165`, §3 | open (laptop-tolerated) |
 | S4 | Twilio webhook accepts "YES" with **no `X-Twilio-Signature` validation** — anyone who can reach the URL can text a fake mile onto the `bike` goal. The signature validator exists, but only in `lib.rs.beta4`; it was never wired into the live `lib.rs` | `sync-service/src/lib.rs:450-472` vs `.beta4` | open |
 | S5 | Platform note (*not this repo*): Helix's `GET /api/v1/users/<id>` echoes the caller's own token in the response body — the reason the automation asks for a read-only-scoped key rather than reusing a session token | Helix-side; upstream awareness | noted |
+| S6 | The Helix billing token is **write-capable by necessity**: Helix offers no read-only key scope (as of 2026-09-30), so the wallet odometer ships a key that could do more than read. Mitigations in place: encrypted per-user at rest (`users.helix_api_token_encrypted`, AES-256-GCM), decrypted transiently per-request at the edge, never logged (the `last_error` witness carries Helix's *response* snippet only). Residual: inherits the single-master-key trust domain (§3) with spend-capable money credentials. Operator-accepted knowingly 2026-09-30; upstream ask (read-only scopes) tracked as the cure — see `docs/HELIX_API_FEEDBACK.md` and S5 | `helix_billing.py`, `sync-service/src/lib.rs` (`fetch_helix_wallet`), §7 | open (accepted; upstream ask) |
 | W1 | Walk push `requestid` divergence: local scheduler = daystamp-only (overwrite semantics, deliberately), Rust cloud path embeds `distance_meters` (append semantics) — successive larger cloud snapshots could **double-count miles** on a summing goal; severity depends on the `bike` goal's aggregation type. Same bug family as the March `ellinika` corruption | `scheduler.py:99-120` vs `sync-service/src/lib.rs:343-363`, §4; `docs/postmortems/2026-03-31-greek-data-corruption.md` | open |
 
 ---
