@@ -76,6 +76,11 @@ htmlcov/
 /data/*.json
 !/data/.gitkeep
 
+# Router backups
+/scripts/mikrotik-backup/*.json
+!/scripts/mikrotik-backup/.gitkeep
+
+
 # Clone of claude-code-tamagotchi
 /claude-code-tamagotchi
 /claude-code-tamagotchi/**

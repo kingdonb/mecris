@@ -417,40 +417,54 @@ class NeonBudgetGovernor:
             "helix": {
                 "type": BucketType.SPEND,
                 "limit": float(os.getenv("HELIX_CREDIT_LIMIT", "100.00")),
+                "env": "HELIX_CREDIT_LIMIT",
                 "description": "Helix SaaS credits (use-it-or-lose-it)",
                 "unit": "dollars",
             },
             "gemini": {
                 "type": BucketType.SPEND,
                 "limit": float(os.getenv("GEMINI_FREE_LIMIT", "50.00")),
+                "env": "GEMINI_FREE_LIMIT",
                 "description": "Gemini free-tier credits (use-it-or-lose-it)",
                 "unit": "dollars",
             },
             "anthropic_api": {
                 "type": BucketType.GUARD,
                 "limit": float(os.getenv("ANTHROPIC_BUDGET_LIMIT", "20.89")),
+                "env": "ANTHROPIC_BUDGET_LIMIT",
                 "description": "Anthropic paid API (ration carefully)",
                 "unit": "dollars",
             },
             "groq": {
                 "type": BucketType.GUARD,
                 "limit": float(os.getenv("GROQ_BUDGET_LIMIT", "10.00")),
+                "env": "GROQ_BUDGET_LIMIT",
                 "description": "Groq API (ration carefully)",
                 "unit": "dollars",
             },
             "openrouter": {
                 "type": BucketType.GUARD,
                 "limit": float(os.getenv("OPENROUTER_DOLLAR_LIMIT", "10.00")),
+                "env": "OPENROUTER_DOLLAR_LIMIT",
                 "description": "OpenRouter paid API ($10 limit)",
                 "unit": "dollars",
             },
             "openrouter_requests": {
                 "type": BucketType.GUARD,
                 "limit": float(os.getenv("OPENROUTER_REQUEST_LIMIT", "1000.0")),
+                "env": "OPENROUTER_REQUEST_LIMIT",
                 "description": "OpenRouter free tier: 1000 req/day (resets midnight UTC)",
                 "unit": "requests",
                 "reset_cron": "0 0 * * *",
             },
+        }
+
+        # R9 provenance (task 588): limits that came from an env var are labeled
+        # differently from limits the code defaulted — consumers of get_status can
+        # tell an era-stale default from an operator-configured number.
+        self._limit_source = {
+            name: ("env" if os.getenv(cfg.get("env", "")) else "default")
+            for name, cfg in self.buckets.items()
         }
         
         if not self.neon_url:
@@ -634,6 +648,7 @@ class NeonBudgetGovernor:
             bucket_report[name] = {
                 "type": cfg["type"].value,
                 "limit": limit,
+                "limit_source": self._limit_source.get(name, "default"),
                 "spent_total": round(spent, 4),
                 "spent_window_39min": round(window, 4),
                 "remaining": round(max(0.0, limit - spent), 4),
@@ -642,8 +657,13 @@ class NeonBudgetGovernor:
             }
 
         helix_live = self.get_helix_balance()
-        if helix_live is not None:
-            bucket_report["helix"]["live_balance"] = helix_live
+        # R9 (task 588): provenance over silence. An absent live balance is
+        # DECLARED (None + source tag), never omitted — the 2026-09-21 external
+        # review showed an unattended card-counter can read era-stale defaults
+        # as live truth when the key is silently missing.
+        bucket_report["helix"]["live_balance"] = helix_live
+        bucket_report["helix"]["live_balance_source"] = (
+            "live" if helix_live is not None else "unavailable")
 
         return {
             "buckets": bucket_report,
@@ -661,12 +681,26 @@ class NeonBudgetGovernor:
         Keys:
           - routing_recommendation: name of the best bucket to use now
           - envelope_status: 'OK' or 'HALTED'
+          - C5b (task 588 R7): live_balance / burned_today / burn_allowance —
+            scalar-only, from the provider + Neon log ONLY (R8: the sink sets
+            tempo, never wealth; the Beeminder tempo is injected by callers who
+            have it, never fetched here as wealth).
         """
         status = self.get_status()
-        return {
+        summary = {
             "routing_recommendation": status["recommendation"],
             "envelope_status": status["envelope_status"],
         }
+        try:
+            from scripts.helix_balance_scraper import get_helix_scalars_sync
+            s = get_helix_scalars_sync(self.user_id)
+            summary["live_balance"] = s["live_balance"]
+            summary["burned_today"] = s["burned_today"]
+            summary["burn_allowance"] = s["burn_allowance"]
+            summary["balance_source"] = s["balance_source"]
+        except Exception as exc:  # scalars are additive context, never fatal
+            logger.debug("helix scalars unavailable for narrator: %s", exc)
+        return summary
 
     # Enforcement gate
     
@@ -714,38 +748,18 @@ class NeonBudgetGovernor:
     # Helix API discovery (inherited from BudgetGovernor)
 
     def get_helix_balance(self) -> Optional[float]:
+        """Live Helix credit balance — C3: thin delegate to the M1-pinned reader.
+
+        The old implementation guessed /api/v1/me against ANTHROPIC_BASE_URL:
+        never proven, never cached, parsing a shape it invented. The M1
+        door-trace (2026-09-19) pinned GET /api/v1/wallet?org_id=...; that lives
+        in scripts/helix_billing.py with the Cloudflare-safe UA, the 5-minute
+        cache, and the strict failure contract (every failure path is None —
+        unknown is never $0; a genuine 0.0 stays 0.0).
         """
-        Attempt to fetch live Helix credit balance.
-        Uses ANTHROPIC_BASE_URL (pointing to Helix) and ANTHROPIC_API_KEY.
-        Returns a float if successful, None if the API is unreachable or
-        the response doesn't contain a parseable balance.
-        """
-        if requests is None:
-            logger.warning("requests library not available; skipping Helix balance fetch.")
-            return None
-
-        base_url = os.getenv("ANTHROPIC_BASE_URL", "").rstrip("/")
-        api_key = os.getenv("ANTHROPIC_API_KEY", "")
-
-        if not base_url or not api_key:
-            logger.debug("ANTHROPIC_BASE_URL or ANTHROPIC_API_KEY not set; skipping Helix fetch.")
-            return None
-
         try:
-            resp = requests.get(
-                f"{base_url}/api/v1/me",
-                headers={"Authorization": f"Bearer {api_key}"},
-                timeout=5,
-            )
-            if resp.status_code == 200:
-                data = resp.json()
-                balance = data.get("balance") or data.get("credit_balance")
-                if balance is not None:
-                    return float(balance)
-                logger.debug("Helix /api/v1/me: balance key not found in response")
-            else:
-                logger.debug("Helix /api/v1/me returned status %s", resp.status_code)
+            from scripts.helix_billing import get_balance
+            return get_balance()
         except Exception as exc:
-            logger.debug("Helix balance fetch failed: %s", exc)
-
-        return None
+            logger.debug("Helix balance delegate failed: %s", exc)
+            return None

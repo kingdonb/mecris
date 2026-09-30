@@ -121,6 +121,27 @@ class PocketIdAuthRepository(
                 if (errorDatabase != null) this.errorDatabase = errorDatabase
             }
         }
+
+        /**
+         * Parses the `exp` claim from a JWT without signature verification.
+         * Uses the JVM standard library (java.util.Base64) so this is safe to call
+         * from JVM unit tests without an Android context.
+         * Returns the expiry as epoch-seconds, or null if unparseable.
+         */
+        internal fun parseJwtExp(jwt: String): Long? {
+            return try {
+                val parts = jwt.split(".")
+                if (parts.size != 3) return null
+                val payload = parts[1]
+                val padded = payload.padEnd(payload.length + (4 - payload.length % 4) % 4, '=')
+                val decoded = java.util.Base64.getUrlDecoder().decode(padded)
+                val json = String(decoded)
+                val expPattern = """"exp"\s*:\s*(\d+)""".toRegex()
+                expPattern.find(json)?.groupValues?.get(1)?.toLongOrNull()
+            } catch (e: Exception) {
+                null
+            }
+        }
     }
 
     init {
@@ -146,6 +167,18 @@ class PocketIdAuthRepository(
         )
     }
 
+
+    /**
+     * Returns true if the JWT access token's `exp` claim has not yet elapsed.
+     * Adds a 30-second clock-skew buffer.
+     */
+    private fun isAccessTokenJwtValid(jwt: String): Boolean {
+        val exp = Companion.parseJwtExp(jwt) ?: return false
+        val nowSecs = Instant.now().epochSecond
+        return exp > nowSecs + 30
+    }
+
+
     private fun loadAuthState() {
         val json = prefs.getString(KEY_AUTH_STATE, null)
         val explicitLogout = prefs.getBoolean(KEY_EXPLICIT_LOGOUT, false)
@@ -156,10 +189,11 @@ class PocketIdAuthRepository(
                 if (internalAuthState.isAuthorized) {
                     val jwt = internalAuthState.accessToken ?: internalAuthState.idToken
                     if (jwt != null && !internalAuthState.needsTokenRefresh) {
+                        // Access token is fresh per AppAuth — use it directly.
                         _authState.value = AuthState.Authenticated(jwt)
                         errorReporter?.clearNotification()
                     } else {
-                        // Has refresh token or expired access token — trigger silent refresh
+                        // Access token expired or refresh needed — refresh before showing content.
                         refreshAccessToken { _ -> }
                     }
                 }
@@ -210,6 +244,11 @@ class PocketIdAuthRepository(
         launcher: androidx.activity.result.ActivityResultLauncher<android.content.Intent>,
         emailHint: String? = null
     ) {
+        if (_authState.value is AuthState.Loading) {
+            android.util.Log.w("PocketIdAuth", "authenticateWithPasskey ignored: already loading")
+            return
+        }
+        android.util.Log.i("PocketIdAuth", "authenticateWithPasskey started. redirectUri=$redirectUri, authEndpoint=$authEndpoint")
         _authState.value = AuthState.Loading
 
         // Clear explicit logout flag on new auth attempt
@@ -242,25 +281,32 @@ class PocketIdAuthRepository(
 
     /** Handles the authorization response from the OIDC redirect. */
     fun handleAuthorizationResponse(intent: android.content.Intent?) {
+        android.util.Log.i("PocketIdAuth", "handleAuthorizationResponse called with intent: $intent, data: ${intent?.data}, extras: ${intent?.extras}")
         if (intent == null) {
-            _authState.value = AuthState.Error("Authorization canceled", isPermanent = false)
             return
         }
 
         val resp = AuthorizationResponse.fromIntent(intent)
         val ex = AuthorizationException.fromIntent(intent)
+        android.util.Log.i("PocketIdAuth", "Parsed resp: $resp, ex: $ex")
 
         if (resp != null) {
-            // Initialize fresh AuthState from response to clear any prior error lock
-            internalAuthState = AppAuthAuthState(resp, ex)
-            saveAuthState()
+            android.util.Log.i("PocketIdAuth", "AuthorizationResponse received! Exchanging code for tokens at $tokenEndpoint")
 
             // Exchange authorization code for tokens
             authService.performTokenRequest(resp.createTokenExchangeRequest()) { tokenResponse, tokenException ->
-                internalAuthState.update(tokenResponse, tokenException)
-                saveAuthState()
+                android.util.Log.i(
+                    "PocketIdAuth",
+                    "Token exchange callback: tokenResponse=$tokenResponse, tokenException=$tokenException, cause=${tokenException?.cause}",
+                    tokenException?.cause
+                )
 
                 if (tokenResponse != null) {
+                    val newAuthState = AppAuthAuthState(resp, ex)
+                    newAuthState.update(tokenResponse, tokenException)
+                    internalAuthState = newAuthState
+                    saveAuthState()
+
                     val jwt = tokenResponse.accessToken ?: tokenResponse.idToken
                     if (jwt != null) {
                         val hasRefreshToken = tokenResponse.refreshToken != null
@@ -291,8 +337,8 @@ class PocketIdAuthRepository(
                     _authState.value = AuthState.Error(error.message, error.isPermanent)
                 }
             }
-        } else {
-            val error = AuthError.fromException(ex ?: Exception("Authorization failed"), context)
+        } else if (ex != null) {
+            val error = AuthError.fromException(ex, context)
             reportError(error)
             _authState.value = AuthState.Error(error.message, error.isPermanent)
         }
@@ -325,11 +371,13 @@ class PocketIdAuthRepository(
                 val error = classifyTokenError(ex)
                 if (error.isPermanent) {
                     _authState.value = AuthState.Error(error.message, isPermanent = true)
+                    reportError(error)
+                    callback(null)
                 } else {
                     clearTransientException()
+                    reportError(error)
+                    callback(null)
                 }
-                reportError(error)
-                callback(null)
             } else {
                 if (accessToken != null) {
                     android.util.Log.d("PocketIdAuth", "Fresh access token retrieved successfully.")
@@ -389,20 +437,15 @@ class PocketIdAuthRepository(
             while (true) {
                 val timeUntilRefresh = calculateTimeUntilProactiveRefresh()
                 if (timeUntilRefresh <= 0 || consecutiveTransientFailures > 0) {
-                    // Time to refresh now (or retrying after transient failure)
-                    val success = refreshMutex.withLock {
-                        kotlinx.coroutines.suspendCancellableCoroutine<Boolean> { continuation ->
-                            refreshAccessToken { success ->
-                                continuation.resume(success)
-                            }
-                        }
-                    }
+                    // Time to refresh now (or retrying after transient failure).
+                    // Use the silent variant so roaming-related failures don't drop auth state.
+                    val success = refreshAccessTokenSilent()
                     if (success) {
                         consecutiveTransientFailures = 0
                         // Wait a full hour before recalculating 80% TTL window
                         delay(TimeUnit.HOURS.toMillis(1))
                     } else {
-                        // If error was transient, apply exponential backoff (1m, 2m, 4m, 8m... up to 30m)
+                        // Transient failure — exponential backoff (1m, 2m, 4m, 8m... up to 30m)
                         consecutiveTransientFailures++
                         val backoffMinutes = kotlin.math.min(1L shl (consecutiveTransientFailures - 1), 30L)
                         android.util.Log.w(
@@ -463,6 +506,55 @@ class PocketIdAuthRepository(
                     _authState.value = AuthState.Authenticated(accessToken)
                 }
                 callback(accessToken != null)
+            }
+        }
+    }
+
+    /**
+     * Best-effort background token refresh that NEVER downgrades auth state on transient failures.
+     *
+     * Called when we already have a JWT-valid access token but AppAuth wants a refresh (e.g.,
+     * the user just roamed from 14-net to 13-net). If the token endpoint is unreachable:
+     * - Transient error: log and return false; the caller (loadAuthState) already emitted
+     *   Authenticated with the cached token, so the user stays logged in.
+     * - Permanent error (revocation, invalid_grant): drop auth state as normal.
+     *
+     * @return true if a fresh access token was obtained.
+     */
+    private suspend fun refreshAccessTokenSilent(): Boolean {
+        return refreshMutex.withLock {
+            kotlinx.coroutines.suspendCancellableCoroutine { continuation ->
+                internalAuthState.performActionWithFreshTokens(authService) { accessToken, _, ex ->
+                    if (ex != null) {
+                        val error = classifyTokenError(ex)
+                        if (error.isPermanent) {
+                            android.util.Log.e(
+                                "PocketIdAuth",
+                                "refreshAccessTokenSilent: permanent error — dropping auth state. $error"
+                            )
+                            _authState.value = AuthState.Error(error.message, isPermanent = true)
+                            stopBackgroundRefresh()
+                            reportError(error)
+                        } else {
+                            android.util.Log.w(
+                                "PocketIdAuth",
+                                "refreshAccessTokenSilent: transient error (likely roaming / endpoint unreachable) — " +
+                                    "keeping Authenticated state. Will retry in background. error=$error"
+                            )
+                            // Do NOT change _authState — user remains Authenticated with cached token.
+                            // Background refresh loop will retry with exponential backoff.
+                        }
+                        if (continuation.isActive) continuation.resume(false)
+                    } else {
+                        if (accessToken != null) {
+                            saveAuthState()
+                            saveRefreshTokenTimestamp()
+                            _authState.value = AuthState.Authenticated(accessToken)
+                            android.util.Log.i("PocketIdAuth", "refreshAccessTokenSilent: success")
+                        }
+                        if (continuation.isActive) continuation.resume(accessToken != null)
+                    }
+                }
             }
         }
     }

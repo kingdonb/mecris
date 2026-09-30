@@ -8,6 +8,7 @@ from typing import Dict, Any, Optional, Callable, Coroutine
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.date import DateTrigger
 from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
+from apscheduler.jobstores.memory import MemoryJobStore
 
 logger = logging.getLogger("mecris.scheduler")
 
@@ -48,6 +49,47 @@ async def _global_language_sync_job(user_id: str):
                     
     except Exception as e:
         logger.error(f"Clozemaster sync job failed for {user_id}: {e}")
+
+async def _global_helix_balance_job(user_id: str):
+    """
+    Leader-only Helix wallet odometer (task 588, lever C4). Runs on a 15-minute
+    interval with two triggers:
+      - the Android hook: app POST /helix-balance/request -> helix_balance_requests
+        row pending -> sync NOW (the walk-sync pattern);
+      - the hourly cadence (R1, same family as reviewstack sync): skipped while
+        the newest ok reading is < 55 min old and no request is pending.
+    The push itself is change-gated inside the lever (R3), so extra runs are
+    silence, not datapoints. Fetch failures are logged rows; >= 2 consecutive
+    fires the R6 pulse inside the lever.
+
+    Edge-primary (rev): the Rust edge now syncs inline on POST /helix-balance/request
+    (users.helix_api_token_encrypted, provisioned by provision_helix_token on each
+    leader sync). This job is the FALLBACK: it covers users whose token was never
+    provisioned, edge/wallet outages, and the R1 hourly pulse with the laptop open.
+    Both actors share the requestid scheme + Neon log, so a race dedupes (422).
+    """
+    try:
+        from mcp_server import scheduler
+        if not scheduler.is_leader:
+            return
+
+        from scripts.helix_balance_scraper import (
+            has_pending_requests, minutes_since_last_ok, sync_helix_balance_to_beeminder)
+        pending = await asyncio.to_thread(has_pending_requests, user_id)
+        mins_since_ok = await asyncio.to_thread(minutes_since_last_ok, user_id)
+        if not pending and mins_since_ok is not None and mins_since_ok < 55:
+            return  # cadence gate: fresh reading on file, nobody asked
+
+        source = "api" + ("+app_request" if pending else "")
+        result = await sync_helix_balance_to_beeminder(user_id, source=source)
+        if result.get("pushed"):
+            logger.info(f"Helix balance datapoint pushed for {user_id}: {result.get('reason')}")
+        elif not result.get("ok"):
+            logger.warning(f"Helix balance read failed for {user_id}: {result.get('reason')}")
+        else:
+            logger.debug(f"Helix balance sync for {user_id}: {result.get('reason')}")
+    except Exception as e:
+        logger.error(f"Helix balance job failed for {user_id}: {e}")
 
 async def _global_walk_sync_job(user_id: str):
     """
@@ -198,12 +240,28 @@ class MecrisScheduler:
         
         # Configure jobstore
         if self.neon_url:
-            # APScheduler uses sqlalchemy, so we can use the same URL
-            # but we need to replace postgres:// with postgresql:// if needed
-            db_url = self.neon_url.replace("postgres://", "postgresql://")
-            jobstores = {
-                'default': SQLAlchemyJobStore(url=db_url)
-            }
+            # Pin psycopg2 — the driver this project ships. SQLAlchemy >= 2.1
+            # resolves plain postgresql:// to the psycopg (v3) dialect first,
+            # which is not a dependency; that crashed import-time scheduler
+            # construction in CI (ModuleNotFoundError 'psycopg' at pytest
+            # collection, via mcp_server's module-level MecrisScheduler()).
+            # An explicit +dialect in the URL is respected.
+            scheme, _, rest = self.neon_url.partition("://")
+            if "+psycopg" in scheme:
+                db_url = self.neon_url
+            else:
+                db_url = f"postgresql+psycopg2://{rest}"
+            try:
+                jobstores = {'default': SQLAlchemyJobStore(url=db_url)}
+            except Exception as e:
+                # mcp_server constructs the scheduler at import; an exotic URL
+                # (unsupported dialect) must not take down every consumer of
+                # the module. Degrade loudly: jobs won't survive restarts.
+                logger.warning(
+                    f"MecrisScheduler: persistent jobstore unavailable ({e}); "
+                    "falling back to MemoryJobStore — jobs will NOT survive restarts."
+                )
+                jobstores = {'default': MemoryJobStore()}
         else:
             logger.error("MecrisScheduler: NEON_DB_URL not found. Scheduler will not persist jobs.")
             raise EnvironmentError("NEON_DB_URL must be set for persistent scheduler operation.")
@@ -360,6 +418,7 @@ class MecrisScheduler:
                 reminder_job_id = f'auto_reminder_check_{self.user_id}'
                 lang_sync_job_id = f'auto_language_sync_{self.user_id}'
                 walk_sync_job_id = f'auto_walk_sync_{self.user_id}'
+                helix_balance_job_id = f'auto_helix_balance_{self.user_id}'
                 monitor_job_id = f'auto_cooperative_monitor_{self.user_id}'
                 archivist_job_id = f'auto_archivist_{self.user_id}'
 
@@ -389,6 +448,16 @@ class MecrisScheduler:
                         'interval',
                         minutes=15,
                         id=walk_sync_job_id,
+                        args=[self.user_id],
+                        replace_existing=True
+                    )
+
+                if not self.scheduler.get_job(helix_balance_job_id):
+                    self.scheduler.add_job(
+                        _global_helix_balance_job,
+                        'interval',
+                        minutes=15,
+                        id=helix_balance_job_id,
                         args=[self.user_id],
                         replace_existing=True
                     )
@@ -428,6 +497,7 @@ class MecrisScheduler:
                 self.scheduler.remove_job(f'auto_reminder_check_{self.user_id}')
                 self.scheduler.remove_job(f'auto_language_sync_{self.user_id}')
                 self.scheduler.remove_job(f'auto_walk_sync_{self.user_id}')
+                self.scheduler.remove_job(f'auto_helix_balance_{self.user_id}')
                 self.scheduler.remove_job(f'auto_cooperative_monitor_{self.user_id}')
                 self.scheduler.remove_job(f'auto_archivist_{self.user_id}')
         except: pass

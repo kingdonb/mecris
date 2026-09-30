@@ -276,6 +276,10 @@ curl -X POST http://127.0.0.1:8000/usage/update_budget \
 - **`CLAUDE.md`** - Core narrator instructions and context
 - **`CLAUDE_CODE_INTEGRATION.md`** - Integration with Claude Code CLI
 - **`docs/CLAUDE_API_LIMITATIONS.md`** - Budget tracking approach
+- **`docs/HOW_MECRIS_WORKS.md`** - The system guide: architecture, the two budget governors,
+  the odometer pattern, and the Beeminder boundary (R8)
+- **`docs/HELIX_BALANCE_SYNC.md`** - Helix billing → `helix-ml` odometer: one-time setup,
+  daily behavior, and the E2E acceptance protocol (Android → edge → Beeminder)
 - **`docs/`** - Additional technical documentation
 
 ## Support

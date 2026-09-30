@@ -67,6 +67,7 @@ async fn handle_sync_service(req: Request) -> anyhow::Result<Response<String>> {
         ("/languages/multiplier", &Method::POST) => handle_multiplier_post(req).await?,
         ("/health", &Method::GET) => handle_health_get(req).await?,
         ("/heartbeat", &Method::POST) => handle_heartbeat_post(req).await?,
+        ("/helix-balance/request", &Method::POST) => handle_helix_balance_request_post(req).await?,
         ("/internal/cloud-sync", &Method::POST) => handle_cloud_sync(req).await?,
         ("/aggregate-status", &Method::GET) => handle_aggregate_status_get(req).await?,
         ("/profile", &Method::POST) => handle_profile_post(req).await?,
@@ -280,6 +281,106 @@ async fn handle_heartbeat_post(req: Request) -> anyhow::Result<Response<String>>
     let conn = Connection::open(&db).await?;
     conn.execute("INSERT INTO scheduler_election (user_id, role, process_id, heartbeat) VALUES ($1, $2, $3, CURRENT_TIMESTAMP) ON CONFLICT (user_id, role) DO UPDATE SET heartbeat = EXCLUDED.heartbeat, process_id = EXCLUDED.process_id", &[ParameterValue::Str(uid), ParameterValue::Str(role.to_string()), ParameterValue::Str(pid.to_string())]).await?;
     json_response(200, &StatusResponse { status: "success".to_string(), message: "Heartbeat received".to_string() })
+}
+
+// Task 588 Android hook: the app asks for a Helix balance sync; the laptop leader
+// polls helix_balance_requests and runs the read+chart (the walk-sync pattern).
+async fn handle_helix_balance_request_post(req: Request) -> anyhow::Result<Response<String>> {
+    let uid = match extract_user_id(req.headers().get("authorization")).await { Some(id) => id, None => return Ok(text_response(401, "Unauthorized")?) };
+    let db = match variables::get("db_url").await { Ok(v) if !v.is_empty() => v, _ => variables::get("neon_db_url").await? };
+    let conn = Connection::open(&db).await?;
+    conn.execute("INSERT INTO helix_balance_requests (user_id, requested_at) VALUES ($1, CURRENT_TIMESTAMP) ON CONFLICT (user_id) DO UPDATE SET requested_at = CURRENT_TIMESTAMP", &[ParameterValue::Str(uid.clone())]).await?;
+    // Edge-primary sync (Android+edge = the always-on server); the laptop leader
+    // job is the fallback, so a failure here must leave the request queued.
+    let (synced, pushed, wallet_error) = sync_helix_balance_inline(&uid, &conn).await;
+    if synced {
+        let _ = conn.execute("UPDATE helix_balance_requests SET processed_at = CURRENT_TIMESTAMP WHERE user_id = $1", &[ParameterValue::Str(uid.clone())]).await;
+    }
+    // Newest ok reading for app display + E2E confirmation; TEXT projection avoids timestamp DbValue parsing.
+    let rs = conn.query("SELECT COALESCE(balance::TEXT, ''), TO_CHAR(ts AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"') FROM helix_balance_log WHERE user_id = $1 AND fetch_status = 'ok' ORDER BY ts DESC LIMIT 1", &[ParameterValue::Str(uid.clone())]).await?.collect().await?;
+    let (last_balance, last_ts) = if rs.is_empty() { (None, None) } else {
+        let b = match &rs[0][0] { DbValue::Str(s) if !s.is_empty() => Some(s.clone()), _ => None };
+        let t = match &rs[0][1] { DbValue::Str(s) => Some(s.clone()), _ => None };
+        (b, t)
+    };
+    #[derive(Serialize)] struct HelixBalanceRequestResp { status: String, requested: bool, last_balance: Option<String>, last_reading_ts: Option<String>, pushed: bool, synced: bool, wallet_error: Option<String> }
+    json_response(200, &HelixBalanceRequestResp { status: "success".to_string(), requested: true, last_balance, last_reading_ts: last_ts, pushed, synced, wallet_error })
+}
+
+// ---- Edge-primary Helix balance sync (task 588) ----------------------------
+// Mirrors scripts/helix_balance_scraper.py exactly: straight copy, change-gated
+// (R3), failures logged and NEVER pushed as $0, requestid scheme shared with the
+// Python twin so a racing leader run dedupes at Beeminder (422 = already in).
+fn helix_daystamp() -> String {
+    match "US/Eastern".parse::<chrono_tz::Tz>() { Ok(tz) => chrono::Utc::now().with_timezone(&tz).format("%Y-%m-%d").to_string(), Err(_) => chrono::Utc::now().format("%Y-%m-%d").to_string() }
+}
+
+async fn fetch_helix_wallet(base: &str, token: &str) -> Result<f64, String> {
+    // Mirror scripts/helix_billing.py's proven header set EXACTLY (M1 observation card):
+    // Cloudflare in front of app.helix.ml 403/1010'd the bare spin client; the lever UA
+    // + Accept + org_id param are what the door-trace pinned as Cloudflare-safe.
+    // Every failure mode returns a typed reason (persisted to last_error, R6-adjacent).
+    let org = { let o = variables::get("helix_billing_org_id").await.unwrap_or_default(); if o.is_empty() { "mecris".to_string() } else { o } };
+    let req = match Request::builder().method(Method::GET).uri(format!("{}/api/v1/wallet?org_id={}", base, org)).header("authorization", format!("Bearer {}", token)).header("accept", "application/json").header("user-agent", "helix-billing-lever/1.0 (Mecris; task-588)").body(String::new()) { Ok(r) => r, Err(e) => return Err(format!("build: {e:?}")) };
+    let res = match spin_sdk::http::send(req).await { Ok(r) => r, Err(e) => return Err(format!("send: {e:?}")) };
+    let code = res.status().as_u16();
+    let bytes = match res.into_body().collect().await { Ok(b) => b.to_bytes(), Err(e) => return Err(format!("body: {e:?}")) };
+    let snip: String = String::from_utf8_lossy(&bytes.to_vec()).chars().take(200).collect();
+    if !(200..300).contains(&code) { return Err(format!("status {code}: {snip}")); }
+    let v: serde_json::Value = match serde_json::from_slice(&bytes.to_vec()) { Ok(v) => v, Err(e) => return Err(format!("json: {e}: {snip}")) };
+    match v.get("balance").and_then(|b| b.as_f64()) { Some(b) => Ok(b), None => Err(format!("no balance key: {snip}")) }
+}
+
+/// (synced, pushed): synced=false + queued request means the laptop leader
+/// fallback owns this user (token not provisioned, edge decrypt failed).
+/// (synced, pushed, reason): every failure path persists its reason (last_error)
+/// beside the failed row; synced=false keeps the request queued for the leader.
+async fn log_helix_failure(uid: &str, conn: &Connection, reason: &str) {
+    let day = helix_daystamp();
+    let _ = conn.execute("INSERT INTO helix_balance_log (user_id, day, balance, delta, source, fetch_status, inflow, last_error) VALUES ($1, $2, NULL, NULL, 'api', 'failed', false, $3)", &[ParameterValue::Str(uid.to_string()), ParameterValue::Str(day), ParameterValue::Str(reason.to_string())]).await;
+}
+
+async fn sync_helix_balance_inline(uid: &str, conn: &Connection) -> (bool, bool, Option<String>) {
+    let trs = match conn.query("SELECT helix_api_token_encrypted FROM users WHERE pocket_id_sub = $1", &[ParameterValue::Str(uid.to_string())]).await { Ok(q) => q.collect().await.unwrap_or_default(), Err(e) => { log_helix_failure(uid, conn, &format!("users query: {e:?}")).await; return (false, false, Some(format!("users query: {e:?}"))) } };
+    let enc = match trs.first().map(|r| &r[0]) { Some(DbValue::Str(s)) if !s.is_empty() => s.clone(), _ => { log_helix_failure(uid, conn, "no provisioned token (queued for leader)").await; return (false, false, Some("no provisioned token".to_string())) } };
+    let token = match decrypt_token(&enc).await { Ok(t) => t, Err(e) => { log_helix_failure(uid, conn, &format!("decrypt: {e:?}")).await; return (false, false, Some(format!("decrypt: {e:?}"))) } };
+    let base = { let b = variables::get("helix_api_base_url").await.unwrap_or_default(); if b.is_empty() { "https://app.helix.ml".to_string() } else { b } };
+    let day = helix_daystamp();
+    let bal: f64 = match fetch_helix_wallet(&base, &token).await {
+        Ok(b) => b,
+        Err(e) => {
+            // Unknown is never $0: log the failure with its reason, push nothing (R2/pulse R6).
+            let _ = conn.execute("INSERT INTO helix_balance_log (user_id, day, balance, delta, source, fetch_status, inflow, last_error) VALUES ($1, $2, NULL, NULL, 'api', 'failed', false, $3)", &[ParameterValue::Str(uid.to_string()), ParameterValue::Str(day), ParameterValue::Str(e.clone())]).await;
+            return (false, false, Some(e));
+        }
+    };
+    let prs = match conn.query("SELECT balance::TEXT, COALESCE(pushed_value::TEXT, '') FROM helix_balance_log WHERE user_id = $1 AND fetch_status = 'ok' ORDER BY ts DESC LIMIT 1", &[ParameterValue::Str(uid.to_string())]).await { Ok(q) => q.collect().await.unwrap_or_default(), Err(_) => Vec::new() };
+    let prev: Option<f64> = prs.first().and_then(|r| match &r[0] { DbValue::Str(s) => s.parse().ok(), _ => None });
+    let last_pushed: Option<f64> = prs.first().and_then(|r| match &r[1] { DbValue::Str(s) if !s.is_empty() => s.parse().ok(), _ => None });
+    let delta = prev.map(|p| bal - p);
+    let inflow = delta.map(|d| d > 0.0).unwrap_or(false);
+    // ParameterValue has no Null variant in spin-sdk 6: two INSERT shapes (delta omitted on first reading).
+    let ins = match delta {
+        Some(d) => conn.execute("INSERT INTO helix_balance_log (user_id, day, balance, delta, source, fetch_status, inflow) VALUES ($1, $2, $3::FLOAT8::NUMERIC, $4::FLOAT8::NUMERIC, 'api', 'ok', $5)", &[ParameterValue::Str(uid.to_string()), ParameterValue::Str(day.clone()), ParameterValue::Floating64(bal), ParameterValue::Floating64(d), ParameterValue::Boolean(inflow)]).await,
+        None => conn.execute("INSERT INTO helix_balance_log (user_id, day, balance, source, fetch_status, inflow) VALUES ($1, $2, $3::FLOAT8::NUMERIC, 'api', 'ok', $4)", &[ParameterValue::Str(uid.to_string()), ParameterValue::Str(day.clone()), ParameterValue::Floating64(bal), ParameterValue::Boolean(inflow)]).await,
+    };
+    let _ = ins;
+    let value = (bal * 100.0).round() / 100.0;
+    if last_pushed.map(|lp| (lp - value).abs() < 0.005).unwrap_or(false) { return (true, false, None); } // R3: unchanged = silence
+    let hhmm = chrono::Utc::now().format("%H%M").to_string();
+    let rid = format!("helix-balance-{}T{}", day, hhmm);
+    let comment = format!("Helix balance ${:.2} (source=api)", value);
+    match push_to_beeminder_idempotent(uid, "helix-ml", value, &comment, &rid, conn).await {
+        Ok(_) => {
+            let _ = conn.execute("UPDATE helix_balance_log SET pushed_value = $2::FLOAT8::NUMERIC WHERE user_id = $1 AND ts = (SELECT MAX(ts) FROM helix_balance_log WHERE user_id = $1 AND fetch_status = 'ok')", &[ParameterValue::Str(uid.to_string()), ParameterValue::Floating64(value)]).await;
+            (true, true, None)
+        }
+        Err(e) => {
+            let reason = format!("push: {e:?}");
+            let _ = conn.execute("UPDATE helix_balance_log SET last_error = $2 WHERE user_id = $1 AND ts = (SELECT MAX(ts) FROM helix_balance_log WHERE user_id = $1 AND fetch_status = 'ok')", &[ParameterValue::Str(uid.to_string()), ParameterValue::Str(reason.clone())]).await;
+            (true, false, Some(reason))
+        }
+    }
 }
 
 async fn handle_multiplier_post(req: Request) -> anyhow::Result<Response<String>> {

@@ -102,14 +102,20 @@ sealed interface AuthError {
         fun fromException(e: Exception, context: Context? = null): AuthError {
             // Check AppAuth structured exception types first
             if (e is net.openid.appauth.AuthorizationException) {
+                val causeMsg = (e.cause?.message ?: "").lowercase()
+                if (causeMsg.contains("no refresh token") || causeMsg.contains("token have expired")) {
+                    return NoRefreshToken(detail = e.cause?.message ?: e.message ?: "No refresh token available and token expired")
+                }
                 if (e.type == net.openid.appauth.AuthorizationException.TYPE_GENERAL_ERROR) {
                     if (e.code == net.openid.appauth.AuthorizationException.GeneralErrors.NETWORK_ERROR.code ||
                         e.code == net.openid.appauth.AuthorizationException.GeneralErrors.SERVER_ERROR.code
                     ) {
                         return NetworkUnreachable(detail = e.errorDescription ?: e.message ?: "AppAuth Network/Server error")
                     }
-                    if (e.code == net.openid.appauth.AuthorizationException.GeneralErrors.ID_TOKEN_VALIDATION_ERROR.code) {
-                        return NoRefreshToken(detail = e.errorDescription ?: e.message ?: "ID token validation failed")
+                    if (e.code == net.openid.appauth.AuthorizationException.GeneralErrors.ID_TOKEN_VALIDATION_ERROR.code ||
+                        e.code == 1007
+                    ) {
+                        return NoRefreshToken(detail = e.errorDescription ?: e.cause?.message ?: e.message ?: "ID token validation failed")
                     }
                 }
                 if (e.type == net.openid.appauth.AuthorizationException.TYPE_OAUTH_TOKEN_ERROR) {
@@ -126,7 +132,7 @@ sealed interface AuthError {
 
             return when {
                 // Missing refresh token / ID token expired
-                lower.contains("id token") && lower.contains("expired") ->
+                lower.contains("no refresh token") || (lower.contains("id token") && lower.contains("expired")) ->
                     NoRefreshToken(detail = message)
 
                 // TLS / certificate errors

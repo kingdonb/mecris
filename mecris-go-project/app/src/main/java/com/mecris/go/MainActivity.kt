@@ -88,17 +88,19 @@ class MainActivity : ComponentActivity() {
 
     private lateinit var syncApi: SyncServiceApi
     private val authResultLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
-        pocketIdAuth.handleAuthorizationResponse(result.data)
+        Log.i("MainActivity", "authResultLauncher callback: resultCode=${result.resultCode}, data=${result.data}, extras=${result.data?.extras}")
+        result.data?.let { pocketIdAuth.handleAuthorizationResponse(it) }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        
+        Log.i("MainActivity", "onCreate called with intent=$intent, data=${intent?.data}")
         val errorReporter = AuthErrorReporter(this)
         pocketIdAuth = PocketIdAuthRepository.getInstance(
             context = this,
             errorReporter = errorReporter
         )
+        intent?.let { pocketIdAuth.handleAuthorizationResponse(it) }
         healthConnectManager = HealthConnectManager(this)
         persistenceManager = PersistenceManager(this)
         
@@ -213,7 +215,9 @@ class MainActivity : ComponentActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
+        Log.i("MainActivity", "onNewIntent called with intent=$intent, data=${intent.data}, extras=${intent.extras}")
         setIntent(intent)
+        pocketIdAuth.handleAuthorizationResponse(intent)
     }
 
     private fun setupWorkManager() {
@@ -462,6 +466,18 @@ fun MecrisDashboard(
                                 if (!hbResponse.isSuccessful) {
                                     Log.w("MecrisDashboard", "Heartbeat failed: ${hbResponse.code()}")
                                 }
+                                // Task 588 Android hook: opening the dashboard also asks the
+                                // backend for a Helix balance sync (leader charts helix-ml).
+                                try {
+                                    val hlx = syncApi.requestHelixBalanceSync("Bearer $token")
+                                    if (hlx.isSuccessful) {
+                                        Log.i("MecrisDashboard", "Helix balance sync requested; last known: ${hlx.body()?.last_balance ?: "none"} @ ${hlx.body()?.last_reading_ts ?: "n/a"}")
+                                    } else {
+                                        Log.w("MecrisDashboard", "Helix balance request code: ${hlx.code()}")
+                                    }
+                                } catch (e: Exception) {
+                                    Log.w("MecrisDashboard", "Helix balance request exception (non-fatal): ${e.message}")
+                                }
                             } catch (e: Exception) {
                                 Log.w("MecrisDashboard", "Heartbeat exception (non-fatal): ${e.message}")
                             }
@@ -503,13 +519,20 @@ fun MecrisDashboard(
             return@LaunchedEffect
         }
 
-        Log.d("MecrisDashboard", "Refreshing walk data (Trigger: $refreshTrigger, Stale: $isStale)")
+        walkData = healthManager.fetchRecentWalkData()
+        
+        if (authState !is AuthState.Authenticated) {
+            isFetching = false
+            isLoading = false
+            syncStatus = "Auth Required"
+            return@LaunchedEffect
+        }
+
         // Only show full-screen "FETCHING..." if we have no cached data at all
         isFetching = languageStats.isEmpty() && budgetAmount == null
         isLoading = true
         syncStatus = "Fetching..."
         fetchError = null
-        walkData = healthManager.fetchRecentWalkData()
         
         try {
             val token = auth.getAccessTokenSuspend()
@@ -1459,7 +1482,11 @@ fun SystemHealthScreen(
                 description = "Login required for cloud sync"
             )
             Spacer(modifier = Modifier.height(8.dp))
-            Button(onClick = { auth.authenticateWithPasskey(authResultLauncher) }, modifier = Modifier.fillMaxWidth()) {
+            Button(
+                onClick = { auth.authenticateWithPasskey(authResultLauncher) },
+                enabled = authState !is AuthState.Loading,
+                modifier = Modifier.fillMaxWidth()
+            ) {
                 Text("Sign In with Pocket ID")
             }
         }
@@ -1469,11 +1496,13 @@ fun SystemHealthScreen(
                 status = if (state.isPermanent) "Auth Failed" else "Network Unavailable",
                 description = state.message
             )
-            if (state.isPermanent) {
-                Spacer(modifier = Modifier.height(8.dp))
-                Button(onClick = { auth.authenticateWithPasskey(authResultLauncher) }, modifier = Modifier.fillMaxWidth()) {
-                    Text("Sign In with Pocket ID")
-                }
+            Spacer(modifier = Modifier.height(8.dp))
+            Button(
+                onClick = { auth.authenticateWithPasskey(authResultLauncher) },
+                enabled = authState !is AuthState.Loading,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Sign In with Pocket ID")
             }
         }
         AuthState.Loading -> CircularProgressIndicator()
@@ -1483,6 +1512,13 @@ fun SystemHealthScreen(
                 status = "Authenticated",
                 description = "Identity & Access Management Active"
             )
+            Spacer(modifier = Modifier.height(8.dp))
+            OutlinedButton(
+                onClick = { auth.signOut() },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Sign Out (Keep Cache)")
+            }
         }
     }
 
@@ -2314,6 +2350,21 @@ fun ProfileSettingsScreen(
         }
         
         Spacer(modifier = Modifier.height(8.dp))
+        Button(
+            onClick = {
+                auth.signOut()
+                (context as? ComponentActivity)?.finish()
+            },
+            modifier = Modifier.fillMaxWidth(),
+            colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                containerColor = Color(0xFFC62828),
+                contentColor = Color.White
+            )
+        ) {
+            Text("LOG OUT (KEEP CACHE)", fontWeight = FontWeight.Bold)
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
         OutlinedButton(
             onClick = {
                 manager.clearAll()
@@ -2321,9 +2372,9 @@ fun ProfileSettingsScreen(
                 (context as? ComponentActivity)?.finish()
             },
             modifier = Modifier.fillMaxWidth(),
-            colors = androidx.compose.material3.ButtonDefaults.outlinedButtonColors(contentColor = Color.Red)
+            colors = androidx.compose.material3.ButtonDefaults.outlinedButtonColors(contentColor = Color.Gray)
         ) {
-            Text("LOGOUT & CLEAR CACHE")
+            Text("WIPE ALL DATA & LOGOUT")
         }
 
         if (saveStatus.isNotEmpty()) {

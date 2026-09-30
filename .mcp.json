@@ -1,15 +1,5 @@
 {
   "mcpServers": {
-    "github": {
-      "command": "npx",
-      "args": [
-        "-y",
-        "@modelcontextprotocol/server-github"
-      ],
-      "env": {
-        "GITHUB_PERSONAL_ACCESS_TOKEN": "${GITHUB_TOKEN}"
-      }
-    },
     "mecris": {
       "command": "uv",
       "args": [
@@ -21,8 +11,7 @@
         "--stdio"
       ],
       "env": {
-        "PYTHONPATH": "/Users/yebyen/w/mecris",
-        "GITHUB_TOKEN": "${GITHUB_TOKEN}"
+        "PYTHONPATH": "/Users/yebyen/w/mecris"
       }
     }
   }

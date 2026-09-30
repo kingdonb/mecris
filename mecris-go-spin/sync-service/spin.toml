@@ -4,7 +4,7 @@ spin_manifest_version = 2
 
 [application]
 name = "mecris-sync-v2"
-version = "0.0.3"
+version = "0.1.0"
 authors = ["Kingdon B <kingdon@urmanac.com>"]
 description = ""
 
@@ -25,6 +25,8 @@ openweather_lat = { required = false, default = "" }
 openweather_lon = { required = false, default = "" }
 internal_api_key = { required = false, default = "" }
 twilio_whatsapp_template_sid = { required = false, default = "" }
+helix_api_base_url = { required = false, default = "https://app.helix.ml" }
+helix_billing_org_id = { required = false, default = "mecris" }
 cloud_provider = { required = false, default = "unknown_cloud" }
 
 [[trigger.http]]
@@ -59,7 +61,7 @@ component = "sync-service"
 
 [component.sync-service]
 source = "target/wasm32-wasip1/release/sync_service.wasm"
-allowed_outbound_hosts = ["postgres://*:*", "https://www.beeminder.com", "https://www.clozemaster.com", "https://api.twilio.com", "https://api.openweathermap.org", "https://metnoom.urmanac.com"]
+allowed_outbound_hosts = ["postgres://*:*", "https://www.beeminder.com", "https://www.clozemaster.com", "https://api.twilio.com", "https://api.openweathermap.org", "https://metnoom.urmanac.com", "https://app.helix.ml"]
 key_value_stores = ["default"]
 [component.sync-service.variables]
 db_url = "{{ db_url }}"
@@ -77,6 +79,8 @@ openweather_lat = "{{ openweather_lat }}"
 openweather_lon = "{{ openweather_lon }}"
 internal_api_key = "{{ internal_api_key }}"
 twilio_whatsapp_template_sid = "{{ twilio_whatsapp_template_sid }}"
+helix_api_base_url = "{{ helix_api_base_url }}"
+helix_billing_org_id = "{{ helix_billing_org_id }}"
 cloud_provider = "{{ cloud_provider }}"
 [component.sync-service.build]
 command = "cargo build --target wasm32-wasip1 --release"

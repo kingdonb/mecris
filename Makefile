@@ -22,29 +22,19 @@ test-rust:
 
 test-all: test
 
-deploy-fermyon: build-wasm
+# Deployments delegate to the deploy-*.sh scripts, which are the canonical deploys:
+# they source .env themselves, validate REQUIRED_VARS, encrypt the Twilio auth token
+# on the fly, and pass the FULL Spin variable set. A partial --variable list (as this
+# target used to do) silently RESETS omitted Spin variables to their spin.toml
+# defaults (""), which broke twilio sends, the internal API key, and db_url on a
+# deploy run without sourced env. The scripts self-build (--build), so no build-wasm.
+deploy-fermyon:
 	@echo "☁️ Deploying to Fermyon Cloud..."
-	$(eval JWKS_JSON := $(shell curl -s https://metnoom.urmanac.com/.well-known/openid-configuration | jq -r .jwks_uri | xargs curl -s | jq -c .))
-	cd mecris-go-spin/sync-service && spin cloud deploy \
-		--variable cloud_provider=fermyon \
-		--variable oidc_jwks_json='$(JWKS_JSON)'
+	./mecris-go-spin/sync-service/deploy-fermyon.sh
 
-deploy-akamai: build-wasm
+deploy-akamai:
 	@echo "☁️ Deploying to Akamai Functions..."
-	$(eval JWKS_JSON := $(shell curl -s https://metnoom.urmanac.com/.well-known/openid-configuration | jq -r .jwks_uri | xargs curl -s | jq -c .))
-	cd mecris-go-spin/sync-service && spin aka deploy --no-confirm \
-		--variable db_url=$${NEON_DB_URL} \
-		--variable neon_db_url=$${NEON_DB_URL} \
-		--variable master_encryption_key=$${MASTER_ENCRYPTION_KEY} \
-		--variable clozemaster_email=$${CLOZEMASTER_EMAIL} \
-		--variable clozemaster_password=$${CLOZEMASTER_PASSWORD} \
-		--variable twilio_account_sid=$${TWILIO_ACCOUNT_SID} \
-		--variable twilio_auth_token_encrypted=$${TWILIO_AUTH_TOKEN_ENCRYPTED} \
-		--variable twilio_from_number=$${TWILIO_FROM_NUMBER} \
-		--variable openweather_api_key=$${OPENWEATHER_API_KEY} \
-		--variable oidc_discovery_url="https://metnoom.urmanac.com/.well-known/openid-configuration" \
-		--variable oidc_jwks_json='$(JWKS_JSON)' \
-		--variable cloud_provider=akamai
+	./mecris-go-spin/sync-service/deploy-akamai.sh
 
 build-wasm:
 	@echo "🦀 Building Sync Service WASM..."
