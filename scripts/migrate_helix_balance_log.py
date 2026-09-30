@@ -56,6 +56,11 @@ CREATE TABLE IF NOT EXISTS helix_balance_requests (
     requested_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     processed_at TIMESTAMPTZ
 );
+
+-- Edge-primary sync (rev: Android + edge are the always-on server; leader = fallback).
+-- The laptop leader provisions this column from HELIX_BILLING_API_TOKEN via
+-- scripts/helix_balance_scraper.provision_helix_token (AES-256-GCM, Rust-compatible).
+ALTER TABLE users ADD COLUMN IF NOT EXISTS helix_api_token_encrypted TEXT NOT NULL DEFAULT '';
 """
 
 

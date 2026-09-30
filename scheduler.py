@@ -60,6 +60,12 @@ async def _global_helix_balance_job(user_id: str):
     The push itself is change-gated inside the lever (R3), so extra runs are
     silence, not datapoints. Fetch failures are logged rows; >= 2 consecutive
     fires the R6 pulse inside the lever.
+
+    Edge-primary (rev): the Rust edge now syncs inline on POST /helix-balance/request
+    (users.helix_api_token_encrypted, provisioned by provision_helix_token on each
+    leader sync). This job is the FALLBACK: it covers users whose token was never
+    provisioned, edge/wallet outages, and the R1 hourly pulse with the laptop open.
+    Both actors share the requestid scheme + Neon log, so a race dedupes (422).
     """
     try:
         from mcp_server import scheduler

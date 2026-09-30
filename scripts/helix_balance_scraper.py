@@ -79,6 +79,31 @@ def _neon_url() -> Optional[str]:
     return os.getenv("NEON_DB_URL")
 
 
+def provision_helix_token(user_id: str) -> bool:
+    """Store the local Helix API token in the per-user encrypted column
+    (users.helix_api_token_encrypted) so the Rust edge can sync balance inline —
+    Android + edge become self-sufficient and this job degrades to fallback.
+    AES-256-GCM, compatible with the edge's decrypt_token; never plaintext.
+    Best-effort by design: without it the leader keeps doing the whole sync."""
+    token = os.getenv("HELIX_BILLING_API_TOKEN")
+    url = _neon_url()
+    if not token or not url or psycopg2 is None:
+        return False
+    try:
+        from services.encryption_service import EncryptionService
+        enc = EncryptionService().encrypt(token)
+        with psycopg2.connect(url) as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "UPDATE users SET helix_api_token_encrypted = %s WHERE pocket_id_sub = %s",
+                    (enc, user_id))
+            conn.commit()
+        return True
+    except Exception as exc:  # provisioning must never break the sync path
+        logger.debug("helix token provisioning skipped: %s", exc)
+        return False
+
+
 def _grant() -> float:
     return float(os.getenv("HELIX_MONTHLY_GRANT", "100"))
 
@@ -295,6 +320,7 @@ async def sync_helix_balance_to_beeminder(
     global _CONSECUTIVE_FETCH_FAILURES
     _ensure_env()  # tokens/env must be loaded BEFORE the first wallet fetch
     from scripts import helix_billing
+    await asyncio.to_thread(provision_helix_token, user_id)  # edge-primary enablement (best-effort)
 
     now = datetime.now(timezone.utc)
     day = _daystamp(now)
