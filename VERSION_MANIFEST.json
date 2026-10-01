@@ -1,53 +1,47 @@
 {
   "suite_name": "Mecris Personal Accountability Suite",
-  "release_date": "2026-09-30",
-  "total_version": "0.1.1",
+  "release_date": "2026-10-01",
+  "total_version": "0.1.2",
   "components": {
     "android_app": {
       "name": "Mecris-Go Android",
-      "version": "0.1.1",
+      "version": "0.1.2",
       "features": [
-        "OIDC Submarine Mode Fixes",
-        "WorkManager Heartbeat",
-        "Neural Link UI",
-        "Moussaka Nag Exception",
-        "Global Nag Cooldown"
+        "Review pump shows max(pump quota, Beeminder due-today)",
+        "Goal not met until Beeminder derailing obligation dispatched",
+        "VC 36 -> 37 (server-driven fix; no app code change)"
       ],
       "status": "Stable"
     },
     "spin_backend": {
       "name": "Mecris-Go Sync Service (Spin)",
-      "version": "0.1.1",
+      "version": "0.1.2",
       "features": [
-        "Arabic Skip Counter",
-        "Multi-Component Layout",
-        "Neon Integration",
-        "Reactive Cloud Status",
-        "Unique Provider Heartbeats"
+        "Beeminder due-today from goal road (fullroad + yaw, NY daystamp)",
+        "language_stats columns beeminder_road_today / beeminder_due_today",
+        "languages + aggregate-status constructive interference (max at remaining level)",
+        "safebuf>=1 road-canary + delta cross-check logging"
       ],
       "status": "Deployed"
     },
     "python_mcp": {
       "name": "Mecris MCP Server",
-      "version": "0.1.1",
+      "version": "0.1.2",
       "features": [
-        "Hardened Authentication",
-        "Enriched System Pulse",
-        "Majestic Momentum Visualizer",
-        "Budget/Miles Odometers"
+        "Python parity (executable spec): same due-today math in services/beeminder_road.py",
+        "Velocity combines pump with Beeminder due; reminders use the honest number",
+        "Language sync writes road/due columns; ships as git files (no artifact)"
       ],
       "status": "Active"
     },
     "neon_infrastructure": {
       "name": "Neon PostgreSQL Cloud",
-      "version": "0.1.1",
+      "version": "0.1.2",
       "features": [
-        "Ghost Presence Table",
-        "Message Log with Compliance Status",
-        "Language Forecast schema"
+        "language_stats beeminder_road_today / beeminder_due_today columns"
       ],
       "status": "Production"
     }
   },
-  "version": "0.0.3"
+  "version": "0.0.4"
 }
