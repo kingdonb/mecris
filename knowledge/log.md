@@ -1,3 +1,6 @@
+## 2026-10-01
+* **Creation**: Documented concept `decisions/2026-10-01-review-pump-beeminder-interference.md` (Review Pump Honors Beeminder Due-Today): max(pump, Beeminder due) interference, goal-met gate, operator rulings (PLAY MODE intent, NY-hardcoded timezone), drift fences (Greek floor, ÷16 canonical, dead cloud-pump route), helix-ml guardrail, WhatsApp documentation hand-off, and backlog (SpinKube topology, helix-ml widget, per-user timezone).
+
 ## 2026-09-06
 * **Update**: Added immediate Pi footer feedback while deterministic `/status` gathers live narrator context.
 * **Creation**: Documented concept `decisions/2026-09-06-deterministic-status.md` (Deterministic Pi Status and Progressive Context).
