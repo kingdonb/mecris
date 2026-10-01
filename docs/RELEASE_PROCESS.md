@@ -201,6 +201,7 @@ This distinction is intentional: the user (`yebyen`) operates through the fork f
 | `v0.0.3` | 2026-09-06 | `kingdonb/mecris` | PR `#297` (fix), PR `#298` (release) | Restores ghost heartbeat via REST API; updates all 15+ version references (`VERSION_MANIFEST`, Android `VC=34`, Spin, web, Python, docs, `ROADMAP.md`) |
 | `v0.1.0` | 2026-09-30 | `kingdonb/mecris` | PR `#330` (feature), PR `#331` (release) | Helix balance odometer (task 588, edge-primary), all version refs synced, Android VC=35 |
 | `v0.1.1` | 2026-09-30 | `kingdonb/mecris` | PR `#332` | R3 change-gate oscillation fix (15 duplicate overnight datapoints); all version refs synced, Android VC=36 |
+| `v0.1.2` | 2026-10-01 | `kingdonb/mecris` | PR `#333` | Constructive interference: review pump honors Beeminder due-today road math; all version refs synced, Android VC=37 |
 
 **Note**: This table reflects releases verified at the time of this document's creation. For the most current release state, consult `VERSION_MANIFEST.json`, the `main` branch tags (`v*`), and the active PR list on `kingdonb/mecris`. This document is evergreen — it is not guaranteed to remain up-to-date without manual verification.
 
