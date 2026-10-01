@@ -7,7 +7,9 @@ rust-version = "1.78"
 edition = "2021"
 
 [lib]
-crate-type = ["cdylib"]
+# rlib enables `cargo test` for the host-target unit tests; the cdylib stays
+# the Spin component artifact.
+crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 anyhow = "1"
