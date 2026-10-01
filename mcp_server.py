@@ -1465,8 +1465,16 @@ async def get_language_velocity_stats(user_id: str = None) -> Dict[str, Any]:
             )
             pump_status["target_flow_rate"] = effective_remaining
             pump_status["goal_met"] = effective_met
-            pump_status["absolute_target"] = max(0, daily_done + effective_remaining)
+            absolute_target = max(0, daily_done + effective_remaining)
+            pump_status["absolute_target"] = absolute_target
             pump_status["beeminder_due_today"] = beeminder_due
+            if absolute_target > 0:
+                pump_status["flow_fill_ratio"] = min(1.0, daily_done / absolute_target)
+            elif effective_met:
+                pump_status["flow_fill_ratio"] = 1.0
+            else:
+                pump_status["flow_fill_ratio"] = 0.0
+            pump_status["is_play_mode"] = (current_debt > effective_remaining * 7) if effective_remaining > 0 else False
             
             # Unit/Goal Classification:
             # - Arabic: Has a "Reviewstack" goal (explicitly tracked/synced)

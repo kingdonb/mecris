@@ -1,11 +1,11 @@
 {
   "suite_name": "Mecris Personal Accountability Suite",
   "release_date": "2026-10-01",
-  "total_version": "0.1.2",
+  "total_version": "0.1.3",
   "components": {
     "android_app": {
       "name": "Mecris-Go Android",
-      "version": "0.1.2",
+      "version": "0.1.3",
       "features": [
         "Review pump shows max(pump quota, Beeminder due-today)",
         "Goal not met until Beeminder derailing obligation dispatched",
@@ -15,7 +15,7 @@
     },
     "spin_backend": {
       "name": "Mecris-Go Sync Service (Spin)",
-      "version": "0.1.2",
+      "version": "0.1.3",
       "features": [
         "Beeminder due-today from goal road (fullroad + yaw, NY daystamp)",
         "language_stats columns beeminder_road_today / beeminder_due_today",
@@ -26,7 +26,7 @@
     },
     "python_mcp": {
       "name": "Mecris MCP Server",
-      "version": "0.1.2",
+      "version": "0.1.3",
       "features": [
         "Python parity (executable spec): same due-today math in services/beeminder_road.py",
         "Velocity combines pump with Beeminder due; reminders use the honest number",
@@ -36,7 +36,7 @@
     },
     "neon_infrastructure": {
       "name": "Neon PostgreSQL Cloud",
-      "version": "0.1.2",
+      "version": "0.1.3",
       "features": [
         "language_stats beeminder_road_today / beeminder_due_today columns"
       ],
