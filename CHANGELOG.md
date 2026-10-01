@@ -2,6 +2,57 @@
 
 All notable changes to Mecris are documented here.
 
+## [0.1.2] — 2026-10-01 — Constructive interference
+
+The review pump and Beeminder stopped lying to each other. On 2026-10-01 a
+massive Clozemaster card dump landed in the review stack (257 cards) while the
+Beeminder `reviewstack` goal sat at safebuf 0 — "limit 86 today, −171 today" —
+but the app showed REMAINING TODAY: 18. The interference rule existed
+(`max(pump, Beeminder)`) but its Beeminder side computed `-safebuf` — a count
+of safe **days**, 0 exactly on beemergency day — instead of a card deficit, so
+it contributed nothing precisely when it mattered.
+
+### Fixed
+
+- **Beeminder due-today is now computed from the goal's own road**: the scraper
+  already downloaded the full goal JSON and threw everything away except
+  `safebuf`/`rate`; now it reads `yaw`, `curval`, and `fullroad`, finds the
+  road limit at the end of today (America/New_York — hardcoded, per operator
+  ruling), and stores `beeminder_road_today` + `beeminder_due_today` on
+  `language_stats` (Neon migration included). Do-less goals owe
+  `cur − road_today`; do-more the reverse; fractional demands ceil ( flooring
+  would leave a do-less datapoint above the road); missing/malformed road or
+  yaw fabricates nothing (due 0).
+- **Interference happens at the REMAINING level**: `remaining =
+  max(pump_remaining, beeminder_due)` and `quota = done + remaining`. Beeminder
+  due is already net of cards done (curval falls with each sync), so taking
+  the max at target level would double-count completions. The displayed quota
+  stays stable as cards are completed.
+- **Goal not met while Beeminder stands**: `goal_met = pump_met AND due == 0`
+  in `GET /languages`, `aggregate-status` (arabic/greek components), and the
+  Python velocity path — the pump goal is not "met" until the Beeminder
+  derailing obligation is dispatched. Languages without a Beeminder slug keep
+  pump-only semantics (their due is always 0).
+- **Python parity (executable spec)**: the math lives in pure module
+  `services/beeminder_road.py` (17 unit tests incl. the incident fixture
+  257/86/yaw −1 → 171); Rust mirrors it (16 tests, `cargo test --lib`).
+  WhatsApp reminder "cards needed" now shows the honest number.
+- **Witness hooks**: a `safebuf >= 1` but `due > 0` canary logs loudly (road
+  parse or yaw-sign suspect); an API-`delta` cross-check is logged per sync for
+  sign-convention validation.
+
+### Notes
+
+- PLAY MODE badge turning off when Beeminder dominates is intended: playing
+  doesn't remove cards from the stack; a derailing goal demands removal.
+- Daystamps never subtract linearly (20261001 − 20260930 = 71): road
+  extrapolation converts to real dates in both twins.
+- `sync-service` crate gains an `rlib` crate-type so `cargo test --lib` can
+  run the unit tests (full host `cargo test` still can't link the spin
+  cdylib — pre-existing).
+- Helix budget governor (0.1.0) untouched by construction; post-deploy
+  `check_witnesses.py` must show fresh `ok` rows (guardrail).
+
 ## [0.1.1] — 2026-09-30 — The Odometer, steady-state fix
 
 ### Fixed

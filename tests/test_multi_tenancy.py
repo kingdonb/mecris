@@ -119,8 +119,8 @@ def test_get_language_stats_with_user_id(mock_connect, neon_checker):
     mock_connect.return_value = mock_conn
     mock_conn.cursor.return_value = mock_cur
     mock_cur.fetchall.return_value = [
-        ("ARABIC", 10, 5, 50, 1.5, 120, "reviewstack", 3),
-        ("GREEK", 20, 10, 100, 2.0, 240, "greek", 1)
+        ("ARABIC", 10, 5, 50, 1.5, 120, "reviewstack", 3, 86, 171),
+        ("GREEK", 20, 10, 100, 2.0, 240, "greek", 1, None, 0)
     ]
     user_id = "test-user-456"
     with patch.object(neon_checker, 'resolve_user_id', return_value=user_id):

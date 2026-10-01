@@ -184,7 +184,8 @@ class NeonSyncChecker:
 
             cur.execute("""
                 SELECT language_name, current_reviews, tomorrow_reviews, next_7_days_reviews, 
-                       pump_multiplier, daily_completions, beeminder_slug, safebuf 
+                       pump_multiplier, daily_completions, beeminder_slug, safebuf, 
+                       beeminder_road_today, beeminder_due_today
                 FROM language_stats 
                 WHERE user_id = %s
             """, (target_user_id,))
@@ -203,6 +204,8 @@ class NeonSyncChecker:
                     "daily_completions": int(row[5]) if row[5] is not None else 0,
                     "beeminder_slug": row[6],
                     "safebuf": row[7] if row[7] is not None else 0,
+                    "beeminder_road_today": row[8],
+                    "beeminder_due_today": int(row[9]) if row[9] is not None else 0,
                 }
             return stats
 

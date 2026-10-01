@@ -1,4 +1,5 @@
 # Decisions
+* [Review Pump Honors Beeminder Due-Today (0.1.2 Constructive Interference)](2026-10-01-review-pump-beeminder-interference.md) - The review pump's remaining-today is max(pump quota, Beeminder due-today) and the goal is not met until the Beeminder derailing obligation is dispatched; operator rulings fix PLAY MODE intent, the NY-hardcoded goal day, and document Python/Rust drift fences for future tickets.
 * [Critical Situation: Budget Expired, Walk Needed, Reviewstack Derailing Tomorrow](2026-09-06-critical-situation.md) - A recorded live snapshot that triggered budget extension and accountability priorities; it is historical, not current status.
 * [Cloud Easing: Local Python MCP as Primary Backend](2026-06-cloud-easing.md) - After Akamai/Fermyon deployment failures, local Python MCP became the primary interactive backend; the deployment pivot remains reversible.
 * [Defer OKF MCP Server Integration](2026-09-06-okf-mcp-deferred.md) - Keep OKF on the CLI for now: an stdio initialize smoke test succeeded but the server did not expose tools/list under the tested protocol, so .mcp.json remains unchanged.

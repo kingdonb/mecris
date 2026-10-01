@@ -77,6 +77,7 @@ from services.neon_sync_checker import NeonSyncChecker
 from services.reminder_service import ReminderService
 from services.language_sync_service import LanguageSyncService
 from services.review_pump import ReviewPump, ARABIC_POINTS_PER_CARD
+from services.beeminder_road import combine_pump_and_due
 
 # Feature Flags - set these to 'true' in .env to enable
 ENABLE_OBSIDIAN = os.getenv("MECRIS_ENABLE_OBSIDIAN", "false").lower() == "true"
@@ -1451,6 +1452,21 @@ async def get_language_velocity_stats(user_id: str = None) -> Dict[str, Any]:
             pump_status["beeminder_slug"] = stats.get("beeminder_slug")
             pump_status["tomorrow_liability"] = tomorrow_liability
             pump_status["next_7_days"] = stats.get("next_7_days", 0)
+
+            # Task 000617 constructive interference (services/beeminder_road.py):
+            # Beeminder's due-today (from the goal's road, stored by the language sync)
+            # dominates when larger than the pump's remaining quota; the pump goal is
+            # not met while a Beeminder derailing obligation stands.
+            beeminder_due = stats.get("beeminder_due_today", 0) or 0
+            effective_remaining, effective_met = combine_pump_and_due(
+                pump_status.get("target_flow_rate", 0),
+                pump_status.get("goal_met", False),
+                beeminder_due,
+            )
+            pump_status["target_flow_rate"] = effective_remaining
+            pump_status["goal_met"] = effective_met
+            pump_status["absolute_target"] = max(0, daily_done + effective_remaining)
+            pump_status["beeminder_due_today"] = beeminder_due
             
             # Unit/Goal Classification:
             # - Arabic: Has a "Reviewstack" goal (explicitly tracked/synced)
