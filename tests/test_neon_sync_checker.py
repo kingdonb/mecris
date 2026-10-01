@@ -58,10 +58,11 @@ def test_neon_checker_has_walk_today_false(mock_psycopg2):
 def test_get_language_stats_includes_beeminder_slug_and_safebuf(mock_psycopg2):
     """Fix: f62ad68 — get_language_stats must return beeminder_slug and safebuf from DB."""
     checker = NeonSyncChecker()
-    # 8-column row: name, current, tomorrow, next_7, multiplier, daily_completions, beeminder_slug, safebuf
+    # 10-column row: name, current, tomorrow, next_7, multiplier, daily_completions,
+    # beeminder_slug, safebuf, beeminder_road_today, beeminder_due_today (task 000617)
     mock_psycopg2.fetchall.return_value = [
-        ("Arabic", 2600, 5, 100, 2.0, 50, "reviewstack", 3),
-        ("Greek", 20, 2, 40, 1.0, 10, None, 0),
+        ("Arabic", 2600, 5, 100, 2.0, 50, "reviewstack", 3, 86, 171),
+        ("Greek", 20, 2, 40, 1.0, 10, None, 0, None, 0),
     ]
 
     result = checker.get_language_stats(user_id="yebyen")
@@ -69,9 +70,13 @@ def test_get_language_stats_includes_beeminder_slug_and_safebuf(mock_psycopg2):
     assert "arabic" in result
     assert result["arabic"]["beeminder_slug"] == "reviewstack"
     assert result["arabic"]["safebuf"] == 3
+    assert result["arabic"]["beeminder_road_today"] == 86
+    assert result["arabic"]["beeminder_due_today"] == 171
     assert "greek" in result
     assert result["greek"]["beeminder_slug"] is None
     assert result["greek"]["safebuf"] == 0
+    assert result["greek"]["beeminder_road_today"] is None
+    assert result["greek"]["beeminder_due_today"] == 0
 
 @patch.dict("os.environ", {"NEON_DB_URL": "postgres://fake"})
 def test_neon_checker_get_latest_walk(mock_psycopg2):
