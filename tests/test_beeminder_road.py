@@ -131,6 +131,32 @@ def test_safebuf_ge_one_implies_zero_due_for_realistic_road():
     assert beeminder_due_today(-1, 90.0, road) == 0
 
 
+def test_safebuf_ge_one_enforces_zero_due():
+    # When safebuf >= 1, the user is safe today regardless of curval vs road_today.
+    assert beeminder_due_today(-1, 246.0, 86.04, safebuf=1) == 0
+    assert beeminder_due_today(1, 50.0, 100.0, safebuf=2) == 0
+
+
+def test_incident_fixture_reviewstack_due_is_160():
+    # 2026-10-01 reviewstack incident: curval=246, safebump=86.04, safebuf=0, yaw=-1 -> due=160
+    assert beeminder_due_today(-1, 246.0, 86.04, safebuf=0) == 160
+
+
+def test_road_epoch_timestamps_and_interpolation():
+    # Epoch timestamp row fixtures matching Beeminder fullroad:
+    # 1789747200 is 2026-09-18 12:00 EDT (val=397, rate=0)
+    # 1791129600 is 2026-10-04 12:00 EDT (val=0, rate=-23.92)
+    epoch_road = [
+        [1789747200, 397.0, 0.0],
+        [1791129600, 0.0, -23.92],
+    ]
+    # On 2026-10-01 (daystamp 20261001), 3 days before 2026-10-04:
+    # Interpolated backwards: 0.0 - (-23.92 * 3) = 71.76
+    val = road_value_today(epoch_road, 20261001)
+    assert val is not None
+    assert round(val, 2) == 71.76
+
+
 # --- combine_pump_and_due (constructive interference) ------------------------
 
 def test_combine_incident_fixture_due_dominates_and_goal_not_met():

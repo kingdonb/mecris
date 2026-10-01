@@ -39,10 +39,24 @@ def goal_daystamp(now: Optional[datetime] = None) -> int:
 
 
 def _parse_daystamp(raw: Any) -> Optional[int]:
-    """Accept 20261001 (int), '20261001', or '2026-10-01'; else None."""
+    """Accept 20261001 (int), '20261001', '2026-10-01', or Unix epoch seconds (int/float > 100_000_000)."""
+    if raw is None:
+        return None
     try:
-        return int(str(raw).replace("-", ""))
-    except (ValueError, TypeError):
+        if isinstance(raw, (int, float)):
+            if raw > 100_000_000:
+                dt = datetime.fromtimestamp(float(raw), GOAL_TIMEZONE).date()
+                return dt.year * 10000 + dt.month * 100 + dt.day
+            return int(raw)
+        s = str(raw).strip()
+        if "-" in s:
+            s = s.replace("-", "")
+        val = float(s)
+        if val > 100_000_000:
+            dt = datetime.fromtimestamp(val, GOAL_TIMEZONE).date()
+            return dt.year * 10000 + dt.month * 100 + dt.day
+        return int(val)
+    except (ValueError, TypeError, OverflowError, OSError):
         return None
 
 
@@ -65,6 +79,7 @@ def road_value_today(fullroad: Optional[List[Any]], daystamp: Optional[int] = No
 
     - Exact-day match preferred (fullroad has daily granularity within the
       road's span; today's row exists for any road that spans today).
+    - Between rows: interpolate between bounding vertices.
     - Before the first row: the first row's value.
     - After the last row: extrapolate the last row's value by its per-day
       rate (roads continue at their final rate indefinitely).
@@ -82,21 +97,49 @@ def road_value_today(fullroad: Optional[List[Any]], daystamp: Optional[int] = No
         if d is None:
             continue
         try:
-            v = float(row[1])
+            v = float(row[1]) if row[1] is not None else None
         except (ValueError, TypeError):
-            continue
-        rows.append((d, v, row[2] if len(row) > 2 else None))
+            v = None
+        rate = None
+        if len(row) > 2 and row[2] is not None:
+            try:
+                rate = float(row[2])
+            except (ValueError, TypeError):
+                rate = None
+        rows.append((d, v, rate))
     if not rows:
         return None
     rows.sort(key=lambda r: r[0])
     if day < rows[0][0]:
         return rows[0][1]
     for (d, v, _rate) in rows:
-        if d == day:
+        if d == day and v is not None:
             return v
+    # Check if day falls between two bounding rows
+    for i in range(len(rows) - 1):
+        d0, v0, r0 = rows[i]
+        d1, v1, r1 = rows[i + 1]
+        if d0 <= day <= d1:
+            date0 = _daystamp_to_date(d0)
+            date1 = _daystamp_to_date(d1)
+            today_date = _daystamp_to_date(day)
+            if not date0 or not date1 or not today_date:
+                break
+            if r1 is not None and v1 is not None:
+                days_before_d1 = (date1 - today_date).days
+                return v1 - r1 * days_before_d1
+            if r0 is not None and v0 is not None:
+                days_after_d0 = (today_date - date0).days
+                return v0 + r0 * days_after_d0
+            if v0 is not None and v1 is not None:
+                total_days = (date1 - date0).days
+                if total_days > 0:
+                    frac = (today_date - date0).days / total_days
+                    return v0 + (v1 - v0) * frac
+
     last_day, last_val, last_rate = rows[-1]
     try:
-        if last_rate is not None:
+        if last_rate is not None and last_val is not None:
             last_date = _daystamp_to_date(last_day)
             today_date = _daystamp_to_date(day)
             if last_date is not None and today_date is not None:
@@ -121,7 +164,7 @@ def combine_pump_and_due(pump_remaining: Any, pump_goal_met: Any, beeminder_due:
     return remaining, bool(pump_goal_met) and due == 0
 
 
-def beeminder_due_today(yaw: Optional[float], curval: Any, road_today: Optional[float]) -> int:
+def beeminder_due_today(yaw: Optional[float], curval: Any, road_today: Optional[float], safebuf: Optional[int] = None) -> int:
     """
     Units (cards) owed TODAY so the end-of-day value lands on the good side
     of the Bright Red Line. Already net of completions: as cards are done and
@@ -129,10 +172,11 @@ def beeminder_due_today(yaw: Optional[float], curval: Any, road_today: Optional[
     downstream would double-count — combine with the pump at the *remaining*
     level: effective_remaining = max(pump_remaining, beeminder_due_today).
 
-    Cross-check canary: when safebuf >= 1 this must compute to ~0; a positive
-    due alongside a positive safebuf means the road parse or sign convention
-    is wrong (witness-driven debugging hook).
+    When safebuf >= 1, the user is safe for today (cannot derail today),
+    so due today is 0.
     """
+    if safebuf is not None and safebuf >= 1:
+        return 0
     if road_today is None or yaw is None:
         return 0
     try:

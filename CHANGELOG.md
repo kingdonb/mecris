@@ -2,6 +2,18 @@
 
 All notable changes to Mecris are documented here.
 
+## [0.1.3] — 2026-10-01 — Beeminder safebump & epoch road fix
+
+Fixed Beeminder due-today calculation for sparse/epoch fullroad data and honored `safebump`.
+
+### Fixed
+
+- **Beeminder `safebump` prioritization**: Beeminder's goal JSON provides `safebump`, which represents the exact red line value at deadline time. When `safebuf == 0`, `safebump` is the authoritative red line threshold for today.
+- **Unix epoch timestamp parsing in road math**: In Beeminder API, `fullroad` row timestamps are Unix epoch seconds (`t > 100_000_000`), not `YYYYMMDD` integers. The parser now converts epoch seconds to `America/New_York` calendar dates in both Python (`services/beeminder_road.py`) and Rust (`sync-service/src/lib.rs`).
+- **Road interpolation between vertices**: Sparse `fullroad` rows without intermediate calendar days are interpolated between bounding vertices using the segment's daily rate.
+- **Buffer check (`safebuf >= 1`)**: When `safebuf >= 1`, the goal cannot derail today, guaranteeing `beeminder_due_today == 0`.
+- **Constructive interference UI alignment**: Recomputed `flow_fill_ratio` and `is_play_mode` against effective remaining targets; when Beeminder demands cards (e.g. 160 cards due), PLAY MODE turns off cleanly and remaining cards reflect the true requirement.
+
 ## [0.1.2] — 2026-10-01 — Constructive interference
 
 The review pump and Beeminder stopped lying to each other. On 2026-10-01 a

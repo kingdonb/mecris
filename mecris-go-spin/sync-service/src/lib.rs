@@ -223,45 +223,101 @@ fn calculate_targets(cur: i32, tom: i32, mult: f64, done: i32) -> (i32, f64, boo
     (target, rate, goal_met)
 }
 
-// Task 000617: Beeminder due-today from the goal JSON's road. Python twin:
+// Task 000617 / v0.1.3: Beeminder due-today from the goal JSON's road. Python twin:
 // services/beeminder_road.py — keep in lockstep. Timezone is hardcoded
 // America/New_York (single-user system; operator ruling 2026-10-01).
 fn road_value_today(fullroad: Option<&serde_json::Value>, daystamp: Option<i64>) -> Option<f64> {
     let day = daystamp?;
     let arr = fullroad?.as_array()?;
-    let mut rows: Vec<(i64, f64, Option<f64>)> = Vec::new();
+    let mut rows: Vec<(i64, Option<f64>, Option<f64>)> = Vec::new();
     for row in arr {
         let cells = match row.as_array() { Some(c) => c, None => continue };
         if cells.len() < 2 { continue; }
         let d = match &cells[0] {
-            serde_json::Value::Number(n) => n.as_i64(),
-            serde_json::Value::String(s) => s.replace('-', "").parse::<i64>().ok(),
+            serde_json::Value::Number(n) => {
+                if let Some(stamp) = n.as_i64() {
+                    if stamp > 100_000_000 {
+                        chrono::DateTime::from_timestamp(stamp, 0).map(|utc| {
+                            let ny = utc.with_timezone(&chrono_tz::America::New_York);
+                            ny.format("%Y%m%d").to_string().parse::<i64>().unwrap_or(stamp)
+                        })
+                    } else {
+                        Some(stamp)
+                    }
+                } else {
+                    None
+                }
+            }
+            serde_json::Value::String(s) => {
+                let cleaned = s.replace('-', "");
+                if let Ok(stamp) = cleaned.parse::<i64>() {
+                    if stamp > 100_000_000 {
+                        chrono::DateTime::from_timestamp(stamp, 0).map(|utc| {
+                            let ny = utc.with_timezone(&chrono_tz::America::New_York);
+                            ny.format("%Y%m%d").to_string().parse::<i64>().unwrap_or(stamp)
+                        })
+                    } else {
+                        Some(stamp)
+                    }
+                } else {
+                    None
+                }
+            }
             _ => None,
         };
         let d = match d { Some(d) => d, None => continue };
-        let v = match cells[1].as_f64() { Some(v) => v, None => continue };
+        let v = cells[1].as_f64();
         let rate = cells.get(2).and_then(|c| c.as_f64());
         rows.push((d, v, rate));
     }
     if rows.is_empty() { return None; }
     rows.sort_by_key(|r| r.0);
-    if day < rows[0].0 { return Some(rows[0].1); }
+    if day < rows[0].0 { return rows[0].1; }
     for (d, v, _rate) in &rows {
-        if *d == day { return Some(*v); }
+        if *d == day && v.is_some() { return *v; }
+    }
+    let to_date = |stamp: i64| chrono::NaiveDate::from_ymd_opt((stamp / 10000) as i32, ((stamp / 100) % 100) as u32, (stamp % 100) as u32);
+    // Interpolate between bounding vertices
+    for i in 0..rows.len().saturating_sub(1) {
+        let (d0, v0, r0) = rows[i];
+        let (d1, v1, r1) = rows[i + 1];
+        if d0 <= day && day <= d1 {
+            if let (Some(date0), Some(date1), Some(today_date)) = (to_date(d0), to_date(d1), to_date(day)) {
+                if let (Some(r1), Some(v1)) = (r1, v1) {
+                    let days_before_d1 = (date1 - today_date).num_days() as f64;
+                    return Some(v1 - r1 * days_before_d1);
+                }
+                if let (Some(r0), Some(v0)) = (r0, v0) {
+                    let days_after_d0 = (today_date - date0).num_days() as f64;
+                    return Some(v0 + r0 * days_after_d0);
+                }
+                if let (Some(v0), Some(v1)) = (v0, v1) {
+                    let total_days = (date1 - date0).num_days() as f64;
+                    if total_days > 0.0 {
+                        let frac = (today_date - date0).num_days() as f64 / total_days;
+                        return Some(v0 + (v1 - v0) * frac);
+                    }
+                }
+            }
+        }
     }
     // Past the last row: roads continue at their final rate. Daystamps never
     // subtract linearly (20261001 - 20260930 == 71), so use real dates.
     let (last_day, last_val, last_rate) = rows[rows.len() - 1];
-    if let Some(rate) = last_rate {
-        let to_date = |stamp: i64| chrono::NaiveDate::from_ymd_opt((stamp / 10000) as i32, ((stamp / 100) % 100) as u32, (stamp % 100) as u32);
+    if let (Some(rate), Some(last_val)) = (last_rate, last_val) {
         if let (Some(last_date), Some(today_date)) = (to_date(last_day), to_date(day)) {
             return Some(last_val + rate * (today_date - last_date).num_days() as f64);
         }
     }
-    Some(last_val)
+    last_val
 }
 
-fn beeminder_due_today_value(yaw: Option<f64>, curval: f64, road_today: Option<f64>) -> i32 {
+fn beeminder_due_today_value(yaw: Option<f64>, curval: f64, road_today: Option<f64>, safebuf: Option<i32>) -> i32 {
+    if let Some(sb) = safebuf {
+        if sb >= 1 {
+            return 0;
+        }
+    }
     let (Some(road), Some(yaw)) = (road_today, yaw) else { return 0 };
     let raw = if yaw < 0.0 { curval - road } else { road - curval };
     if raw <= 0.0 { return 0; }
@@ -765,11 +821,20 @@ async fn fetch_from_beeminder(uid: &str, slug: &str, conn: &Connection) -> anyho
     let rate = data.get("rate").and_then(|v| v.as_f64()).unwrap_or(0.0);
     let risk = if sb <= 0 { "CRITICAL" } else if sb == 1 { "WARNING" } else if sb <= 3 { "CAUTION" } else { "SAFE" };
     // Task 000617: due-today from the goal's own road. The safebuf>=1 canary
-    // catches road-parse or yaw-sign bugs on live data (witness-driven debugging).
     let yaw = data.get("yaw").and_then(|v| v.as_f64());
     let curval = data.get("curval").and_then(|v| v.as_f64()).unwrap_or(0.0);
-    let road_today = road_value_today(data.get("fullroad"), ny_goal_daystamp());
-    let due_today = beeminder_due_today_value(yaw, curval, road_today);
+    let safebump = data.get("safebump").and_then(|v| v.as_f64());
+    let mut road_today = None;
+    if sb == 0 {
+        road_today = safebump;
+    }
+    if road_today.is_none() {
+        road_today = road_value_today(data.get("fullroad"), ny_goal_daystamp());
+    }
+    if road_today.is_none() {
+        road_today = safebump;
+    }
+    let due_today = beeminder_due_today_value(yaw, curval, road_today, Some(sb));
     if let Some(road) = road_today {
         if sb >= 1 && due_today > 0 {
             eprintln!("beeminder road canary {}: safebuf={} but due_today={} (curval={} road={} yaw={:?}) — road parse or yaw sign suspect", slug, sb, due_today, curval, road, yaw);
@@ -1003,33 +1068,58 @@ mod tests {
     }
 
     #[test]
+    fn test_road_epoch_timestamps_and_interpolation() {
+        // 1789747200 is 2026-09-18 12:00 EDT (val=397, rate=0)
+        // 1791129600 is 2026-10-04 12:00 EDT (val=0, rate=-23.92)
+        let epoch_road = json!([
+            [1789747200, 397.0, 0.0],
+            [1791129600, 0.0, -23.92]
+        ]);
+        // On 2026-10-01 (3 days before 2026-10-04): 0 - (-23.92 * 3) = 71.76
+        let val = road_value_today(Some(&epoch_road), Some(20261001)).unwrap();
+        assert_eq!((val * 100.0).round() / 100.0, 71.76);
+    }
+
+    #[test]
     fn test_due_incident_fixture_do_less() {
         // The 2026-10-01 reviewstack state: cur=257, road limit today=86, yaw=-1.
-        assert_eq!(beeminder_due_today_value(Some(-1.0), 257.0, Some(86.0)), 171);
+        assert_eq!(beeminder_due_today_value(Some(-1.0), 257.0, Some(86.0), None), 171);
+    }
+
+    #[test]
+    fn test_due_reviewstack_live_incident_due_is_160() {
+        // Reviewstack live incident: curval=246, safebump=86.04, safebuf=0, yaw=-1 -> due=160
+        assert_eq!(beeminder_due_today_value(Some(-1.0), 246.0, Some(86.04), Some(0)), 160);
+    }
+
+    #[test]
+    fn test_due_safebuf_ge_one_enforces_zero_due() {
+        assert_eq!(beeminder_due_today_value(Some(-1.0), 246.0, Some(86.04), Some(1)), 0);
+        assert_eq!(beeminder_due_today_value(Some(1.0), 50.0, Some(100.0), Some(2)), 0);
     }
 
     #[test]
     fn test_due_do_less_already_on_good_side_owes_zero() {
-        assert_eq!(beeminder_due_today_value(Some(-1.0), 80.0, Some(86.0)), 0);
-        assert_eq!(beeminder_due_today_value(Some(-1.0), 86.0, Some(86.0)), 0);
+        assert_eq!(beeminder_due_today_value(Some(-1.0), 80.0, Some(86.0), None), 0);
+        assert_eq!(beeminder_due_today_value(Some(-1.0), 86.0, Some(86.0), None), 0);
     }
 
     #[test]
     fn test_due_do_more_sign_convention() {
-        assert_eq!(beeminder_due_today_value(Some(1.0), 50.0, Some(60.0)), 10);
-        assert_eq!(beeminder_due_today_value(Some(1.0), 65.0, Some(60.0)), 0);
+        assert_eq!(beeminder_due_today_value(Some(1.0), 50.0, Some(60.0), None), 10);
+        assert_eq!(beeminder_due_today_value(Some(1.0), 65.0, Some(60.0), None), 0);
     }
 
     #[test]
     fn test_due_fractional_demand_ceils_upward() {
         // Road at 86.37: flooring would leave the do-less datapoint above the road.
-        assert_eq!(beeminder_due_today_value(Some(-1.0), 257.0, Some(86.37)), 171);
+        assert_eq!(beeminder_due_today_value(Some(-1.0), 257.0, Some(86.37), None), 171);
     }
 
     #[test]
     fn test_due_missing_yaw_or_road_fabricates_nothing() {
-        assert_eq!(beeminder_due_today_value(None, 257.0, Some(86.0)), 0);
-        assert_eq!(beeminder_due_today_value(Some(-1.0), 257.0, None), 0);
+        assert_eq!(beeminder_due_today_value(None, 257.0, Some(86.0), None), 0);
+        assert_eq!(beeminder_due_today_value(Some(-1.0), 257.0, None, None), 0);
     }
 
     #[test]

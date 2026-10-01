@@ -394,17 +394,31 @@ class BeeminderClient:
         except (ValueError, TypeError):
             safebuf = 0
 
-        # Task 000617: due-today from the goal's own road (services/beeminder_road.py).
-        # When safebuf >= 1 a positive due would mean the road parse or yaw sign is
-        # wrong — log it loudly (witness-driven debugging canary).
+        # Task 000617 / v0.1.3: due-today from Beeminder safebump / fullroad.
+        # safebump is the exact red line value at deadline; when safebuf == 0,
+        # it is the authoritative red line for today.
         yaw_raw = goal_data.get("yaw")
         try:
             yaw = int(yaw_raw) if yaw_raw is not None else None
         except (ValueError, TypeError):
             yaw = None
-        road_today = road_value_today(goal_data.get("fullroad"))
+        safebump = goal_data.get("safebump")
+        road_today = None
+        if safebump is not None and safebuf == 0:
+            try:
+                road_today = float(safebump)
+            except (ValueError, TypeError):
+                pass
+        if road_today is None:
+            road_today = road_value_today(goal_data.get("fullroad"))
+        if road_today is None and safebump is not None:
+            try:
+                road_today = float(safebump)
+            except (ValueError, TypeError):
+                pass
+
         curval = float(goal_data.get("curval", 0))
-        due_today = beeminder_due_today(yaw, curval, road_today)
+        due_today = beeminder_due_today(yaw, curval, road_today, safebuf)
         if road_today is not None:
             if safebuf >= 1 and due_today > 0:
                 logger.warning(
