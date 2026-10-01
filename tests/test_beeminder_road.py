@@ -12,6 +12,7 @@ from zoneinfo import ZoneInfo
 from services.beeminder_road import (
     GOAL_TIMEZONE,
     beeminder_due_today,
+    combine_pump_and_due,
     goal_daystamp,
     road_value_today,
 )
@@ -128,3 +129,31 @@ def test_safebuf_ge_one_implies_zero_due_for_realistic_road():
     # curval already at/below the road -> due 0
     assert beeminder_due_today(-1, 94.0, road) == 0
     assert beeminder_due_today(-1, 90.0, road) == 0
+
+
+# --- combine_pump_and_due (constructive interference) ------------------------
+
+def test_combine_incident_fixture_due_dominates_and_goal_not_met():
+    # 2026-10-01: pump quota 18 (met? no), Beeminder due 171 -> show 171, not met.
+    assert combine_pump_and_due(18, False, 171) == (171, False)
+
+
+def test_combine_pump_met_but_due_standing_means_not_met():
+    # Pump quota satisfied (done >= 18) but Beeminder still demands 171.
+    assert combine_pump_and_due(0, True, 171) == (171, False)
+
+
+def test_combine_due_cleared_keeps_pump_verdict():
+    assert combine_pump_and_due(0, True, 0) == (0, True)
+    assert combine_pump_and_due(40, True, 0) == (40, True)
+    assert combine_pump_and_due(5, False, 0) == (5, False)
+
+
+def test_combine_pump_quota_dominates_when_larger_than_due():
+    # Maintenance-style quota 40 > Beeminder due 5 -> max(), not replacement.
+    assert combine_pump_and_due(40, False, 5) == (40, False)
+
+
+def test_combine_tolerates_none_and_negative_inputs():
+    assert combine_pump_and_due(None, True, None) == (0, True)
+    assert combine_pump_and_due(-3, False, -7) == (0, False)

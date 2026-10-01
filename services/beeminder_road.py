@@ -106,6 +106,21 @@ def road_value_today(fullroad: Optional[List[Any]], daystamp: Optional[int] = No
     return last_val
 
 
+def combine_pump_and_due(pump_remaining: Any, pump_goal_met: Any, beeminder_due: Any) -> tuple:
+    """
+    Task 000617 constructive interference: the pump's remaining quota and
+    Beeminder's due-today combine at the REMAINING level (Beeminder due is
+    already net of cards done — subtracting completions again would
+    double-count). Goal is met only when the pump is satisfied AND the
+    Beeminder derailing obligation is dispatched (due == 0).
+
+    Returns (effective_remaining, goal_met).
+    """
+    due = max(0, int(beeminder_due or 0))
+    remaining = max(int(pump_remaining or 0), due)
+    return remaining, bool(pump_goal_met) and due == 0
+
+
 def beeminder_due_today(yaw: Optional[float], curval: Any, road_today: Optional[float]) -> int:
     """
     Units (cards) owed TODAY so the end-of-day value lands on the good side
