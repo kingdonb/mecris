@@ -13,6 +13,8 @@ from dataclasses import dataclass
 import httpx
 from dotenv import load_dotenv
 
+from services.beeminder_road import beeminder_due_today, road_value_today
+
 load_dotenv()
 logger = logging.getLogger("mecris.beeminder")
 
@@ -29,7 +31,13 @@ class BeeminderGoal:
     pledge: float
     rate: float
     runits: str  # Rate units (e.g., "d" for daily)
-    
+    # Task 000617: due-today computed from the goal's road (see services/beeminder_road.py).
+    # road_today is the Bright Red Line value at the end of today (goal tz); due_today is
+    # max(0, ...) signed by yaw. road/due stay None/0 when the road can't be interpreted.
+    yaw: Optional[int] = None
+    beeminder_road_today: Optional[int] = None
+    beeminder_due_today: int = 0
+
     def to_dict(self) -> Dict[str, Any]:
         return {
             "slug": self.slug,
@@ -41,7 +49,10 @@ class BeeminderGoal:
             "derail_risk": self.derail_risk,
             "pledge": self.pledge,
             "rate": self.rate,
-            "runits": self.runits
+            "runits": self.runits,
+            "yaw": self.yaw,
+            "beeminder_road_today": self.beeminder_road_today,
+            "beeminder_due_today": self.beeminder_due_today
         }
 
 @dataclass
@@ -382,18 +393,45 @@ class BeeminderClient:
             safebuf = int(goal_data.get("safebuf", 0))
         except (ValueError, TypeError):
             safebuf = 0
-        
+
+        # Task 000617: due-today from the goal's own road (services/beeminder_road.py).
+        # When safebuf >= 1 a positive due would mean the road parse or yaw sign is
+        # wrong — log it loudly (witness-driven debugging canary).
+        yaw_raw = goal_data.get("yaw")
+        try:
+            yaw = int(yaw_raw) if yaw_raw is not None else None
+        except (ValueError, TypeError):
+            yaw = None
+        road_today = road_value_today(goal_data.get("fullroad"))
+        curval = float(goal_data.get("curval", 0))
+        due_today = beeminder_due_today(yaw, curval, road_today)
+        if road_today is not None:
+            if safebuf >= 1 and due_today > 0:
+                logger.warning(
+                    "beeminder road canary %s: safebuf=%s but due_today=%s "
+                    "(curval=%s road=%s yaw=%s) — road parse or yaw sign suspect",
+                    goal_data.get("slug"), safebuf, due_today, curval, road_today, yaw)
+            delta = goal_data.get("delta")
+            if delta is not None:
+                logger.debug(
+                    "beeminder road cross-check %s: curval=%s road_today=%s "
+                    "api_delta=%s computed_due=%s",
+                    goal_data.get("slug"), curval, road_today, delta, due_today)
+
         return BeeminderGoal(
             slug=goal_data.get("slug", ""),
             title=goal_data.get("title", goal_data.get("slug", "")),
-            current_value=float(goal_data.get("curval", 0)),
+            current_value=curval,
             target_value=float(goal_data.get("goalval") or 0),
             safebuf=safebuf,
             deadline=self._calculate_deadline(safebuf),
             derail_risk=self._classify_derail_risk(safebuf),
             pledge=float(goal_data.get("pledge", 0)),
             rate=float(goal_data.get("rate") or 0),
-            runits=goal_data.get("runits", "d")
+            runits=goal_data.get("runits", "d"),
+            yaw=yaw,
+            beeminder_road_today=(int(road_today) if road_today is not None else None),
+            beeminder_due_today=due_today
         )
     
     async def get_all_goals(self) -> List[Dict[str, Any]]:
