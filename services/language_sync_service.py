@@ -94,6 +94,8 @@ class LanguageSyncService:
                         safebuf = 0
                         derail_risk = 'SAFE'
                         daily_rate = 0.0
+                        beeminder_road_today = None
+                        beeminder_due_today = 0
                         
                         # Try to match goal
                         slug = self.lang_to_slug.get(name)
@@ -105,11 +107,19 @@ class LanguageSyncService:
                             safebuf = goal.get("safebuf", 0)
                             derail_risk = goal.get("derail_risk", "SAFE")
                             daily_rate = goal.get("rate", 0.0)
+                            beeminder_road_today = goal.get("beeminder_road_today")
+                            beeminder_due_today = goal.get("beeminder_due_today", 0) or 0
                             summary["min_safebuf"] = min(summary["min_safebuf"], safebuf)
 
+                        # Scrape-failure zeros must not fabricate a demand (matches the
+                        # Rust scraper guard): no cards and no forecast -> no due today.
+                        if count == 0 and tomorrow == 0 and next_7 == 0:
+                            beeminder_road_today = None
+                            beeminder_due_today = 0
+
                         cur.execute("""
-                            INSERT INTO language_stats (user_id, language_name, current_reviews, tomorrow_reviews, next_7_days_reviews, daily_rate, safebuf, derail_risk, beeminder_slug, daily_completions, last_points, total_points)
-                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                            INSERT INTO language_stats (user_id, language_name, current_reviews, tomorrow_reviews, next_7_days_reviews, daily_rate, safebuf, derail_risk, beeminder_slug, daily_completions, last_points, total_points, beeminder_road_today, beeminder_due_today)
+                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                             ON CONFLICT (user_id, language_name) DO UPDATE SET
                                 current_reviews = EXCLUDED.current_reviews,
                                 tomorrow_reviews = EXCLUDED.tomorrow_reviews,
@@ -121,14 +131,18 @@ class LanguageSyncService:
                                 daily_completions = EXCLUDED.daily_completions,
                                 last_points = EXCLUDED.last_points,
                                 total_points = EXCLUDED.total_points,
+                                beeminder_road_today = EXCLUDED.beeminder_road_today,
+                                beeminder_due_today = EXCLUDED.beeminder_due_today,
                                 last_updated = CURRENT_TIMESTAMP
-                        """, (user_id, name, count, tomorrow, next_7, daily_rate, safebuf, derail_risk, slug, daily_completions, points, points))
+                        """, (user_id, name, count, tomorrow, next_7, daily_rate, safebuf, derail_risk, slug, daily_completions, points, points, beeminder_road_today, beeminder_due_today))
                         
                         summary[lang] = {
                             "count": count,
                             "safebuf": safebuf,
                             "derail_risk": derail_risk,
-                            "daily_completions": daily_completions
+                            "daily_completions": daily_completions,
+                            "beeminder_road_today": beeminder_road_today,
+                            "beeminder_due_today": beeminder_due_today
                         }
                     conn.commit()
         except Exception as e:
