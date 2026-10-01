@@ -745,8 +745,6 @@ struct BeeGoalSnapshot {
     safebuf: i32,
     risk: String,
     rate: f64,
-    yaw: Option<f64>,
-    curval: f64,
     road_today: Option<f64>,
     due_today: i32,
 }
@@ -780,7 +778,7 @@ async fn fetch_from_beeminder(uid: &str, slug: &str, conn: &Connection) -> anyho
             eprintln!("beeminder road cross-check {}: curval={} road_today={} api_delta={} computed_due={}", slug, curval, road, delta, due_today);
         }
     }
-    Ok(BeeGoalSnapshot { safebuf: sb, risk: risk.to_string(), rate, yaw, curval, road_today, due_today })
+    Ok(BeeGoalSnapshot { safebuf: sb, risk: risk.to_string(), rate, road_today, due_today })
 }
 
 async fn push_to_beeminder_idempotent(uid: &str, slug: &str, val: f64, comment: &str, rid: &str, conn: &Connection) -> anyhow::Result<()> {
