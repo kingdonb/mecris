@@ -80,4 +80,4 @@ when it mattered.
 
 - [Beeminder Integration](../architecture/beeminder-integration.md): The goal JSON fields (yaw, curval, fullroad, delta, safebuf) this fix depends on.
 - [Budget Governor Service](../architecture/services/budget-governor.md): The helix-ml behavior explicitly untouched by this change (guardrail).
-- [Go Services (mecris-go, mecris-go-spin, mecris-go-project)](../architecture/go-services.md): The Rust edge sync-service that computes and serves the effective targets.
+- [Edge Runtimes & Clients](../architecture/edge-and-clients.md): The Rust edge sync-service (mecris-go-spin) that computes and serves the effective targets.
