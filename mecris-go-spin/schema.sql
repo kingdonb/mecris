@@ -55,6 +55,8 @@ CREATE TABLE IF NOT EXISTS language_stats (
     pump_multiplier NUMERIC(4, 1) DEFAULT 1.0,
     beeminder_slug VARCHAR(255),
     daily_completions INTEGER DEFAULT 0,
+    beeminder_road_today INTEGER,
+    beeminder_due_today INTEGER NOT NULL DEFAULT 0,
     last_points INTEGER DEFAULT 0,
     total_points INTEGER DEFAULT 0,
     last_updated TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
