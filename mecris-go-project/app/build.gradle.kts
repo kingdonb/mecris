@@ -80,7 +80,7 @@ dependencies {
     implementation("com.google.android.gms:play-services-location:21.4.0")
 
     // WorkManager
-    implementation("androidx.work:work-runtime-ktx:2.11.2")
+    implementation("androidx.work:work-runtime-ktx:2.12.0")
 
     // Credentials (for Passkeys)
     implementation("androidx.credentials:credentials:1.6.0")
