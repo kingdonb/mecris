@@ -21,6 +21,7 @@ class DelayedNagWorker @JvmOverloads constructor(
     private val injectedSyncApi: SyncServiceApi? = null,
     private val injectedBrain: SovereignBrain? = null,
     private val injectedNagManager: NagNotificationManager? = null,
+    private val injectedHealthManager: HealthConnectManager? = null,
     private val injectedHour: Int? = null
 ) : CoroutineWorker(appContext, workerParams) {
 
@@ -118,7 +119,7 @@ class DelayedNagWorker @JvmOverloads constructor(
                 // --- Fire path: the only place expensive work is allowed ---
                 val walkSummary = if (finalIntent.goal == GOAL_WALK) {
                     phases.add("health")
-                    val healthManager = HealthConnectManager(applicationContext)
+                    val healthManager = injectedHealthManager ?: HealthConnectManager(applicationContext)
                     if (healthManager.hasForegroundPermissions()) healthManager.fetchRecentWalkData() else null
                 } else null
                 val hasPartialWalk = walkSummary != null &&
@@ -160,7 +161,7 @@ class DelayedNagWorker @JvmOverloads constructor(
                 // 3. SOVEREIGN FALLBACK: Basic local walk check
                 phases.add("fallback")
                 val localHourFallback = java.time.LocalDateTime.now().hour
-                val healthManager = HealthConnectManager(applicationContext)
+                val healthManager = injectedHealthManager ?: HealthConnectManager(applicationContext)
                 if (localHourFallback >= 8 && localHourFallback < 20 && healthManager.hasForegroundPermissions()) {
                     phases.add("health_fallback")
                     val summary = healthManager.fetchRecentWalkData()
