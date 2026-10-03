@@ -223,8 +223,9 @@ class DelayedNagWorkerGateTest {
         assertNotNull(DelayedNagWorker.evaluateNagIntent(true, true, false, 22, 30))
         // 22:00 with minute 31 → closed
         assertNull(DelayedNagWorker.evaluateNagIntent(true, true, false, 22, 31))
-        // 18:00, arabic NOT done → arabic hour, cards come first → greek blocked
-        assertNull(DelayedNagWorker.evaluateNagIntent(false, true, false, 18, 0))
+        // 18:00, arabic NOT done → arabic still in its window, so arabic wins
+        // (greek would also be blocked: arabic not cleared and hour < 20)
+        assertEquals(DelayedNagWorker.GOAL_ARABIC, DelayedNagWorker.evaluateNagIntent(false, true, false, 18, 0)?.goal)
         // 21:00, arabic NOT done → arabic window closed → greek allowed
         assertEquals(DelayedNagWorker.GOAL_GREEK, DelayedNagWorker.evaluateNagIntent(false, true, false, 21, 0)?.goal)
         // 19:00 → outside arabic window? no: 19 < 20 → arabic still in window
