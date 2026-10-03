@@ -13,6 +13,7 @@ import com.mecris.go.sync.SyncServiceApi
 import com.mecris.go.sync.WeatherHeuristicResponseDto
 import io.mockk.*
 import kotlinx.coroutines.runBlocking
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
@@ -46,6 +47,11 @@ class DelayedNagWorkerGateTest {
         every { context.getSharedPreferences("mecris_worker_state", Context.MODE_PRIVATE) } returns sharedPrefs
         every { context.getSharedPreferences("mecris_app_prefs", Context.MODE_PRIVATE) } returns mockk(relaxed = true)
         every { sharedPrefs.edit() } returns prefsEditor
+        // Chain builder calls back onto the same editor mock so chained
+        // putLong(...).putLong(...).apply() calls are all recorded on prefsEditor
+        every { prefsEditor.putLong(any(), any()) } returns prefsEditor
+        every { prefsEditor.putString(any(), any()) } returns prefsEditor
+        every { prefsEditor.clear() } returns prefsEditor
         every { sharedPrefs.getLong(any(), any()) } returns 0L
         every { sharedPrefs.getString(any(), any()) } returns null
 

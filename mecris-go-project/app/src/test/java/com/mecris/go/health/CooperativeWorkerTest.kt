@@ -40,6 +40,11 @@ class CooperativeWorkerTest {
 
         every { context.getSharedPreferences("mecris_worker_state", Context.MODE_PRIVATE) } returns sharedPrefs
         every { sharedPrefs.edit() } returns prefsEditor
+        // Chain builder calls back onto the same editor mock so chained
+        // putLong(...).apply() calls are recorded on prefsEditor
+        every { prefsEditor.putLong(any(), any()) } returns prefsEditor
+        every { prefsEditor.putString(any(), any()) } returns prefsEditor
+        every { prefsEditor.clear() } returns prefsEditor
         every { sharedPrefs.getString("last_synced_day", "") } returns ""
         every { sharedPrefs.getLong("last_step_count", 0L) } returns 0L
         every { sharedPrefs.getLong("last_cloud_sync_trigger", 0L) } returns 0L
@@ -207,7 +212,7 @@ class CooperativeWorkerTest {
 
         @Test
         fun `goal debt detected from aggregate components enqueues nag work`() = runBlocking {
-        mockkStatic(WorkManager::class)
+        mockkObject(WorkManager.Companion)
         val workManager = mockk<WorkManager>(relaxed = true)
         every { WorkManager.getInstance(any()) } returns workManager
 
