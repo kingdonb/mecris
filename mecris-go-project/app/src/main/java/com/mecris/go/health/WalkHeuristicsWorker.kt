@@ -32,6 +32,18 @@ class WalkHeuristicsWorker @JvmOverloads constructor(
     private val prefs = applicationContext.getSharedPreferences("mecris_worker_state", Context.MODE_PRIVATE)
 
     override suspend fun doWork(): Result {
+        val startedAt = System.currentTimeMillis()
+        val phases = mutableListOf<String>()
+        val result = runSync(phases)
+        Log.i(
+            "WalkHeuristicsWorker",
+            "WORKER_METRIC run=walk_heuristics duration_ms=${System.currentTimeMillis() - startedAt} " +
+                "phases=${phases.joinToString(",")} result=$result"
+        )
+        return result
+    }
+
+    private suspend fun runSync(phases: MutableList<String>): Result {
         val easternZone = ZoneId.of("America/New_York")
         val today = DateTimeFormatter.ISO_LOCAL_DATE.withZone(easternZone).format(Instant.now())
         
@@ -43,11 +55,12 @@ class WalkHeuristicsWorker @JvmOverloads constructor(
         Log.d("WalkHeuristicsWorker", "Executing background check for $today (Last steps: $lastStepCount)")
         
         // 4. Proactive Token Refresh
-        val token = pocketIdAuth.getAccessTokenSuspend()
+        val token = pocketIdAuth.getAccessTokenSuspend().also { phases.add("auth") }
 
         // --- Heartbeat & Cooperation Phase ---
         try {
             if (token != null) {
+                phases.add("hb")
                 val hbResponse = syncApi.sendHeartbeat(
                     "Bearer $token",
                     com.mecris.go.sync.HeartbeatRequestDto(role = "android_client", process_id = "com.mecris.go")
@@ -103,6 +116,7 @@ class WalkHeuristicsWorker @JvmOverloads constructor(
         }
 
         // --- Arabic Pressure & Nag Phase (The Fuzzy Scheduler) ---
+        phases.add("nag_phase")
         try {
             if (token != null) {
                 val langResponse = syncApi.getLanguages("Bearer $token")
@@ -160,6 +174,7 @@ class WalkHeuristicsWorker @JvmOverloads constructor(
         }
 
         val healthManager = HealthConnectManager(applicationContext)
+        phases.add("health")
         
         if (!healthManager.hasForegroundPermissions() || !healthManager.hasBackgroundPermission()) {
             Log.w("WalkHeuristicsWorker", "Missing permissions, cannot check health data in background.")
@@ -175,6 +190,7 @@ class WalkHeuristicsWorker @JvmOverloads constructor(
             
             if (statusChanged || significantIncrease) {
                 if (token != null) {
+                    phases.add("walk_upload")
                     val dto = WalkDataSummaryDto(
                         start_time = summary.startTime.toString(),
                         end_time = Instant.now().toString(),

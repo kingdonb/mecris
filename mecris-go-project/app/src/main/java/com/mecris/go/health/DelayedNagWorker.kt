@@ -26,9 +26,21 @@ class DelayedNagWorker(
     private val brain = SovereignBrain(applicationContext)
 
     override suspend fun doWork(): Result {
+        val startedAt = System.currentTimeMillis()
+        val phases = mutableListOf<String>()
         val originalTarget = inputData.getString("target_goal") ?: "ARABIC"
         Log.i("DelayedNagWorker", "Executing fuzzy nag check for: $originalTarget")
 
+        val result = runNagCheck(originalTarget, phases)
+        Log.i(
+            "DelayedNagWorker",
+            "WORKER_METRIC run=delayed_nag duration_ms=${System.currentTimeMillis() - startedAt} " +
+                "phases=${phases.joinToString(",")} result=$result"
+        )
+        return result
+    }
+
+    private suspend fun runNagCheck(originalTarget: String, phases: MutableList<String>): Result {
         val token = pocketIdAuth.getAccessTokenSuspend()
         val nagManager = NagNotificationManager(applicationContext, syncApi)
 
@@ -36,6 +48,7 @@ class DelayedNagWorker(
             var status: com.mecris.go.sync.AggregateStatusResponseDto? = null
             if (token != null) {
                 try {
+                    phases.add("agg")
                     val statusResponse = syncApi.getAggregateStatus("Bearer $token")
                     if (statusResponse.isSuccessful) {
                         status = statusResponse.body()
@@ -47,6 +60,7 @@ class DelayedNagWorker(
 
             if (status != null) {
                 // 2. PIVOT: Decide what to nag about based on fresh data
+                phases.add("health")
                 val healthManager = HealthConnectManager(applicationContext)
                 val summary = if (healthManager.hasForegroundPermissions()) healthManager.fetchRecentWalkData() else null
                 val result = evaluateNagHierarchy(status, token!!, summary)
@@ -80,6 +94,7 @@ class DelayedNagWorker(
                                     else -> "unknown"
                                 }
                                 Log.i("DelayedNagWorker", "Firing Nag: $title (LLM: ${llmMessage != null})")
+                                phases.add("llm")
                                 nagManager.showNag(title, finalMessage, packageName, nagType)
                                 
                                 // Update both timestamps
@@ -95,9 +110,11 @@ class DelayedNagWorker(
                         }
             } else {
                 // 3. SOVEREIGN FALLBACK: Basic local walk check
+                phases.add("fallback")
                 val localHourFallback = java.time.LocalDateTime.now().hour
                 val healthManager = HealthConnectManager(applicationContext)
                 if (localHourFallback >= 8 && localHourFallback < 20 && healthManager.hasForegroundPermissions()) {
+                    phases.add("health_fallback")
                     val summary = healthManager.fetchRecentWalkData()
                     if (summary.totalSteps < 2000) {
                         // CHECK COOLDOWN even for fallback nags
