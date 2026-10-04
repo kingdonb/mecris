@@ -6,7 +6,7 @@ Python is the executable spec for task 000617; the Rust twin
 must agree with every case here.
 """
 
-from datetime import datetime
+from datetime import date, datetime
 from zoneinfo import ZoneInfo
 
 from services.beeminder_road import (
@@ -81,10 +81,20 @@ def test_road_accepts_string_and_dashed_daystamps():
 
 
 def test_road_defaults_to_today_in_goal_timezone():
-    # No explicit daystamp: uses goal_daystamp() — just verify it doesn't crash
-    # and returns a plausible road value from the fixture.
+    # No explicit daystamp: the default must be an evaluation at goal_daystamp()
+    # (America/New_York). The expected value is recomputed from the fixture with
+    # real-date math (FULLROAD is linear: -2/day from 2026-09-28 through
+    # 2026-10-02, extrapolated after), so this stays green on any calendar day —
+    # the original hardcoded (92.0, 94.0) tuple rotted as soon as real time
+    # passed 2026-10-03.
     value = road_value_today(FULLROAD)
-    assert value in (92.0, 94.0)  # today (2026-10-01 in NY) or extrapolation
+    today = goal_daystamp()
+    today_date = date(today // 10000, (today // 100) % 100, today % 100)
+    if today_date >= date(2026, 9, 28):
+        expected = 92.0 - 2.0 * (today_date - date(2026, 10, 2)).days
+    else:
+        expected = 100.0
+    assert value == expected
 
 
 # --- beeminder_due_today -----------------------------------------------------
