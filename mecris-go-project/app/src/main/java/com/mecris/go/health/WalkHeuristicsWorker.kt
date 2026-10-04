@@ -11,7 +11,6 @@ import com.mecris.go.auth.PocketIdAuthRepository
 import com.mecris.go.sync.HeartbeatRequestDto
 import com.mecris.go.sync.SyncServiceApi
 import com.mecris.go.sync.WalkDataSummaryDto
-import com.mecris.go.sync.NagNotificationManager
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -23,7 +22,8 @@ class WalkHeuristicsWorker @JvmOverloads constructor(
     appContext: Context,
     workerParams: WorkerParameters,
     private val injectedAuth: PocketIdAuthRepository? = null,
-    private val injectedSyncApi: SyncServiceApi? = null
+    private val injectedSyncApi: SyncServiceApi? = null,
+    private val etHourOverride: Int? = null
 ) : CoroutineWorker(appContext, workerParams) {
 
     private val pocketIdAuth = injectedAuth ?: PocketIdAuthRepository.getInstance(applicationContext)
@@ -32,8 +32,21 @@ class WalkHeuristicsWorker @JvmOverloads constructor(
     private val prefs = applicationContext.getSharedPreferences("mecris_worker_state", Context.MODE_PRIVATE)
 
     override suspend fun doWork(): Result {
-        val easternZone = ZoneId.of("America/New_York")
+        val startedAt = System.currentTimeMillis()
+        val phases = mutableListOf<String>()
+        val result = runSync(phases)
+        Log.i(
+            "WalkHeuristicsWorker",
+            "WORKER_METRIC run=walk_heuristics duration_ms=${System.currentTimeMillis() - startedAt} " +
+                "phases=${phases.joinToString(",")} result=$result"
+        )
+        return result
+    }
+
+    private suspend fun runSync(phases: MutableList<String>): Result {
+        val easternZone = ZoneId.of(WorkerPolicy.WORKER_TIMEZONE)
         val today = DateTimeFormatter.ISO_LOCAL_DATE.withZone(easternZone).format(Instant.now())
+        val etHour = etHourOverride ?: WorkerPolicy.currentEtHour()
         
         // 1. Inertia Logic: Check if we already hit the "COMPLETED" state today
         val lastSyncedDay = prefs.getString("last_synced_day", "")
@@ -43,11 +56,12 @@ class WalkHeuristicsWorker @JvmOverloads constructor(
         Log.d("WalkHeuristicsWorker", "Executing background check for $today (Last steps: $lastStepCount)")
         
         // 4. Proactive Token Refresh
-        val token = pocketIdAuth.getAccessTokenSuspend()
+        val token = pocketIdAuth.getAccessTokenSuspend().also { phases.add("auth") }
 
         // --- Heartbeat & Cooperation Phase ---
         try {
             if (token != null) {
+                phases.add("hb")
                 val hbResponse = syncApi.sendHeartbeat(
                     "Bearer $token",
                     com.mecris.go.sync.HeartbeatRequestDto(role = "android_client", process_id = "com.mecris.go")
@@ -60,22 +74,35 @@ class WalkHeuristicsWorker @JvmOverloads constructor(
                     // Task 588 Android hook: ask the backend for a Helix balance sync.
                     // The laptop leader polls helix_balance_requests and pushes the
                     // change-gated straight-copy datapoint to the helix-ml Beeminder goal.
-                    try {
-                        val hlx = syncApi.requestHelixBalanceSync("Bearer $token")
-                        if (hlx.isSuccessful) {
-                            Log.i("WalkHeuristicsWorker", "Helix balance sync requested; last known: ${hlx.body()?.last_balance ?: "none"} @ ${hlx.body()?.last_reading_ts ?: "n/a"}")
-                        } else {
-                            Log.w("WalkHeuristicsWorker", "Helix balance request code: ${hlx.code()}")
+                    // Battery diet (task 000622): at most one request per hour, waking
+                    // hours only — the edge runs its upstream Helix fetch inline in
+                    // this call, so every request also holds the phone radio up.
+                    if (WorkerPolicy.shouldRequestHelixBalance(
+                            prefs.getLong("last_helix_request", 0L),
+                            Instant.now().toEpochMilli(),
+                            etHour
+                        )
+                    ) {
+                        phases.add("helix")
+                        try {
+                            val hlx = syncApi.requestHelixBalanceSync("Bearer $token")
+                            if (hlx.isSuccessful) {
+                                prefs.edit().putLong("last_helix_request", Instant.now().toEpochMilli()).apply()
+                                Log.i("WalkHeuristicsWorker", "Helix balance sync requested; last known: ${hlx.body()?.last_balance ?: "none"} @ ${hlx.body()?.last_reading_ts ?: "n/a"}")
+                            } else {
+                                Log.w("WalkHeuristicsWorker", "Helix balance request code: ${hlx.code()}")
+                            }
+                        } catch (e: java.io.IOException) {
+                            Log.d("WalkHeuristicsWorker", "Helix balance request skipped (offline): ${e.message}")
+                        } catch (e: Exception) {
+                            Log.e("WalkHeuristicsWorker", "Helix balance request failed: ${e.message}")
                         }
-                    } catch (e: java.io.IOException) {
-                        Log.d("WalkHeuristicsWorker", "Helix balance request skipped (offline): ${e.message}")
-                    } catch (e: Exception) {
-                        Log.e("WalkHeuristicsWorker", "Helix balance request failed: ${e.message}")
                     }
 
                     val twoHoursAgo = Instant.now().minusSeconds(7200).toEpochMilli()
                     if (body?.mcp_server_active == false && lastCloudSyncTrigger < twoHoursAgo) {
                         Log.w("WalkHeuristicsWorker", "MCP Server is DARK. Triggering Autonomous Cloud Sync + Reminders.")
+                        phases.add("cloudsync")
                         val syncResponse = syncApi.triggerCloudSync("Bearer $token")
                         if (!syncResponse.isSuccessful) {
                             throw retrofit2.HttpException(syncResponse)
@@ -84,6 +111,8 @@ class WalkHeuristicsWorker @JvmOverloads constructor(
                             val remindersResponse = syncApi.triggerReminders()
                             if (!remindersResponse.isSuccessful) {
                                 Log.w("WalkHeuristicsWorker", "Reminders trigger returned: ${remindersResponse.code()}")
+                            } else {
+                                phases.add("reminders")
                             }
                         } catch (e: java.io.IOException) {
                             Log.d("WalkHeuristicsWorker", "Reminders trigger skipped (offline): ${e.message}")
@@ -103,48 +132,38 @@ class WalkHeuristicsWorker @JvmOverloads constructor(
         }
 
         // --- Arabic Pressure & Nag Phase (The Fuzzy Scheduler) ---
-        try {
-            if (token != null) {
-                val langResponse = syncApi.getLanguages("Bearer $token")
-                
-                if (langResponse.isSuccessful) {
-                    val languages = langResponse.body()?.languages ?: emptyList()
+        // Battery diet (task 000622): debt evaluation only during waking hours; at
+        // night the nag worker's own hour gates would suppress everything anyway.
+        // The edge already folds pump + Beeminder due-today into aggregate-status
+        // components (goal_met = pump_met AND due == 0), so the languages poll and
+        // client-side pump math are gone — DelayedNagWorker re-evaluates the full
+        // hierarchy from aggregate-status itself.
+        if (!WorkerPolicy.isQuietHours(etHour)) {
+            phases.add("nag_phase")
+            try {
+                if (token != null) {
+                    phases.add("agg")
                     val aggregateResponse = syncApi.getAggregateStatus("Bearer $token")
-                    val aggregate = aggregateResponse.body()
+                    val components = aggregateResponse.body()?.components
 
-                    // Check if any goal is in debt
-                    val arabicStat = languages.find { it.name.equals("ARABIC", ignoreCase = true) }
-                    val greekStat = languages.find { it.name.equals("GREEK", ignoreCase = true) }
-                    
-                    var targetGoal: String? = null
-                    
-                    if (arabicStat != null && arabicStat.current > 0) {
-                        val target = com.mecris.go.sync.ReviewPumpCalculator.calculateTargetFlowRate(
-                            arabicStat.pump_multiplier ?: 1.0, arabicStat.current, arabicStat.tomorrow
+                    val debtGoals = components?.let {
+                        listOfNotNull(
+                            if (!it.arabic) "ARABIC" else null,
+                            if (!it.walk) "WALK" else null,
+                            if (!it.greek) "GREEK" else null
                         )
-                        if (arabicStat.daily_completions < target) targetGoal = "ARABIC"
-                    }
-                    
-                    if (targetGoal == null && aggregate?.components?.walk == false) {
-                        targetGoal = "WALK"
-                    }
+                    } ?: emptyList()
 
-                    if (targetGoal == null && greekStat != null && greekStat.current > 0) {
-                        val target = com.mecris.go.sync.ReviewPumpCalculator.calculateTargetFlowRate(
-                            greekStat.pump_multiplier ?: 1.0, greekStat.current, greekStat.tomorrow
-                        )
-                        if (greekStat.daily_completions < target) targetGoal = "GREEK"
-                    }
-
-                    if (targetGoal != null) {
+                    if (debtGoals.isNotEmpty()) {
                         val fuzzMinutes = (5..35).random().toLong()
-                        Log.i("WalkHeuristicsWorker", "Goal debt detected ($targetGoal). Scheduling fuzzy nag in $fuzzMinutes mins.")
+                        Log.i("WalkHeuristicsWorker", "Goal debt detected (${debtGoals.joinToString("+")}). Scheduling fuzzy nag in $fuzzMinutes mins.")
 
                         val delayedRequest = OneTimeWorkRequestBuilder<DelayedNagWorker>()
                             .setInitialDelay(fuzzMinutes, java.util.concurrent.TimeUnit.MINUTES)
-                            .setInputData(workDataOf("target_goal" to targetGoal))
+                            .setInputData(workDataOf("target_goal" to debtGoals.first()))
                             .build()
 
+                        phases.add("nag_sched")
                         WorkManager.getInstance(applicationContext).enqueueUniqueWork(
                             "DelayedNagWork",
                             androidx.work.ExistingWorkPolicy.REPLACE,
@@ -152,14 +171,15 @@ class WalkHeuristicsWorker @JvmOverloads constructor(
                         )
                     }
                 }
+            } catch (e: java.io.IOException) {
+                Log.d("WalkHeuristicsWorker", "Nag scheduling skipped (offline): ${e.message}")
+            } catch (e: Exception) {
+                Log.e("WalkHeuristicsWorker", "Nag scheduling failed: ${e.message}")
             }
-        } catch (e: java.io.IOException) {
-            Log.d("WalkHeuristicsWorker", "Nag scheduling skipped (offline): ${e.message}")
-        } catch (e: Exception) {
-            Log.e("WalkHeuristicsWorker", "Nag scheduling failed: ${e.message}")
         }
 
         val healthManager = HealthConnectManager(applicationContext)
+        phases.add("health")
         
         if (!healthManager.hasForegroundPermissions() || !healthManager.hasBackgroundPermission()) {
             Log.w("WalkHeuristicsWorker", "Missing permissions, cannot check health data in background.")
@@ -175,6 +195,7 @@ class WalkHeuristicsWorker @JvmOverloads constructor(
             
             if (statusChanged || significantIncrease) {
                 if (token != null) {
+                    phases.add("walk_upload")
                     val dto = WalkDataSummaryDto(
                         start_time = summary.startTime.toString(),
                         end_time = Instant.now().toString(),

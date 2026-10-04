@@ -53,6 +53,8 @@ import androidx.health.connect.client.contracts.ExerciseRouteRequestContract
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.lifecycleScope
+import androidx.work.Constraints
+import androidx.work.NetworkType
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import com.mecris.go.auth.AuthErrorReporter
@@ -222,13 +224,20 @@ class MainActivity : ComponentActivity() {
 
     private fun setupWorkManager() {
         val workManager = WorkManager.getInstance(this)
+        // Battery diet (task 000622): hourly heartbeat instead of 15-min polling, only
+        // with network available. UPDATE (not KEEP) so the new interval replaces the
+        // already-enqueued 15-min schedule on app upgrade.
         val walkCheckRequest = PeriodicWorkRequestBuilder<WalkHeuristicsWorker>(
-            15, TimeUnit.MINUTES
+            60, TimeUnit.MINUTES
+        ).setConstraints(
+            Constraints.Builder()
+                .setRequiredNetworkType(NetworkType.CONNECTED)
+                .build()
         ).build()
 
         workManager.enqueueUniquePeriodicWork(
             "WalkHeuristicsSync",
-            androidx.work.ExistingPeriodicWorkPolicy.KEEP,
+            androidx.work.ExistingPeriodicWorkPolicy.UPDATE,
             walkCheckRequest
         )
     }
