@@ -2,6 +2,32 @@
 
 All notable changes to Mecris are documented here.
 
+## [0.1.4] — 2026-10-04 — Battery diet: 8 hr → ~2 hr background
+
+The Android app showed 8 hr 11 min of background battery time against 26 min of
+screen time. Root cause: a 15-minute WorkManager heartbeat (~96 runs/day) plus,
+after the 0.1.2 due-today change, near-continuous nag-worker runs that paid for
+weather fetches, Health Connect reads, and on-device Gemini Nano inference
+*before* their cooldown check — which then usually suppressed the nag. This
+release cuts the cadence and the per-run cost; nag firing behavior, sync
+semantics, and the deliberate battery-optimization exemption are unchanged.
+
+### Fixed
+
+- **Background battery drain** (target ≤ ~2.5 hr/day, from 8 hr 11 min): background network calls drop from ~500–700/day to under ~120/day — heartbeat ~24 runs/day + ≤ ~14 helix-balance requests + ≤ ~28 aggregate polls.
+- **Cheap-first nag worker**: target selection, hour gates, and cooldown checks (SharedPreferences only) now run before any weather fetch / Health Connect read / Gemini Nano inference; the LLM narrative is generated only when a nag will actually fire. Hierarchy, cooldowns (4 h default, 1.5 h Moussaka exception), weather fallthrough, and all messages unchanged.
+- **Aggregate-only debt detection**: dropped `GET /languages` + client-side pump math from the background path — the edge already folds pump + Beeminder due-today into `aggregate-status` components (`goal_met = pump_met AND due == 0`).
+
+### Changed
+
+- **Hourly heartbeat**: periodic `WalkHeuristicsWorker` 15 → 60 minutes, with `ExistingPeriodicWorkPolicy.UPDATE` so the new interval replaces the already-enqueued 15-min schedule on upgrade (no cold start needed), plus a `NetworkType.CONNECTED` constraint.
+- **Quiet-hours gate**: the debt/nag evaluation phase runs only 08:00–22:00 America/New_York; heartbeat and walk upload remain 24 h (leader gating + night walks).
+- **Helix-balance throttle**: the `POST /helix-balance/request` doorbell fires at most once per 60 minutes during waking hours (`last_helix_request` pref). The edge runs its upstream Helix fetch inline in this request, so this also cuts phone radio time.
+
+### Added
+
+- **Run instrumentation**: one `WORKER_METRIC` log line per worker run (duration_ms + executed phases) — the falsifiable witness for the before/after battery lap.
+
 ## [0.1.3] — 2026-10-01 — Beeminder safebump & epoch road fix
 
 Fixed Beeminder due-today calculation for sparse/epoch fullroad data and honored `safebump`.
