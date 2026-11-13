@@ -69,6 +69,7 @@ from usage_tracker import UsageTracker, get_budget_status as get_budget_status_f
 from virtual_budget_manager import VirtualBudgetManager
 from billing_reconciliation import BillingReconciliation
 from groq_odometer_tracker import get_groq_context_for_narrator, get_groq_reminder_status, record_groq_reading as record_groq_reading_from_tracker
+import claude_plan_usage
 from twilio_sender import smart_send_message, send_sms, send_message
 from scripts.anthropic_cost_tracker import AnthropicCostTracker
 from scripts.clozemaster_scraper import sync_clozemaster_to_beeminder
@@ -774,6 +775,13 @@ async def get_narrator_context(user_id: str = None) -> Dict[str, Any]:
         except Exception as e:
             logger.error(f"Failed to fetch Groq context: {e}")
 
+        claude_plan = {}
+        try:
+            claude_plan = await asyncio.to_thread(_get_claude_plan_status_sync, target_user_id)
+        except Exception as e:
+            logger.error(f"Failed to fetch Claude plan status: {e}")
+            claude_plan = {"state": "unknown", "summary_line": "Claude: unknown (status unavailable)", "error": str(e)}
+
         # Greek backlog boost: check if 7-day review forecast exceeds threshold
         lang_stats = await asyncio.to_thread(neon_checker.get_language_stats, target_user_id)
         greek_backlog_boost = language_sync_service._greek_backlog_active(lang_stats)
@@ -843,6 +851,17 @@ async def get_narrator_context(user_id: str = None) -> Dict[str, Any]:
         if anthropic_cost_tracker:
             recommendations.append("📊 Real-time budget tracking is active via Anthropic Admin API")
 
+        # Claude plan availability (kingdonb/mecris#344)
+        claude_state = claude_plan.get("state")
+        if claude_plan.get("summary_line"):
+            summary += f", {claude_plan['summary_line']}"
+        if claude_state == "exhausted":
+            urgent_items.append(f"CLAUDE PLAN EXHAUSTED: {claude_plan.get('reason', '')}")
+        elif claude_state == "constrained":
+            recommendations.append(f"🤖 Claude plan constrained ({claude_plan.get('reason', '')}): save it for high-value work")
+        elif claude_state == "unknown" and claude_plan.get("observed_at"):
+            recommendations.append("🤖 Claude plan reading is stale: record a fresh one with record_claude_plan_usage")
+
         if groq_context.get("groq_tracking", {}).get("needs_action"):
             groq_urgent = groq_context["groq_tracking"].get("urgent_reminder")
             if groq_urgent:
@@ -884,6 +903,7 @@ async def get_narrator_context(user_id: str = None) -> Dict[str, Any]:
             "time_window_end": time_window_end,
             "greek_backlog_boost": greek_backlog_boost,
             "greek_backlog_cards": greek_backlog_cards,
+            "claude_plan": claude_plan,
             "budget_governor": _neon_budget_governor.get_narrator_summary(),
             "presence": presence_info,
             "presence_status": presence_info.get("status", "unknown"),
@@ -1227,6 +1247,63 @@ def get_groq_context(user_id: str = None) -> Dict[str, Any]:
     if not target_user_id:
         return {"error": "Authentication Required"}
     return get_groq_context_for_narrator(target_user_id)
+
+_claude_plan_store = claude_plan_usage.ClaudePlanUsageStore()
+
+
+def _get_claude_plan_status_sync(target_user_id: str) -> Dict[str, Any]:
+    owner = usage_tracker.resolve_user_id(target_user_id)
+    return claude_plan_usage.summarize(_claude_plan_store.latest(owner))
+
+
+@mcp.tool(description=(
+    "Record a Claude subscription plan usage reading (kingdonb/mecris#344). Percentages are 0-100; "
+    "resets_at values are ISO-8601 with offset (naive = UTC). Omit session_* once the account is verified. "
+    "This reads plan limits only; it never touches usage credits."
+))
+def record_claude_plan_usage(
+    weekly_all_pct: float,
+    weekly_all_resets_at: str,
+    weekly_fable_pct: Optional[float] = None,
+    weekly_fable_resets_at: Optional[str] = None,
+    session_pct: Optional[float] = None,
+    session_resets_at: Optional[str] = None,
+    verified: Optional[bool] = None,
+    plan: str = "ultra",
+    source: str = "manual",
+    observed_at: Optional[str] = None,
+    notes: str = "",
+    user_id: str = None,
+) -> Dict[str, Any]:
+    target_user_id = resolve_target_user(user_id)
+    if not target_user_id:
+        return {"error": "Authentication Required"}
+    try:
+        windows = claude_plan_usage.build_windows(
+            weekly_all_pct, weekly_all_resets_at, weekly_fable_pct, weekly_fable_resets_at,
+            session_pct, session_resets_at,
+        )
+        reading = claude_plan_usage.make_reading(windows, plan, verified, source, observed_at, notes)
+    except ValueError as e:
+        return {"recorded": False, "error": str(e)}
+    try:
+        result = _claude_plan_store.record(usage_tracker.resolve_user_id(target_user_id), reading)
+    except Exception as e:
+        logger.error(f"record_claude_plan_usage failed: {e}")
+        return {"recorded": False, "error": str(e)}
+    return {**result, "status": claude_plan_usage.summarize(reading)}
+
+
+@mcp.tool(description="Is Claude plan usage available right now? Returns available/constrained/exhausted/unknown from the latest reading (stale readings are unknown).")
+def get_claude_plan_status(user_id: str = None) -> Dict[str, Any]:
+    target_user_id = resolve_target_user(user_id)
+    if not target_user_id:
+        return {"error": "Authentication Required"}
+    try:
+        return _get_claude_plan_status_sync(target_user_id)
+    except Exception as e:
+        logger.error(f"get_claude_plan_status failed: {e}")
+        return {"state": "unknown", "error": str(e)}
 
 @mcp.tool(description="Get unified cost status combining Claude budget and Groq usage data.")
 async def get_unified_cost_status(user_id: str = None) -> Dict[str, Any]:
@@ -1995,7 +2072,7 @@ def delete_user_data(user_id: str = None) -> Dict[str, Any]:
         return {"deleted": False, "error": str(e)}
 
 
-@mcp.tool(description="GDPR data portability: export all data for a user as structured JSON. Returns rows from users, language_stats, budget_tracking, token_bank, walk_inferences, and message_log tables.")
+@mcp.tool(description="GDPR data portability: export all data for a user as structured JSON. Returns rows from users, language_stats, budget_tracking, token_bank, walk_inferences, message_log, and claude_plan_usage_readings tables.")
 def export_user_data(user_id: str = None) -> Dict[str, Any]:
     target_user_id = usage_tracker.resolve_user_id(user_id)
     neon_url = os.getenv("NEON_DB_URL")
@@ -2029,8 +2106,14 @@ def export_user_data(user_id: str = None) -> Dict[str, Any]:
                         "token_bank": _rows(cur, "token_bank", "user_id"),
                         "walk_inferences": _rows(cur, "walk_inferences", "user_id"),
                         "message_log": _rows(cur, "message_log", "user_id"),
+                        "claude_plan_usage_readings": _rows(cur, "claude_plan_usage_readings", "user_id"),
                     }
                 }
+
+    try:
+        _claude_plan_store.init_database()  # ensure the table exists before SELECT
+    except Exception as e:
+        logger.warning(f"export_user_data: claude_plan_usage init skipped: {e}")
 
     try:
         return _export()

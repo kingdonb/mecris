@@ -43,7 +43,7 @@ def _make_cursor_with_tables(user_row, table_rows=None):
     mock_cur.fetchone.return_value = None
 
     # First fetchall → users row; subsequent → empty (language_stats, etc.)
-    mock_cur.fetchall.side_effect = [[user_row]] + [table_rows] * 5
+    mock_cur.fetchall.side_effect = [[user_row]] + [table_rows] * 6
     return mock_cur
 
 
@@ -52,7 +52,7 @@ def _make_cursor_with_tables(user_row, table_rows=None):
 # ---------------------------------------------------------------------------
 
 def test_export_user_data_returns_all_tables():
-    """Happy path: exported=True, data dict has all 6 table keys."""
+    """Happy path: exported=True, data dict has all 7 table keys."""
     sys.modules.pop("mcp_server", None)
 
     env_patch, db_patch = _make_mcp_importable()
@@ -71,7 +71,7 @@ def test_export_user_data_returns_all_tables():
     assert result["exported"] is True
     assert result["user_id"] == "test-user"
     assert "data" in result
-    expected_tables = {"users", "language_stats", "budget_tracking", "token_bank", "walk_inferences", "message_log"}
+    expected_tables = {"users", "language_stats", "budget_tracking", "token_bank", "walk_inferences", "message_log", "claude_plan_usage_readings"}
     assert set(result["data"].keys()) == expected_tables
 
 

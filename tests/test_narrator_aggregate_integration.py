@@ -71,7 +71,7 @@ def _narrator_patches(aggregate_result):
     }
 
 
-async def _run_narrator_context_with_aggregate(aggregate_result):
+async def _run_narrator_context_with_aggregate(aggregate_result, claude_plan=None):
     """Helper: run get_narrator_context with all deps mocked + a specific aggregate result."""
     sys.modules.pop("mcp_server", None)
     mocks = _narrator_patches(aggregate_result)
@@ -95,8 +95,9 @@ async def _run_narrator_context_with_aggregate(aggregate_result):
                                                                 with patch("mcp_server._get_presence_summary", AsyncMock(return_value={})):
                                                                     with patch("mcp_server.anthropic_cost_tracker", None):
                                                                         with patch("mcp_server.get_daily_aggregate_status", AsyncMock(return_value=aggregate_result)):
-                                                                            from mcp_server import get_narrator_context
-                                                                            return await get_narrator_context()
+                                                                            with patch("mcp_server._get_claude_plan_status_sync", return_value=claude_plan or {}):
+                                                                                from mcp_server import get_narrator_context
+                                                                                return await get_narrator_context()
 
 
 @pytest.mark.asyncio
@@ -166,3 +167,47 @@ async def test_narrator_partial_progress_precedes_informational_recommendations(
     assert progress_idx == 0, (
         f"Expected progress rec at index 0, got index {progress_idx}: {recommendations}"
     )
+
+
+# ---------------------------------------------------------------------------
+# Claude plan availability (kingdonb/mecris#344)
+# ---------------------------------------------------------------------------
+
+_AGG = {"score": "1/3", "satisfied_count": 1, "total_count": 3, "all_clear": False, "goals": []}
+
+
+@pytest.mark.asyncio
+async def test_narrator_includes_claude_plan_and_summary_line():
+    plan = {"state": "available", "summary_line": "Claude: available (62% weekly, resets Mon 4:00 AM)",
+            "observed_at": "2026-11-13T20:00:00+00:00"}
+    result = await _run_narrator_context_with_aggregate(_AGG, claude_plan=plan)
+    assert result["claude_plan"]["state"] == "available"
+    assert "Claude: available (62% weekly" in result["summary"]
+    assert not any("CLAUDE" in u for u in result["urgent_items"])
+
+
+@pytest.mark.asyncio
+async def test_narrator_exhausted_claude_plan_is_urgent():
+    plan = {"state": "exhausted", "reason": "weekly_all at 100%", "summary_line": "Claude: exhausted (100% weekly, resets Mon 4:00 AM)"}
+    result = await _run_narrator_context_with_aggregate(_AGG, claude_plan=plan)
+    assert any("CLAUDE PLAN EXHAUSTED" in u for u in result["urgent_items"])
+
+
+@pytest.mark.asyncio
+async def test_narrator_stale_claude_reading_nudges_not_alarms():
+    plan = {"state": "unknown", "reason": "reading is stale", "summary_line": "Claude: unknown (reading is stale)",
+            "observed_at": "2026-11-10T20:00:00+00:00"}
+    result = await _run_narrator_context_with_aggregate(_AGG, claude_plan=plan)
+    assert not any("CLAUDE" in u for u in result["urgent_items"])
+    assert any("record_claude_plan_usage" in r for r in result["recommendations"])
+
+
+def test_get_claude_plan_status_failure_reports_unknown():
+    sys.modules.pop("mcp_server", None)
+    with patch.dict("os.environ", _base_env()), patch("psycopg2.connect"):
+        from mcp_server import get_claude_plan_status
+        with patch("mcp_server.resolve_target_user", return_value="test-user"), \
+             patch("mcp_server._get_claude_plan_status_sync", side_effect=RuntimeError("db down")):
+            status = get_claude_plan_status()
+    assert status["state"] == "unknown"
+    assert "db down" in status["error"]
