@@ -610,7 +610,8 @@ async fn handle_walks_post(req: Request) -> anyhow::Result<Response<String>> {
 async fn handle_trigger_reminders_post(_req: Request) -> anyhow::Result<Response<String>> {
     let sid = variables::get("twilio_account_sid").await?;
     let _tok = decrypt_token(&variables::get("twilio_auth_token_encrypted").await?).await?;
-    let from = variables::get("twilio_from_number").await?;
+    let from = variables::get("twilio_whatsapp_from").await.unwrap_or_default();
+    let template = variables::get("twilio_status_template_sid").await.unwrap_or_default();
     let db = match variables::get("db_url").await { Ok(v) if !v.is_empty() => v, _ => variables::get("neon_db_url").await? };
     let conn = Connection::open(&db).await?;
     let rs = conn.query("SELECT pocket_id_sub, phone_number_encrypted, COALESCE(timezone, 'UTC'), COALESCE(notification_prefs::TEXT, '{}') FROM users WHERE phone_number_encrypted IS NOT NULL AND phone_number_encrypted != '' AND autonomous_sync_enabled = true", &[]).await?.collect().await?;
@@ -628,14 +629,14 @@ async fn handle_trigger_reminders_post(_req: Request) -> anyhow::Result<Response
         let hb_rs = conn.query("SELECT EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - heartbeat)) / 60 FROM scheduler_election WHERE user_id = $1 AND role = 'android_client' ORDER BY heartbeat DESC LIMIT 1", &[ParameterValue::Str(uid.clone())]).await?.collect().await?;
         if hb_rs.first().and_then(|hr| match &hr[0] { DbValue::Floating64(f) => Some(*f as u64), _ => None }).map_or(false, |m| m < 240) { continue; }
         let ph = decrypt_token(&ph_enc).await?;
-        match send_twilio_sms(&sid, &_tok, &from, &ph, "Mecris: Time for a walk! Reply YES to log 1 mile.").await {
+        match send_twilio_whatsapp_template(&sid, &_tok, &from, &ph, &template, &walk_reminder_variables(&local_time_label(&tz, &now))).await {
             // Every attempt is logged for compliance (kingdonb/mecris#167). Failed attempts also
             // count toward the walk_reminder cooldown above, so a failing channel cannot retry-storm.
             // error_msg holds only twilio_failure_summary output, encrypted like the Python logger.
-            Ok(_) => { let _ = conn.execute("INSERT INTO message_log (date, user_id, type, sent_at, status, channel) VALUES (CURRENT_DATE, $1, 'walk_reminder', CURRENT_TIMESTAMP, 'sent', 'sms')", &[ParameterValue::Str(uid.clone())]).await; sent += 1; }
+            Ok(_) => { let _ = conn.execute("INSERT INTO message_log (date, user_id, type, sent_at, status, channel) VALUES (CURRENT_DATE, $1, 'walk_reminder', CURRENT_TIMESTAMP, 'sent', 'whatsapp')", &[ParameterValue::Str(uid.clone())]).await; sent += 1; }
             Err(e) => {
                 let err_param = match encrypt_token(&e.to_string()).await { Ok(enc) => ParameterValue::Str(enc), Err(_) => ParameterValue::DbNull };
-                let _ = conn.execute("INSERT INTO message_log (date, user_id, type, sent_at, status, channel, error_msg) VALUES (CURRENT_DATE, $1, 'walk_reminder', CURRENT_TIMESTAMP, 'failed', 'sms', $2)", &[ParameterValue::Str(uid.clone()), err_param]).await;
+                let _ = conn.execute("INSERT INTO message_log (date, user_id, type, sent_at, status, channel, error_msg) VALUES (CURRENT_DATE, $1, 'walk_reminder', CURRENT_TIMESTAMP, 'failed', 'whatsapp', $2)", &[ParameterValue::Str(uid.clone()), err_param]).await;
                 errors += 1;
             }
         }
@@ -670,8 +671,9 @@ async fn handle_request_phone_verification_post(req: Request) -> anyhow::Result<
     conn.execute("INSERT INTO phone_verifications (user_id, code_hash, expires_at) VALUES ($1, $2, $3::TIMESTAMPTZ) ON CONFLICT (user_id) DO UPDATE SET code_hash = EXCLUDED.code_hash, expires_at = EXCLUDED.expires_at, attempts = 0", &[ParameterValue::Str(uid.clone()), ParameterValue::Str(hash), ParameterValue::Str(exp)]).await?;
     let sid = variables::get("twilio_account_sid").await?;
     let auth = decrypt_token(&variables::get("twilio_auth_token_encrypted").await?).await?;
-    let from = variables::get("twilio_from_number").await?;
-    send_twilio_sms(&sid, &auth, &from, &vr.phone_number, &format!("Mecris code: {}", code)).await?;
+    let from = variables::get("twilio_whatsapp_from").await.unwrap_or_default();
+    let template = variables::get("twilio_status_template_sid").await.unwrap_or_default();
+    send_twilio_whatsapp_template(&sid, &auth, &from, &vr.phone_number, &template, &verification_variables(&code)).await?;
     json_response(200, &"Verification code sent")
 }
 
@@ -773,7 +775,7 @@ async fn handle_twilio_webhook_post(req: Request) -> anyhow::Result<Response<Str
                 if !ph.is_empty() && clean(&ph) == clean(&from_num) {
                     let requestid = format!("{}-{}-{}-sms", uid, goal, chrono::Utc::now().format("%Y-%m-%d"));
                     let _ = push_to_beeminder_idempotent(&uid, &goal, 1.0, "Walk logged via SMS", &requestid, &conn).await;
-                    let _ = conn.execute("INSERT INTO message_log (date, user_id, type, sent_at, status, channel) VALUES (CURRENT_DATE, $1, 'walk_ack', CURRENT_TIMESTAMP, 'received', 'sms')", &[ParameterValue::Str(uid)]).await;
+                    let _ = conn.execute("INSERT INTO message_log (date, user_id, type, sent_at, status, channel) VALUES (CURRENT_DATE, $1, 'walk_ack', CURRENT_TIMESTAMP, 'received', $2)", &[ParameterValue::Str(uid), ParameterValue::Str(inbound_channel(&from_num).to_string())]).await;
                 }
             }
         }
@@ -971,9 +973,53 @@ fn twilio_failure_summary(http_status: u16, body: &str) -> String {
     summary
 }
 
-async fn send_twilio_sms(sid: &str, tok: &str, from: &str, to: &str, msg: &str) -> anyhow::Result<()> {
+fn whatsapp_addr(number: &str) -> String {
+    let n = number.trim();
+    if n.starts_with("whatsapp:") { n.to_string() } else { format!("whatsapp:{}", n) }
+}
+
+fn template_variables_json(vars: &[(String, String)]) -> String {
+    let map: serde_json::Map<String, serde_json::Value> = vars.iter().map(|(k, v)| (k.clone(), serde_json::Value::String(v.clone()))).collect();
+    serde_json::Value::Object(map).to_string()
+}
+
+/// Form body for a Twilio Content (WhatsApp template) send. There is no freeform `Body`.
+fn twilio_template_form(from: &str, to: &str, content_sid: &str, vars: &[(String, String)]) -> String {
+    format!("From={}&To={}&ContentSid={}&ContentVariables={}",
+        urlencoding::encode(&whatsapp_addr(from)), urlencoding::encode(&whatsapp_addr(to)),
+        urlencoding::encode(content_sid), urlencoding::encode(&template_variables_json(vars)))
+}
+
+fn slots(values: [&str; 5]) -> Vec<(String, String)> {
+    values.iter().enumerate().map(|(i, v)| ((i + 1).to_string(), v.to_string())).collect()
+}
+
+// Both fill mecris_status_v2 ("{{1}} is currently {{2}}. {{3}} is {{4}}. Review {{5}}."),
+// with the same values the Python arm sends (services/reminder_service.py, mcp_server.py).
+fn walk_reminder_variables(local_time: &str) -> Vec<(String, String)> { slots(["Daily Walk", "NOT FOUND", "Boris & Fiona", "EXPECTANT", local_time]) }
+fn verification_variables(code: &str) -> Vec<(String, String)> { slots(["Identity", "PENDING", "Code", code, "Account"]) }
+
+fn local_time_label(tz_name: &str, now: &chrono::DateTime<chrono::Utc>) -> String {
+    let tz: chrono_tz::Tz = tz_name.parse().unwrap_or(chrono_tz::UTC);
+    now.with_timezone(&tz).format("%I:%M %p").to_string()
+}
+
+/// Why a WhatsApp template cannot be sent with this configuration, if it cannot.
+fn whatsapp_config_error(from: &str, content_sid: &str) -> Option<&'static str> {
+    if from.trim().is_empty() { Some("whatsapp_sender_not_configured") }
+    else if content_sid.trim().is_empty() { Some("whatsapp_template_not_configured") }
+    else { None }
+}
+
+fn inbound_channel(from: &str) -> &'static str { if from.starts_with("whatsapp:") { "whatsapp" } else { "sms" } }
+
+/// Send an approved WhatsApp template. SMS is disabled for this account, so there is no
+/// SMS fallback: a missing sender or template is an error, returned before any HTTP call.
+/// Errors carry only a fixed reason or twilio_failure_summary output (no PII).
+async fn send_twilio_whatsapp_template(sid: &str, tok: &str, from: &str, to: &str, content_sid: &str, vars: &[(String, String)]) -> anyhow::Result<()> {
+    if let Some(reason) = whatsapp_config_error(from, content_sid) { return Err(anyhow::anyhow!(reason)); }
     let auth = base64::engine::general_purpose::STANDARD.encode(format!("{}:{}", sid, tok));
-    let body = format!("From={}&To={}&Body={}", urlencoding::encode(from), urlencoding::encode(to), urlencoding::encode(msg));
+    let body = twilio_template_form(from, to, content_sid, vars);
     let res = spin_sdk::http::send(Request::builder().method(Method::POST).uri(format!("https://api.twilio.com/2010-04-01/Accounts/{}/Messages.json", sid)).header("Authorization", &format!("Basic {}", auth)).header("Content-Type", "application/x-www-form-urlencoded").body(body)?).await?;
     let status = res.status().as_u16();
     if !(200..300).contains(&status) {

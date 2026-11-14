@@ -194,7 +194,8 @@ goal's aggregation, that is a double-count waiting to happen — the same bug fa
 `/internal/trigger-reminders` (callable by a signed-in user or with the private
 `INTERNAL_API_KEY`; see S1) decrypts phone numbers and applies `should_dispatch`: local hour 9–20, steps < 2000,
 ≥120 min since last message, and deference to any Android heartbeat < 240 min old (the phone
-nagged first, so the cloud shuts up). Texts say *"...Reply YES to log 1 mile."* An incoming
+nagged first, so the cloud shuts up). The reminder is a WhatsApp template (`mecris_status_v2`;
+SMS is disabled, see #368). An incoming
 "YES" is matched to a user by decrypting every stored phone number (and, a security finding:
 without validating `X-Twilio-Signature`), then pushes a 1.0-mile datapoint
 (`sync-service/src/lib.rs:365-392, 450-472`). Reminder tiers escalate: Tier 1 → Tier 2 after 6h

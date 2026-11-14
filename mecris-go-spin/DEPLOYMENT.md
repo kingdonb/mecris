@@ -46,6 +46,8 @@ Both deployment scripts:
 | `TWILIO_AUTH_TOKEN` | Twilio Console | WhatsApp notifications (plaintext in .env, encrypted at deploy) |
 | `TWILIO_WHATSAPP_TEMPLATE_SID` | Meta / Twilio Console | Pre-approved Utility Template SID (default: `HX638b7f9403e04c8fa880370f1b7a9ba1`) |
 | `OPENWEATHER_API_KEY` | OpenWeatherMap | Weather heuristic for walk reminders |
+| `TWILIO_WHATSAPP_FROM` | Twilio Console (WhatsApp sender) | Sender for the sync service's WhatsApp templates, e.g. `whatsapp:+1...`. Required: SMS is disabled and there is no fallback. |
+| `TWILIO_STATUS_TEMPLATE_SID` | Meta / Twilio Console | `mecris_status_v2`, used for walk reminders and verification codes (default: `HX9403f1b85350b8c05780a1128b79f3c2`) |
 | `INTERNAL_API_KEY` | `openssl rand -hex 32` | Guards `/internal/trigger-reminders` and `/internal/failover-sync`. Private, 32+ URL-safe characters. |
 
 ### Internal endpoints and platform cron

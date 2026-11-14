@@ -38,6 +38,7 @@ REQUIRED_VARS=(
     "TWILIO_AUTH_TOKEN"
     "OPENWEATHER_API_KEY"
     "INTERNAL_API_KEY"
+    "TWILIO_WHATSAPP_FROM"
 )
 
 echo -e "${YELLOW}Validating required environment variables...${NC}"
@@ -74,6 +75,10 @@ OIDC_JWKS_JSON='{"keys":[{"alg":"RS256","e":"AQAB","kid":"tmUpnrhx6gk","kty":"RS
 # Twilio WhatsApp Template SID (Default to approved urgency alert v2 if unset)
 TWILIO_WHATSAPP_TEMPLATE_SID="${TWILIO_WHATSAPP_TEMPLATE_SID:-HX638b7f9403e04c8fa880370f1b7a9ba1}"
 
+# mecris_status_v2: the template the sync service uses for walk reminders and
+# verification codes (same one the Python arm uses). SMS is disabled; there is no fallback.
+TWILIO_STATUS_TEMPLATE_SID="${TWILIO_STATUS_TEMPLATE_SID:-HX9403f1b85350b8c05780a1128b79f3c2}"
+
 # Deploy
 echo -e "${YELLOW}Deploying to Akamai (Production WhatsApp Delivery Mode)...${NC}"
 cd "$SCRIPT_DIR"
@@ -89,6 +94,8 @@ spin aka deploy --build --no-confirm --skip-readiness-check \
   --variable twilio_auth_token_encrypted="$TWILIO_AUTH_TOKEN_ENCRYPTED" \
   --variable twilio_from_number="+15744757115" \
   --variable twilio_webhook_url="${TWILIO_WEBHOOK_URL:-}" \
+  --variable twilio_whatsapp_from="$TWILIO_WHATSAPP_FROM" \
+  --variable twilio_status_template_sid="$TWILIO_STATUS_TEMPLATE_SID" \
   --variable twilio_whatsapp_template_sid="$TWILIO_WHATSAPP_TEMPLATE_SID" \
   --variable openweather_api_key="$OPENWEATHER_API_KEY" \
   --variable oidc_jwks_json="$OIDC_JWKS_JSON" \
