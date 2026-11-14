@@ -19,35 +19,24 @@ mod gates;
 mod outcome;
 
 #[derive(Deserialize, Default)] struct NotificationPrefs { #[allow(dead_code)] sms_opted_in: Option<bool> }
-/// The key that was committed to the public deploy scripts. It can never authorize again.
-const BURNED_INTERNAL_KEY: &str = "test-internal-key";
-
-/// Compare two secrets without an early exit on the first differing byte.
-fn secret_eq(a: &str, b: &str) -> bool {
-    a.len() == b.len() && a.bytes().zip(b.bytes()).fold(0u8, |acc, (x, y)| acc | (x ^ y)) == 0
-}
 
 fn query_param(query: Option<&str>, key: &str) -> Option<String> {
     parse_form(query?).into_iter().find(|(k, _)| k == key).map(|(_, v)| v)
 }
 
-/// Who may call the `/internal/*` trigger endpoints:
-/// - a signed-in user (the Android app sends its bearer token), or
-/// - a caller presenting the configured key, in the `x-internal-api-key` header or,
-///   for platform cron which can only set path and query, the `key` query parameter.
+/// Who may call the `/internal/*` cron endpoints: only a caller presenting the configured
+/// key, in the `x-internal-api-key` header or, for platform cron which can only set path
+/// and query, the `key` query parameter. A signed-in user's bearer is not enough (v0.3.0).
 /// An unset key authorizes nobody. So does the key that was once published.
-fn internal_caller_ok(cfg: &str, header_key: Option<&str>, query_key: Option<&str>, signed_in_user: bool) -> bool {
-    if signed_in_user { return true; }
-    if cfg.is_empty() || cfg == BURNED_INTERNAL_KEY { return false; }
-    header_key.map(|h| secret_eq(h, cfg)).unwrap_or(false) || query_key.map(|q| secret_eq(q, cfg)).unwrap_or(false)
+fn internal_caller_ok(cfg: &str, header_key: Option<&str>, query_key: Option<&str>, _signed_in_user: bool) -> bool {
+    outcome::check_internal_key(cfg, header_key, query_key).is_ok()
 }
 
 async fn internal_request_ok(req: &Request) -> bool {
     let cfg = variables::get("internal_api_key").await.unwrap_or_default();
     let header_key = req.headers().get("x-internal-api-key").and_then(|v| v.to_str().ok());
     let query_key = query_param(req.uri().query(), "key");
-    let signed_in = extract_user_id(req.headers().get("authorization")).await.is_some();
-    internal_caller_ok(&cfg, header_key, query_key.as_deref(), signed_in)
+    internal_caller_ok(&cfg, header_key, query_key.as_deref(), false)
 }
 
 fn db_to_i32(v: &DbValue) -> i32 { 

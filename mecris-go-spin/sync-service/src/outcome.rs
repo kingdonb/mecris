@@ -24,21 +24,74 @@ pub enum ReminderOutcome {
     Error,
 }
 
-pub fn reminder_text(_o: &ReminderOutcome) -> String { String::new() }
+pub fn reminder_text(o: &ReminderOutcome) -> String {
+    match o {
+        ReminderOutcome::Sent => "sent 1".to_string(),
+        ReminderOutcome::SendFailed => "send failed".to_string(),
+        ReminderOutcome::Error => "error".to_string(),
+        ReminderOutcome::Gate { reason, phone_minutes, nag_minutes, nags_today, cap } => match reason {
+            Reason::Eligible => "eligible".to_string(),
+            Reason::PhoneActive => format!("stood down (android active {}m)", phone_minutes.unwrap_or(0)),
+            Reason::Damped => format!("skipped (damped, last nag {}m ago)", nag_minutes.unwrap_or(0)),
+            Reason::DailyCap => format!("skipped (daily cap {nags_today}/{cap})"),
+            other => format!("skipped ({})", other.code().replace('_', " ")),
+        },
+    }
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum SyncOutcome { Fresh(i64), Scraped, ScrapeFailed, Error }
 
-pub fn sync_text(_o: &SyncOutcome) -> String { String::new() }
+pub fn sync_text(o: &SyncOutcome) -> String {
+    match o {
+        SyncOutcome::Fresh(m) => format!("fresh {m}m"),
+        SyncOutcome::Scraped => "scraped".to_string(),
+        SyncOutcome::ScrapeFailed => "scrape failed".to_string(),
+        SyncOutcome::Error => "error".to_string(),
+    }
+}
+
+fn clip(s: &str, max: usize) -> String { s.chars().take(max).collect() }
 
 /// "reminders 20:00Z: stood down (android active 35m)"
-pub fn segment(_job: &str, _at: &DateTime<Utc>, _text: &str) -> String { String::new() }
+pub fn segment(job: &str, at: &DateTime<Utc>, text: &str) -> String {
+    clip(&format!("{job} {}Z: {text}", at.format("%H:%M")), SEGMENT_MAX)
+}
+
+fn job_of(seg: &str) -> Option<&'static str> {
+    let first = seg.split(' ').next()?;
+    JOBS.iter().copied().find(|j| *j == first)
+}
 
 /// Replace this job's segment in an existing last_status, keep the other job's.
-pub fn merge_last_status(existing: Option<&str>, _segment: &str) -> String { existing.unwrap_or("").to_string() }
+/// Anything that is not one of our job segments is dropped, so the column only ever
+/// holds text this module built.
+pub fn merge_last_status(existing: Option<&str>, segment: &str) -> String {
+    let new_seg = clip(segment, SEGMENT_MAX);
+    let new_job = job_of(&new_seg);
+    let rank = |j: Option<&str>| j.and_then(|j| JOBS.iter().position(|x| *x == j)).unwrap_or(JOBS.len());
+    let mut by_job: Vec<(usize, String)> = vec![(rank(new_job), new_seg.clone())];
+    by_job.extend(existing.unwrap_or("").split("; ")
+        .filter_map(|s| job_of(s).filter(|j| Some(*j) != new_job).map(|j| (rank(Some(j)), clip(s, SEGMENT_MAX)))));
+    // Stable sort, then keep the first segment per job: the new one wins for its job.
+    by_job.sort_by_key(|(i, _)| *i);
+    by_job.dedup_by_key(|(i, _)| *i);
+    clip(&by_job.into_iter().map(|(_, s)| s).collect::<Vec<_>>().join("; "), LAST_STATUS_MAX)
+}
 
-/// A send error reduced to something safe for a plaintext column.
-pub fn pii_free_error(msg: &str) -> String { msg.to_string() }
+/// A send error reduced to something safe for a plaintext column: the fixed config
+/// reasons, or `twilio_http_<status>[ code=<n>]` as twilio_failure_summary builds it.
+/// Anything else (transport errors, decrypt failures) becomes `send_error`.
+pub fn pii_free_error(msg: &str) -> String {
+    const FIXED: [&str; 3] = ["whatsapp_sender_not_configured", "whatsapp_template_not_configured", "twilio_not_configured"];
+    if FIXED.contains(&msg) { return msg.to_string(); }
+    let digits = |s: &str| !s.is_empty() && s.len() <= 6 && s.bytes().all(|b| b.is_ascii_digit());
+    let ok = msg.strip_prefix("twilio_http_").is_some_and(|rest| match rest.split_once(" code=") {
+        Some((status, code)) => digits(status) && digits(code),
+        None => digits(rest),
+    });
+    if ok { msg.to_string() } else { "send_error".to_string() }
+}
 
 /// The key that was committed to the public deploy scripts. It can never authorize again.
 pub const BURNED_INTERNAL_KEY: &str = "test-internal-key";
@@ -59,8 +112,13 @@ pub fn secret_eq(a: &str, b: &str) -> bool {
 
 /// The internal cron key check: the header or the `key` query parameter must equal the
 /// configured key. An unset key authorizes nobody; neither does the published one.
-pub fn check_internal_key(_cfg: &str, _header: Option<&str>, _query: Option<&str>) -> Result<(), Refusal> {
-    Err(Refusal::NoKey)
+pub fn check_internal_key(cfg: &str, header: Option<&str>, query: Option<&str>) -> Result<(), Refusal> {
+    let presented: Vec<&str> = [header, query].into_iter().flatten().filter(|k| !k.is_empty()).collect();
+    if presented.is_empty() { return Err(Refusal::NoKey); }
+    let usable = !cfg.is_empty() && cfg != BURNED_INTERNAL_KEY;
+    if usable && presented.iter().any(|k| secret_eq(k, cfg)) { return Ok(()); }
+    if presented.iter().any(|k| *k == BURNED_INTERNAL_KEY) { return Err(Refusal::BurnedKey); }
+    Err(Refusal::BadKey)
 }
 
 #[cfg(test)]
