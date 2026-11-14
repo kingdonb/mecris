@@ -1,7 +1,14 @@
 import os
+import tempfile
 import pytest
 import types
 import requests
+
+# mcp_server attaches a file handler at import. Point it at a per-run temp file
+# so the test session never writes into the production logs/mecris_server.log.
+os.environ["MECRIS_LOG_FILE"] = os.path.join(
+    tempfile.mkdtemp(prefix="mecris-pytest-logs-"), "mecris_server.log"
+)
 
 # Pre-load real packages into sys.modules so that later test files using
 # sys.modules.setdefault("psycopg2", MagicMock()) are no-ops and don't

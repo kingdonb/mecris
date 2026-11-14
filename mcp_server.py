@@ -15,16 +15,53 @@ import hashlib
 # Two sinks:
 #   1. stderr  -> ERROR only. Keeps the stdio MCP channel quiet and avoids
 #      flooding Pi's captured stderr, matching prior behavior.
-#   2. rotating file (logs/mecris_server.log) -> INFO+. Persists breadcrumbs and
-#      tracebacks so incidents can be diagnosed after the fact instead of
-#      scrolling off a launch terminal and being lost.
+#   2. rotating file (MECRIS_LOG_FILE, default logs/mecris_server.log) -> INFO+.
+#      Persists breadcrumbs and tracebacks so incidents can be diagnosed after
+#      the fact instead of scrolling off a launch terminal and being lost.
+#      tests/conftest.py points MECRIS_LOG_FILE at a temp file so test runs
+#      never write into the production log.
 #
 # force=True ensures this takes precedence over any config set by imports.
+import re as _re
 import logging.handlers as _logging_handlers
 
 _LOG_FORMAT = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-_LOG_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs")
-_LOG_FILE = os.path.join(_LOG_DIR, "mecris_server.log")
+_LOG_FILE = os.getenv("MECRIS_LOG_FILE", "").strip() or os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "logs", "mecris_server.log"
+)
+_LOG_DIR = os.path.dirname(os.path.abspath(_LOG_FILE))
+
+# Secrets that travel in URLs (Beeminder sends auth_token as a query parameter).
+_SECRET_QUERY_RE = _re.compile(r"\b(auth_token|access_token|api_key)=[^&\s'\"]*", _re.IGNORECASE)
+
+
+def redact_secrets(text: str) -> str:
+    """Replace secret query parameters, name included, with a fixed marker."""
+    return _SECRET_QUERY_RE.sub(lambda m: f"[{m.group(1).lower()} redacted]", text)
+
+
+def _install_redacting_record_factory() -> None:
+    """Redact secrets when a log record is created, so every sink sees the redacted text."""
+    current = logging.getLogRecordFactory()
+    if getattr(current, "_mecris_redacting", False):
+        return
+
+    def factory(*args, **kwargs):
+        record = current(*args, **kwargs)
+        try:
+            message = record.getMessage()
+        except Exception:
+            return record
+        redacted = redact_secrets(message)
+        if redacted != message:
+            record.msg, record.args = redacted, ()
+        return record
+
+    factory._mecris_redacting = True
+    logging.setLogRecordFactory(factory)
+
+
+_install_redacting_record_factory()
 
 _stderr_handler = logging.StreamHandler(sys.stderr)
 _stderr_handler.setLevel(logging.ERROR)
@@ -48,6 +85,9 @@ logging.basicConfig(level=logging.INFO, handlers=_log_handlers, force=True)
 # Namespace levels: our own code INFO+, noisy third-party MCP internals WARNING+.
 logging.getLogger("mecris").setLevel(logging.INFO)
 logging.getLogger("mcp").setLevel(logging.WARNING)
+# httpx logs every request URL at INFO, query string included.
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
 
 from datetime import datetime, timedelta, date, timezone
 from typing import List, Dict, Any, Optional
