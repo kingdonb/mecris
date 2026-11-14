@@ -75,6 +75,18 @@ class DelayedNagWorkerMessageTest {
     }
 
     @Test
+    fun `Spin's last hour and after 22 00 (per_hour equals remaining) says due now`() {
+        // pace.rs: under an hour left, or past 22:00, per_hour == remaining.
+        val lastHour = listOf(PaceDto(goal = "ARABIC", remaining = 42, per_hour = 42.0, clear_by = "2026-11-14T22:00:00-05:00"))
+        assertEquals("Pace: 42 reviews left today, due now.", NagCopy.paceLine("ARABIC", lastHour))
+        val oneLeft = listOf(PaceDto(goal = "GREEK", remaining = 1, per_hour = 1.0, clear_by = "2026-11-14T22:00:00-05:00"))
+        assertEquals("Pace: 1 review left today, due now.", NagCopy.paceLine("GREEK", oneLeft))
+        // Two hours left: still an hourly pace.
+        val twoHours = listOf(PaceDto(goal = "ARABIC", remaining = 42, per_hour = 21.0, clear_by = "2026-11-14T22:00:00-05:00"))
+        assertEquals("Pace: 42 reviews left today, about 21 an hour to clear them by 10:00 PM.", NagCopy.paceLine("ARABIC", twoHours))
+    }
+
+    @Test
     fun `missing clear_by assumes 10 PM`() {
         val pace = listOf(PaceDto(goal = "ARABIC", remaining = 10, per_hour = 2.0, clear_by = null))
         assertEquals("Pace: 10 reviews left today, about 2 an hour to clear them by 10:00 PM.", NagCopy.paceLine("ARABIC", pace))
