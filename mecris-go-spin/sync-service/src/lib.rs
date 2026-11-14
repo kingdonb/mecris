@@ -27,11 +27,6 @@ fn query_param(query: Option<&str>, key: &str) -> Option<String> {
 /// key, in the `x-internal-api-key` header or, for platform cron which can only set path
 /// and query, the `key` query parameter. A signed-in user's bearer is not enough (v0.3.0).
 /// An unset key authorizes nobody. So does the key that was once published.
-#[cfg(test)]
-fn internal_caller_ok(cfg: &str, header_key: Option<&str>, query_key: Option<&str>, _signed_in_user: bool) -> bool {
-    outcome::check_internal_key(cfg, header_key, query_key).is_ok()
-}
-
 async fn internal_request_check(req: &Request) -> Result<(), outcome::Refusal> {
     let cfg = variables::get("internal_api_key").await.unwrap_or_default();
     let header_key = req.headers().get("x-internal-api-key").and_then(|v| v.to_str().ok());
@@ -1390,6 +1385,12 @@ mod tests {
     }
 
     // --- Internal endpoints: fail closed, no published key, callers that can actually authenticate ---
+    /// The router's decision for a caller. `signed_in_user` is kept to show it no longer matters:
+    /// internal_request_check never looks at the bearer.
+    fn internal_caller_ok(cfg: &str, header_key: Option<&str>, query_key: Option<&str>, _signed_in_user: bool) -> bool {
+        outcome::check_internal_key(cfg, header_key, query_key).is_ok()
+    }
+
     #[test]
     fn test_internal_caller_unconfigured_key_fails_closed() {
         assert!(!internal_caller_ok("", None, None, false));
