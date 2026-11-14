@@ -674,12 +674,70 @@ async fn handle_confirm_phone_verification_post(req: Request) -> anyhow::Result<
     }
 }
 
+/// Decode an `application/x-www-form-urlencoded` body into key/value pairs.
+fn parse_form(body: &str) -> Vec<(String, String)> {
+    let dec = |s: &str| urlencoding::decode(&s.replace('+', " ")).map(|c| c.into_owned()).unwrap_or_default();
+    body.split('&').filter(|p| !p.is_empty()).map(|p| { let mut i = p.splitn(2, '='); (dec(i.next().unwrap_or("")), dec(i.next().unwrap_or(""))) }).collect()
+}
+
+fn form_value<'a>(form: &'a [(String, String)], key: &str) -> Option<&'a str> {
+    form.iter().find(|(k, _)| k == key).map(|(_, v)| v.as_str())
+}
+
+/// Bytes Twilio signs: the webhook URL followed by every POST parameter,
+/// sorted by name, as name immediately followed by value.
+fn twilio_signed_payload(url: &str, form: &[(String, String)]) -> String {
+    let mut sorted: Vec<&(String, String)> = form.iter().collect();
+    sorted.sort();
+    let mut data = url.to_string();
+    for (k, v) in sorted { data.push_str(k); data.push_str(v); }
+    data
+}
+
+fn twilio_mac(auth_token: &str, url: &str, form: &[(String, String)]) -> hmac::Hmac<sha1::Sha1> {
+    use hmac::Mac;
+    let mut mac = <hmac::Hmac<sha1::Sha1> as hmac::KeyInit>::new_from_slice(auth_token.as_bytes()).expect("HMAC accepts any key length");
+    mac.update(twilio_signed_payload(url, form).as_bytes());
+    mac
+}
+
+/// The `X-Twilio-Signature` value Twilio would send: base64(HMAC-SHA1(auth_token, payload)).
+#[allow(dead_code)]
+fn twilio_signature(auth_token: &str, url: &str, form: &[(String, String)]) -> String {
+    use hmac::Mac;
+    base64::engine::general_purpose::STANDARD.encode(twilio_mac(auth_token, url, form).finalize().into_bytes())
+}
+
+/// True only when `header` is a valid Twilio signature for this URL and body.
+/// Fails closed when the auth token or URL is not configured. Constant-time compare.
+fn twilio_signature_ok(auth_token: &str, url: &str, body: &str, header: Option<&str>) -> bool {
+    use hmac::Mac;
+    if auth_token.is_empty() || url.is_empty() { return false; }
+    let Some(sig) = header.and_then(|h| base64::engine::general_purpose::STANDARD.decode(h.trim()).ok()) else { return false };
+    twilio_mac(auth_token, url, &parse_form(body)).verify_slice(&sig).is_ok()
+}
+
+/// A walk acknowledgement is a message whose text (the `Body` field only) says yes.
+fn is_walk_ack(form: &[(String, String)]) -> bool {
+    form_value(form, "Body").map(|b| b.to_uppercase().contains("YES")).unwrap_or(false)
+}
+
 async fn handle_twilio_webhook_post(req: Request) -> anyhow::Result<Response<String>> {
-    let _tok = decrypt_token(&variables::get("twilio_auth_token_encrypted").await?).await?;
+    // Twilio signs the exact URL configured in its console. Prefer the configured
+    // value; fall back to the URL Spin saw for this request.
+    let configured_url = variables::get("twilio_webhook_url").await.unwrap_or_default();
+    let url = if configured_url.is_empty() { req.headers().get("spin-full-url").and_then(|v| v.to_str().ok()).unwrap_or("").to_string() } else { configured_url };
+    let signature = req.headers().get("x-twilio-signature").and_then(|v| v.to_str().ok()).map(|s| s.to_string());
+    let tok = match variables::get("twilio_auth_token_encrypted").await { Ok(enc) if !enc.is_empty() => decrypt_token(&enc).await.unwrap_or_default(), _ => String::new() };
     let body = req.into_body().collect().await.map_err(|_| anyhow::anyhow!("body"))?.to_bytes();
     let body_str = std::str::from_utf8(&body).unwrap_or("");
-    let from_num = body_str.split('&').find_map(|p| { let mut i = p.splitn(2, '='); if i.next() == Some("From") { Some(urlencoding::decode(&i.next()?.replace('+', " ")).unwrap_or_default().into_owned()) } else { None } }).unwrap_or_default();
-    if body_str.to_uppercase().contains("YES") {
+    if !twilio_signature_ok(&tok, &url, body_str, signature.as_deref()) {
+        println!("twilio-webhook: rejected request (signature_present={})", signature.is_some());
+        return Ok(text_response(403, "Forbidden")?);
+    }
+    let form = parse_form(body_str);
+    let from_num = form_value(&form, "From").unwrap_or("").to_string();
+    if is_walk_ack(&form) {
         let db = match variables::get("db_url").await { Ok(v) if !v.is_empty() => v, _ => variables::get("neon_db_url").await? };
         let conn = Connection::open(&db).await?;
         let rs = conn.query("SELECT pocket_id_sub, phone_number_encrypted, beeminder_goal FROM users WHERE phone_number_encrypted IS NOT NULL", &[]).await?.collect().await?;

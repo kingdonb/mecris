@@ -80,6 +80,7 @@ spin cloud deploy -f spin.fermyon.toml --build --link "kv:default=default" \
   --variable twilio_account_sid="$TWILIO_ACCOUNT_SID" \
   --variable twilio_auth_token_encrypted="$TWILIO_AUTH_TOKEN_ENCRYPTED" \
   --variable twilio_from_number="+15744757115" \
+  --variable twilio_webhook_url="${TWILIO_WEBHOOK_URL:-}" \
   --variable twilio_whatsapp_template_sid="$TWILIO_WHATSAPP_TEMPLATE_SID" \
   --variable openweather_api_key="$OPENWEATHER_API_KEY" \
   --variable oidc_jwks_json="$OIDC_JWKS_JSON" \
