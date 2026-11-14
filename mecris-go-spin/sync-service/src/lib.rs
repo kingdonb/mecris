@@ -13,6 +13,9 @@ use jwt_simple::prelude::*;
 use aes_gcm::{aead::{Aead, KeyInit}, Aes256Gcm, Nonce};
 use chrono::{Timelike, TimeZone};
 
+#[allow(dead_code)]
+mod gates;
+
 #[derive(Deserialize, Default)] struct NotificationPrefs { #[allow(dead_code)] sms_opted_in: Option<bool> }
 /// The key that was committed to the public deploy scripts. It can never authorize again.
 const BURNED_INTERNAL_KEY: &str = "test-internal-key";
