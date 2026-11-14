@@ -294,3 +294,35 @@ def test_balance_dark_alert_inserts_status_column(monkeypatch):
     assert len(inserts) == 1
     assert "compliance_status" not in inserts[0]
     assert "status" in inserts[0]
+
+
+def test_balance_dark_alert_inserts_date_column(monkeypatch):
+    """Live Neon message_log.date is NOT NULL with no default; the insert must supply it."""
+    import asyncio
+    import sys
+    import types
+    import scripts.helix_balance_scraper as scr
+
+    executed = []
+
+    class FakeCur:
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+        def execute(self, sql, params=None): executed.append((sql, params))
+        def fetchone(self): return None
+
+    class FakeConn:
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+        def cursor(self): return FakeCur()
+        def commit(self): pass
+
+    monkeypatch.setattr(scr, "_neon_url", lambda: "postgres://fake")
+    monkeypatch.setattr(scr.psycopg2, "connect", lambda url: FakeConn())
+    monkeypatch.setitem(sys.modules, "twilio_sender", types.SimpleNamespace(smart_send_message=lambda msg: {"sent": True}))
+
+    asyncio.run(scr._alert_balance_dark("user-1", 3))
+
+    sql, params = next((s, p) for s, p in executed if s.lstrip().upper().startswith("INSERT INTO MESSAGE_LOG"))
+    cols = sql[sql.index("(") + 1: sql.index(")")].replace(" ", "").split(",")
+    assert "date" in cols
