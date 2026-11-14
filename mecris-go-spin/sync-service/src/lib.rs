@@ -15,6 +15,8 @@ use chrono::{Timelike, TimeZone};
 
 #[allow(dead_code)]
 mod gates;
+#[allow(dead_code)]
+mod outcome;
 
 #[derive(Deserialize, Default)] struct NotificationPrefs { #[allow(dead_code)] sms_opted_in: Option<bool> }
 /// The key that was committed to the public deploy scripts. It can never authorize again.
@@ -1243,10 +1245,13 @@ mod tests {
     }
 
     #[test]
-    fn test_internal_caller_signed_in_user_is_allowed() {
-        // The Android app triggers reminders with the user's own bearer token.
-        assert!(internal_caller_ok("", None, None, true));
-        assert!(internal_caller_ok("s3cret-value", Some("wrong"), None, true));
+    fn test_internal_caller_signed_in_user_without_key_is_refused() {
+        // v0.3.0: the cron endpoints take the cron key only. The phone no longer calls
+        // them, and a signed-in user's bearer must not start the all-users loop.
+        assert!(!internal_caller_ok("", None, None, true));
+        assert!(!internal_caller_ok("s3cret-value", None, None, true));
+        assert!(!internal_caller_ok("s3cret-value", Some("wrong"), None, true));
+        assert!(internal_caller_ok("s3cret-value", Some("s3cret-value"), None, true));
     }
 
     #[test]
