@@ -1973,8 +1973,19 @@ def _nag_guard_rows(neon_url: str, target_user_id: str) -> List[Dict[str, Any]]:
 
 
 def _delivery_channel_status(delivery_result: Dict[str, Any]) -> tuple:
-    """(channel, status) for the message_log row of one delivery attempt."""
-    if delivery_result.get("method") == "console":
+    """(channel, status) for the message_log row of one delivery attempt.
+
+    Any WhatsApp attempt is a WhatsApp row, sent or failed: a failed attempt
+    damps and counts toward the cap (contracts/nag_damping_cases.json), even
+    when smart_send_message then fell through to the console fallback. Only
+    a console delivery where no WhatsApp send was tried is console/not_sent;
+    anything else reads as WhatsApp, so an unknown result still damps.
+    """
+    tried_whatsapp = any(
+        str((a or {}).get("method", "")).startswith("whatsapp")
+        for a in delivery_result.get("attempts") or []
+    )
+    if delivery_result.get("method") == "console" and not tried_whatsapp:
         return "console", "not_sent"
     return "whatsapp", ("sent" if delivery_result.get("sent") else "failed")
 
@@ -1987,8 +1998,9 @@ async def send_reminder_message(message_data: Dict[str, Any], user_id: str = Non
       the same 4-hour any-channel damping and New York daily cap as Spin. A
       failed read fails closed.
     - sent_at is the database's NOW() (timestamptz, UTC), date is the New York
-      date, and channel is explicit. A console fallback is channel 'console',
-      status 'not_sent', never a WhatsApp 'sent'.
+      date, and channel is explicit. A console fallback with no WhatsApp
+      attempt is channel 'console', status 'not_sent', never a WhatsApp
+      'sent'. A failed WhatsApp attempt is 'whatsapp'/'failed', so it damps.
     """
     msg_type = message_data.get("type")
     use_template = message_data.get("template_sid") is not None
