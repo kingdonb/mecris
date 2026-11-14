@@ -162,7 +162,7 @@ class DelayedNagWorker @JvmOverloads constructor(
             } else {
                 // 3. SOVEREIGN FALLBACK: Basic local walk check
                 phases.add("fallback")
-                val localHourFallback = java.time.LocalDateTime.now().hour
+                val localHourFallback = injectedHour ?: java.time.LocalDateTime.now().hour
                 val healthManager = injectedHealthManager ?: HealthConnectManager(applicationContext)
                 if (localHourFallback >= 8 && localHourFallback < 20 && healthManager.hasForegroundPermissions()) {
                     phases.add("health_fallback")
