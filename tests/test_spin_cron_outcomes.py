@@ -140,7 +140,7 @@ with open(os.environ["FAKE_LOG"], "a") as f:
     f.write(json.dumps({"argv": args, "url": url, "via_stdin": stdin_cfg is not None}) + "\n")
 u = urlparse(url); q = parse_qs(u.query); key = q.get("key", [None])[0]
 good = key == os.environ["FAKE_GOOD_KEY"]
-if u.path == "/version": code, body = 200, json.dumps({"version": os.environ["FAKE_VERSION"], "cloud_provider": "akamai"})
+if u.path == "/version": code, body = 200, json.dumps({"version": os.environ["FAKE_VERSION"], "cloud_provider": "akamai"}, separators=(",", ":"))
 elif u.path == "/internal/trigger-reminders" and good and q.get("dry_run") == ["1"]:
     code, body = 200, json.dumps({"sent": 0, "failed": 0, "stood_down": 0, "reasons": {"outside_window": 1}, "dry_run": True,
         "users": [{"familiar_id": "someone", "ny_time": "2026-11-14 15:00 EST", "verdict": "skip", "reason": "outside_window"}]})
@@ -238,7 +238,8 @@ def test_verify_fails_when_the_cron_run_leaves_no_heartbeat(tmp_path):
 def test_verify_script_documents_its_modes():
     text = VERIFY.read_text()
     assert "--live-trigger" in text and "curl" in text and "-K -" in text
-    assert 'TRIGGER=1' not in text, "the real trigger is no longer the default"
+    assert not re.search(r"^TRIGGER=1$", text, re.M), "the real trigger is no longer the default"
+    assert re.search(r"^LIVE_TRIGGER=0$", text, re.M)
 
 
 # --- live (CI Spin) ----------------------------------------------------------------------

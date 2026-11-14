@@ -40,14 +40,13 @@ pub fn reminder_text(o: &ReminderOutcome) -> String {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum SyncOutcome { Fresh(i64), Scraped, ScrapeFailed, Error }
+pub enum SyncOutcome { Fresh(i64), Scraped, ScrapeFailed }
 
 pub fn sync_text(o: &SyncOutcome) -> String {
     match o {
         SyncOutcome::Fresh(m) => format!("fresh {m}m"),
         SyncOutcome::Scraped => "scraped".to_string(),
         SyncOutcome::ScrapeFailed => "scrape failed".to_string(),
-        SyncOutcome::Error => "error".to_string(),
     }
 }
 
@@ -83,7 +82,7 @@ pub fn merge_last_status(existing: Option<&str>, segment: &str) -> String {
 /// reasons, or `twilio_http_<status>[ code=<n>]` as twilio_failure_summary builds it.
 /// Anything else (transport errors, decrypt failures) becomes `send_error`.
 pub fn pii_free_error(msg: &str) -> String {
-    const FIXED: [&str; 3] = ["whatsapp_sender_not_configured", "whatsapp_template_not_configured", "twilio_not_configured"];
+    const FIXED: [&str; 4] = ["whatsapp_sender_not_configured", "whatsapp_template_not_configured", "twilio_not_configured", "phone_decrypt_failed"];
     if FIXED.contains(&msg) { return msg.to_string(); }
     let digits = |s: &str| !s.is_empty() && s.len() <= 6 && s.bytes().all(|b| b.is_ascii_digit());
     let ok = msg.strip_prefix("twilio_http_").is_some_and(|rest| match rest.split_once(" code=") {
@@ -199,7 +198,7 @@ mod tests {
     fn outcomes_never_carry_a_number_uid_or_message() {
         let mut all: Vec<String> = Reason::ALL.iter().map(|r| reminder_text(&gate(*r))).collect();
         all.extend([ReminderOutcome::Sent, ReminderOutcome::SendFailed, ReminderOutcome::Error].iter().map(reminder_text));
-        all.extend([SyncOutcome::Fresh(99), SyncOutcome::Scraped, SyncOutcome::ScrapeFailed, SyncOutcome::Error].iter().map(sync_text));
+        all.extend([SyncOutcome::Fresh(99), SyncOutcome::Scraped, SyncOutcome::ScrapeFailed].iter().map(sync_text));
         for t in &all {
             assert!(!t.is_empty());
             assert!(longest_digit_run(t) < 7, "{t}");

@@ -129,17 +129,31 @@ jobs:
         run: |
           cd mecris-go-spin/sync-service && spin build
 
+      - name: Generate Per-Run Spin Secrets
+        run: |
+          # Fresh for every run and never committed: the internal cron key (the tests call
+          # the cron endpoints with it) and a valid AES-256 master key, so Spin can encrypt
+          # a requested phone number. twilio_auth_token_encrypted stays undecryptable, so
+          # no Twilio send can happen from CI.
+          SPIN_INTERNAL_API_KEY="$(openssl rand -hex 32)"
+          SPIN_MASTER_ENCRYPTION_KEY="$(openssl rand -hex 32)"
+          echo "::add-mask::$SPIN_INTERNAL_API_KEY"
+          echo "::add-mask::$SPIN_MASTER_ENCRYPTION_KEY"
+          echo "SPIN_INTERNAL_API_KEY=$SPIN_INTERNAL_API_KEY" >> "$GITHUB_ENV"
+          echo "SPIN_MASTER_ENCRYPTION_KEY=$SPIN_MASTER_ENCRYPTION_KEY" >> "$GITHUB_ENV"
+
       - name: Start Spin Local Development Server
         env:
           NEON_DB_URL: postgresql://mecris:mecris@localhost:5432/mecrisdb
         run: |
           # Use local mock JWKS for CI (external URL not accessible from GitHub Actions)
           JWKS_JSON=$(cat tests/mock_jwks.json | jq -c .)
-          
+
           cd mecris-go-spin/sync-service && spin up \
             --variable db_url="postgresql://mecris:mecris@localhost:5432/mecrisdb" \
             --variable neon_db_url="postgresql://mecris:mecris@localhost:5432/mecrisdb" \
-            --variable master_encryption_key="test_master_key_32_bytes_long_12345" \
+            --variable master_encryption_key="$SPIN_MASTER_ENCRYPTION_KEY" \
+            --variable internal_api_key="$SPIN_INTERNAL_API_KEY" \
             --variable clozemaster_email="test@example.com" \
             --variable clozemaster_password="test_password" \
             --variable twilio_account_sid="ACtest" \
@@ -163,6 +177,9 @@ jobs:
       - name: Run Python Tests
         env:
           NEON_DB_URL: postgresql://mecris:mecris@localhost:5432/mecrisdb
+          # The Spin cron tests (tests/spin_e2e.py) also read SPIN_INTERNAL_API_KEY from GITHUB_ENV.
+          SPIN_E2E_DB_URL: postgresql://mecris:mecris@localhost:5432/mecrisdb
+          SPIN_BASE_URL: http://127.0.0.1:3000
           PYTHONPATH: .
         run: |
           .venv/bin/pytest tests/ -v --tb=short --ignore=tests/test_cloud_beta4_validation.py --ignore=tests/test_cloud_sync.py

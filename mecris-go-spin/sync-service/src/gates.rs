@@ -117,6 +117,7 @@ impl Verdict {
 pub enum Reason { Eligible, PhoneUnverified, Vacation, DayDisabled, TypeDisabled, OutsideWindow, WalkedToday, PhoneActive, Damped, DailyCap }
 
 impl Reason {
+    #[cfg(test)]
     pub const ALL: [Reason; 10] = [Reason::Eligible, Reason::PhoneUnverified, Reason::Vacation, Reason::DayDisabled, Reason::TypeDisabled, Reason::OutsideWindow, Reason::WalkedToday, Reason::PhoneActive, Reason::Damped, Reason::DailyCap];
 
     pub fn code(self) -> &'static str {
@@ -179,6 +180,8 @@ fn ny(now: &DateTime<Utc>) -> DateTime<Tz> { now.with_timezone(&NY) }
 fn ny_weekday_abbrev(now: &DateTime<Utc>) -> String { ny(now).format("%a").to_string().to_lowercase() }
 
 pub fn ny_hour(now: &DateTime<Utc>) -> u32 { ny(now).hour() }
+/// Today's New York date. SQL computes the same as (now() AT TIME ZONE 'America/New_York')::DATE.
+#[cfg(test)]
 pub fn ny_date(now: &DateTime<Utc>) -> chrono::NaiveDate { ny(now).date_naive() }
 /// The {{5}} slot of the walk reminder template.
 pub fn ny_time_label(now: &DateTime<Utc>) -> String { ny(now).format("%I:%M %p").to_string() }
