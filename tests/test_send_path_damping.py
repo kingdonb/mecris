@@ -65,6 +65,15 @@ def test_guard_covers_every_damping_and_cap_case():
     assert len(GUARD_CASES) >= 20
 
 
+def test_guard_reads_a_naive_sent_at_as_utc(server):
+    # Old Python rows were written with a naive local datetime; a naive value
+    # coming back must not crash the guard. It is read as UTC.
+    now = ts("2026-11-14T20:00:00Z")
+    row = {"type": "walk_reminder", "channel": "whatsapp", "status": "sent",
+           "sent_at": datetime(2026, 11, 14, 19, 0, 0)}
+    assert server.nag_damping_verdict([row], now, {}) == {"verdict": "skip", "reason": "damped"}
+
+
 # ---------------------------------------------------------------------------
 # send_reminder_message
 # ---------------------------------------------------------------------------
