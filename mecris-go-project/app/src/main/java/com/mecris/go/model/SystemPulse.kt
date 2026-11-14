@@ -11,6 +11,19 @@ data class PulseRow(
     val lastStatus: String?
 )
 
+/**
+ * Spin applies contracts/pulse_roles.json (which roles show, display names, status
+ * thresholds), so the phone renders its rows as given, in Spin's order.
+ */
 object SystemPulse {
-    fun rows(status: AggregateStatusResponseDto?): List<PulseRow> = TODO("#346")
+    fun rows(status: AggregateStatusResponseDto?): List<PulseRow> =
+        status?.modalities.orEmpty().mapNotNull { m ->
+            val role = m.role?.trim().takeUnless { it.isNullOrEmpty() } ?: return@mapNotNull null
+            PulseRow(
+                role = role,
+                status = m.status?.trim().takeUnless { it.isNullOrEmpty() } ?: "unknown",
+                age = formatAge(m.minutes_since),
+                lastStatus = m.last_status?.trim().takeUnless { it.isNullOrEmpty() }
+            )
+        }
 }
