@@ -1,6 +1,10 @@
 package com.mecris.go.sync
 
 import com.google.gson.Gson
+import com.google.gson.GsonBuilder
+import com.google.gson.JsonNull
+import com.google.gson.JsonObject
+import com.google.gson.JsonParser
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -35,6 +39,53 @@ class SpinContractTest {
         val dto = gson.fromJson(contract("spin_status_response.json"), SyncResponse::class.java)
         assertEquals("success", dto.status)
         assertEquals("Verification code sent", dto.message)
+    }
+
+    // --- GET /aggregate-status?full=true (v0.3.0 shape) ---
+    // Round trip: contract JSON -> DTO -> JSON (nulls kept). A field the DTO does not
+    // model is dropped on the way through, so the subtree comes back missing.
+
+    private val gsonKeepNulls = GsonBuilder().serializeNulls().create()
+
+    private fun throughDto(json: JsonObject): JsonObject =
+        gsonKeepNulls.toJsonTree(gson.fromJson(json, AggregateStatusResponseDto::class.java)).asJsonObject
+
+    private fun fullAggregate(): JsonObject =
+        JsonParser.parseString(contract("spin_aggregate_status_full.json")).asJsonObject
+
+    @Test
+    fun `aggregate full shape keeps claude_plan, pace and modalities with last_status`() {
+        val raw = fullAggregate()
+        val back = throughDto(raw)
+        for (key in listOf("claude_plan", "pace", "modalities", "components", "goals_met", "total_goals", "all_clear", "phone_verified")) {
+            assertEquals("aggregate-status field '$key' must survive the DTO", raw.get(key), back.get(key))
+        }
+    }
+
+    @Test
+    fun `aggregate without claude_plan, pace and last_status (today's live API) parses with nulls`() {
+        val raw = fullAggregate()
+        raw.remove("claude_plan")
+        raw.remove("pace")
+        raw.getAsJsonArray("modalities").forEach { it.asJsonObject.remove("last_status") }
+
+        val back = throughDto(raw)
+        assertEquals(JsonNull.INSTANCE, back.get("claude_plan"))
+        assertEquals(JsonNull.INSTANCE, back.get("pace"))
+        val modalities = back.getAsJsonArray("modalities")
+        assertEquals(4, modalities.size())
+        modalities.forEach { assertEquals(JsonNull.INSTANCE, it.asJsonObject.get("last_status")) }
+    }
+
+    @Test
+    fun `aggregate without full=true has no modalities and still parses`() {
+        val raw = fullAggregate()
+        listOf("modalities", "system_pulse", "claude_plan").forEach { raw.remove(it) }
+
+        val back = throughDto(raw)
+        assertEquals(JsonNull.INSTANCE, back.get("modalities"))
+        assertEquals(JsonNull.INSTANCE, back.get("claude_plan"))
+        assertEquals(raw.get("pace"), back.get("pace"))
     }
 
     @Test
