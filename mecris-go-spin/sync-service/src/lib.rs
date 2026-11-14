@@ -993,6 +993,65 @@ mod tests {
     use super::*;
     use serde_json::json;
 
+    // --- Twilio webhook requests must carry a valid X-Twilio-Signature ---
+    // Vector from Twilio's "Validating Signatures from Twilio" documentation.
+    const TW_DOC_URL: &str = "https://mycompany.com/myapp.php?foo=1&bar=2";
+    const TW_DOC_BODY: &str = "Digits=1234&To=%2B18005551212&From=%2B12349013030&Caller=%2B12349013030&CallSid=CA1234567890ABCDE";
+    const TW_DOC_SIG: &str = "0/KCTR6DLpKmkAf8muzZqo1nDgQ=";
+    const TW_HOOK_URL: &str = "https://example.test/internal/twilio-webhook";
+    const TW_HOOK_BODY: &str = "To=whatsapp%3A%2B15005550001&Body=Yes+please&From=whatsapp%3A%2B15005550006";
+    const TW_HOOK_SIG: &str = "hLQ9nMt/o7XZdRoX5kXYLSDNLfU=";
+
+    #[test]
+    fn test_parse_form_decodes_plus_and_percent() {
+        let f = parse_form(TW_HOOK_BODY);
+        assert_eq!(form_value(&f, "Body"), Some("Yes please"));
+        assert_eq!(form_value(&f, "From"), Some("whatsapp:+15005550006"));
+        assert_eq!(form_value(&f, "Missing"), None);
+    }
+
+    #[test]
+    fn test_twilio_signature_matches_documented_vector() {
+        assert_eq!(twilio_signature("12345", TW_DOC_URL, &parse_form(TW_DOC_BODY)), TW_DOC_SIG);
+    }
+
+    #[test]
+    fn test_twilio_signature_ok_accepts_valid_request() {
+        assert!(twilio_signature_ok("12345", TW_DOC_URL, TW_DOC_BODY, Some(TW_DOC_SIG)));
+        assert!(twilio_signature_ok("test-token", TW_HOOK_URL, TW_HOOK_BODY, Some(TW_HOOK_SIG)));
+    }
+
+    #[test]
+    fn test_twilio_signature_ok_rejects_missing_or_malformed_header() {
+        assert!(!twilio_signature_ok("test-token", TW_HOOK_URL, TW_HOOK_BODY, None));
+        assert!(!twilio_signature_ok("test-token", TW_HOOK_URL, TW_HOOK_BODY, Some("")));
+        assert!(!twilio_signature_ok("test-token", TW_HOOK_URL, TW_HOOK_BODY, Some("not base64!")));
+    }
+
+    #[test]
+    fn test_twilio_signature_ok_rejects_tampering() {
+        let forged_from = TW_HOOK_BODY.replace("15005550006", "15005550007");
+        assert!(!twilio_signature_ok("test-token", TW_HOOK_URL, &forged_from, Some(TW_HOOK_SIG)));
+        assert!(!twilio_signature_ok("other-token", TW_HOOK_URL, TW_HOOK_BODY, Some(TW_HOOK_SIG)));
+        assert!(!twilio_signature_ok("test-token", "https://evil.test/internal/twilio-webhook", TW_HOOK_BODY, Some(TW_HOOK_SIG)));
+    }
+
+    #[test]
+    fn test_twilio_signature_ok_fails_closed_without_token_or_url() {
+        // An unconfigured deployment must reject, not accept, webhook posts.
+        let empty_key_sig = twilio_signature("", TW_HOOK_URL, &parse_form(TW_HOOK_BODY));
+        assert!(!twilio_signature_ok("", TW_HOOK_URL, TW_HOOK_BODY, Some(&empty_key_sig)));
+        assert!(!twilio_signature_ok("test-token", "", TW_HOOK_BODY, Some(TW_HOOK_SIG)));
+    }
+
+    #[test]
+    fn test_walk_ack_reads_only_the_body_field() {
+        assert!(is_walk_ack(&parse_form(TW_HOOK_BODY)));
+        assert!(is_walk_ack(&parse_form("Body=yes")));
+        assert!(!is_walk_ack(&parse_form("Body=no&ProfileName=Yesenia")));
+        assert!(!is_walk_ack(&parse_form("From=%2B15005550006")));
+    }
+
     // --- kingdonb/mecris#167: Twilio failures are summarized without PII ---
     const TWILIO_21211: &str = r#"{"code": 21211, "message": "The 'To' number +15551234567 is not a valid phone number.", "more_info": "https://www.twilio.com/docs/errors/21211", "status": 400}"#;
 
