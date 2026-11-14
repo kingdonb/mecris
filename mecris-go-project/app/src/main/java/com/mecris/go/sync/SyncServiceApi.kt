@@ -197,7 +197,53 @@ data class AggregateStatusResponseDto(
     val all_clear: Boolean,
     val components: AggregateComponentsDto,
     val vacation_mode_until: String? = null,
-    val phone_verified: Boolean = false
+    val phone_verified: Boolean = false,
+    // v0.3.0 fields (contracts/spin_aggregate_status_full.json). All optional so the
+    // app degrades gracefully against an older Spin: Gson leaves a missing field null.
+    /** Only with ?full=true. */
+    val modalities: List<ModalityDto>? = null,
+    /** Only with ?full=true; null when no reading is recorded. */
+    val claude_plan: ClaudePlanDto? = null,
+    val pace: List<PaceDto>? = null
+)
+
+/** One system-pulse row; last_status is the cloud cron's latest outcome line. */
+data class ModalityDto(
+    val role: String? = null,
+    val status: String? = null,
+    val last_seen: String? = null,
+    val minutes_since: Long? = null,
+    val last_status: String? = null
+)
+
+/** Spin's derived Claude plan state (#344); the phone re-checks staleness against its clock. */
+data class ClaudePlanDto(
+    val state: String? = null,
+    val reason: String? = null,
+    val stale: Boolean? = null,
+    val summary_line: String? = null,
+    val plan: String? = null,
+    val verified: Boolean? = null,
+    val source: String? = null,
+    val observed_at: String? = null,
+    val age_minutes: Long? = null,
+    val windows: List<ClaudePlanWindowDto>? = null
+)
+
+data class ClaudePlanWindowDto(
+    val kind: String? = null,
+    val pct_used: Double? = null,
+    val resets_at: String? = null,
+    val fresh: Boolean? = null
+)
+
+/** Reviews left today for a goal and the hourly pace to clear them by 22:00 New York (#349). */
+data class PaceDto(
+    val goal: String? = null,
+    val remaining: Int? = null,
+    val per_hour: Double? = null,
+    val clear_by: String? = null,
+    val due_today: Int? = null
 )
 
 data class WeatherHeuristicResponseDto(
