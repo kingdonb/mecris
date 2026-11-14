@@ -95,6 +95,7 @@ async fn handle_sync_service(req: Request) -> anyhow::Result<Response<String>> {
         ("/languages", &Method::GET) => handle_languages_get(req).await?,
         ("/languages/multiplier", &Method::POST) => handle_multiplier_post(req).await?,
         ("/health", &Method::GET) => handle_health_get(req).await?,
+        ("/version", &Method::GET) => json_response(200, &version_info(&variables::get("cloud_provider").await.unwrap_or_default()))?,
         ("/heartbeat", &Method::POST) => handle_heartbeat_post(req).await?,
         ("/helix-balance/request", &Method::POST) => handle_helix_balance_request_post(req).await?,
         ("/internal/cloud-sync", &Method::POST) => handle_cloud_sync(req).await?,
@@ -399,6 +400,14 @@ async fn handle_cloud_sync(req: Request) -> anyhow::Result<Response<String>> {
     let db = match variables::get("db_url").await { Ok(v) if !v.is_empty() => v, _ => variables::get("neon_db_url").await? };
     let _ = run_clozemaster_scraper(&db, &uid).await;
     json_response(200, &StatusResponse { status: "success".to_string(), message: "Sync initiated".to_string() })
+}
+
+#[derive(Serialize)] struct VersionResp { version: String, cloud_provider: String }
+
+/// What is deployed. Public on purpose: it carries nothing secret, and it lets a deploy be
+/// confirmed from outside without a user token or platform logs.
+fn version_info(cloud_provider: &str) -> VersionResp {
+    VersionResp { version: env!("CARGO_PKG_VERSION").to_string(), cloud_provider: cloud_provider.to_string() }
 }
 
 async fn handle_health_get(req: Request) -> anyhow::Result<Response<String>> {
