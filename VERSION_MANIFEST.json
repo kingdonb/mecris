@@ -1,11 +1,11 @@
 {
   "suite_name": "Mecris Personal Accountability Suite",
-  "release_date": "2026-10-04",
-  "total_version": "0.1.4",
+  "release_date": "2026-11-14",
+  "total_version": "0.2.0",
   "components": {
     "android_app": {
       "name": "Mecris-Go Android",
-      "version": "0.1.4",
+      "version": "0.2.0",
       "features": [
         "Battery diet: heartbeat 15 -> 60 min (UPDATE policy), quiet-hours 08:00-22:00 ET, helix-balance <= 1/hr",
         "Cheap-first nag worker: cooldown gates run before weather / Gemini Nano / Health Connect spend",
@@ -15,7 +15,7 @@
     },
     "spin_backend": {
       "name": "Mecris-Go Sync Service (Spin)",
-      "version": "0.1.4",
+      "version": "0.2.0",
       "features": [
         "Beeminder due-today from goal road (fullroad + yaw, NY daystamp)",
         "language_stats columns beeminder_road_today / beeminder_due_today",
@@ -26,7 +26,7 @@
     },
     "python_mcp": {
       "name": "Mecris MCP Server",
-      "version": "0.1.4",
+      "version": "0.2.0",
       "features": [
         "Python parity (executable spec): same due-today math in services/beeminder_road.py",
         "Velocity combines pump with Beeminder due; reminders use the honest number",
@@ -36,7 +36,7 @@
     },
     "neon_infrastructure": {
       "name": "Neon PostgreSQL Cloud",
-      "version": "0.1.4",
+      "version": "0.2.0",
       "features": [
         "language_stats beeminder_road_today / beeminder_due_today columns"
       ],
