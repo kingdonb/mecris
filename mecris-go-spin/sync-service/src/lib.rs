@@ -371,8 +371,14 @@ fn effective_targets(cur: i32, tom: i32, mult: f64, done: i32, beeminder_due: i3
 /// digits: "+1 (585) 555-0100" and "+15855550100" are the same number. Ciphertexts differ
 /// on every write, so only plaintexts can be compared.
 fn same_phone_number(stored: Option<&str>, requested: &str) -> bool {
-    let _ = (stored, requested);
-    false
+    let digits = |s: &str| s.chars().filter(|c| c.is_ascii_digit()).collect::<String>();
+    match stored {
+        None => false,
+        Some(old) => {
+            let (a, b) = (digits(old), digits(requested));
+            if a.is_empty() && b.is_empty() { old.trim() == requested.trim() } else { a == b }
+        }
+    }
 }
 
 async fn handle_profile_post(req: Request) -> anyhow::Result<Response<String>> {
@@ -383,10 +389,20 @@ async fn handle_profile_post(req: Request) -> anyhow::Result<Response<String>> {
     let db = match variables::get("db_url").await { Ok(v) if !v.is_empty() => v, _ => variables::get("neon_db_url").await? };
     let conn = Connection::open(&db).await?;
     if let Some(p) = &pr.phone_number {
-        let enc = encrypt_token(p).await?;
-        conn.execute("UPDATE users SET phone_number_encrypted = $1, phone_verified = FALSE WHERE pocket_id_sub = $2", &[ParameterValue::Str(enc), ParameterValue::Str(uid.clone())]).await?;
-        // A pending code was sent to the old number; it must not verify the new one.
-        conn.execute("DELETE FROM phone_verifications WHERE user_id = $1", &[ParameterValue::Str(uid.clone())]).await?;
+        // Android's Save always sends the number. Only a different number un-verifies the
+        // phone (and with it the cloud WhatsApp fallback) and drops a pending code.
+        let rs = conn.query("SELECT phone_number_encrypted FROM users WHERE pocket_id_sub = $1", &[ParameterValue::Str(uid.clone())]).await?.collect().await?;
+        let stored = match rs.first().map(|r| &r[0]) {
+            Some(DbValue::Str(s)) if !s.is_empty() => decrypt_token(s).await.ok(),
+            Some(DbValue::Str(_)) => Some(String::new()),
+            _ => None,
+        };
+        if !same_phone_number(stored.as_deref(), p) {
+            let enc = encrypt_token(p).await?;
+            conn.execute("UPDATE users SET phone_number_encrypted = $1, phone_verified = FALSE WHERE pocket_id_sub = $2", &[ParameterValue::Str(enc), ParameterValue::Str(uid.clone())]).await?;
+            // A pending code was sent to the old number; it must not verify the new one.
+            conn.execute("DELETE FROM phone_verifications WHERE user_id = $1", &[ParameterValue::Str(uid.clone())]).await?;
+        }
     }
     if let Some(bu) = &pr.beeminder_user { let enc = encrypt_token(bu).await?; conn.execute("UPDATE users SET beeminder_user_encrypted = $1 WHERE pocket_id_sub = $2", &[ParameterValue::Str(enc), ParameterValue::Str(uid.clone())]).await?; }
     if let Some(lat) = pr.latitude { conn.execute("UPDATE users SET location_lat = $1 WHERE pocket_id_sub = $2", &[ParameterValue::Floating64(lat), ParameterValue::Str(uid.clone())]).await?; }
@@ -417,12 +433,15 @@ async fn handle_cloud_sync(req: Request) -> anyhow::Result<Response<String>> {
     json_response(200, &StatusResponse { status: "success".to_string(), message: "Sync initiated".to_string() })
 }
 
-#[derive(Serialize)] struct VersionResp { version: String, cloud_provider: String }
+/// `dry_run` promises that GET /internal/trigger-reminders?dry_run=1 sends and writes
+/// nothing. v0.2 had no such field and ignored the query, so verify_spin_deploy.sh sends
+/// no keyed request to a service that does not make the promise.
+#[derive(Serialize)] struct VersionResp { version: String, cloud_provider: String, dry_run: bool }
 
 /// What is deployed. Public on purpose: it carries nothing secret, and it lets a deploy be
 /// confirmed from outside without a user token or platform logs.
 fn version_info(cloud_provider: &str) -> VersionResp {
-    VersionResp { version: env!("CARGO_PKG_VERSION").to_string(), cloud_provider: cloud_provider.to_string() }
+    VersionResp { version: env!("CARGO_PKG_VERSION").to_string(), cloud_provider: cloud_provider.to_string(), dry_run: true }
 }
 
 async fn handle_health_get(req: Request) -> anyhow::Result<Response<String>> {
@@ -834,6 +853,16 @@ async fn handle_request_phone_verification_post(req: Request) -> anyhow::Result<
         _ => return status_json(400, "error", "phone_number is required"),
     };
     let conn = Connection::open(&db_url().await?).await?;
+    // Each request is a WhatsApp send and resets the guess counter: throttle it per caller,
+    // from message_log, before anything changes. Ages and counts are BIGINT in SQL; the day
+    // is the New York date of sent_at.
+    let rs = conn.query("SELECT FLOOR(EXTRACT(EPOCH FROM now() - MAX(m.sent_at)))::BIGINT, \
+        COUNT(*) FILTER (WHERE (m.sent_at AT TIME ZONE 'America/New_York')::DATE = (now() AT TIME ZONE 'America/New_York')::DATE)::BIGINT \
+        FROM message_log m WHERE m.user_id = $1 AND m.type = 'phone_verification'", &[ParameterValue::Str(uid.clone())]).await?.collect().await?;
+    let (last_age, today) = rs.first().map(|r| (gates::db_i64(&r[0]), gates::db_i64(&r[1]).unwrap_or(0))).unwrap_or((None, 0));
+    if !gates::verification_allowed(last_age, today) {
+        return status_json(429, "error", "Too many verification requests; try again later");
+    }
     // Bind the number: store the requested number on the caller's own row, unverified, so
     // confirm verifies exactly the number that received the code.
     let enc = match encrypt_token(&phone).await { Ok(e) => e, Err(_) => return status_json(500, "error", "The number could not be stored") };

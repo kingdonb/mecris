@@ -223,8 +223,8 @@ pub const VERIFICATION_MAX_PER_DAY: i64 = 5;
 /// of the caller's newest phone_verification row in message_log and `sent_today` the
 /// count of those rows on the current New York day by sent_at, both BIGINT from SQL.
 pub fn verification_allowed(last_age_secs: Option<i64>, sent_today: i64) -> bool {
-    let _ = (last_age_secs, sent_today);
-    true
+    let recent = last_age_secs.is_some_and(|age| age < VERIFICATION_MIN_INTERVAL_SECS);
+    !recent && sent_today < VERIFICATION_MAX_PER_DAY
 }
 
 #[cfg(test)]

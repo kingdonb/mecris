@@ -6,6 +6,9 @@
 # It tests as the callers do, not as a person with curl and a header would:
 #   - waits until the live service reports the version in spin.toml
 #     (a deploy command returning is not a deploy being live)
+#   - sends no keyed request at all unless /version matches, /version promises a dry run
+#     ("dry_run": true) and the burned-key refusals below are counted: a v0.2 handler
+#     ignores ?dry_run=1 and would run the real reminder loop
 #   - no key, a wrong key and both forms of the old published key are refused,
 #     and the burned-key refusals are counted in internal_refusals
 #   - an unsigned or forged Twilio webhook post is refused
@@ -69,7 +72,9 @@ import psycopg2
 queries = {
     "now": ("SELECT FLOOR(EXTRACT(EPOCH FROM now()))::BIGINT", 0),
     "refusals": ("SELECT COALESCE(SUM(count), 0) FROM internal_refusals WHERE day = (now() AT TIME ZONE 'America/New_York')::DATE AND endpoint = %s AND reason = %s", 2),
-    "cron_rows_since": ("SELECT COUNT(*) FROM scheduler_election WHERE role = 'akamai_functions' AND intent = 'cron' AND last_status IS NOT NULL AND heartbeat >= to_timestamp(%s)", 1),
+    # A /health call bumps heartbeat but keeps the old last_status, so the sync segment's own
+    # HH:MMZ stamp must be t0's minute or up to 30 minutes after it (modulo a UTC midnight).
+    "cron_rows_since": ("SELECT COUNT(*) FROM (SELECT heartbeat, substring(last_status from 'sync ([0-9][0-9]:[0-9][0-9])Z') AS seg, to_timestamp(%s) AS t0 FROM scheduler_election WHERE role = 'akamai_functions' AND intent = 'cron') s WHERE s.heartbeat >= s.t0 AND s.seg IS NOT NULL AND MOD(FLOOR(EXTRACT(EPOCH FROM s.seg::TIME - date_trunc('minute', s.t0 AT TIME ZONE 'UTC')::TIME) / 60)::BIGINT + 1440, 1440) <= 30", 1),
     "last_status": ("SELECT COALESCE(last_status, '') FROM scheduler_election WHERE role = 'akamai_functions' ORDER BY heartbeat DESC LIMIT 1", 0),
 }
 name, args = sys.argv[1], sys.argv[2:]
@@ -88,16 +93,31 @@ finally:
 PY
 }
 
+# stop <reason>: refuse to send any keyed request. A v0.2 trigger-reminders handler ignores
+# ?dry_run=1 and runs the real reminder loop, so a keyed request is only safe once the
+# service has shown it is v0.3.
+stop() {
+    fail "$1"
+    echo "Stopped before any keyed request: the service has not shown that it honours ?dry_run=1."
+    echo "$failures check(s) failed."
+    exit 1
+}
+
 echo "Service: $BASE"
 echo "Waiting for version $EXPECTED to be live..."
 live=""
+version_json=""
 for _ in $(seq 1 50); do
-    live="$(curl -s -m 15 "$BASE/version" | sed -n 's/.*"version": *"\([^"]*\)".*/\1/p')"
+    version_json="$(curl -s -m 15 "$BASE/version")"
+    live="$(printf '%s' "$version_json" | sed -n 's/.*"version": *"\([^"]*\)".*/\1/p')"
     [[ "$live" == "$EXPECTED" ]] && break
     sleep 6
 done
 if [[ "$live" == "$EXPECTED" ]]; then echo "  ok    version $live is serving"
-else fail "live version is '${live:-unknown}', expected $EXPECTED"; fi
+else stop "live version is '${live:-unknown}', expected $EXPECTED"; fi
+# The version string may not have been bumped yet (v0.2 also said 0.2.0): require the promise.
+if [[ "$version_json" =~ \"dry_run\":\ *true ]]; then echo "  ok    /version promises a dry run"
+else stop "/version does not promise a dry run (\"dry_run\": true): an older handler would send for real"; fi
 
 neon_ok=1
 if [[ -z "$NEON_DB_URL" ]]; then neon_ok=0; fail "NEON_DB_URL not found in $ENV_FILE: the database checks cannot run"; fi
@@ -120,7 +140,8 @@ if [[ "$neon_ok" == 1 ]]; then
     if [[ "$burned_before" =~ ^[0-9]+$ && "$burned_after" =~ ^[0-9]+$ ]] && (( burned_after >= burned_before + 2 )); then
         echo "  ok    burned-key refusals counted in internal_refusals ($burned_before -> $burned_after today)"
     else
-        fail "burned-key refusals not counted in internal_refusals ('$burned_before' -> '$burned_after')"
+        # Only v0.3 counts refusals: an older service may still be answering.
+        stop "burned-key refusals not counted in internal_refusals ('$burned_before' -> '$burned_after')"
     fi
 fi
 
@@ -148,8 +169,8 @@ check "failover-sync as cron" 200 "${body##*$'\n'}"
 echo "        response: ${body%$'\n'*}"
 if [[ "$neon_ok" == 1 ]]; then
     rows="$(neon cron_rows_since "$t0")"
-    if [[ "$rows" =~ ^[0-9]+$ ]] && (( rows >= 1 )); then echo "  ok    akamai_functions heartbeat newer than the request"
-    else fail "no akamai_functions cron heartbeat newer than the request ('$rows')"; fi
+    if [[ "$rows" =~ ^[0-9]+$ ]] && (( rows >= 1 )); then echo "  ok    akamai_functions row with a sync outcome stamped after the request"
+    else fail "no akamai_functions row with a sync outcome stamped after the request ('$rows')"; fi
     last="$(neon last_status)"
     if [[ "$last" == *"sync "* ]]; then echo "  ok    last_status: $last"
     else fail "last_status has no sync outcome: '$last'"; fi
