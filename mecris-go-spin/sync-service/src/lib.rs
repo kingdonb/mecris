@@ -681,9 +681,13 @@ async fn handle_request_phone_verification_post(req: Request) -> anyhow::Result<
 }
 
 /// Body of a successful verification request. Android parses it as SyncResponse.
-fn verification_sent_body() -> anyhow::Result<String> { Ok(serde_json::to_string(&"Verification code sent")?) }
+fn verification_sent_body() -> anyhow::Result<String> { status_body("success", "Verification code sent") }
 /// Body of a successful confirmation.
-fn phone_verified_body() -> anyhow::Result<String> { Ok(serde_json::to_string(&"Phone verified")?) }
+fn phone_verified_body() -> anyhow::Result<String> { status_body("success", "Phone verified") }
+
+fn status_body(status: &str, message: &str) -> anyhow::Result<String> {
+    Ok(serde_json::to_string(&StatusResponse { status: status.to_string(), message: message.to_string() })?)
+}
 
 async fn handle_confirm_phone_verification_post(req: Request) -> anyhow::Result<Response<String>> {
     let uid = match extract_user_id(req.headers().get("authorization")).await { Some(id) => id, None => return Ok(text_response(401, "Unauthorized")?) };
@@ -752,9 +756,10 @@ fn twilio_signature_ok(auth_token: &str, url: &str, body: &str, header: Option<&
     twilio_mac(auth_token, url, &parse_form(body)).verify_slice(&sig).is_ok()
 }
 
-/// A walk acknowledgement is a message whose text (the `Body` field only) says yes.
+/// A walk acknowledgement is a message whose text (the `Body` field only) has YES as a
+/// whole word, in any case: "Yes!" counts, "yesterday" and "eyes" do not.
 fn is_walk_ack(form: &[(String, String)]) -> bool {
-    form_value(form, "Body").map(|b| b.to_uppercase().contains("YES")).unwrap_or(false)
+    form_value(form, "Body").map(|b| b.split(|c: char| !c.is_alphanumeric()).any(|w| w.eq_ignore_ascii_case("yes"))).unwrap_or(false)
 }
 
 async fn handle_twilio_webhook_post(req: Request) -> anyhow::Result<Response<String>> {
