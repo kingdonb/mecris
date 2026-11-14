@@ -148,8 +148,10 @@ class DelayedNagWorker @JvmOverloads constructor(
                 }
 
                 val payload = nagPayload(finalIntent, hasPartialWalk, isSensitive, hour)
+                // #349: Arabic and Greek nags gain one pace line, whoever wrote the text.
+                val message = NagCopy.withPace(llmMessage ?: payload.message, finalIntent.goal, status.pace)
                 Log.i("DelayedNagWorker", "Firing Nag: ${payload.title} (LLM: ${llmMessage != null})")
-                nagManager.showNag(payload.title, llmMessage ?: payload.message, payload.packageName, payload.nagType)
+                nagManager.showNag(payload.title, message, payload.packageName, payload.nagType)
                 phases.add("nag")
 
                 val nowMs = Instant.now().toEpochMilli()
