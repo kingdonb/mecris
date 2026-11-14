@@ -5,7 +5,7 @@
 //! Pure functions only. `remaining` is effective_targets' remaining (the larger of the
 //! review pump's remainder and Beeminder's due-today); `due_today` is Beeminder's.
 
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, TimeZone, Utc};
 use serde::Serialize;
 
 /// Reviews should be cleared by this New York hour.
@@ -26,14 +26,36 @@ pub struct Pace {
 }
 
 /// Pace for one goal.
-pub fn pace(_goal: &str, _remaining: i32, _due_today: i32, _now: DateTime<Utc>) -> Pace {
-    Pace { goal: String::new(), remaining: 0, per_hour: 0.0, clear_by: String::new(), due_today: 0 }
+pub fn pace(goal: &str, remaining: i32, due_today: i32, now: DateTime<Utc>) -> Pace {
+    let remaining = remaining.max(0);
+    let deadline = clear_by(now);
+    let hours_left = (deadline.with_timezone(&Utc) - now).num_seconds() as f64 / 3600.0;
+    // Under an hour left (or past 22:00): everything is due now.
+    let per_hour = remaining as f64 / hours_left.max(1.0);
+    Pace {
+        goal: goal.to_string(),
+        remaining,
+        per_hour: (per_hour * 10.0).round() / 10.0,
+        clear_by: deadline.to_rfc3339(),
+        due_today: due_today.max(0),
+    }
+}
+
+/// Today's CLEAR_BY_HOUR in New York.
+fn clear_by(now: DateTime<Utc>) -> DateTime<chrono_tz::Tz> {
+    let ny = chrono_tz::America::New_York;
+    let date = now.with_timezone(&ny).date_naive();
+    // 22:00 exists on every New York day (DST changes happen at 02:00).
+    let local = date.and_hms_opt(CLEAR_BY_HOUR, 0, 0).expect("valid time");
+    ny.from_local_datetime(&local).earliest().expect("22:00 exists in New York")
 }
 
 /// One language_stats row's pace inputs: (language_name, remaining, beeminder_due_today).
 /// Returns PACE_GOALS that have a row, in PACE_GOALS order.
-pub fn pace_for_goals(_rows: &[(String, i32, i32)], _now: DateTime<Utc>) -> Vec<Pace> {
-    Vec::new()
+pub fn pace_for_goals(rows: &[(String, i32, i32)], now: DateTime<Utc>) -> Vec<Pace> {
+    PACE_GOALS.iter().filter_map(|goal| {
+        rows.iter().find(|(name, _, _)| name == goal).map(|(_, remaining, due)| pace(goal, *remaining, *due, now))
+    }).collect()
 }
 
 #[cfg(test)]

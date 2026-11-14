@@ -56,20 +56,82 @@ pub struct PlanStatus {
 
 /// Parse a stored windows JSONB value (as text). Windows without a string kind or a
 /// numeric pct_used are dropped; a missing resets_at is kept as "" and is never fresh.
-pub fn parse_windows(_json: &str) -> Vec<Window> {
-    Vec::new()
+pub fn parse_windows(json: &str) -> Vec<Window> {
+    let Ok(serde_json::Value::Array(items)) = serde_json::from_str::<serde_json::Value>(json) else { return Vec::new() };
+    items.iter().filter_map(|w| {
+        let kind = w.get("kind")?.as_str()?.to_string();
+        let pct_used = w.get("pct_used")?.as_f64()?;
+        let resets_at = w.get("resets_at").and_then(|r| r.as_str()).unwrap_or("").to_string();
+        Some(Window { kind, pct_used, resets_at })
+    }).collect()
 }
 
 /// Python's isoformat for a UTC instant: "2026-11-14T19:00:00+00:00", with microseconds
 /// only when there are any.
-pub fn isoformat(_t: &DateTime<Utc>) -> String {
-    String::new()
+pub fn isoformat(t: &DateTime<Utc>) -> String {
+    if t.timestamp_subsec_micros() == 0 {
+        t.format("%Y-%m-%dT%H:%M:%S+00:00").to_string()
+    } else {
+        t.format("%Y-%m-%dT%H:%M:%S%.6f+00:00").to_string()
+    }
+}
+
+/// An ISO-8601 timestamp; like Python's _parse_dt, a value without an offset is UTC.
+fn parse_ts(s: &str) -> Option<DateTime<Utc>> {
+    let s = s.trim();
+    DateTime::parse_from_rfc3339(s).ok().map(|t| t.with_timezone(&Utc))
+        .or_else(|| chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S%.f").ok().map(|n| n.and_utc()))
+}
+
+/// Python's `%a %-I:%M %p` in America/New_York, e.g. "Mon 4:00 AM".
+fn fmt_reset(t: &DateTime<Utc>) -> String {
+    t.with_timezone(&chrono_tz::America::New_York).format("%a %-I:%M %p").to_string()
 }
 
 /// derive_state + summarize. `age_minutes` is the SQL age of the reading.
-pub fn summarize(_reading: Option<&Reading>, _now: DateTime<Utc>, _age_minutes: Option<i64>) -> PlanStatus {
-    PlanStatus { state: "unknown", reason: String::new(), stale: true, summary_line: String::new(), plan: None, verified: None, source: None, observed_at: None, age_minutes: None, windows: Vec::new() }
+pub fn summarize(reading: Option<&Reading>, now: DateTime<Utc>, age_minutes: Option<i64>) -> PlanStatus {
+    let unknown = |reason: &str, fresh: &[bool]| (STATE_UNKNOWN, reason.to_string(), true, format!("Claude: unknown ({reason})"), fresh.to_vec());
+    let Some(r) = reading else {
+        let (state, reason, stale, summary_line, _) = unknown("no reading recorded", &[]);
+        return PlanStatus { state, reason, stale, summary_line, plan: None, verified: None, source: None, observed_at: None, age_minutes: None, windows: Vec::new() };
+    };
+    let all_stale = vec![false; r.windows.len()];
+    let (state, reason, stale, summary_line, fresh) = if now - r.observed_at > chrono::Duration::minutes(MAX_READING_AGE_MINUTES) {
+        unknown("reading is stale", &all_stale)
+    } else {
+        let fresh: Vec<bool> = r.windows.iter().map(|w| parse_ts(&w.resets_at).is_some_and(|reset| reset > now)).collect();
+        let fresh_windows: Vec<&Window> = r.windows.iter().zip(&fresh).filter(|(_, f)| **f).map(|(w, _)| w).collect();
+        match fresh_windows.iter().find(|w| w.kind == "weekly_all") {
+            None => unknown("weekly window has reset since the last reading", &fresh),
+            Some(weekly) => {
+                // Python's max(): the first window with the highest pct_used binds.
+                let mut worst = fresh_windows[0];
+                for w in &fresh_windows[1..] { if w.pct_used > worst.pct_used { worst = w; } }
+                let state = if worst.pct_used >= EXHAUSTED_PCT { STATE_EXHAUSTED } else if worst.pct_used > CONSTRAINED_PCT { STATE_CONSTRAINED } else { STATE_AVAILABLE };
+                let reset = parse_ts(&weekly.resets_at).map(|t| fmt_reset(&t)).unwrap_or_default();
+                let mut line = format!("Claude: {state} ({:.0}% weekly, resets {reset})", weekly.pct_used);
+                if worst.kind != "weekly_all" && state != STATE_AVAILABLE {
+                    line.push_str(&format!("; {} {:.0}%", worst.kind, worst.pct_used));
+                }
+                (state, format!("{} at {:.0}%", worst.kind, worst.pct_used), false, line, fresh)
+            }
+        }
+    };
+    PlanStatus {
+        state, reason, stale, summary_line,
+        plan: r.plan.clone(),
+        verified: r.verified,
+        source: r.source.clone(),
+        observed_at: Some(isoformat(&r.observed_at)),
+        age_minutes,
+        windows: r.windows.iter().zip(fresh).map(|(w, fresh)| WindowStatus { kind: w.kind.clone(), pct_used: w.pct_used, resets_at: w.resets_at.clone(), fresh }).collect(),
+    }
 }
+
+const STATE_AVAILABLE: &str = "available";
+const STATE_CONSTRAINED: &str = "constrained";
+const STATE_EXHAUSTED: &str = "exhausted";
+const STATE_UNKNOWN: &str = "unknown";
 
 #[cfg(test)]
 mod tests {

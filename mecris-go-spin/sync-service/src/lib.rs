@@ -104,6 +104,8 @@ async fn handle_sync_service(req: Request) -> anyhow::Result<Response<String>> {
         ("/helix-balance/request", &Method::POST) => handle_helix_balance_request_post(req).await?,
         ("/internal/cloud-sync", &Method::POST) => handle_cloud_sync(req).await?,
         ("/aggregate-status", &Method::GET) => handle_aggregate_status_get(req).await?,
+        ("/claude-plan", &Method::GET) => handle_claude_plan_get(req).await?,
+        ("/internal/log-message", &Method::POST) => handle_log_message_post(req).await?,
         ("/profile", &Method::POST) => handle_profile_post(req).await?,
         ("/profile", &Method::GET) => handle_profile_get(req).await?,
         ("/internal/trigger-reminders", _) => match internal_request_check(&req).await {
@@ -131,17 +133,21 @@ async fn handle_aggregate_status_get(req: Request) -> anyhow::Result<Response<St
     let walk_rs = conn.query("SELECT COUNT(*) FROM walk_inferences WHERE (start_time::TIMESTAMPTZ AT TIME ZONE 'America/New_York')::DATE = (CURRENT_TIMESTAMP AT TIME ZONE 'America/New_York')::DATE AND CAST(step_count AS INTEGER) >= 2000 AND user_id = $1", &[ParameterValue::Str(uid.clone())]).await?.collect().await?;
     let walked = !walk_rs.is_empty() && (db_to_i32(&walk_rs[0][0]) > 0);
     let lang_rows = conn.query("SELECT language_name, current_reviews, tomorrow_reviews, pump_multiplier::FLOAT8, daily_completions, beeminder_due_today FROM language_stats WHERE user_id = $1", &[ParameterValue::Str(uid.clone())]).await?.collect().await?;
-    let user_rows = conn.query("SELECT vacation_mode_until::TEXT, phone_verified FROM users WHERE pocket_id_sub = $1", &[ParameterValue::Str(uid.clone())]).await?.collect().await?;
-    let (vaca, phone) = if !user_rows.is_empty() { (match &user_rows[0][0] { DbValue::Str(s) if !s.is_empty() => Some(s.clone()), _ => None }, db_to_bool(&user_rows[0][1])) } else { (None, false) };
+    // A past vacation_mode_until is not a vacation: the comparison is made in SQL.
+    let user_rows = conn.query("SELECT vacation_mode_until::TEXT, phone_verified, COALESCE(vacation_mode_until > now(), FALSE) FROM users WHERE pocket_id_sub = $1", &[ParameterValue::Str(uid.clone())]).await?.collect().await?;
+    let (vaca, phone, vacation_active) = if !user_rows.is_empty() { (match &user_rows[0][0] { DbValue::Str(s) if !s.is_empty() => Some(s.clone()), _ => None }, db_to_bool(&user_rows[0][1]), db_to_bool(&user_rows[0][2])) } else { (None, false, false) };
     let mut total_goals = 1; let mut goals_met = if walked { 1 } else { 0 };
     let (mut arabic_met, mut greek_met) = (false, false);
+    let mut pace_rows: Vec<(String, i32, i32)> = Vec::new();
     for r in &lang_rows {
         let n = db_to_str(&r[0]);
         let (cur, tom, mult, done) = (db_to_i32(&r[1]), db_to_i32(&r[2]), db_to_f64(&r[3]), db_to_i32(&r[4]));
+        let due = db_to_i32(&r[5]).max(0);
         // Task 000617: aggregate component verdicts honor the Beeminder due-today too.
-        let (_, _, met) = effective_targets(cur, tom, mult, done, db_to_i32(&r[5]).max(0));
+        let (_, remaining, met) = effective_targets(cur, tom, mult, done, due);
         if n == "ARABIC" { total_goals += 1; arabic_met = met; if met { goals_met += 1; } }
         else if n == "GREEK" { total_goals += 1; greek_met = met; if met { goals_met += 1; } }
+        pace_rows.push((n, remaining, due));
     }
     let walk_detail_rs = conn.query("SELECT distance_meters, step_count FROM walk_inferences WHERE user_id = $1 AND (start_time::TIMESTAMPTZ AT TIME ZONE 'America/New_York')::DATE = (CURRENT_TIMESTAMP AT TIME ZONE 'America/New_York')::DATE ORDER BY start_time DESC LIMIT 1", &[ParameterValue::Str(uid.clone())]).await?.collect().await?;
     let (today_distance_miles, today_steps) = if !walk_detail_rs.is_empty() {
@@ -164,55 +170,60 @@ async fn handle_aggregate_status_get(req: Request) -> anyhow::Result<Response<St
     let budget_rs = conn.query("SELECT remaining_budget FROM budget_tracking WHERE user_id = $1 LIMIT 1", &[ParameterValue::Str(uid.clone())]).await?.collect().await?;
     let budget_remaining = if !budget_rs.is_empty() { db_to_f64(&budget_rs[0][0]) } else { 0.0 };
 
-    #[derive(Serialize)] struct Comp { walk: bool, arabic: bool, greek: bool }
-    #[derive(Serialize, Clone)] struct Mod { role: String, status: String, last_seen: String, minutes_since: u64 }
-    #[derive(Serialize)] struct Pulse { modalities: Vec<Mod> }
-    #[derive(Serialize)] struct AggResp { 
-        score: String, 
-        goals_met: i32, 
-        total_goals: i32, 
-        satisfied_count: i32,
-        total_count: i32,
-        all_clear: bool, 
-        components: Comp, 
-        budget_remaining: f64,
-        today_distance_miles: f64,
-        today_steps: i32,
-        vacation_mode_until: Option<String>, 
-        phone_verified: bool, 
-        modalities: Option<Vec<Mod>>,
-        system_pulse: Option<Pulse>
-    }
-    let mut mods = None;
-    let mut pulse = None;
-    if full {
-        let p_rows = conn.query("SELECT role, heartbeat::TEXT, CAST(EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - heartbeat)) / 60 AS BIGINT) AS mins FROM scheduler_election WHERE user_id = $1 OR user_id IS NULL ORDER BY heartbeat DESC", &[ParameterValue::Str(uid.clone())]).await?.collect().await?;
-        let mut ms = Vec::new();
-        for r in &p_rows {
-            let role = db_to_str(&r[0]);
-            let display = match role.as_str() { "leader" => "MCP SERVER", "android_client" => "ANDROID", "akamai_functions" => "AKAMAI", "fermyon_cloud" => "FERMYON", _ => &role };
-            let mins = match &r[2] { DbValue::Int64(i) => *i as u64, _ => 9999 };
-            ms.push(Mod { role: display.to_string(), status: get_modality_status(&role, mins).to_string(), last_seen: db_to_str(&r[1]), minutes_since: mins });
-        }
-        pulse = Some(Pulse { modalities: ms.clone() });
-        mods = Some(ms);
-    }
-    json_response(200, &AggResp { 
-        score: format!("{}/{}", goals_met, total_goals), 
-        goals_met, 
-        total_goals, 
-        satisfied_count: goals_met,
-        total_count: total_goals,
-        all_clear: vaca.is_some() || goals_met >= total_goals, 
-        components: Comp { walk: walked, arabic: arabic_met, greek: greek_met }, 
-        budget_remaining,
-        today_distance_miles,
-        today_steps,
-        vacation_mode_until: vaca, 
-        phone_verified: phone, 
-        modalities: mods,
-        system_pulse: pulse
-    })
+    let full = if full {
+        // Pulse (#346): every row for the user or for no user; pulse.rs picks one per role.
+        let p_rows = conn.query("SELECT role, COALESCE(heartbeat::TEXT, ''), FLOOR(EXTRACT(EPOCH FROM now() - heartbeat) / 60)::BIGINT, last_status, (user_id IS NOT NULL) FROM scheduler_election WHERE user_id = $1 OR user_id IS NULL ORDER BY heartbeat DESC NULLS LAST", &[ParameterValue::Str(uid.clone())]).await?.collect().await?;
+        let rows: Vec<pulse::Row> = p_rows.iter().map(|r| pulse::Row {
+            role: db_to_str(&r[0]),
+            own: db_to_bool(&r[4]),
+            // A row with no heartbeat at all reads as long gone.
+            minutes: gates::db_i64(&r[2]).unwrap_or(PULSE_NO_HEARTBEAT_MINUTES),
+            last_seen: db_to_str(&r[1]),
+            last_status: match &r[3] { DbValue::Str(s) if !s.is_empty() => Some(s.clone()), _ => None },
+        }).collect();
+        Some(FullStatus { modalities: pulse::modalities(&rows), claude_plan: claude_plan_for(&conn, &uid).await, pace: pace::pace_for_goals(&pace_rows, chrono::Utc::now()) })
+    } else { None };
+    json_response(200, &build_aggregate(AggInput {
+        walked, arabic_met, greek_met, goals_met, total_goals,
+        budget_remaining, today_distance_miles, today_steps,
+        vacation_mode_until: vaca, vacation_active, phone_verified: phone,
+        full,
+    }))
+}
+
+/// Minutes reported for a scheduler_election row whose heartbeat is NULL.
+const PULSE_NO_HEARTBEAT_MINUTES: i64 = 9999;
+
+/// The caller's Claude plan state from their newest claude_plan_usage_readings row (#344),
+/// or None when there is no row, no table, or the row cannot be read. Never reads the
+/// plaintext notes column. Ages and `now` come from the database clock.
+async fn claude_plan_for(conn: &Connection, uid: &str) -> Option<claude_plan::PlanStatus> {
+    let iso = "'YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"'";
+    let sql = format!("SELECT plan, verified, windows::TEXT, source, TO_CHAR(observed_at AT TIME ZONE 'UTC', {iso}), FLOOR(EXTRACT(EPOCH FROM now() - observed_at) / 60)::BIGINT, TO_CHAR(now() AT TIME ZONE 'UTC', {iso}) FROM claude_plan_usage_readings WHERE user_id = $1 ORDER BY observed_at DESC LIMIT 1");
+    let rows = conn.query(sql, &[ParameterValue::Str(uid.to_string())]).await.ok()?.collect().await.ok()?;
+    let r = rows.first()?;
+    let ts = |v: &DbValue| chrono::DateTime::parse_from_rfc3339(&db_to_str(v)).ok().map(|t| t.with_timezone(&chrono::Utc));
+    let opt_str = |v: &DbValue| match v { DbValue::Str(s) => Some(s.clone()), _ => None };
+    let reading = claude_plan::Reading {
+        plan: opt_str(&r[0]),
+        verified: match &r[1] { DbValue::Boolean(b) => Some(*b), _ => None },
+        windows: claude_plan::parse_windows(&db_to_str(&r[2])),
+        source: opt_str(&r[3]),
+        observed_at: ts(&r[4])?,
+    };
+    Some(claude_plan::summarize(Some(&reading), ts(&r[6])?, gates::db_i64(&r[5])))
+}
+
+/// GET /claude-plan: the same object aggregate-status carries, for the bearer's user. With
+/// no reading (or no table) it is the 'unknown, no reading recorded' state, not an error.
+async fn handle_claude_plan_get(req: Request) -> anyhow::Result<Response<String>> {
+    let uid = match extract_user_id(req.headers().get("authorization")).await { Some(id) => id, None => return Ok(text_response(401, "Unauthorized")?) };
+    let conn = Connection::open(&db_url().await?).await?;
+    let plan = match claude_plan_for(&conn, &uid).await {
+        Some(p) => p,
+        None => claude_plan::summarize(None, chrono::Utc::now(), None),
+    };
+    json_response(200, &plan)
 }
 
 fn clearance_days(mult: f64) -> Option<u32> {
@@ -1320,35 +1331,24 @@ async fn extract_user_id(auth: Option<&spin_sdk::http::HeaderValue>) -> Option<S
 }
 
 async fn register_cloud_heartbeat(conn: &Connection, uid: &str) -> anyhow::Result<()> {
-    let prov = variables::get("cloud_provider").await.unwrap_or_else(|_| "unknown".to_string());
-    let role = cloud_role(&prov);
+    let prov = variables::get("cloud_provider").await.unwrap_or_default();
+    // An unset or unrecognised provider writes no row (#346): a stray 'unknown' role is noise.
+    let Some(role) = heartbeat_role(&prov) else { return Ok(()) };
     conn.execute("INSERT INTO scheduler_election (user_id, role, process_id, heartbeat) VALUES ($1, $2, $3, CURRENT_TIMESTAMP) ON CONFLICT (user_id, role) DO UPDATE SET heartbeat = EXCLUDED.heartbeat, process_id = EXCLUDED.process_id", &[ParameterValue::Str(uid.to_string()), ParameterValue::Str(role.to_string()), ParameterValue::Str(prov)]).await?;
     Ok(())
 }
 
-fn get_modality_status(role: &str, mins: u64) -> &'static str {
-    match role { "leader" => if mins < 2 { "healthy" } else if mins < 5 { "degraded" } else { "offline" }, "android_client" => if mins < 20 { "healthy" } else if mins < 60 { "degraded" } else { "offline" }, "akamai_functions" => if mins < 135 { "healthy" } else if mins < 250 { "degraded" } else { "offline" }, "fermyon_cloud" => if mins < 5 { "healthy" } else if mins < 15 { "degraded" } else { "offline" }, _ => "unknown" }
-}
-
-async fn handle_weather_heuristic_get(_r: Request) -> anyhow::Result<Response<String>> {
-    #[derive(Serialize)] struct WeatherResp { is_walk_appropriate: bool, conditions: String, description: String, temperature: f64, sunrise: i64, sunset: i64, is_dark: bool, now_epoch: i64, data_ts: i64, recommendation: String }
-    json_response(200, &WeatherResp {
-        is_walk_appropriate: true,
-        conditions: "Clear".to_string(),
-        description: "sunny".to_string(),
-        temperature: 25.0,
-        sunrise: 1717650000,
-        sunset: 1717700000,
-        is_dark: false,
-        now_epoch: 1717680000,
-        data_ts: 1717680000,
-        recommendation: "Great day for a walk!".to_string()
-    })
+/// GET /internal/weather-heuristic?lat=..&lon=.. (#188). Public, like before: it reads no
+/// user data. Missing or invalid coordinates fall back to the phone's New York default.
+async fn handle_weather_heuristic_get(req: Request) -> anyhow::Result<Response<String>> {
+    let q = req.uri().query();
+    let (lat, lon) = solar::coords_or_default(query_param(q, "lat").as_deref(), query_param(q, "lon").as_deref());
+    json_response(200, &weather_report(chrono::Utc::now(), lat, lon))
 }
 /// The scheduler_election role a user-triggered heartbeat (GET /health) writes, if any.
 /// An unset or unrecognised cloud_provider writes nothing rather than a stray 'unknown' row.
-fn heartbeat_role(_provider: &str) -> Option<&'static str> {
-    Some("unknown")
+fn heartbeat_role(provider: &str) -> Option<&'static str> {
+    match cloud_role(provider) { "unknown" => None, role => Some(role) }
 }
 
 /// Nag types the phone may log (#213).
@@ -1361,17 +1361,56 @@ const LOG_MESSAGE_MAX_AGE_SECS: i64 = 24 * 60 * 60;
 #[derive(Debug, PartialEq)]
 struct LogMessage { ty: &'static str, age_secs: i64 }
 
-fn validate_log_message(_body: &[u8], _now: chrono::DateTime<chrono::Utc>) -> Result<LogMessage, &'static str> {
-    Err("not implemented")
+fn validate_log_message(body: &[u8], now: chrono::DateTime<chrono::Utc>) -> Result<LogMessage, &'static str> {
+    let v: serde_json::Value = serde_json::from_slice(body).map_err(|_| "body must be a JSON object")?;
+    let obj = v.as_object().ok_or("body must be a JSON object")?;
+    let ty = obj.get("type").and_then(|t| t.as_str()).ok_or("type is required")?;
+    let ty = LOG_MESSAGE_TYPES.iter().copied().find(|t| *t == ty).ok_or("type is not a phone nag")?;
+    let age_secs = obj.get("sent_at").and_then(|s| s.as_str())
+        .and_then(|s| chrono::DateTime::parse_from_rfc3339(s.trim()).ok())
+        .map(|t| (now - t.with_timezone(&chrono::Utc)).num_seconds())
+        .filter(|age| (0..=LOG_MESSAGE_MAX_AGE_SECS).contains(age))
+        .unwrap_or(0);
+    Ok(LogMessage { ty, age_secs })
+}
+
+/// A local phone nag was shown (#213): one message_log row on channel android_native with
+/// status 'shown' and no content, for the bearer's user. These rows count toward the
+/// reminder gates' 4-hour damping, never toward the WhatsApp daily cap (gates.rs).
+async fn handle_log_message_post(req: Request) -> anyhow::Result<Response<String>> {
+    let uid = match extract_user_id(req.headers().get("authorization")).await { Some(id) => id, None => return Ok(text_response(401, "Unauthorized")?) };
+    let body = req.into_body().collect().await.map_err(|_| anyhow::anyhow!("body"))?.to_bytes();
+    let msg = match validate_log_message(&body, chrono::Utc::now()) { Ok(m) => m, Err(e) => return status_json(400, "error", e) };
+    let conn = Connection::open(&db_url().await?).await?;
+    // The time is computed in SQL from a whole-second age: Spin's driver refuses a text
+    // parameter cast to TIMESTAMPTZ. `date` is the New York date of sent_at.
+    let at = "(now() - ($2::BIGINT * interval '1 second'))";
+    let sql = format!("INSERT INTO message_log (date, user_id, type, sent_at, status, channel) SELECT ({at} AT TIME ZONE 'America/New_York')::DATE, u.pocket_id_sub, $3, {at}, 'shown', 'android_native' FROM users u WHERE u.pocket_id_sub = $1");
+    let n = conn.execute(sql, &[ParameterValue::Str(uid), ParameterValue::Int64(msg.age_secs), ParameterValue::Str(msg.ty.to_string())]).await?;
+    if n == 0 { return status_json(404, "error", "User not found"); }
+    status_json(201, "success", "Nag logged")
 }
 
 #[derive(Serialize)]
 struct WeatherResp { is_walk_appropriate: bool, conditions: String, description: String, temperature: Option<f64>, sunrise: i64, sunset: i64, is_dark: bool, now_epoch: i64, data_ts: i64, recommendation: String }
 
 /// What /internal/weather-heuristic reports at `now` for lat/lon: real sun times and
-/// darkness; weather itself is not checked yet, so conditions are 'unknown'.
-fn weather_report(_now: chrono::DateTime<chrono::Utc>, _lat: f64, _lon: f64) -> WeatherResp {
-    WeatherResp { is_walk_appropriate: true, conditions: "Clear".to_string(), description: "sunny".to_string(), temperature: Some(25.0), sunrise: 1717650000, sunset: 1717700000, is_dark: false, now_epoch: 1717680000, data_ts: 1717680000, recommendation: "Great day for a walk!".to_string() }
+/// darkness; weather itself is not checked yet, so conditions are 'unknown' (#188).
+fn weather_report(now: chrono::DateTime<chrono::Utc>, lat: f64, lon: f64) -> WeatherResp {
+    let sun = solar::solar_day(now, lat, lon);
+    let recommendation = if sun.is_dark { "It is dark out: no walk now." } else { "Daylight: a walk is fine. Weather is not checked." };
+    WeatherResp {
+        is_walk_appropriate: true,
+        conditions: "unknown".to_string(),
+        description: "weather not checked".to_string(),
+        temperature: None,
+        sunrise: sun.sunrise,
+        sunset: sun.sunset,
+        is_dark: sun.is_dark,
+        now_epoch: now.timestamp(),
+        data_ts: now.timestamp(),
+        recommendation: recommendation.to_string(),
+    }
 }
 
 #[derive(Serialize)] struct Comp { walk: bool, arabic: bool, greek: bool }
@@ -1415,9 +1454,9 @@ struct AggInput {
 }
 
 fn build_aggregate(i: AggInput) -> AggResp {
-    let (modalities, system_pulse) = match &i.full {
-        Some(f) => (Some(f.modalities.clone()), Some(Pulse { modalities: f.modalities.clone() })),
-        None => (None, None),
+    let (modalities, system_pulse, claude_plan, pace) = match i.full {
+        Some(f) => (Some(f.modalities.clone()), Some(Pulse { modalities: f.modalities }), f.claude_plan, Some(f.pace)),
+        None => (None, None, None, None),
     };
     AggResp {
         score: format!("{}/{}", i.goals_met, i.total_goals),
@@ -1425,7 +1464,7 @@ fn build_aggregate(i: AggInput) -> AggResp {
         total_goals: i.total_goals,
         satisfied_count: i.goals_met,
         total_count: i.total_goals,
-        all_clear: i.vacation_mode_until.is_some() || i.goals_met >= i.total_goals,
+        all_clear: i.vacation_active || i.goals_met >= i.total_goals,
         components: Comp { walk: i.walked, arabic: i.arabic_met, greek: i.greek_met },
         budget_remaining: i.budget_remaining,
         today_distance_miles: i.today_distance_miles,
@@ -1434,8 +1473,8 @@ fn build_aggregate(i: AggInput) -> AggResp {
         phone_verified: i.phone_verified,
         modalities,
         system_pulse,
-        claude_plan: None,
-        pace: None,
+        claude_plan,
+        pace,
     }
 }
 

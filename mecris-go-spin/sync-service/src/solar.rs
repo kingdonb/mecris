@@ -19,21 +19,105 @@ pub struct SolarDay {
 
 /// The request's lat/lon when both parse as finite, in-range degrees; otherwise the
 /// phone's default (both, never one of each).
-pub fn coords_or_default(_lat: Option<&str>, _lon: Option<&str>) -> (f64, f64) {
-    (0.0, 0.0)
+pub fn coords_or_default(lat: Option<&str>, lon: Option<&str>) -> (f64, f64) {
+    let parse = |s: Option<&str>, limit: f64| s.and_then(|v| v.trim().parse::<f64>().ok()).filter(|v| v.is_finite() && v.abs() <= limit);
+    match (parse(lat, 90.0), parse(lon, 180.0)) {
+        (Some(la), Some(lo)) => (la, lo),
+        _ => (DEFAULT_LAT, DEFAULT_LON),
+    }
+}
+
+/// Zenith of sunrise and sunset: 90 degrees plus refraction and the sun's radius.
+const ZENITH_DEG: f64 = 90.833;
+
+enum Sun {
+    /// Minutes after 00:00 UTC on the date (may fall outside 0..1440).
+    RiseSet(f64, f64),
+    /// The sun stays below the horizon all day; minutes of solar noon.
+    PolarNight(f64),
+    /// The sun stays above the horizon all day; minutes of solar noon.
+    MidnightSun(f64),
+}
+
+fn julian_century(jd: f64) -> f64 { (jd - 2451545.0) / 36525.0 }
+
+/// (equation of time in minutes, declination in degrees) at Julian century `t`.
+fn eq_time_and_declination(t: f64) -> (f64, f64) {
+    let l0 = (280.46646 + t * (36000.76983 + t * 0.0003032)).rem_euclid(360.0);
+    let m = 357.52911 + t * (35999.05029 - 0.0001537 * t);
+    let e = 0.016708634 - t * (0.000042037 + 0.0000001267 * t);
+    let mr = m.to_radians();
+    let c = mr.sin() * (1.914602 - t * (0.004817 + 0.000014 * t)) + (2.0 * mr).sin() * (0.019993 - 0.000101 * t) + (3.0 * mr).sin() * 0.000289;
+    let omega = (125.04 - 1934.136 * t).to_radians();
+    let lambda = (l0 + c - 0.00569 - 0.00478 * omega.sin()).to_radians();
+    let seconds = 21.448 - t * (46.8150 + t * (0.00059 - t * 0.001813));
+    let eps0 = 23.0 + (26.0 + seconds / 60.0) / 60.0;
+    let eps = (eps0 + 0.00256 * omega.cos()).to_radians();
+    let decl = (eps.sin() * lambda.sin()).asin().to_degrees();
+    let y = (eps / 2.0).tan().powi(2);
+    let l0r = l0.to_radians();
+    let eq = y * (2.0 * l0r).sin() - 2.0 * e * mr.sin() + 4.0 * e * y * mr.sin() * (2.0 * l0r).cos()
+        - 0.5 * y * y * (4.0 * l0r).sin() - 1.25 * e * e * (2.0 * mr).sin();
+    (4.0 * eq.to_degrees(), decl)
+}
+
+/// NOAA calcSunriseSetUTC with the sun's position at Julian day `jd`: minutes after
+/// 00:00 UTC of the date.
+fn rise_or_set_minutes(jd: f64, lat: f64, lon: f64, rise: bool) -> Result<f64, Sun> {
+    let (eq, decl) = eq_time_and_declination(julian_century(jd));
+    let noon = 720.0 - 4.0 * lon - eq;
+    let (latr, declr) = (lat.to_radians(), decl.to_radians());
+    let cos_ha = ZENITH_DEG.to_radians().cos() / (latr.cos() * declr.cos()) - latr.tan() * declr.tan();
+    if cos_ha > 1.0 { return Err(Sun::PolarNight(noon)); }
+    if cos_ha < -1.0 { return Err(Sun::MidnightSun(noon)); }
+    let ha = cos_ha.acos().to_degrees();
+    Ok(if rise { noon - 4.0 * ha } else { noon + 4.0 * ha })
+}
+
+fn sun_minutes(date: NaiveDate, lat: f64, lon: f64) -> Sun {
+    let midnight = date.and_hms_opt(0, 0, 0).expect("midnight").and_utc().timestamp() as f64;
+    let jd0 = midnight / 86400.0 + 2440587.5;
+    // NOAA refines each event by recomputing the sun's position at its first estimate.
+    let event = |rise: bool| -> Result<f64, Sun> {
+        let first = rise_or_set_minutes(jd0 + 0.5, lat, lon, rise)?;
+        rise_or_set_minutes(jd0 + first / 1440.0, lat, lon, rise)
+    };
+    match (event(true), event(false)) {
+        (Ok(r), Ok(s)) => Sun::RiseSet(r, s),
+        (Err(e), _) | (_, Err(e)) => e,
+    }
+}
+
+fn to_epoch(date: NaiveDate, minutes: f64) -> i64 {
+    date.and_hms_opt(0, 0, 0).expect("midnight").and_utc().timestamp() + (minutes * 60.0).round() as i64
 }
 
 /// Sunrise and sunset (Unix seconds) on `date` at lat/lon (east positive). None when the
 /// sun neither rises nor sets that day.
-pub fn sun_times(_date: NaiveDate, _lat: f64, _lon: f64) -> Option<(i64, i64)> {
-    None
+pub fn sun_times(date: NaiveDate, lat: f64, lon: f64) -> Option<(i64, i64)> {
+    match sun_minutes(date, lat, lon) {
+        Sun::RiseSet(r, s) => Some((to_epoch(date, r), to_epoch(date, s))),
+        _ => None,
+    }
 }
 
 /// The solar day containing `now` at lat/lon, and whether it is dark now (before
 /// sunrise or from sunset on). The day is the local mean solar date, so it needs no
 /// time zone.
-pub fn solar_day(_now: DateTime<Utc>, _lat: f64, _lon: f64) -> SolarDay {
-    SolarDay { sunrise: 0, sunset: 0, is_dark: false }
+pub fn solar_day(now: DateTime<Utc>, lat: f64, lon: f64) -> SolarDay {
+    let local_mean = now + chrono::Duration::seconds((lon * 240.0).round() as i64);
+    let date = local_mean.date_naive();
+    let t = now.timestamp();
+    match sun_minutes(date, lat, lon) {
+        Sun::RiseSet(r, s) => {
+            let (sunrise, sunset) = (to_epoch(date, r), to_epoch(date, s));
+            SolarDay { sunrise, sunset, is_dark: t < sunrise || t >= sunset }
+        }
+        // No sunrise: report solar noon for both and call it dark all day.
+        Sun::PolarNight(noon) => { let n = to_epoch(date, noon); SolarDay { sunrise: n, sunset: n, is_dark: true } }
+        // No sunset: a 24-hour day centred on solar noon.
+        Sun::MidnightSun(noon) => { let n = to_epoch(date, noon); SolarDay { sunrise: n - 43_200, sunset: n + 43_200, is_dark: false } }
+    }
 }
 
 #[cfg(test)]

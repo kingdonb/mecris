@@ -29,15 +29,65 @@ pub struct Modality {
     pub last_status: Option<String>,
 }
 
+enum Lifecycle {
+    /// Always shown: healthy under the first limit, degraded under the second, else offline.
+    Expected { healthy_under: i64, degraded_under: i64 },
+    /// Shown once as 'paused', whatever its age.
+    Paused,
+    /// Never shown.
+    Retired,
+}
+
+/// contracts/pulse_roles.json `roles`.
+const ROLES: [(&str, &str, Lifecycle); 6] = [
+    ("leader", "MCP SERVER", Lifecycle::Expected { healthy_under: 2, degraded_under: 5 }),
+    ("android_client", "ANDROID CLIENT", Lifecycle::Expected { healthy_under: 90, degraded_under: 240 }),
+    ("akamai_functions", "AKAMAI FUNCTIONS", Lifecycle::Expected { healthy_under: 135, degraded_under: 250 }),
+    ("active_ghost", "GHOST", Lifecycle::Paused),
+    ("fermyon_cloud", "FERMYON CLOUD", Lifecycle::Retired),
+    ("unknown_cloud", "UNKNOWN CLOUD", Lifecycle::Retired),
+];
+/// contracts/pulse_roles.json `unlisted_roles.show_under`.
+const UNLISTED_SHOW_UNDER: i64 = 1440;
+
 /// The display name and status for a role at an age, or None when the role is hidden.
-pub fn verdict(_role: &str, _minutes: i64) -> Option<(String, &'static str)> {
-    None
+pub fn verdict(role: &str, minutes: i64) -> Option<(String, &'static str)> {
+    match ROLES.iter().find(|(r, _, _)| *r == role) {
+        Some((_, display, lifecycle)) => match lifecycle {
+            Lifecycle::Retired => None,
+            Lifecycle::Paused => Some((display.to_string(), "paused")),
+            Lifecycle::Expected { healthy_under, degraded_under } => {
+                let status = if minutes < *healthy_under { "healthy" } else if minutes < *degraded_under { "degraded" } else { "offline" };
+                Some((display.to_string(), status))
+            }
+        },
+        None if minutes < UNLISTED_SHOW_UNDER => Some((role.replace('_', " ").to_uppercase(), "unknown")),
+        None => None,
+    }
 }
 
 /// Each role at most once: the newest heartbeat wins, the user's own row on a tie.
 /// Visibility and status come from the winning row. Output is newest first.
-pub fn modalities(_rows: &[Row]) -> Vec<Modality> {
-    Vec::new()
+pub fn modalities(rows: &[Row]) -> Vec<Modality> {
+    let mut sorted: Vec<&Row> = rows.iter().collect();
+    // Stable: equal (minutes, own) rows keep their SQL order.
+    sorted.sort_by_key(|r| (r.minutes, !r.own));
+    let mut seen: Vec<&str> = Vec::new();
+    let mut out = Vec::new();
+    for r in sorted {
+        if seen.contains(&r.role.as_str()) { continue; }
+        seen.push(&r.role);
+        if let Some((display, status)) = verdict(&r.role, r.minutes) {
+            out.push(Modality {
+                role: display,
+                status: status.to_string(),
+                last_seen: r.last_seen.clone(),
+                minutes_since: r.minutes.max(0) as u64,
+                last_status: r.last_status.clone(),
+            });
+        }
+    }
+    out
 }
 
 #[cfg(test)]
