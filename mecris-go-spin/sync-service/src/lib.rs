@@ -367,6 +367,14 @@ fn effective_targets(cur: i32, tom: i32, mult: f64, done: i32, beeminder_due: i3
     (done + remaining, remaining, pump_met && due == 0)
 }
 
+/// Whether a profile save carries the number already stored (decrypted), compared by its
+/// digits: "+1 (585) 555-0100" and "+15855550100" are the same number. Ciphertexts differ
+/// on every write, so only plaintexts can be compared.
+fn same_phone_number(stored: Option<&str>, requested: &str) -> bool {
+    let _ = (stored, requested);
+    false
+}
+
 async fn handle_profile_post(req: Request) -> anyhow::Result<Response<String>> {
     let uid = match extract_user_id(req.headers().get("authorization")).await { Some(id) => id, None => return Ok(text_response(401, "Unauthorized")?) };
     let body = req.into_body().collect().await.map_err(|e| anyhow::anyhow!("Body: {:?}", e))?.to_bytes();
@@ -1321,7 +1329,18 @@ mod tests {
     #[test]
     fn test_version_info_reports_package_version_and_provider() {
         let v = serde_json::to_value(version_info("akamai")).unwrap();
-        assert_eq!(v, json!({"version": env!("CARGO_PKG_VERSION"), "cloud_provider": "akamai"}));
+        assert_eq!(v, json!({"version": env!("CARGO_PKG_VERSION"), "cloud_provider": "akamai", "dry_run": true}));
+    }
+
+    #[test]
+    fn test_same_phone_number_compares_digits_of_plaintexts() {
+        assert!(same_phone_number(Some("+15855550100"), "+15855550100"));
+        assert!(same_phone_number(Some("+1 (585) 555-0100"), " +15855550100 "), "formatting is not a new number");
+        assert!(!same_phone_number(Some("+15855550100"), "+15855550101"), "a different number");
+        assert!(!same_phone_number(None, "+15855550100"), "no stored number (or one that does not decrypt)");
+        assert!(!same_phone_number(Some(""), "+15855550100"));
+        assert!(!same_phone_number(Some("+15855550100"), ""), "clearing the number is a change");
+        assert!(same_phone_number(Some(""), ""), "still no number");
     }
 
     #[test]

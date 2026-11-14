@@ -140,7 +140,10 @@ with open(os.environ["FAKE_LOG"], "a") as f:
     f.write(json.dumps({"argv": args, "url": url, "via_stdin": stdin_cfg is not None}) + "\n")
 u = urlparse(url); q = parse_qs(u.query); key = q.get("key", [None])[0]
 good = key == os.environ["FAKE_GOOD_KEY"]
-if u.path == "/version": code, body = 200, json.dumps({"version": os.environ["FAKE_VERSION"], "cloud_provider": "akamai"}, separators=(",", ":"))
+if u.path == "/version":
+    v = {"version": os.environ["FAKE_VERSION"], "cloud_provider": "akamai"}
+    if os.environ.get("FAKE_DRY_RUN_CAP", "1") == "1": v["dry_run"] = True
+    code, body = 200, json.dumps(v, separators=(",", ":"))
 elif u.path == "/internal/trigger-reminders" and good and q.get("dry_run") == ["1"]:
     code, body = 200, json.dumps({"sent": 0, "failed": 0, "stood_down": 0, "reasons": {"outside_window": 1}, "dry_run": True,
         "users": [{"familiar_id": "someone", "ny_time": "2026-11-14 15:00 EST", "verdict": "skip", "reason": "outside_window"}]})
@@ -160,7 +163,7 @@ if [[ "${1:-}" == "-" ]]; then
   echo "$*" >> "$FAKE_NEON_LOG"
   case "$2" in
     now) echo 1000 ;;
-    refusals) f="$FAKE_STATE/$3-$4"; if [[ -f "$f" ]]; then echo 3; else touch "$f"; echo 0; fi ;;
+    refusals) f="$FAKE_STATE/$3-$4"; if [[ -f "$f" && "${FAKE_REFUSALS_STUCK:-0}" != 1 ]]; then echo 3; else touch "$f"; echo 0; fi ;;
     cron_rows_since) echo "${FAKE_CRON_ROWS:-1}" ;;
     last_status) echo "reminders 20:00Z: skipped (outside window); sync 20:05Z: fresh 40m" ;;
     *) echo "unknown query $2" >&2; exit 3 ;;
@@ -171,17 +174,18 @@ exec "@PYTHON@" "$@"
 '''
 
 
-def _run_verify(tmp_path, *args, cron_rows="1"):
+def _run_verify(tmp_path, *args, cron_rows="1", version=None, dry_run_cap=True, refusals_stuck=False):
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir(exist_ok=True)
     (bin_dir / "curl").write_text(FAKE_CURL.replace("@PYTHON@", sys.executable))
     (bin_dir / "fakepy").write_text(FAKE_PY.replace("@PYTHON@", sys.executable))
-    for f in ("curl", "fakepy"):
+    (bin_dir / "sleep").write_text("#!/bin/sh\nexit 0\n")  # the version wait loop sleeps; tests need not
+    for f in ("curl", "fakepy", "sleep"):
         (bin_dir / f).chmod(0o755)
     (tmp_path / "state").mkdir(exist_ok=True)
     env_file = tmp_path / "env"
     env_file.write_text(f"INTERNAL_API_KEY={GOOD_KEY}\nNEON_DB_URL=postgresql://fake.invalid/db\n")
-    version = re.search(r'^version = "(.*)"', (ROOT / "mecris-go-spin/sync-service/spin.toml").read_text(), re.M).group(1)
+    version = version or re.search(r'^version = "(.*)"', (ROOT / "mecris-go-spin/sync-service/spin.toml").read_text(), re.M).group(1)
     env = {
         "PATH": f"{bin_dir}:/usr/bin:/bin",
         "HOME": str(tmp_path),
@@ -194,6 +198,8 @@ def _run_verify(tmp_path, *args, cron_rows="1"):
         "FAKE_GOOD_KEY": GOOD_KEY,
         "FAKE_VERSION": version,
         "FAKE_CRON_ROWS": cron_rows,
+        "FAKE_DRY_RUN_CAP": "1" if dry_run_cap else "0",
+        "FAKE_REFUSALS_STUCK": "1" if refusals_stuck else "0",
     }
     proc = subprocess.run(["bash", str(VERIFY), *args], env=env, capture_output=True, text=True, timeout=120)
     calls = [json.loads(line) for line in (tmp_path / "curl.log").read_text().splitlines()] if (tmp_path / "curl.log").exists() else []
@@ -233,6 +239,29 @@ def test_verify_fails_when_the_cron_run_leaves_no_heartbeat(tmp_path):
     proc, _ = _run_verify(tmp_path, cron_rows="0")
     assert proc.returncode == 1
     assert "FAIL" in proc.stdout
+
+
+def test_verify_sends_no_keyed_request_to_a_service_that_is_not_this_version(tmp_path):
+    # A v0.2 handler ignores ?dry_run=1 and runs the real reminder loop: never reach it.
+    proc, calls = _run_verify(tmp_path, version="0.1.9-old")
+    assert proc.returncode == 1, proc.stdout + proc.stderr
+    assert "0.1.9-old" in proc.stdout
+    assert _keyed(calls) == [], [c["url"].replace(GOOD_KEY, "<KEY>") for c in _keyed(calls)]
+
+
+def test_verify_sends_no_keyed_request_to_a_service_without_a_dry_run(tmp_path):
+    # The version string may not have been bumped yet; /version must also promise a dry run.
+    proc, calls = _run_verify(tmp_path, dry_run_cap=False)
+    assert proc.returncode == 1, proc.stdout + proc.stderr
+    assert "dry run" in proc.stdout
+    assert _keyed(calls) == [], [c["url"].replace(GOOD_KEY, "<KEY>") for c in _keyed(calls)]
+
+
+def test_verify_sends_no_keyed_request_when_burned_key_refusals_are_not_counted(tmp_path):
+    # Only v0.3 counts refusals in internal_refusals: if the count does not rise, stop.
+    proc, calls = _run_verify(tmp_path, refusals_stuck=True)
+    assert proc.returncode == 1, proc.stdout + proc.stderr
+    assert _keyed(calls) == [], [c["url"].replace(GOOD_KEY, "<KEY>") for c in _keyed(calls)]
 
 
 def test_verify_script_documents_its_modes():
@@ -328,3 +357,37 @@ def test_migration_runs_twice_on_the_ci_database(monkeypatch):
     monkeypatch.setenv("NEON_DB_URL", os.environ["SPIN_E2E_DB_URL"])
     assert mod.main() == 0
     assert mod.main() == 0
+
+
+def _cron_rows_since_sql():
+    m = re.search(r'"cron_rows_since": \("(.*?)", (\d)\)', VERIFY.read_text())
+    assert m, "verify_spin_deploy.sh has a cron_rows_since query"
+    return m.group(1), int(m.group(2))
+
+
+@requires_spin
+def test_cron_rows_since_needs_a_sync_segment_written_after_t0():
+    """A /health call bumps the cloud row's heartbeat but keeps an old last_status: that
+    must not pass for a failover-sync run that wrote nothing."""
+    uid = "e2e-cron-rows-since"
+    sql, nargs = _cron_rows_since_sql()
+    assert nargs == 1
+    conn = connect()
+    cur = conn.cursor()
+    try:
+        make_user(cur, uid, prefs=ALL_DAY)
+        cur.execute("DELETE FROM scheduler_election WHERE role = 'akamai_functions'")
+        cur.execute("SELECT FLOOR(EXTRACT(EPOCH FROM now()))::BIGINT")
+        t0 = cur.fetchone()[0]
+        stale = "reminders 20:00Z: skipped (outside window); sync " + \
+            "' || to_char((now() - interval '3 hours') AT TIME ZONE 'UTC', 'HH24:MI') || 'Z: fresh 40m"
+        cur.execute(f"INSERT INTO scheduler_election (user_id, role, process_id, heartbeat, intent, last_status) VALUES (%s, 'akamai_functions', 'akamai', now() + interval '1 second', 'cron', '{stale}')", (uid,))
+        cur.execute(sql, (t0,))
+        assert cur.fetchone()[0] == 0, "a fresh heartbeat with an old sync segment is not a cron run"
+        cur.execute("UPDATE scheduler_election SET last_status = 'sync ' || to_char(now() AT TIME ZONE 'UTC', 'HH24:MI') || 'Z: fresh 0m' WHERE user_id = %s AND role = 'akamai_functions'", (uid,))
+        cur.execute(sql, (t0,))
+        assert cur.fetchone()[0] == 1, "a sync segment stamped at or after t0 is"
+    finally:
+        cur.execute("DELETE FROM scheduler_election WHERE user_id = %s", (uid,))
+        cleanup_user(cur, uid)
+        conn.close()

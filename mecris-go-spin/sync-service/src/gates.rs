@@ -213,6 +213,20 @@ pub const DAMPING_ROWS_SQL: &str = "m.type <> 'phone_verification' AND ((COALESC
 /// The caller adds the New York date of `sent_at`, never the GMT `date` column.
 pub const CAP_ROWS_SQL: &str = "m.type <> 'phone_verification' AND COALESCE(m.channel, 'whatsapp') = 'whatsapp' AND (m.status IS NULL OR m.status IN ('sent', 'failed'))";
 
+/// A verification request is refused if the caller's newest phone_verification send is
+/// younger than this many seconds.
+pub const VERIFICATION_MIN_INTERVAL_SECS: i64 = 60;
+/// At most this many verification sends per caller per America/New_York day.
+pub const VERIFICATION_MAX_PER_DAY: i64 = 5;
+
+/// Whether a phone verification request may send another code. `last_age_secs` is the age
+/// of the caller's newest phone_verification row in message_log and `sent_today` the
+/// count of those rows on the current New York day by sent_at, both BIGINT from SQL.
+pub fn verification_allowed(last_age_secs: Option<i64>, sent_today: i64) -> bool {
+    let _ = (last_age_secs, sent_today);
+    true
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -399,5 +413,14 @@ mod tests {
             assert!(CAP_ROWS_SQL.contains(frag), "cap predicate lacks {frag}");
         }
         assert!(!CAP_ROWS_SQL.contains("android_native"), "local phone nags never count toward the WhatsApp cap");
+    }
+
+    #[test]
+    fn verification_requests_are_throttled() {
+        assert!(verification_allowed(None, 0), "a first request sends");
+        assert!(verification_allowed(Some(61), 4), "a minute later, under the daily limit");
+        assert!(!verification_allowed(Some(10), 1), "a second request inside a minute is refused");
+        assert!(!verification_allowed(Some(60 * 60), VERIFICATION_MAX_PER_DAY), "the daily limit is a hard stop");
+        assert!(!verification_allowed(Some(-5), 0), "a row stamped in the future counts as just now");
     }
 }
