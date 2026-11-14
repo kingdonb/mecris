@@ -2018,7 +2018,13 @@ async def send_reminder_message(message_data: Dict[str, Any], user_id: str = Non
     - The guard (nag_damping_verdict over NAG_GUARD_SQL) runs before any send.
       trigger_reminder_check can still be called by hand, so this path needs
       the same 4-hour any-channel damping and New York daily cap as Spin. A
-      failed read fails closed.
+      failed message_log read fails closed. A failed prefs read gives {},
+      so the default cap of 3 applies, as in Spin.
+    - It does not apply Spin's 14:00-17:59 New York window. This path is a
+      manual or ReminderService-driven override (ReminderService keeps its
+      own windows); damping and the shared daily cap bound it.
+    - The result carries 'logged': False when the message_log write failed,
+      because an unlogged send is invisible to damping and the cap.
     - sent_at is the database's NOW() (timestamptz, UTC), date is the New York
       date, and channel is explicit. A console fallback with no WhatsApp
       attempt is channel 'console', status 'not_sent', never a WhatsApp
