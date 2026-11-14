@@ -5,7 +5,7 @@
 - v0.2.0 is tagged and deployed to Akamai (Spin API). It sent five WhatsApp walk reminders on 2026-11-14 at the wrong hours: the gates ignore `notification_prefs`, and two Postgres type traps break the cooldown and the Android stand-down (#369).
 - The `trigger-reminders` Akamai cron is **paused** (deleted) until v0.3.0 deploys. The failover-sync crons still run.
 - **Do not install the 0.2.0 APK**, and do not tap VERIFY in the app until v0.3.0 is deployed: Spin's verification replies are not JSON objects yet.
-- v0.3.0 is planned in epic #360 as seven PRs: contracts, hygiene-docs, spin-cloud-arm, spin-status, python-mcp, android, release. Merge with merge commits; `main` is PR-protected.
+- v0.3.0 is planned in epic #360 as seven PRs plus the release PR: localhost-bridge, contracts, hygiene, spin-cloud-arm, truthful-narrator (Python MCP), android, spin-status, then release. Merge with merge commits; `main` is PR-protected.
 - Claude runs on the Ultra plan (subscription grant to about 2027-05-13). Usage credits stay off.
 
 ## Verified This Session
@@ -18,7 +18,7 @@ In the hygiene-docs PR (chore/v0.3-hygiene):
 
 ## Pending Verification (Next Session)
 
-- [ ] Merge order: contracts first, spin-cloud-arm before spin-status, the rest once CI is green.
+- [ ] Merge in this order once each is green: `fix/v0.3-localhost-bridge`, `chore/v0.3-contracts`, `chore/v0.3-hygiene`, `fix/v0.3-spin-cloud-arm`, `fix/v0.3-truthful-narrator`, `feat/v0.3-android`, `feat/v0.3-spin-status`, then the release PR.
 - [ ] Before the deploy, with the owner's OK: run the additive migrations on live Neon (`scripts/migrate_v9_*.py`).
 - [ ] Deploy from the home network: `./mecris-go-spin/sync-service/deploy-akamai.sh`, then `./scripts/verify_spin_deploy.sh` (it must send no WhatsApp; check its usage line first).
 - [ ] Recreate the crons with `./scripts/setup_spin_cron.sh` after deleting the old ones; confirm with `spin aka cron list` without pasting its output (it prints the key).

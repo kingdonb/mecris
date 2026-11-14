@@ -26,7 +26,7 @@ Decisions already taken:
 - **Android health**: healthy under 90 minutes since the last heartbeat, degraded under 240.
 - **Phone**: a Claude plan card replaces the VIRTUAL BUDGET odometer (the web keeps it).
 
-Pull requests, in merge order: shared contracts, repo hygiene and docs (#347, #348, #218), the Spin cloud arm (#183, #368, #349 damping), the Python MCP server (#346, #345, #351, and the loopback-only bridge #39), Android (#344, #349, #213), Spin status (#344, #213, #346, #188), then the release itself.
+Pull requests, in merge order: the loopback-only bridge (#39), shared contracts, repo hygiene and docs (#347, #348, #218), the Spin cloud arm (#183, #368, #349 damping), the Python MCP server (#346, #345, #351), Android (#344, #349, #213), Spin status (#344, #213, #346, #188), then the release itself.
 
 Deploy and verify, in order: additive migrations (with the owner's OK), `deploy-akamai.sh`, recreate the crons, a dry-run verify, 3 clean cron cycles, then install VC 41 on the phone; promote the release to Latest only after a 3-day `message_log` watch (see `docs/RELEASE_PROCESS.md`).
 
