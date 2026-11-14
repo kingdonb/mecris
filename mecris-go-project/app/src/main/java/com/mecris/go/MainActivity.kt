@@ -2114,7 +2114,7 @@ fun ProfileSettingsScreen(
             if (!isPhoneVerified && phoneNumber.isNotEmpty()) {
                 TextButton(onClick = {
                     scope.launch {
-                        Log.i("ProfileSettings", "Requesting verification for $phoneNumber")
+                        Log.i("ProfileSettings", "Requesting phone verification")
                         isVerifying = true
                         try {
                             val result = withTimeoutOrNull(15000) {

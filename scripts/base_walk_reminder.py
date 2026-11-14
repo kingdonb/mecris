@@ -60,7 +60,7 @@ def run_base_reminder():
         return
         
     # 2. Check Consent and Compliance Window
-    logger.info(f"Checking consent for {target_phone}...")
+    logger.info("Checking consent for the configured reminder recipient...")
 
     from usage_tracker import get_tracker
     tracker = get_tracker()

@@ -15,6 +15,16 @@ DIGITS = "5551234567"
 PREFIX = "+1555"
 
 
+@pytest.fixture(autouse=True)
+def _real_modules(monkeypatch):
+    """Other test files replace these with MagicMocks in sys.modules at import time;
+    these specs must exercise the real code, so drop any stand-ins (restored after)."""
+    for name in list(sys.modules):
+        if name in ("services", "usage_tracker", "twilio_sender", "mcp_server") or name.startswith("services."):
+            if isinstance(sys.modules[name], MagicMock):
+                monkeypatch.delitem(sys.modules, name)
+
+
 class _FakeTwilioRestException(Exception):
     def __init__(self):
         self.status, self.code = 400, 21211
