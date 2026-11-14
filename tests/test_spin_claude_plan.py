@@ -5,7 +5,7 @@ registry (#344, #349, #346), and GET /claude-plan returns the same plan object.
   claude_plan_usage.summarize gives for it.
 - Without the table, aggregate-status still answers 200 with claude_plan null.
 - Pace lists ARABIC and GREEK; modalities carry last_status and follow pulse_roles.json.
-- GET /health no longer writes a stray 'unknown' pulse row.
+- Pace is on the light call too; GET /health writes no pulse row at all.
 
 Live: needs the CI Spin service (see spin_e2e.py). Never reads .env.
 """
@@ -139,6 +139,12 @@ def test_pace_and_pulse_follow_the_contracts():
 
         pace = {p["goal"]: p for p in body["pace"]}
         assert list(pace) == ["ARABIC", "GREEK"]
+        # The phone's nag workers make the light call (#349): pace is there too.
+        status, light, text = http_json("GET", "/aggregate-status", headers=_bearer(uid))
+        assert status == 200, text
+        assert [p["goal"] for p in light["pace"]] == ["ARABIC", "GREEK"]
+        assert light["pace"][0]["remaining"] == 40
+        assert light["claude_plan"] is None and light["modalities"] is None, "the card and pulse stay full-only"
         assert pace["ARABIC"]["remaining"] == 40 and pace["ARABIC"]["per_hour"] > 0
         assert pace["GREEK"]["remaining"] == 0 and pace["GREEK"]["per_hour"] == 0
         assert pace["ARABIC"]["clear_by"].endswith(("-05:00", "-04:00"))
@@ -158,18 +164,25 @@ def test_pace_and_pulse_follow_the_contracts():
 
 
 @requires_spin
-def test_health_check_does_not_write_an_unknown_role():
+def test_health_check_writes_no_pulse_row():
+    """Only a cron run stamps the cloud role, so an 'offline' AKAMAI FUNCTIONS card means
+    the cron stopped, not that nobody opened a dashboard (#346)."""
     uid = "e2e-claude-plan-health"
     conn = connect()
     cur = conn.cursor()
     try:
         make_user(cur, uid, autonomous=False)
+        cur.execute(
+            """INSERT INTO scheduler_election (user_id, role, process_id, heartbeat, intent, last_status)
+               VALUES (%s, 'akamai_functions', 'akamai', now() - interval '400 minutes', 'cron', 'reminders 16:00Z: stood down')""",
+            (uid,),
+        )
+        cur.execute("SELECT role, heartbeat, last_status FROM scheduler_election WHERE user_id = %s ORDER BY role", (uid,))
+        before = cur.fetchall()
         status, _, text = http_json("GET", "/health", headers=_bearer(uid))
         assert status == 200, text
-        cur.execute("SELECT role FROM scheduler_election WHERE user_id = %s", (uid,))
-        roles = [r[0] for r in cur.fetchall()]
-        # CI runs with cloud_provider=local, which names no known cloud.
-        assert "unknown" not in roles, roles
+        cur.execute("SELECT role, heartbeat, last_status FROM scheduler_election WHERE user_id = %s ORDER BY role", (uid,))
+        assert cur.fetchall() == before, "GET /health leaves every pulse row as it was"
     finally:
         cleanup_user(cur, uid)
         conn.close()

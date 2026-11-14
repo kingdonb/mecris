@@ -2081,6 +2081,29 @@ mod tests {
         assert!(got["pace"].is_array());
     }
 
+    // --- #349: the phone's nag workers make the light call, so pace is on both paths ---
+    #[test]
+    fn test_aggregate_light_still_carries_pace() {
+        let got = serde_json::to_value(build_aggregate(contract_input(false))).unwrap();
+        let want: serde_json::Value = serde_json::from_str(AGG_CONTRACT).unwrap();
+        assert_eq!(got["pace"], want["pace"], "pace without ?full=true");
+        for full_only in ["claude_plan", "modalities", "system_pulse"] {
+            assert_eq!(got[full_only], serde_json::Value::Null, "{full_only} stays full-only");
+        }
+    }
+
+    // --- #346: only a cron run stamps the cloud role, so 'offline' means the cron stopped ---
+    #[test]
+    fn test_health_check_writes_no_cloud_heartbeat() {
+        let src = include_str!("lib.rs");
+        let start = src.find("async fn handle_health_get(").expect("handle_health_get exists");
+        let body = &src[start..];
+        let body = &body[..body[1..].find("\nasync fn ").map(|i| i + 1).unwrap_or(body.len())];
+        assert!(!body.contains("register_cloud_heartbeat"), "GET /health must not bump the cloud heartbeat");
+        assert!(!body.contains("INSERT INTO scheduler_election"), "GET /health must not write scheduler_election");
+        assert!(!body.contains("UPDATE scheduler_election"), "GET /health must not write scheduler_election");
+    }
+
     #[test]
     fn test_aggregate_past_vacation_is_not_all_clear() {
         let mut input = contract_input(false);
