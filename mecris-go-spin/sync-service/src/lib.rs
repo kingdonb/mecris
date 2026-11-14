@@ -1051,6 +1051,50 @@ mod tests {
     use super::*;
     use serde_json::json;
 
+    // --- Internal endpoints: fail closed, no published key, callers that can actually authenticate ---
+    #[test]
+    fn test_internal_caller_unconfigured_key_fails_closed() {
+        assert!(!internal_caller_ok("", None, None, false));
+        assert!(!internal_caller_ok("", Some(""), Some(""), false));
+        assert!(!internal_caller_ok("", Some("anything"), None, false));
+    }
+
+    #[test]
+    fn test_internal_caller_published_key_is_burned() {
+        // "test-internal-key" was committed to a public repo; it must never authorize again.
+        assert!(!internal_caller_ok("test-internal-key", Some("test-internal-key"), None, false));
+        assert!(!internal_caller_ok("test-internal-key", None, Some("test-internal-key"), false));
+    }
+
+    #[test]
+    fn test_internal_caller_header_key() {
+        assert!(internal_caller_ok("s3cret-value", Some("s3cret-value"), None, false));
+        assert!(!internal_caller_ok("s3cret-value", Some("s3cret-valuX"), None, false));
+        assert!(!internal_caller_ok("s3cret-value", Some("s3cret"), None, false));
+        assert!(!internal_caller_ok("s3cret-value", None, None, false));
+    }
+
+    #[test]
+    fn test_internal_caller_query_key_for_platform_cron() {
+        // Akamai cron can only set path and query, never headers.
+        assert!(internal_caller_ok("s3cret-value", None, Some("s3cret-value"), false));
+        assert!(!internal_caller_ok("s3cret-value", None, Some("wrong"), false));
+    }
+
+    #[test]
+    fn test_internal_caller_signed_in_user_is_allowed() {
+        // The Android app triggers reminders with the user's own bearer token.
+        assert!(internal_caller_ok("", None, None, true));
+        assert!(internal_caller_ok("s3cret-value", Some("wrong"), None, true));
+    }
+
+    #[test]
+    fn test_query_param_extracts_and_decodes() {
+        assert_eq!(query_param(Some("key=abc%2B1&x=2"), "key").as_deref(), Some("abc+1"));
+        assert_eq!(query_param(Some("x=2"), "key"), None);
+        assert_eq!(query_param(None, "key"), None);
+    }
+
     // --- Twilio webhook requests must carry a valid X-Twilio-Signature ---
     // Vector from Twilio's "Validating Signatures from Twilio" documentation.
     const TW_DOC_URL: &str = "https://mycompany.com/myapp.php?foo=1&bar=2";
