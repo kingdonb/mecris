@@ -74,6 +74,21 @@ class ClaudePlanStateTest {
     }
 
     @Test
+    fun `half-percent ties round to even like Python's f-string, not half up`() {
+        // Python: format(62.5, '.0f') == '62', format(80.5, '.0f') == '80'; Java's %.0f gives 63 and 81.
+        val available = ClaudePlanState.derive(reading("2026-11-14T19:00:00Z", weekly(62.5)), now)
+        assertEquals("weekly_all at 62%", available.reason)
+        assertEquals("Claude: available (62% weekly, resets Mon 4:00 AM)", available.summaryLine)
+
+        val constrained = ClaudePlanState.derive(reading("2026-11-14T19:00:00Z", weekly(80.5)), now)
+        assertEquals("constrained", constrained.state)
+        assertEquals("weekly_all at 80%", constrained.reason)
+
+        val odd = ClaudePlanState.derive(reading("2026-11-14T19:00:00Z", weekly(97.5)), now)
+        assertEquals("weekly_all at 98%", odd.reason)
+    }
+
+    @Test
     fun `100 percent is exhausted`() {
         assertEquals("exhausted", ClaudePlanState.derive(reading("2026-11-14T19:00:00Z", weekly(100.0)), now).state)
     }
