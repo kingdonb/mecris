@@ -1,7 +1,10 @@
 """No personal phone numbers in tracked files (#358).
 
 kingdonb/mecris is public. This scan reads every tracked text file and looks
-for E.164-shaped strings (+ and 10 to 15 digits). A match is allowed when it:
+for E.164-shaped strings (+ and 10 to 15 digits), the same with '+' URL-encoded
+as %2B (Twilio form bodies), and bare 11-digit NANP strings (1NXXNXXXXXX, for
+example a JSON key), which are checked as if written with a '+'. A match is
+allowed when it:
 
 - is a Twilio magic test number (+1500555xxxx);
 - is a NANP fiction number (NXX-555-0100 to 0199);
@@ -26,6 +29,8 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 ALLOWLIST = REPO_ROOT / "tests" / "fixtures" / "phone_allowlist_sha256.txt"
 
 E164 = re.compile(r"(?<![\w+])\+[1-9]\d{9,14}(?!\w)")
+PCT_E164 = re.compile(r"%2[Bb]([1-9]\d{9,14})(?!\w)")
+BARE_NANP = re.compile(r"(?<![\w+.])1[2-9]\d{2}[2-9]\d{6}(?![\w.])")
 TWILIO_MAGIC = re.compile(r"1500555\d{4}")
 
 
@@ -72,6 +77,14 @@ def _tracked_files():
     return [REPO_ROOT / n for n in names if n]
 
 
+def candidate_numbers(line):
+    """Every phone-shaped string on the line, normalised to E.164 with a '+'."""
+    found = [m.group(0) for m in E164.finditer(line)]
+    found += ["+" + m.group(1) for m in PCT_E164.finditer(line)]
+    found += ["+" + m.group(0) for m in BARE_NANP.finditer(line)]
+    return found
+
+
 def find_unlisted_numbers(files, allowlist):
     """Return 'path:line' for every E.164 match that is not allowed. Never the number."""
     locations = []
@@ -84,7 +97,7 @@ def find_unlisted_numbers(files, allowlist):
             continue  # binary
         text = data.decode("utf-8", "replace")
         for lineno, line in enumerate(text.splitlines(), 1):
-            if any(not is_allowed(m.group(0), allowlist) for m in E164.finditer(line)):
+            if any(not is_allowed(n, allowlist) for n in candidate_numbers(line)):
                 locations.append(f"{path.relative_to(REPO_ROOT)}:{lineno}")
     return locations
 

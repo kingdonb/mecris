@@ -13,6 +13,7 @@
 042a05801b4d8c8cf4c7b2d6ea9267b69d015c83818627876956074f46882499  Twilio WhatsApp sandbox sender (published by Twilio)
 806e5b992787f74aade0d796cbafe56e730b5a1174ca208b05abba463b1034aa  Twilio request-signature docs example, Caller/From (lib.rs.beta4 test)
 61d9111bed3e6d9cfc1bc3b5cb35a402687c4f1546bee061a2bd444fbdd64c44  Twilio request-signature docs example, To (lib.rs.beta4 test)
+18d1d9365a71ff5dbb222be406debd6a0b5f0a2f8f3486f57d705f9ce39b36ee  Twilio request-signature docs example, From and Caller (%2B-encoded, lib.rs test)
 42b7dac560c7215e82d4d1c377821625af9ed77a489fe15bdc88071612ac03f0  Mecris business WhatsApp sender (already public in the deploy scripts and a published post)
 7826c22f38c95f18c873096144ffe58c4a78815487ec081c728cb7e2080861f5  repeated-digit placeholder in tests/test_twilio_sender.py
 52383c27bcb71a04576627c34ebb6ac1dab2c7850f91db91a1745ce8d8479e97  repeated-digit placeholder in attic/sms_consent.json.example
