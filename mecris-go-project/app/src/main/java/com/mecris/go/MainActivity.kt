@@ -772,7 +772,7 @@ fun MecrisDashboard(
                                     // Save the optimistic state to cache on success
                                     persistenceManager.saveDashboard(DashboardCache(
                                         walkData = walkData,
-                                                        languageStats = languageStats,
+                                        languageStats = languageStats,
                                         aggregateStatus = aggregateStatus,
                                         homeServerActive = homeServerActive,
                                         lastSyncTime = lastSyncTime
