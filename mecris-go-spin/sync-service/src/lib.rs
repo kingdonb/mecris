@@ -14,7 +14,36 @@ use aes_gcm::{aead::{Aead, KeyInit}, Aes256Gcm, Nonce};
 use chrono::{Timelike, TimeZone};
 
 #[derive(Deserialize, Default)] struct NotificationPrefs { #[allow(dead_code)] sms_opted_in: Option<bool> }
-fn internal_api_key_ok(cfg: &str, h: Option<&str>) -> bool { if cfg.is_empty() { true } else { h == Some(cfg) } }
+/// The key that was committed to the public deploy scripts. It can never authorize again.
+const BURNED_INTERNAL_KEY: &str = "test-internal-key";
+
+/// Compare two secrets without an early exit on the first differing byte.
+fn secret_eq(a: &str, b: &str) -> bool {
+    a.len() == b.len() && a.bytes().zip(b.bytes()).fold(0u8, |acc, (x, y)| acc | (x ^ y)) == 0
+}
+
+fn query_param(query: Option<&str>, key: &str) -> Option<String> {
+    parse_form(query?).into_iter().find(|(k, _)| k == key).map(|(_, v)| v)
+}
+
+/// Who may call the `/internal/*` trigger endpoints:
+/// - a signed-in user (the Android app sends its bearer token), or
+/// - a caller presenting the configured key, in the `x-internal-api-key` header or,
+///   for platform cron which can only set path and query, the `key` query parameter.
+/// An unset key authorizes nobody. So does the key that was once published.
+fn internal_caller_ok(cfg: &str, header_key: Option<&str>, query_key: Option<&str>, signed_in_user: bool) -> bool {
+    if signed_in_user { return true; }
+    if cfg.is_empty() || cfg == BURNED_INTERNAL_KEY { return false; }
+    header_key.map(|h| secret_eq(h, cfg)).unwrap_or(false) || query_key.map(|q| secret_eq(q, cfg)).unwrap_or(false)
+}
+
+async fn internal_request_ok(req: &Request) -> bool {
+    let cfg = variables::get("internal_api_key").await.unwrap_or_default();
+    let header_key = req.headers().get("x-internal-api-key").and_then(|v| v.to_str().ok());
+    let query_key = query_param(req.uri().query(), "key");
+    let signed_in = extract_user_id(req.headers().get("authorization")).await.is_some();
+    internal_caller_ok(&cfg, header_key, query_key.as_deref(), signed_in)
+}
 
 fn db_to_i32(v: &DbValue) -> i32 { 
     match v { 
@@ -73,14 +102,10 @@ async fn handle_sync_service(req: Request) -> anyhow::Result<Response<String>> {
         ("/profile", &Method::POST) => handle_profile_post(req).await?,
         ("/profile", &Method::GET) => handle_profile_get(req).await?,
         ("/internal/trigger-reminders", _) => {
-            let cfg = variables::get("internal_api_key").await.unwrap_or_default();
-            let key = req.headers().get("x-internal-api-key").and_then(|v| v.to_str().ok());
-            if !internal_api_key_ok(&cfg, key) { text_response(401, "Unauthorized")? } else { handle_trigger_reminders_post(req).await? }
+            if !internal_request_ok(&req).await { text_response(401, "Unauthorized")? } else { handle_trigger_reminders_post(req).await? }
         },
         ("/internal/failover-sync", _) => {
-            let cfg = variables::get("internal_api_key").await.unwrap_or_default();
-            let key = req.headers().get("x-internal-api-key").and_then(|v| v.to_str().ok());
-            if !internal_api_key_ok(&cfg, key) { text_response(401, "Unauthorized")? } else { handle_failover_sync_post(req).await? }
+            if !internal_request_ok(&req).await { text_response(401, "Unauthorized")? } else { handle_failover_sync_post(req).await? }
         },
         ("/internal/weather-heuristic", &Method::GET) => handle_weather_heuristic_get(req).await?,
         ("/internal/request-phone-verification", &Method::POST) => handle_request_phone_verification_post(req).await?,
@@ -585,7 +610,8 @@ async fn handle_walks_post(req: Request) -> anyhow::Result<Response<String>> {
 async fn handle_trigger_reminders_post(_req: Request) -> anyhow::Result<Response<String>> {
     let sid = variables::get("twilio_account_sid").await?;
     let _tok = decrypt_token(&variables::get("twilio_auth_token_encrypted").await?).await?;
-    let from = variables::get("twilio_from_number").await?;
+    let from = variables::get("twilio_whatsapp_from").await.unwrap_or_default();
+    let template = variables::get("twilio_status_template_sid").await.unwrap_or_default();
     let db = match variables::get("db_url").await { Ok(v) if !v.is_empty() => v, _ => variables::get("neon_db_url").await? };
     let conn = Connection::open(&db).await?;
     let rs = conn.query("SELECT pocket_id_sub, phone_number_encrypted, COALESCE(timezone, 'UTC'), COALESCE(notification_prefs::TEXT, '{}') FROM users WHERE phone_number_encrypted IS NOT NULL AND phone_number_encrypted != '' AND autonomous_sync_enabled = true", &[]).await?.collect().await?;
@@ -603,14 +629,14 @@ async fn handle_trigger_reminders_post(_req: Request) -> anyhow::Result<Response
         let hb_rs = conn.query("SELECT EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - heartbeat)) / 60 FROM scheduler_election WHERE user_id = $1 AND role = 'android_client' ORDER BY heartbeat DESC LIMIT 1", &[ParameterValue::Str(uid.clone())]).await?.collect().await?;
         if hb_rs.first().and_then(|hr| match &hr[0] { DbValue::Floating64(f) => Some(*f as u64), _ => None }).map_or(false, |m| m < 240) { continue; }
         let ph = decrypt_token(&ph_enc).await?;
-        match send_twilio_sms(&sid, &_tok, &from, &ph, "Mecris: Time for a walk! Reply YES to log 1 mile.").await {
+        match send_twilio_whatsapp_template(&sid, &_tok, &from, &ph, &template, &walk_reminder_variables(&local_time_label(&tz, &now))).await {
             // Every attempt is logged for compliance (kingdonb/mecris#167). Failed attempts also
             // count toward the walk_reminder cooldown above, so a failing channel cannot retry-storm.
             // error_msg holds only twilio_failure_summary output, encrypted like the Python logger.
-            Ok(_) => { let _ = conn.execute("INSERT INTO message_log (date, user_id, type, sent_at, status, channel) VALUES (CURRENT_DATE, $1, 'walk_reminder', CURRENT_TIMESTAMP, 'sent', 'sms')", &[ParameterValue::Str(uid.clone())]).await; sent += 1; }
+            Ok(_) => { let _ = conn.execute("INSERT INTO message_log (date, user_id, type, sent_at, status, channel) VALUES (CURRENT_DATE, $1, 'walk_reminder', CURRENT_TIMESTAMP, 'sent', 'whatsapp')", &[ParameterValue::Str(uid.clone())]).await; sent += 1; }
             Err(e) => {
                 let err_param = match encrypt_token(&e.to_string()).await { Ok(enc) => ParameterValue::Str(enc), Err(_) => ParameterValue::DbNull };
-                let _ = conn.execute("INSERT INTO message_log (date, user_id, type, sent_at, status, channel, error_msg) VALUES (CURRENT_DATE, $1, 'walk_reminder', CURRENT_TIMESTAMP, 'failed', 'sms', $2)", &[ParameterValue::Str(uid.clone()), err_param]).await;
+                let _ = conn.execute("INSERT INTO message_log (date, user_id, type, sent_at, status, channel, error_msg) VALUES (CURRENT_DATE, $1, 'walk_reminder', CURRENT_TIMESTAMP, 'failed', 'whatsapp', $2)", &[ParameterValue::Str(uid.clone()), err_param]).await;
                 errors += 1;
             }
         }
@@ -645,8 +671,9 @@ async fn handle_request_phone_verification_post(req: Request) -> anyhow::Result<
     conn.execute("INSERT INTO phone_verifications (user_id, code_hash, expires_at) VALUES ($1, $2, $3::TIMESTAMPTZ) ON CONFLICT (user_id) DO UPDATE SET code_hash = EXCLUDED.code_hash, expires_at = EXCLUDED.expires_at, attempts = 0", &[ParameterValue::Str(uid.clone()), ParameterValue::Str(hash), ParameterValue::Str(exp)]).await?;
     let sid = variables::get("twilio_account_sid").await?;
     let auth = decrypt_token(&variables::get("twilio_auth_token_encrypted").await?).await?;
-    let from = variables::get("twilio_from_number").await?;
-    send_twilio_sms(&sid, &auth, &from, &vr.phone_number, &format!("Mecris code: {}", code)).await?;
+    let from = variables::get("twilio_whatsapp_from").await.unwrap_or_default();
+    let template = variables::get("twilio_status_template_sid").await.unwrap_or_default();
+    send_twilio_whatsapp_template(&sid, &auth, &from, &vr.phone_number, &template, &verification_variables(&code)).await?;
     json_response(200, &"Verification code sent")
 }
 
@@ -674,12 +701,70 @@ async fn handle_confirm_phone_verification_post(req: Request) -> anyhow::Result<
     }
 }
 
+/// Decode an `application/x-www-form-urlencoded` body into key/value pairs.
+fn parse_form(body: &str) -> Vec<(String, String)> {
+    let dec = |s: &str| urlencoding::decode(&s.replace('+', " ")).map(|c| c.into_owned()).unwrap_or_default();
+    body.split('&').filter(|p| !p.is_empty()).map(|p| { let mut i = p.splitn(2, '='); (dec(i.next().unwrap_or("")), dec(i.next().unwrap_or(""))) }).collect()
+}
+
+fn form_value<'a>(form: &'a [(String, String)], key: &str) -> Option<&'a str> {
+    form.iter().find(|(k, _)| k == key).map(|(_, v)| v.as_str())
+}
+
+/// Bytes Twilio signs: the webhook URL followed by every POST parameter,
+/// sorted by name, as name immediately followed by value.
+fn twilio_signed_payload(url: &str, form: &[(String, String)]) -> String {
+    let mut sorted: Vec<&(String, String)> = form.iter().collect();
+    sorted.sort();
+    let mut data = url.to_string();
+    for (k, v) in sorted { data.push_str(k); data.push_str(v); }
+    data
+}
+
+fn twilio_mac(auth_token: &str, url: &str, form: &[(String, String)]) -> hmac::Hmac<sha1::Sha1> {
+    use hmac::Mac;
+    let mut mac = <hmac::Hmac<sha1::Sha1> as hmac::KeyInit>::new_from_slice(auth_token.as_bytes()).expect("HMAC accepts any key length");
+    mac.update(twilio_signed_payload(url, form).as_bytes());
+    mac
+}
+
+/// The `X-Twilio-Signature` value Twilio would send: base64(HMAC-SHA1(auth_token, payload)).
+#[allow(dead_code)]
+fn twilio_signature(auth_token: &str, url: &str, form: &[(String, String)]) -> String {
+    use hmac::Mac;
+    base64::engine::general_purpose::STANDARD.encode(twilio_mac(auth_token, url, form).finalize().into_bytes())
+}
+
+/// True only when `header` is a valid Twilio signature for this URL and body.
+/// Fails closed when the auth token or URL is not configured. Constant-time compare.
+fn twilio_signature_ok(auth_token: &str, url: &str, body: &str, header: Option<&str>) -> bool {
+    use hmac::Mac;
+    if auth_token.is_empty() || url.is_empty() { return false; }
+    let Some(sig) = header.and_then(|h| base64::engine::general_purpose::STANDARD.decode(h.trim()).ok()) else { return false };
+    twilio_mac(auth_token, url, &parse_form(body)).verify_slice(&sig).is_ok()
+}
+
+/// A walk acknowledgement is a message whose text (the `Body` field only) says yes.
+fn is_walk_ack(form: &[(String, String)]) -> bool {
+    form_value(form, "Body").map(|b| b.to_uppercase().contains("YES")).unwrap_or(false)
+}
+
 async fn handle_twilio_webhook_post(req: Request) -> anyhow::Result<Response<String>> {
-    let _tok = decrypt_token(&variables::get("twilio_auth_token_encrypted").await?).await?;
+    // Twilio signs the exact URL configured in its console. Prefer the configured
+    // value; fall back to the URL Spin saw for this request.
+    let configured_url = variables::get("twilio_webhook_url").await.unwrap_or_default();
+    let url = if configured_url.is_empty() { req.headers().get("spin-full-url").and_then(|v| v.to_str().ok()).unwrap_or("").to_string() } else { configured_url };
+    let signature = req.headers().get("x-twilio-signature").and_then(|v| v.to_str().ok()).map(|s| s.to_string());
+    let tok = match variables::get("twilio_auth_token_encrypted").await { Ok(enc) if !enc.is_empty() => decrypt_token(&enc).await.unwrap_or_default(), _ => String::new() };
     let body = req.into_body().collect().await.map_err(|_| anyhow::anyhow!("body"))?.to_bytes();
     let body_str = std::str::from_utf8(&body).unwrap_or("");
-    let from_num = body_str.split('&').find_map(|p| { let mut i = p.splitn(2, '='); if i.next() == Some("From") { Some(urlencoding::decode(&i.next()?.replace('+', " ")).unwrap_or_default().into_owned()) } else { None } }).unwrap_or_default();
-    if body_str.to_uppercase().contains("YES") {
+    if !twilio_signature_ok(&tok, &url, body_str, signature.as_deref()) {
+        println!("twilio-webhook: rejected request (signature_present={})", signature.is_some());
+        return Ok(text_response(403, "Forbidden")?);
+    }
+    let form = parse_form(body_str);
+    let from_num = form_value(&form, "From").unwrap_or("").to_string();
+    if is_walk_ack(&form) {
         let db = match variables::get("db_url").await { Ok(v) if !v.is_empty() => v, _ => variables::get("neon_db_url").await? };
         let conn = Connection::open(&db).await?;
         let rs = conn.query("SELECT pocket_id_sub, phone_number_encrypted, beeminder_goal FROM users WHERE phone_number_encrypted IS NOT NULL", &[]).await?.collect().await?;
@@ -690,7 +775,7 @@ async fn handle_twilio_webhook_post(req: Request) -> anyhow::Result<Response<Str
                 if !ph.is_empty() && clean(&ph) == clean(&from_num) {
                     let requestid = format!("{}-{}-{}-sms", uid, goal, chrono::Utc::now().format("%Y-%m-%d"));
                     let _ = push_to_beeminder_idempotent(&uid, &goal, 1.0, "Walk logged via SMS", &requestid, &conn).await;
-                    let _ = conn.execute("INSERT INTO message_log (date, user_id, type, sent_at, status, channel) VALUES (CURRENT_DATE, $1, 'walk_ack', CURRENT_TIMESTAMP, 'received', 'sms')", &[ParameterValue::Str(uid)]).await;
+                    let _ = conn.execute("INSERT INTO message_log (date, user_id, type, sent_at, status, channel) VALUES (CURRENT_DATE, $1, 'walk_ack', CURRENT_TIMESTAMP, 'received', $2)", &[ParameterValue::Str(uid), ParameterValue::Str(inbound_channel(&from_num).to_string())]).await;
                 }
             }
         }
@@ -888,9 +973,53 @@ fn twilio_failure_summary(http_status: u16, body: &str) -> String {
     summary
 }
 
-async fn send_twilio_sms(sid: &str, tok: &str, from: &str, to: &str, msg: &str) -> anyhow::Result<()> {
+fn whatsapp_addr(number: &str) -> String {
+    let n = number.trim();
+    if n.starts_with("whatsapp:") { n.to_string() } else { format!("whatsapp:{}", n) }
+}
+
+fn template_variables_json(vars: &[(String, String)]) -> String {
+    let map: serde_json::Map<String, serde_json::Value> = vars.iter().map(|(k, v)| (k.clone(), serde_json::Value::String(v.clone()))).collect();
+    serde_json::Value::Object(map).to_string()
+}
+
+/// Form body for a Twilio Content (WhatsApp template) send. There is no freeform `Body`.
+fn twilio_template_form(from: &str, to: &str, content_sid: &str, vars: &[(String, String)]) -> String {
+    format!("From={}&To={}&ContentSid={}&ContentVariables={}",
+        urlencoding::encode(&whatsapp_addr(from)), urlencoding::encode(&whatsapp_addr(to)),
+        urlencoding::encode(content_sid), urlencoding::encode(&template_variables_json(vars)))
+}
+
+fn slots(values: [&str; 5]) -> Vec<(String, String)> {
+    values.iter().enumerate().map(|(i, v)| ((i + 1).to_string(), v.to_string())).collect()
+}
+
+// Both fill mecris_status_v2 ("{{1}} is currently {{2}}. {{3}} is {{4}}. Review {{5}}."),
+// with the same values the Python arm sends (services/reminder_service.py, mcp_server.py).
+fn walk_reminder_variables(local_time: &str) -> Vec<(String, String)> { slots(["Daily Walk", "NOT FOUND", "Boris & Fiona", "EXPECTANT", local_time]) }
+fn verification_variables(code: &str) -> Vec<(String, String)> { slots(["Identity", "PENDING", "Code", code, "Account"]) }
+
+fn local_time_label(tz_name: &str, now: &chrono::DateTime<chrono::Utc>) -> String {
+    let tz: chrono_tz::Tz = tz_name.parse().unwrap_or(chrono_tz::UTC);
+    now.with_timezone(&tz).format("%I:%M %p").to_string()
+}
+
+/// Why a WhatsApp template cannot be sent with this configuration, if it cannot.
+fn whatsapp_config_error(from: &str, content_sid: &str) -> Option<&'static str> {
+    if from.trim().is_empty() { Some("whatsapp_sender_not_configured") }
+    else if content_sid.trim().is_empty() { Some("whatsapp_template_not_configured") }
+    else { None }
+}
+
+fn inbound_channel(from: &str) -> &'static str { if from.starts_with("whatsapp:") { "whatsapp" } else { "sms" } }
+
+/// Send an approved WhatsApp template. SMS is disabled for this account, so there is no
+/// SMS fallback: a missing sender or template is an error, returned before any HTTP call.
+/// Errors carry only a fixed reason or twilio_failure_summary output (no PII).
+async fn send_twilio_whatsapp_template(sid: &str, tok: &str, from: &str, to: &str, content_sid: &str, vars: &[(String, String)]) -> anyhow::Result<()> {
+    if let Some(reason) = whatsapp_config_error(from, content_sid) { return Err(anyhow::anyhow!(reason)); }
     let auth = base64::engine::general_purpose::STANDARD.encode(format!("{}:{}", sid, tok));
-    let body = format!("From={}&To={}&Body={}", urlencoding::encode(from), urlencoding::encode(to), urlencoding::encode(msg));
+    let body = twilio_template_form(from, to, content_sid, vars);
     let res = spin_sdk::http::send(Request::builder().method(Method::POST).uri(format!("https://api.twilio.com/2010-04-01/Accounts/{}/Messages.json", sid)).header("Authorization", &format!("Basic {}", auth)).header("Content-Type", "application/x-www-form-urlencoded").body(body)?).await?;
     let status = res.status().as_u16();
     if !(200..300).contains(&status) {
@@ -992,6 +1121,170 @@ async fn handle_weather_heuristic_get(_r: Request) -> anyhow::Result<Response<St
 mod tests {
     use super::*;
     use serde_json::json;
+
+    // --- kingdonb/mecris#368: Spin sends WhatsApp templates, never SMS ---
+    const STATUS_TEMPLATE: &str = "HX00000000000000000000000000000000";
+
+    #[test]
+    fn test_whatsapp_addr_adds_prefix_once() {
+        assert_eq!(whatsapp_addr("+15005550006"), "whatsapp:+15005550006");
+        assert_eq!(whatsapp_addr("whatsapp:+15005550006"), "whatsapp:+15005550006");
+        assert_eq!(whatsapp_addr(" +15005550006 "), "whatsapp:+15005550006");
+    }
+
+    #[test]
+    fn test_template_form_carries_content_sid_and_json_variables() {
+        let vars = verification_variables("123456");
+        let body = twilio_template_form("whatsapp:+15005550001", "+15005550006", STATUS_TEMPLATE, &vars);
+        let form = parse_form(&body);
+        assert_eq!(form_value(&form, "From"), Some("whatsapp:+15005550001"));
+        assert_eq!(form_value(&form, "To"), Some("whatsapp:+15005550006"));
+        assert_eq!(form_value(&form, "ContentSid"), Some(STATUS_TEMPLATE));
+        assert_eq!(form_value(&form, "Body"), None, "a template send has no freeform body");
+        let sent: serde_json::Value = serde_json::from_str(form_value(&form, "ContentVariables").unwrap()).unwrap();
+        assert_eq!(sent, json!({"1": "Identity", "2": "PENDING", "3": "Code", "4": "123456", "5": "Account"}));
+    }
+
+    #[test]
+    fn test_walk_reminder_variables_match_python_reminder_service() {
+        // services/reminder_service.py fills mecris_status_v2 the same way.
+        let vars = walk_reminder_variables("03:15 PM");
+        let as_json = template_variables_json(&vars);
+        let sent: serde_json::Value = serde_json::from_str(&as_json).unwrap();
+        assert_eq!(sent, json!({"1": "Daily Walk", "2": "NOT FOUND", "3": "Boris & Fiona", "4": "EXPECTANT", "5": "03:15 PM"}));
+    }
+
+    #[test]
+    fn test_local_time_label_uses_the_users_timezone() {
+        let now = chrono::Utc.with_ymd_and_hms(2026, 11, 13, 20, 15, 0).unwrap();
+        assert_eq!(local_time_label("America/New_York", &now), "03:15 PM");
+        assert_eq!(local_time_label("not/a-zone", &now), "08:15 PM");
+    }
+
+    #[test]
+    fn test_whatsapp_config_error_names_what_is_missing() {
+        assert_eq!(whatsapp_config_error("whatsapp:+15005550001", STATUS_TEMPLATE), None);
+        assert_eq!(whatsapp_config_error("", STATUS_TEMPLATE), Some("whatsapp_sender_not_configured"));
+        assert_eq!(whatsapp_config_error("  ", STATUS_TEMPLATE), Some("whatsapp_sender_not_configured"));
+        assert_eq!(whatsapp_config_error("whatsapp:+15005550001", ""), Some("whatsapp_template_not_configured"));
+    }
+
+    #[test]
+    fn test_inbound_channel_follows_the_sender_address() {
+        assert_eq!(inbound_channel("whatsapp:+15005550006"), "whatsapp");
+        assert_eq!(inbound_channel("+15005550006"), "sms");
+    }
+
+    #[test]
+    fn test_no_sms_send_path_remains() {
+        // SMS is disabled for this account; a plain-body send can only fail.
+        let src = include_str!("lib.rs");
+        let needle = ["fn send_twilio", "_sms"].concat();
+        assert!(!src.contains(&needle), "send_twilio_sms must be removed, not kept as a fallback");
+    }
+
+    // --- Internal endpoints: fail closed, no published key, callers that can actually authenticate ---
+    #[test]
+    fn test_internal_caller_unconfigured_key_fails_closed() {
+        assert!(!internal_caller_ok("", None, None, false));
+        assert!(!internal_caller_ok("", Some(""), Some(""), false));
+        assert!(!internal_caller_ok("", Some("anything"), None, false));
+    }
+
+    #[test]
+    fn test_internal_caller_published_key_is_burned() {
+        // "test-internal-key" was committed to a public repo; it must never authorize again.
+        assert!(!internal_caller_ok("test-internal-key", Some("test-internal-key"), None, false));
+        assert!(!internal_caller_ok("test-internal-key", None, Some("test-internal-key"), false));
+    }
+
+    #[test]
+    fn test_internal_caller_header_key() {
+        assert!(internal_caller_ok("s3cret-value", Some("s3cret-value"), None, false));
+        assert!(!internal_caller_ok("s3cret-value", Some("s3cret-valuX"), None, false));
+        assert!(!internal_caller_ok("s3cret-value", Some("s3cret"), None, false));
+        assert!(!internal_caller_ok("s3cret-value", None, None, false));
+    }
+
+    #[test]
+    fn test_internal_caller_query_key_for_platform_cron() {
+        // Akamai cron can only set path and query, never headers.
+        assert!(internal_caller_ok("s3cret-value", None, Some("s3cret-value"), false));
+        assert!(!internal_caller_ok("s3cret-value", None, Some("wrong"), false));
+    }
+
+    #[test]
+    fn test_internal_caller_signed_in_user_is_allowed() {
+        // The Android app triggers reminders with the user's own bearer token.
+        assert!(internal_caller_ok("", None, None, true));
+        assert!(internal_caller_ok("s3cret-value", Some("wrong"), None, true));
+    }
+
+    #[test]
+    fn test_query_param_extracts_and_decodes() {
+        assert_eq!(query_param(Some("key=abc%2B1&x=2"), "key").as_deref(), Some("abc+1"));
+        assert_eq!(query_param(Some("x=2"), "key"), None);
+        assert_eq!(query_param(None, "key"), None);
+    }
+
+    // --- Twilio webhook requests must carry a valid X-Twilio-Signature ---
+    // Vector from Twilio's "Validating Signatures from Twilio" documentation.
+    const TW_DOC_URL: &str = "https://mycompany.com/myapp.php?foo=1&bar=2";
+    const TW_DOC_BODY: &str = "Digits=1234&To=%2B18005551212&From=%2B12349013030&Caller=%2B12349013030&CallSid=CA1234567890ABCDE";
+    const TW_DOC_SIG: &str = "0/KCTR6DLpKmkAf8muzZqo1nDgQ=";
+    const TW_HOOK_URL: &str = "https://example.test/internal/twilio-webhook";
+    const TW_HOOK_BODY: &str = "To=whatsapp%3A%2B15005550001&Body=Yes+please&From=whatsapp%3A%2B15005550006";
+    const TW_HOOK_SIG: &str = "hLQ9nMt/o7XZdRoX5kXYLSDNLfU=";
+
+    #[test]
+    fn test_parse_form_decodes_plus_and_percent() {
+        let f = parse_form(TW_HOOK_BODY);
+        assert_eq!(form_value(&f, "Body"), Some("Yes please"));
+        assert_eq!(form_value(&f, "From"), Some("whatsapp:+15005550006"));
+        assert_eq!(form_value(&f, "Missing"), None);
+    }
+
+    #[test]
+    fn test_twilio_signature_matches_documented_vector() {
+        assert_eq!(twilio_signature("12345", TW_DOC_URL, &parse_form(TW_DOC_BODY)), TW_DOC_SIG);
+    }
+
+    #[test]
+    fn test_twilio_signature_ok_accepts_valid_request() {
+        assert!(twilio_signature_ok("12345", TW_DOC_URL, TW_DOC_BODY, Some(TW_DOC_SIG)));
+        assert!(twilio_signature_ok("test-token", TW_HOOK_URL, TW_HOOK_BODY, Some(TW_HOOK_SIG)));
+    }
+
+    #[test]
+    fn test_twilio_signature_ok_rejects_missing_or_malformed_header() {
+        assert!(!twilio_signature_ok("test-token", TW_HOOK_URL, TW_HOOK_BODY, None));
+        assert!(!twilio_signature_ok("test-token", TW_HOOK_URL, TW_HOOK_BODY, Some("")));
+        assert!(!twilio_signature_ok("test-token", TW_HOOK_URL, TW_HOOK_BODY, Some("not base64!")));
+    }
+
+    #[test]
+    fn test_twilio_signature_ok_rejects_tampering() {
+        let forged_from = TW_HOOK_BODY.replace("15005550006", "15005550007");
+        assert!(!twilio_signature_ok("test-token", TW_HOOK_URL, &forged_from, Some(TW_HOOK_SIG)));
+        assert!(!twilio_signature_ok("other-token", TW_HOOK_URL, TW_HOOK_BODY, Some(TW_HOOK_SIG)));
+        assert!(!twilio_signature_ok("test-token", "https://evil.test/internal/twilio-webhook", TW_HOOK_BODY, Some(TW_HOOK_SIG)));
+    }
+
+    #[test]
+    fn test_twilio_signature_ok_fails_closed_without_token_or_url() {
+        // An unconfigured deployment must reject, not accept, webhook posts.
+        let empty_key_sig = twilio_signature("", TW_HOOK_URL, &parse_form(TW_HOOK_BODY));
+        assert!(!twilio_signature_ok("", TW_HOOK_URL, TW_HOOK_BODY, Some(&empty_key_sig)));
+        assert!(!twilio_signature_ok("test-token", "", TW_HOOK_BODY, Some(TW_HOOK_SIG)));
+    }
+
+    #[test]
+    fn test_walk_ack_reads_only_the_body_field() {
+        assert!(is_walk_ack(&parse_form(TW_HOOK_BODY)));
+        assert!(is_walk_ack(&parse_form("Body=yes")));
+        assert!(!is_walk_ack(&parse_form("Body=no&ProfileName=Yesenia")));
+        assert!(!is_walk_ack(&parse_form("From=%2B15005550006")));
+    }
 
     // --- kingdonb/mecris#167: Twilio failures are summarized without PII ---
     const TWILIO_21211: &str = r#"{"code": 21211, "message": "The 'To' number +15551234567 is not a valid phone number.", "more_info": "https://www.twilio.com/docs/errors/21211", "status": 400}"#;

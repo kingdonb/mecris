@@ -121,7 +121,7 @@ class CooperativeWorkerTest {
         coEvery { syncApi.triggerCloudSync(any()) } returns retrofit2.Response.success(
             SyncResponse("ok", "cloud sync triggered")
         )
-        coEvery { syncApi.triggerReminders() } returns retrofit2.Response.success(
+        coEvery { syncApi.triggerReminders(any()) } returns retrofit2.Response.success(
             SyncResponse("ok", "reminders triggered")
         )
 
@@ -131,7 +131,7 @@ class CooperativeWorkerTest {
 
         // VERIFY: Both cloud sync AND reminders were triggered
         coVerify(exactly = 1) { syncApi.triggerCloudSync(any()) }
-        coVerify(exactly = 1) { syncApi.triggerReminders() }
+        coVerify(exactly = 1) { syncApi.triggerReminders(any()) }
         }
 
         @Test
@@ -146,7 +146,7 @@ class CooperativeWorkerTest {
         worker.doWork()
 
         // VERIFY: Reminders were NOT triggered
-        coVerify(exactly = 0) { syncApi.triggerReminders() }
+        coVerify(exactly = 0) { syncApi.triggerReminders(any()) }
         }
 
     // --- Battery diet (task 000622): helix doorbell throttle ---

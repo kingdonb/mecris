@@ -108,7 +108,7 @@ class WalkHeuristicsWorker @JvmOverloads constructor(
                             throw retrofit2.HttpException(syncResponse)
                         }
                         try {
-                            val remindersResponse = syncApi.triggerReminders()
+                            val remindersResponse = syncApi.triggerReminders("Bearer $token")
                             if (!remindersResponse.isSuccessful) {
                                 Log.w("WalkHeuristicsWorker", "Reminders trigger returned: ${remindersResponse.code()}")
                             } else {

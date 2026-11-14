@@ -20,6 +20,9 @@ neon_db_url = { required = false, default = "" }
 twilio_account_sid = { required = false, default = "" }
 twilio_auth_token_encrypted = { required = false, default = "" }
 twilio_from_number = { required = false, default = "" }
+twilio_webhook_url = { required = false, default = "" }
+twilio_whatsapp_from = { required = false, default = "" }
+twilio_status_template_sid = { required = false, default = "" }
 openweather_api_key = { required = false, default = "" }
 openweather_lat = { required = false, default = "" }
 openweather_lon = { required = false, default = "" }
@@ -74,6 +77,9 @@ master_encryption_key = "{{ master_encryption_key }}"
 twilio_account_sid = "{{ twilio_account_sid }}"
 twilio_auth_token_encrypted = "{{ twilio_auth_token_encrypted }}"
 twilio_from_number = "{{ twilio_from_number }}"
+twilio_webhook_url = "{{ twilio_webhook_url }}"
+twilio_whatsapp_from = "{{ twilio_whatsapp_from }}"
+twilio_status_template_sid = "{{ twilio_status_template_sid }}"
 openweather_api_key = "{{ openweather_api_key }}"
 openweather_lat = "{{ openweather_lat }}"
 openweather_lon = "{{ openweather_lon }}"

@@ -46,6 +46,12 @@ Both deployment scripts:
 | `TWILIO_AUTH_TOKEN` | Twilio Console | WhatsApp notifications (plaintext in .env, encrypted at deploy) |
 | `TWILIO_WHATSAPP_TEMPLATE_SID` | Meta / Twilio Console | Pre-approved Utility Template SID (default: `HX638b7f9403e04c8fa880370f1b7a9ba1`) |
 | `OPENWEATHER_API_KEY` | OpenWeatherMap | Weather heuristic for walk reminders |
+| `TWILIO_WHATSAPP_FROM` | Twilio Console (WhatsApp sender) | Sender for the sync service's WhatsApp templates, e.g. `whatsapp:+1...`. Required: SMS is disabled and there is no fallback. |
+| `TWILIO_STATUS_TEMPLATE_SID` | Meta / Twilio Console | `mecris_status_v2`, used for walk reminders and verification codes (default: `HX9403f1b85350b8c05780a1128b79f3c2`) |
+| `INTERNAL_API_KEY` | `openssl rand -hex 32` | Guards `/internal/trigger-reminders` and `/internal/failover-sync`. Private, 32+ URL-safe characters. |
+
+### Internal endpoints and platform cron
+`/internal/trigger-reminders` and `/internal/failover-sync` accept a signed-in user's bearer token (the Android app) or the internal key. The key may be sent as the `x-internal-api-key` header or as the `key` query parameter. Akamai cron can only set path and query, so cron jobs use the query form; `scripts/setup_spin_cron.sh` creates them. An unset key authorizes nobody, and the service refuses the old published value `test-internal-key`. After rotating the key: redeploy, then recreate the cron jobs.
 
 ### Production Delivery Mandate (No Console Mode)
 Akamai Functions must **never** be deployed in `console` mode. Cloud cron executions must dispatch outbound WhatsApp alerts via the approved Meta Utility template pool and record delivery status or stand-down rationale directly to Neon Postgres (`message_log` table).
@@ -68,7 +74,7 @@ curl -H "Authorization: Bearer $TOKEN" https://394b84e7-760c-4336-975b-653c17fdb
 curl -H "Authorization: Bearer $TOKEN" https://394b84e7-760c-4336-975b-653c17fdb446.fwf.app/profile
 
 # Test internal endpoints
-curl -H "x-internal-api-key: test-internal-key" https://394b84e7-760c-4336-975b-653c17fdb446.fwf.app/internal/failover-sync
+curl -H "x-internal-api-key: $INTERNAL_API_KEY" https://394b84e7-760c-4336-975b-653c17fdb446.fwf.app/internal/failover-sync
 
 # Component liveness (no auth required)
 curl -X POST -H "Content-Type: application/json" \
