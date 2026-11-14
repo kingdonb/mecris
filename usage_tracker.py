@@ -26,6 +26,46 @@ class UsageSession:
     session_type: str = "interactive"
     notes: str = ""
 
+
+def evaluate_budget(total: float, remaining: float, period_end: date, today: date,
+                    today_spend: float = 0.0, week_spend: float = 0.0) -> Dict:
+    """Derive budget health from a stored dollar budget (kingdonb/mecris#345).
+
+    A period whose end date has passed is *expired*, not exhausted: the row
+    simply hasn't been updated. It reports STALE / PERIOD_EXPIRED, days_remaining
+    is clamped to 0 (never negative "days left"), and no spend-pressure alerts fire.
+    """
+    raw_days = (period_end - today).days
+    expired = raw_days < 0
+    days_remaining = max(raw_days, 0)
+    daily_burn_rate = week_spend / 7 if week_spend > 0 else 0
+    projected_spend = daily_burn_rate * days_remaining
+
+    if expired:
+        alerts = ["PERIOD_EXPIRED"]
+        health = "STALE"
+    else:
+        alerts = []
+        if remaining < 5: alerts.append("LOW_BUDGET")
+        if projected_spend > remaining: alerts.append("BURN_RATE_HIGH")
+        if days_remaining <= 1: alerts.append("PERIOD_ENDING")
+        if today_spend > 2: alerts.append("DAILY_LIMIT_EXCEEDED")
+        health = "GOOD" if not alerts else "WARNING" if len(alerts) < 3 else "CRITICAL"
+
+    return {
+        "total_budget": total,
+        "remaining_budget": remaining,
+        "used_budget": round(total - remaining, 2),
+        "days_remaining": days_remaining,
+        "period_expired": expired,
+        "days_since_period_end": -raw_days if expired else 0,
+        "today_spend": round(today_spend, 4),
+        "daily_burn_rate": round(daily_burn_rate, 4),
+        "projected_spend": round(projected_spend, 4),
+        "alerts": alerts,
+        "budget_health": health,
+    }
+
 class UsageTracker:
     def __init__(self, user_id: str = None):
         self.neon_url = os.getenv("NEON_DB_URL")
@@ -284,8 +324,6 @@ class UsageTracker:
                             # If it is a date object from psycopg2
                             period_end = datetime.combine(period_end_val, datetime.min.time())
                             
-                        days_remaining = (period_end.date() - date.today()).days
-                        
                         # today spend
                         cur.execute("""
                             SELECT SUM(estimated_cost) FROM usage_sessions 
@@ -296,27 +334,9 @@ class UsageTracker:
                         cur.execute("SELECT SUM(estimated_cost) FROM usage_sessions WHERE user_id = %s AND timestamp > NOW() - INTERVAL '7 days'", (target_user_id,))
                         week_spend = cur.fetchone()['sum'] or 0
                         
-                        daily_burn_rate = week_spend / 7 if week_spend > 0 else 0
-                        projected_spend = daily_burn_rate * days_remaining
-                        
-                        # Generate alerts
-                        alerts = []
-                        if remaining < 5: alerts.append("LOW_BUDGET")
-                        if projected_spend > remaining: alerts.append("BURN_RATE_HIGH")
-                        if days_remaining <= 1: alerts.append("PERIOD_ENDING")
-                        if today_spend > 2: alerts.append("DAILY_LIMIT_EXCEEDED")
-                        
                         return {
-                            "total_budget": total,
-                            "remaining_budget": remaining,
-                            "used_budget": round(total - remaining, 2),
-                            "days_remaining": days_remaining,
-                            "today_spend": round(today_spend, 4),
-                            "daily_burn_rate": round(daily_burn_rate, 4),
-                            "projected_spend": round(projected_spend, 4),
+                            **evaluate_budget(total, remaining, period_end.date(), date.today(), today_spend, week_spend),
                             "period_end": str(budget_info['budget_period_end']),
-                            "alerts": alerts,
-                            "budget_health": "GOOD" if not alerts else "WARNING" if len(alerts) < 3 else "CRITICAL"
                         }
             except Exception as e:
                 logger.error(f"UsageTracker: Neon get_budget_status failed: {e}")

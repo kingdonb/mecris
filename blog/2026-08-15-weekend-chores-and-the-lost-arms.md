@@ -11,7 +11,7 @@
 Yesterday we shipped the latest pre-0.0.1 release of the Mecris Android client (`v0.0.1-rc.4`, versionCode 28). When we tested the authentication flow last night, things appeared to break. Yet this morning, without changing a line of code, the app was functioning smoothly again.
 
 Reviewing the live ADB logs and tracing the architecture revealed the mystery:
-- **The Perimeter Reality**: PocketID (`https://metnoom.urmanac.com`) runs on the home LAN behind a reverse proxy and firewall.
+- **The Perimeter Reality**: PocketID runs on the home LAN behind a reverse proxy and firewall.
 - **The Friday Night Bar Run**: When trying to refresh the access token outside the home network without an active VPN tunnel, AppAuth encountered network timeouts and placed a transient `AuthorizationException` on the internal state.
 - **The Morning Recovery**: As soon as the device re-entered the home Wi-Fi perimeter, the `MecrisDashboard` surgical resume refresh fired, successfully refreshed the tokens, and cleared the transient error.
 

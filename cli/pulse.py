@@ -91,9 +91,13 @@ def render_pulse(context: Dict[str, Any]) -> None:
     days = budget_status.get("days_remaining", 0.0)
     pct_used = 1.0 - (remaining / total) if total else 0.0
     b_color = _budget_color(pct_used)
+    if budget_status.get("period_expired"):
+        days_line = f"[yellow]period ended {budget_status.get('period_end', '?')}[/yellow]"
+    else:
+        days_line = f"{days:.1f} days left"
     budget_text = (
         f"[{b_color}]${remaining:.2f} remaining[/{b_color}]\n"
-        f"{pct_used * 100:.0f}% used  |  {days:.1f} days left"
+        f"{pct_used * 100:.0f}% used  |  {days_line}"
     )
     panels.append(Panel(budget_text, title="Budget", border_style="cyan"))
 
