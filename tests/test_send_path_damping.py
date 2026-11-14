@@ -74,6 +74,23 @@ def test_guard_reads_a_naive_sent_at_as_utc(server):
     assert server.nag_damping_verdict([row], now, {}) == {"verdict": "skip", "reason": "damped"}
 
 
+@pytest.mark.parametrize("raw, cap", [
+    ("junk", 3), (None, 3), (True, 3), ([2], 3), ("2.5", 3),
+    ("2", 2), (" 1 ", 1), (2.0, 2), (2.7, 2), (-1, 0),
+])
+def test_guard_parses_the_cap_like_spin(server, raw, cap):
+    # Spin's Prefs::from_json: junk gives the default 3, numeric strings and
+    # floats are read, a negative cap is 0. A stored junk value must not
+    # raise out of the guard.
+    now = ts("2026-11-14T20:00:00Z")
+    rows = [{"type": "walk_reminder", "channel": "whatsapp", "status": "sent",
+             "sent_at": ts(f"2026-11-14T{h:02d}:00:00Z")} for h in (12, 13, 14)]
+    for sent in range(4):
+        expect = "daily_cap" if sent >= cap else "eligible"
+        got = server.nag_damping_verdict(rows[:sent], now, {"max_messages_per_day": raw})
+        assert got["reason"] == expect, (raw, sent)
+
+
 # ---------------------------------------------------------------------------
 # send_reminder_message
 # ---------------------------------------------------------------------------
