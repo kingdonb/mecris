@@ -23,6 +23,7 @@ import androidx.compose.ui.unit.sp
 import com.mecris.go.model.ClaudePlanState
 import com.mecris.go.model.ClaudePlanView
 import com.mecris.go.model.formatAge
+import com.mecris.go.model.formatPct0
 
 private val CardBackground = Color(0xFF1E1E1E)
 
@@ -75,7 +76,7 @@ fun ClaudePlanCard(view: ClaudePlanView, modifier: Modifier = Modifier) {
             val pct = view.weeklyPct
             if (pct != null) {
                 Text(
-                    text = "${String.format(java.util.Locale.US, "%.0f", pct)}% of weekly limit used",
+                    text = "${formatPct0(pct)}% of weekly limit used",
                     style = MaterialTheme.typography.bodyMedium,
                     color = Color.White,
                     fontWeight = FontWeight.Bold

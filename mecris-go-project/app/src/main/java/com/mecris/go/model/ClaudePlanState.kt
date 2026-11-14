@@ -2,6 +2,8 @@ package com.mecris.go.model
 
 import com.mecris.go.sync.ClaudePlanDto
 import com.mecris.go.sync.ClaudePlanWindowDto
+import java.math.BigDecimal
+import java.math.RoundingMode
 import java.time.Duration
 import java.time.Instant
 import java.time.OffsetDateTime
@@ -120,9 +122,16 @@ object ClaudePlanState {
         return Fresh(k, p, r)
     }
 
-    /** No decimals, as Python's f"{x:.0f}" (contract cases avoid .5 ties). */
-    private fun pct0(pct: Double): String = String.format(Locale.US, "%.0f", pct)
+    private fun pct0(pct: Double): String = formatPct0(pct)
 }
+
+/**
+ * No decimals, as Python's f"{x:.0f}" and Rust's {:.0}: the exact binary value
+ * rounded half-to-even (62.5 -> "62"). Java's "%.0f" rounds half up, so avoid it.
+ */
+fun formatPct0(pct: Double): String =
+    if (pct.isNaN() || pct.isInfinite()) pct.toString()
+    else BigDecimal(pct).setScale(0, RoundingMode.HALF_EVEN).toPlainString()
 
 /**
  * ISO-8601 with an offset or Z; also tolerates Postgres text like
