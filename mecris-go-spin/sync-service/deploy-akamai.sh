@@ -61,7 +61,11 @@ fi
 # Encrypt Twilio auth token
 echo -e "${YELLOW}Encrypting Twilio auth token...${NC}"
 cd "$PROJECT_ROOT"
-TWILIO_AUTH_TOKEN_ENCRYPTED=$(python3 -c "
+# The encryption helper needs the project's dependencies (cryptography), which the
+# system python3 usually lacks. Prefer the project virtualenv.
+PYTHON_BIN="python3"
+if [[ -x "$PROJECT_ROOT/.venv/bin/python" ]]; then PYTHON_BIN="$PROJECT_ROOT/.venv/bin/python"; fi
+TWILIO_AUTH_TOKEN_ENCRYPTED=$("$PYTHON_BIN" -c "
 import os
 from services.encryption_service import EncryptionService
 es = EncryptionService(os.getenv('MASTER_ENCRYPTION_KEY'))
