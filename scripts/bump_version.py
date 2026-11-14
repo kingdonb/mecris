@@ -44,6 +44,21 @@ def bump_version(new_version, version_code=None):
             content = re.sub(r'version\s*=\s*".*?"', f'version = "{new_version}"', content)
             spin_toml.write_text(content)
 
+    # 3b. Cargo package version of the sync service. GET /version reports this, and a
+    # Rust test requires it to equal the version in spin.toml.
+    cargo_toml = root / "mecris-go-spin/sync-service/Cargo.toml"
+    if cargo_toml.exists():
+        print(f"Updating {cargo_toml}...")
+        content = cargo_toml.read_text()
+        content = re.sub(r'^version\s*=\s*".*?"', f'version = "{new_version}"', content, count=1, flags=re.MULTILINE)
+        cargo_toml.write_text(content)
+    cargo_lock = root / "mecris-go-spin/sync-service/Cargo.lock"
+    if cargo_lock.exists():
+        print(f"Updating {cargo_lock}...")
+        content = cargo_lock.read_text()
+        content = re.sub(r'(name = "sync-service"\nversion = ").*?(")', rf'\g<1>{new_version}\g<2>', content, count=1)
+        cargo_lock.write_text(content)
+
     # 4. Update pyproject.toml and uv.lock
     pyproject = root / "pyproject.toml"
     if pyproject.exists():

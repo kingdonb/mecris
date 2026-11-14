@@ -2,6 +2,48 @@
 
 All notable changes to Mecris are documented here.
 
+## [0.2.0] — 2026-11-14 — The cloud arm works
+
+The Akamai cron jobs that drive cloud reminders and the nightly failover sync were
+being refused with 401, and the reminder they trigger was sending over a disabled
+channel. This release fixes the cloud path end to end and closes two security holes
+found on the way. It also starts tracking the Claude subscription plan.
+
+### Security
+
+- **Twilio webhook verifies `X-Twilio-Signature`** (#365). The handler decrypted the auth token and never used it, so anyone who knew a user's phone number could log a walk for them. Requests without a valid signature now get 403. The yes check reads only the message text.
+- **Internal endpoints fail closed** (#366). The key `test-internal-key` was committed in the deploy scripts of this public repository, and an unset key authorized everyone. The key now comes from `INTERNAL_API_KEY` in `.env`; an unset key or the published key authorizes nobody.
+- **No PII in logs** (#364). Phone numbers and Twilio error text are no longer logged by the Python server, the Spin service or the Android app. Every Twilio attempt is still recorded in `message_log`, with only a status and numeric code.
+
+### Fixed
+
+- **Cron can authenticate** (#366). Akamai cron can only send a path and query, never a header, so the key is also accepted as a `key` query parameter. The Android app sends its bearer token when it triggers reminders.
+- **Spin sends WhatsApp templates, not SMS** (#368). SMS is disabled for the account. Walk reminders and verification codes now use the `mecris_status_v2` template, with no SMS fallback.
+- **`message_log` inserts from Spin** (#364) had been failing silently since July (a column that does not exist), which also broke the reminder cooldown.
+- **Expired budget period is "stale", not "BUDGET CRITICAL"** (#345, part 1).
+
+### Added
+
+- **Claude plan usage** (#344, part 1): `record_claude_plan_usage` and `get_claude_plan_status` tools, a `claude_plan` section in the narrator context, and a line in the Pi status.
+- **Beeminder graph of Claude usage** (#371): each recorded reading pushes a running total to the goal named by `CLAUDE_BEEMINDER_GOAL`.
+- **`GET /version`** on the Spin API: public, returns the deployed version and cloud provider.
+- **`scripts/verify_spin_deploy.sh`** (#183): a post-deploy check that waits for the new version and then tests as the cron does.
+- **Blog** at https://kingdonb.github.io/mecris/, built from `blog/*.md` by `blog/build.py`.
+
+### Changed
+
+- Deploy scripts require `INTERNAL_API_KEY` and `TWILIO_WHATSAPP_FROM`, and use the project virtualenv for token encryption.
+- `scripts/setup_spin_cron.sh` creates the three cron jobs that exist, with the key in the query string.
+- `scripts/bump_version.py` also bumps the sync service's `Cargo.toml` and `Cargo.lock`.
+
+### Removed
+
+- Dead Android `BeeminderApi` (#66). The app talks to Beeminder only through the Spin API.
+
+### Upgrade notes
+
+Tagging does not deploy the Spin API. Follow steps 8 and 9 of `docs/RELEASE_PROCESS.md`. If a genuine WhatsApp reply is rejected after deploying, set `TWILIO_WEBHOOK_URL` to the URL configured in the Twilio console and redeploy.
+
 ## [0.1.4] — 2026-10-04 — Battery diet: 8 hr → ~2 hr background
 
 The Android app showed 8 hr 11 min of background battery time against 26 min of
