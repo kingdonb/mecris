@@ -71,21 +71,31 @@ def _narrator_patches(aggregate_result):
     }
 
 
-async def _run_narrator_context_with_aggregate(aggregate_result, claude_plan=None, budget_status=None):
+async def _run_narrator_context_with_aggregate(aggregate_result, claude_plan=None, budget_status=None,
+                                               presence=None, beeminder_goals=None, env=None,
+                                               scheduler_attrs=None, mocks_out=None):
     """Helper: run get_narrator_context with all deps mocked + a specific aggregate result."""
     sys.modules.pop("mcp_server", None)
     mocks = _narrator_patches(aggregate_result)
     if budget_status is not None:
         mocks["mock_tracker"].get_budget_status.return_value = budget_status
+    for name, value in (scheduler_attrs or {}).items():
+        setattr(mocks["mock_scheduler"], name, value)
+    if mocks_out is not None:
+        mocks_out.update(mocks)
+    environ = {**_base_env(), **(env or {})}
 
-    with patch.dict("os.environ", _base_env()):
+    with patch.dict("os.environ", environ):
+        import os as _os
+        if "MECRIS_GHOST_ENABLED" not in (env or {}):
+            _os.environ.pop("MECRIS_GHOST_ENABLED", None)
         with patch("psycopg2.connect"):
             with patch("mcp_server.usage_tracker", mocks["mock_tracker"]):
                 with patch("mcp_server.resolve_target_user", return_value="test-user"):
                     with patch("mcp_server._record_presence", AsyncMock()):
                         with patch("mcp_server.obsidian_client") as mock_obsidian:
                             mock_obsidian.get_todos = AsyncMock(return_value=[])
-                            with patch("mcp_server.get_cached_beeminder_goals", AsyncMock(return_value=[])):
+                            with patch("mcp_server.get_cached_beeminder_goals", AsyncMock(return_value=beeminder_goals or [])):
                                 with patch("mcp_server.get_user_beeminder_client", return_value=mocks["mock_beeminder_client"]):
                                     with patch("mcp_server.get_cached_daily_activity", AsyncMock(return_value={"status": "done", "has_activity_today": True})):
                                         with patch("mcp_server.get_groq_context_for_narrator", return_value={}):
@@ -94,7 +104,7 @@ async def _run_narrator_context_with_aggregate(aggregate_result, claude_plan=Non
                                                     with patch("mcp_server.weather_service", mocks["mock_weather"]):
                                                         with patch("mcp_server.scheduler", mocks["mock_scheduler"]):
                                                             with patch("mcp_server._neon_budget_governor", mocks["mock_governor"]):
-                                                                with patch("mcp_server._get_presence_summary", AsyncMock(return_value={})):
+                                                                with patch("mcp_server._get_presence_summary", AsyncMock(return_value=presence or {})):
                                                                     with patch("mcp_server.anthropic_cost_tracker", None):
                                                                         with patch("mcp_server.get_daily_aggregate_status", AsyncMock(return_value=aggregate_result)):
                                                                             with patch("mcp_server._get_claude_plan_status_sync", return_value=claude_plan or {}):
@@ -302,3 +312,94 @@ async def test_beeminder_failure_does_not_fail_the_recording():
     assert result["recorded"] is True and result["status"]["state"] == "available"
     assert result["beeminder"]["pushed"] is False
     assert "response body" not in str(result["beeminder"])
+
+
+# ---------------------------------------------------------------------------
+# Truthful pulse in the narrator (#346)
+# ---------------------------------------------------------------------------
+
+_OLD_GHOST = {"status": "active_human", "ghost_age_seconds": 1647 * 3600.0}
+
+
+@pytest.mark.asyncio
+async def test_no_ghost_recommendation_while_flag_unset():
+    result = await _run_narrator_context_with_aggregate(_AGG, presence=_OLD_GHOST)
+    assert not any("Ghost" in r for r in result["recommendations"])
+
+
+@pytest.mark.asyncio
+async def test_ghost_recommendation_returns_when_flag_set():
+    result = await _run_narrator_context_with_aggregate(_AGG, presence=_OLD_GHOST,
+                                                       env={"MECRIS_GHOST_ENABLED": "1"})
+    assert any("Ghost Heartbeat" in r for r in result["recommendations"])
+
+
+@pytest.mark.asyncio
+async def test_system_pulse_reports_standby_as_state():
+    result = await _run_narrator_context_with_aggregate(
+        _AGG, scheduler_attrs={"is_leader": False, "leader_process_id": "other0001",
+                               "role_state": "standby", "last_status": "standby (leader other0001)",
+                               "intent": "standby", "last_error": None})
+    pulse = result["system_pulse"]
+    assert pulse["state"] == "standby"
+    assert pulse["leader_process_id"] == "other0001"
+    assert pulse["last_error"] is None
+
+
+def _agg_with_akamai(bad_key, total):
+    return {**_AGG, "system_pulse": {"modalities": [
+        {"role": "AKAMAI FUNCTIONS", "status": "healthy", "minutes_since": 20,
+         "refusals_today": total, "bad_key_refusals_today": bad_key}]}}
+
+
+@pytest.mark.asyncio
+async def test_bad_key_cron_refusal_is_one_urgent_item():
+    result = await _run_narrator_context_with_aggregate(_agg_with_akamai(2, 5))
+    hits = [u for u in result["urgent_items"] if "bad_key" in u]
+    assert len(hits) == 1
+    assert "AKAMAI" in hits[0]
+
+
+@pytest.mark.asyncio
+async def test_burned_key_probes_raise_nothing():
+    result = await _run_narrator_context_with_aggregate(_agg_with_akamai(0, 3))
+    assert not any("AKAMAI" in u for u in result["urgent_items"])
+
+
+# ---------------------------------------------------------------------------
+# Paused or due-later Beeminder goals are not urgent derail risk (#346 fold-in)
+# ---------------------------------------------------------------------------
+
+def _goal(slug, risk, safebuf=0, due=0, road=100, yaw=1, rate=1.0):
+    return {"slug": slug, "title": slug, "safebuf": safebuf, "derail_risk": risk, "rate": rate,
+            "yaw": yaw, "beeminder_road_today": road, "beeminder_due_today": due,
+            "current_value": 100.0, "target_value": 200.0, "runits": "d", "pledge": 5.0}
+
+
+@pytest.mark.asyncio
+async def test_goal_with_nothing_due_today_is_not_derailing():
+    mocks = {}
+    goals = [_goal("ellinika", "CRITICAL", due=0), _goal("bike", "CRITICAL", due=3)]
+    result = await _run_narrator_context_with_aggregate(_AGG, beeminder_goals=goals, mocks_out=mocks)
+    assert "DERAILING: bike" in result["urgent_items"]
+    assert "DERAILING: ellinika" not in result["urgent_items"]
+    passed = mocks["mock_beeminder_client"].get_runway_summary.call_args.kwargs["all_goals"]
+    risks = {g["slug"]: g["derail_risk"] for g in passed}
+    assert risks == {"ellinika": "DUE_LATER", "bike": "CRITICAL"}
+
+
+@pytest.mark.asyncio
+async def test_paused_goal_is_not_derailing():
+    mocks = {}
+    goals = [_goal("bike", "CRITICAL", rate=0.0, road=None, due=0)]
+    result = await _run_narrator_context_with_aggregate(_AGG, beeminder_goals=goals, mocks_out=mocks)
+    assert not any(u.startswith("DERAILING") for u in result["urgent_items"])
+    passed = mocks["mock_beeminder_client"].get_emergencies.call_args.args[0]
+    assert passed[0]["derail_risk"] == "PAUSED"
+
+
+@pytest.mark.asyncio
+async def test_unknown_road_keeps_critical():
+    goals = [_goal("reviewstack", "CRITICAL", road=None, due=0)]
+    result = await _run_narrator_context_with_aggregate(_AGG, beeminder_goals=goals)
+    assert "DERAILING: reviewstack" in result["urgent_items"]
