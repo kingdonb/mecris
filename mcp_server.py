@@ -808,17 +808,30 @@ async def get_narrator_context(user_id: str = None) -> Dict[str, Any]:
         pending_todos = [t for t in todos if not t.get("completed", False)]
         critical_beeminder = [g for g in beeminder_goals if g.get("derail_risk") == "CRITICAL"]
         
-        budget_days = budget_status.get("days_remaining", 0)
-        summary = f"Active goals: {len(active_goals)}, Pending todos: {len(pending_todos)}, Beeminder goals: {len(beeminder_goals)}, Budget: {budget_days:.1f} days left"
-        
+        # Budget (kingdonb/mecris#345): an expired period is stale, not exhausted,
+        # and a missing/failed budget read is unknown, not zero days left.
+        budget_days = budget_status.get("days_remaining")
+        budget_known = isinstance(budget_days, (int, float)) and not budget_status.get("error")
+        budget_expired = bool(budget_status.get("period_expired"))
+        if budget_expired:
+            budget_phrase = f"Budget: period ended {budget_status.get('period_end', '?')} (stale)"
+        elif budget_known:
+            budget_phrase = f"Budget: {budget_days:.1f} days left"
+        else:
+            budget_phrase = "Budget: unknown"
+        summary = f"Active goals: {len(active_goals)}, Pending todos: {len(pending_todos)}, Beeminder goals: {len(beeminder_goals)}, {budget_phrase}"
+
+        budget_pressure = budget_known and not budget_expired
         urgent_items = [f"DERAILING: {g['slug']}" for g in critical_beeminder]
-        if budget_days <= 1: urgent_items.append(f"BUDGET CRITICAL: {budget_days:.1f} days left")
-        elif budget_days <= 2: urgent_items.append(f"BUDGET WARNING: {budget_days:.1f} days left")
+        if budget_pressure and budget_days <= 1: urgent_items.append(f"BUDGET CRITICAL: {budget_days:.1f} days left")
+        elif budget_pressure and budget_days <= 2: urgent_items.append(f"BUDGET WARNING: {budget_days:.1f} days left")
 
         recommendations = []
         if len(pending_todos) > 10: recommendations.append("Consider prioritizing todos - large backlog detected")
         if critical_beeminder: recommendations.append("Address critical Beeminder goals immediately")
-        if budget_days <= 2: recommendations.append("Urgent: Focus on highest-value work due to budget constraints")
+        if budget_pressure and budget_days <= 2: recommendations.append("Urgent: Focus on highest-value work due to budget constraints")
+        if budget_expired:
+            recommendations.append(f"💳 Budget period ended {budget_status.get('days_since_period_end', '?')} days ago: update it with update_budget (or retire the dollar budget)")
 
         # Majesty Cake: surface aggregate daily goal status early for discoverability (kingdonb/mecris#170)
         try:
