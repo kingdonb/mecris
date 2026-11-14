@@ -68,10 +68,7 @@ def _run_conftest_probe(tmp_path, extra_env):
     The probe test writes which database keys survived the conftest into a
     file, so the parent never sees or prints the values themselves.
     """
-    for name in ("conftest.py", "live_env_guard.py"):
-        src = REPO_TESTS / name
-        if src.exists():
-            shutil.copy(src, tmp_path / name)
+    shutil.copy(REPO_TESTS / "conftest.py", tmp_path / "conftest.py")
     report = tmp_path / "survivors.json"
     (tmp_path / "test_probe.py").write_text(
         "import json, os\n"
@@ -166,6 +163,10 @@ def test_a_bare_load_dotenv_does_not_read_an_ancestor_env_file(tmp_path, monkeyp
     # Reproduce the worktree layout: a .env in an ancestor directory and a
     # module below it that calls a bare load_dotenv() at import.
     monkeypatch.delenv(SENTINEL, raising=False)
+    # A loopback NEON_DB_URL (CI's Postgres) may be in the session. Clear it
+    # for this test, so a non-overriding load_dotenv() would have to set it;
+    # monkeypatch puts the original back afterwards.
+    monkeypatch.delenv("NEON_DB_URL", raising=False)
     (tmp_path / ".env").write_text(f"{SENTINEL}=loaded\nNEON_DB_URL=postgres://from-dotenv\n")
     pkg = tmp_path / "worktrees" / "wt"
     pkg.mkdir(parents=True)
