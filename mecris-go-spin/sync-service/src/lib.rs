@@ -181,12 +181,14 @@ async fn handle_aggregate_status_get(req: Request) -> anyhow::Result<Response<St
             last_seen: db_to_str(&r[1]),
             last_status: match &r[3] { DbValue::Str(s) if !s.is_empty() => Some(s.clone()), _ => None },
         }).collect();
-        Some(FullStatus { modalities: pulse::modalities(&rows), claude_plan: claude_plan_for(&conn, &uid).await, pace: pace::pace_for_goals(&pace_rows, chrono::Utc::now()) })
+        Some(FullStatus { modalities: pulse::modalities(&rows), claude_plan: claude_plan_for(&conn, &uid).await })
     } else { None };
     json_response(200, &build_aggregate(AggInput {
         walked, arabic_met, greek_met, goals_met, total_goals,
         budget_remaining, today_distance_miles, today_steps,
         vacation_mode_until: vaca, vacation_active, phone_verified: phone,
+        // On both paths (#349): the phone's nag workers make the light call.
+        pace: pace::pace_for_goals(&pace_rows, chrono::Utc::now()),
         full,
     }))
 }
@@ -463,7 +465,8 @@ async fn handle_health_get(req: Request) -> anyhow::Result<Response<String>> {
     let uid = match extract_user_id(req.headers().get("authorization")).await { Some(id) => id, None => return Ok(text_response(401, "Unauthorized")?) };
     let db = match variables::get("db_url").await { Ok(v) if !v.is_empty() => v, _ => variables::get("neon_db_url").await? };
     let conn = Connection::open(&db).await?;
-    let _ = register_cloud_heartbeat(&conn, &uid).await;
+    // Writes no pulse row (#346): only a cron run stamps the cloud role, so an offline
+    // AKAMAI FUNCTIONS card means the cron stopped, not that nobody opened a dashboard.
     #[derive(Serialize)] struct HealthResp { status: String, home_server_active: bool, leader_pid: String, last_seen: String }
     let mut active = false; let mut pid = "none".to_string(); let mut last = "never".to_string();
     let rs = conn.query("SELECT (heartbeat > CURRENT_TIMESTAMP - INTERVAL '90 seconds') as is_fresh, heartbeat::TEXT, process_id FROM scheduler_election WHERE user_id = $1 AND role = 'leader'", &[ParameterValue::Str(uid)]).await?.collect().await?;
@@ -1330,25 +1333,12 @@ async fn extract_user_id(auth: Option<&spin_sdk::http::HeaderValue>) -> Option<S
     } else { None }
 }
 
-async fn register_cloud_heartbeat(conn: &Connection, uid: &str) -> anyhow::Result<()> {
-    let prov = variables::get("cloud_provider").await.unwrap_or_default();
-    // An unset or unrecognised provider writes no row (#346): a stray 'unknown' role is noise.
-    let Some(role) = heartbeat_role(&prov) else { return Ok(()) };
-    conn.execute("INSERT INTO scheduler_election (user_id, role, process_id, heartbeat) VALUES ($1, $2, $3, CURRENT_TIMESTAMP) ON CONFLICT (user_id, role) DO UPDATE SET heartbeat = EXCLUDED.heartbeat, process_id = EXCLUDED.process_id", &[ParameterValue::Str(uid.to_string()), ParameterValue::Str(role.to_string()), ParameterValue::Str(prov)]).await?;
-    Ok(())
-}
-
 /// GET /internal/weather-heuristic?lat=..&lon=.. (#188). Public, like before: it reads no
 /// user data. Missing or invalid coordinates fall back to the phone's New York default.
 async fn handle_weather_heuristic_get(req: Request) -> anyhow::Result<Response<String>> {
     let q = req.uri().query();
     let (lat, lon) = solar::coords_or_default(query_param(q, "lat").as_deref(), query_param(q, "lon").as_deref());
     json_response(200, &weather_report(chrono::Utc::now(), lat, lon))
-}
-/// The scheduler_election role a user-triggered heartbeat (GET /health) writes, if any.
-/// An unset or unrecognised cloud_provider writes nothing rather than a stray 'unknown' row.
-fn heartbeat_role(provider: &str) -> Option<&'static str> {
-    match cloud_role(provider) { "unknown" => None, role => Some(role) }
 }
 
 /// Nag types the phone may log (#213).
@@ -1431,11 +1421,11 @@ fn weather_report(now: chrono::DateTime<chrono::Utc>, lat: f64, lon: f64) -> Wea
     modalities: Option<Vec<pulse::Modality>>,
     system_pulse: Option<Pulse>,
     claude_plan: Option<claude_plan::PlanStatus>,
-    pace: Option<Vec<pace::Pace>>,
+    pace: Vec<pace::Pace>,
 }
 
 /// The ?full=true extras.
-struct FullStatus { modalities: Vec<pulse::Modality>, claude_plan: Option<claude_plan::PlanStatus>, pace: Vec<pace::Pace> }
+struct FullStatus { modalities: Vec<pulse::Modality>, claude_plan: Option<claude_plan::PlanStatus> }
 
 struct AggInput {
     walked: bool,
@@ -1450,13 +1440,15 @@ struct AggInput {
     /// vacation_mode_until is after now (computed in SQL). A past date is not a vacation.
     vacation_active: bool,
     phone_verified: bool,
+    /// Review pace (#349), on the light call and the full one.
+    pace: Vec<pace::Pace>,
     full: Option<FullStatus>,
 }
 
 fn build_aggregate(i: AggInput) -> AggResp {
-    let (modalities, system_pulse, claude_plan, pace) = match i.full {
-        Some(f) => (Some(f.modalities.clone()), Some(Pulse { modalities: f.modalities }), f.claude_plan, Some(f.pace)),
-        None => (None, None, None, None),
+    let (modalities, system_pulse, claude_plan) = match i.full {
+        Some(f) => (Some(f.modalities.clone()), Some(Pulse { modalities: f.modalities }), f.claude_plan),
+        None => (None, None, None),
     };
     AggResp {
         score: format!("{}/{}", i.goals_met, i.total_goals),
@@ -1474,7 +1466,7 @@ fn build_aggregate(i: AggInput) -> AggResp {
         modalities,
         system_pulse,
         claude_plan,
-        pace,
+        pace: i.pace,
     }
 }
 
@@ -1952,15 +1944,6 @@ mod tests {
         assert!(met_clear); // vacuous success
     }
 
-    // --- #346: GET /health stops writing a stray 'unknown' pulse row ---
-    #[test]
-    fn test_heartbeat_role_writes_only_known_providers() {
-        assert_eq!(heartbeat_role("akamai"), Some("akamai_functions"));
-        for provider in ["", "unknown_cloud", "local", "unknown", "something-else"] {
-            assert_eq!(heartbeat_role(provider), None, "{provider:?}");
-        }
-    }
-
     // --- #213: POST /internal/log-message ---
     fn utc(s: &str) -> chrono::DateTime<chrono::Utc> { chrono::DateTime::parse_from_rfc3339(s).unwrap().with_timezone(&chrono::Utc) }
 
@@ -2052,6 +2035,7 @@ mod tests {
             walked: true, arabic_met: false, greek_met: false, goals_met: 1, total_goals: 3,
             budget_remaining: 0.0, today_distance_miles: 1.42, today_steps: 4210,
             vacation_mode_until: None, vacation_active: false, phone_verified: false,
+            pace: pace::pace_for_goals(&[("ARABIC".into(), 42, 35), ("GREEK".into(), 0, 0)], now),
             full: full.then(|| FullStatus {
                 modalities: vec![
                     m("ANDROID CLIENT", "healthy", "2026-11-14 19:18:02.41+00", 42, None),
@@ -2060,7 +2044,6 @@ mod tests {
                     m("GHOST", "paused", "2026-10-30 03:12:10+00", 22367, None),
                 ],
                 claude_plan: Some(claude_plan::summarize(Some(&reading), now, Some(60))),
-                pace: pace::pace_for_goals(&[("ARABIC".into(), 42, 35), ("GREEK".into(), 0, 0)], now),
             }),
         }
     }
