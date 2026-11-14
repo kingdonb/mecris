@@ -71,10 +71,12 @@ def _narrator_patches(aggregate_result):
     }
 
 
-async def _run_narrator_context_with_aggregate(aggregate_result, claude_plan=None):
+async def _run_narrator_context_with_aggregate(aggregate_result, claude_plan=None, budget_status=None):
     """Helper: run get_narrator_context with all deps mocked + a specific aggregate result."""
     sys.modules.pop("mcp_server", None)
     mocks = _narrator_patches(aggregate_result)
+    if budget_status is not None:
+        mocks["mock_tracker"].get_budget_status.return_value = budget_status
 
     with patch.dict("os.environ", _base_env()):
         with patch("psycopg2.connect"):
@@ -211,3 +213,36 @@ def test_get_claude_plan_status_failure_reports_unknown():
             status = get_claude_plan_status()
     assert status["state"] == "unknown"
     assert "db down" in status["error"]
+
+
+# ---------------------------------------------------------------------------
+# Budget false alarms (kingdonb/mecris#345)
+# ---------------------------------------------------------------------------
+
+_EXPIRED = {"days_remaining": 0, "period_expired": True, "days_since_period_end": 37,
+            "period_end": "2026-10-07", "budget_health": "STALE", "alerts": ["PERIOD_EXPIRED"]}
+
+
+@pytest.mark.asyncio
+async def test_expired_budget_period_raises_no_budget_alarm():
+    result = await _run_narrator_context_with_aggregate(_AGG, budget_status=_EXPIRED)
+    assert not any("BUDGET" in u for u in result["urgent_items"])
+    assert not any("budget constraints" in r for r in result["recommendations"])
+    assert "period ended 2026-10-07 (stale)" in result["summary"]
+    assert "days left" not in result["summary"]
+    assert any("update_budget" in r for r in result["recommendations"])
+
+
+@pytest.mark.asyncio
+async def test_budget_read_failure_is_unknown_not_critical():
+    result = await _run_narrator_context_with_aggregate(_AGG, budget_status={"error": "no row"})
+    assert not any("BUDGET" in u for u in result["urgent_items"])
+    assert "Budget: unknown" in result["summary"]
+
+
+@pytest.mark.asyncio
+async def test_live_budget_near_end_still_alarms():
+    live = {"days_remaining": 1, "period_expired": False, "remaining_budget": 3.0}
+    result = await _run_narrator_context_with_aggregate(_AGG, budget_status=live)
+    assert any("BUDGET CRITICAL" in u for u in result["urgent_items"])
+    assert "Budget: 1.0 days left" in result["summary"]
