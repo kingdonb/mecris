@@ -8,8 +8,8 @@ import java.time.Instant
 
 data class DashboardCache(
     val walkData: WalkDataSummary?,
-    val budgetAmount: Double?,
     val languageStats: List<LanguageStatDto>,
+    /** The dashboard's full aggregate-status, including claude_plan and the pulse modalities. */
     val aggregateStatus: AggregateStatusResponseDto? = null,
     val homeServerActive: Boolean?,
     val lastSyncTime: String,

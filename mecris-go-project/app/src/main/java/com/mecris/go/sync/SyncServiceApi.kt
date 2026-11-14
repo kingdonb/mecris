@@ -17,11 +17,6 @@ interface SyncServiceApi {
         @Body walkData: WalkDataSummaryDto
     ): retrofit2.Response<SyncResponse>
 
-    @GET("budget")
-    suspend fun getBudget(
-        @Header("Authorization") authHeader: String
-    ): retrofit2.Response<BudgetResponseDto>
-
     @GET("languages")
     suspend fun getLanguages(
         @Header("Authorization") authHeader: String
@@ -53,9 +48,14 @@ interface SyncServiceApi {
         @Body request: MultiplierRequestDto
     ): retrofit2.Response<Unit>
 
+    /**
+     * [full] = true adds the pulse modalities and claude_plan (the dashboard only).
+     * Workers leave it null, so Retrofit omits the query and their hourly calls stay light.
+     */
     @GET("aggregate-status")
     suspend fun getAggregateStatus(
-        @Header("Authorization") authHeader: String
+        @Header("Authorization") authHeader: String,
+        @Query("full") full: Boolean? = null
     ): retrofit2.Response<AggregateStatusResponseDto>
 
     @GET("internal/weather-heuristic")
@@ -124,10 +124,6 @@ data class WalkDataSummaryDto(
 data class SyncResponse(
     val status: String,
     val message: String
-)
-
-data class BudgetResponseDto(
-    val remaining_budget: Double
 )
 
 data class LanguageStatDto(
