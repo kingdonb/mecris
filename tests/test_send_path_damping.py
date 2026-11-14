@@ -136,6 +136,57 @@ async def test_console_fallback_is_never_a_whatsapp_send(server):
     assert "sent" not in params and "whatsapp" not in params
 
 
+async def _send_through_real_sender(server, conn, env):
+    """send_reminder_message over the real smart_send_message, Twilio failing."""
+    tracker = MagicMock()
+    tracker.get_user_preferences.return_value = {}
+    sender_globals = server.smart_send_message.__globals__
+    template = MagicMock(return_value=False)
+    freeform = MagicMock(return_value=False)
+    with patch.dict("os.environ", {**_ENV, **env}), \
+         patch("psycopg2.connect", return_value=conn), \
+         patch.dict(sender_globals, {"send_whatsapp_template": template, "send_message": freeform}), \
+         patch("usage_tracker.get_tracker", return_value=tracker), \
+         patch("os.path.exists", return_value=False), \
+         patch.object(server.neon_checker, "get_notification_prefs", return_value={}), \
+         patch.object(server.usage_tracker, "resolve_user_id", return_value="test-user"), \
+         patch.object(server.usage_tracker.encryption, "try_encrypt", side_effect=lambda v: v):
+        result = await server.send_reminder_message(
+            {"type": "walk_reminder", "fallback_message": BODY}, "test-user")
+    return result, template, freeform
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("env", [
+    {"REMINDER_DELIVERY_METHOD": "whatsapp", "TWILIO_WHATSAPP_TEMPLATE_SID": "HX999"},
+    {"REMINDER_DELIVERY_METHOD": "whatsapp"},
+], ids=["template_and_freeform_fail", "freeform_fails"])
+async def test_a_failed_whatsapp_attempt_is_logged_whatsapp_failed(server, env):
+    # contracts/nag_damping_cases.json: a failed WhatsApp attempt damps and
+    # counts toward the cap, so it must never be logged as console/not_sent.
+    conn, cur = _db()
+    result, template, freeform = await _send_through_real_sender(server, conn, env)
+    assert result["sent"] is False
+    freeform.assert_called_once()
+    (insert,) = _inserts(cur)
+    params = insert.args[1]
+    assert "whatsapp" in params and "failed" in params
+    assert "console" not in params and "not_sent" not in params
+
+
+@pytest.mark.asyncio
+async def test_console_delivery_method_with_no_attempt_stays_console_not_sent(server):
+    conn, cur = _db()
+    result, template, freeform = await _send_through_real_sender(
+        server, conn, {"REMINDER_DELIVERY_METHOD": "console"})
+    assert result["sent"] is False
+    template.assert_not_called()
+    freeform.assert_not_called()
+    (insert,) = _inserts(cur)
+    params = insert.args[1]
+    assert "console" in params and "not_sent" in params
+
+
 @pytest.mark.asyncio
 async def test_guard_blocks_within_4h_of_a_spin_whatsapp_row(server):
     recent = {"type": "walk_reminder", "channel": "whatsapp", "status": "sent",

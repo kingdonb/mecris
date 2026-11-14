@@ -324,6 +324,30 @@ class TestSmartSendMessage:
         assert result["sent"] is False
         assert result["method"] == "console"
 
+    def test_both_whatsapp_fail_records_both_attempts(self):
+        """The result says WhatsApp was tried, so the caller logs whatsapp/failed."""
+        env = {**_CREDS, "REMINDER_DELIVERY_METHOD": "whatsapp",
+               "TWILIO_WHATSAPP_TEMPLATE_SID": "HX999"}
+        mock_cls = MagicMock(side_effect=Exception("Twilio down"))
+        with patch.dict(os.environ, env, clear=True):
+            with patch.dict(sys.modules, {"usage_tracker": _tracker_module()}):
+                with patch("os.path.exists", return_value=False):
+                    with patch("twilio_sender.Client", mock_cls):
+                        result = smart_send_message("Goal: 1000", to_number="+1111")
+        assert result["attempts"] == [
+            {"method": "whatsapp_template", "success": False},
+            {"method": "whatsapp_freeform", "success": False},
+        ]
+
+    def test_console_delivery_records_no_attempts(self):
+        env = {**_CREDS, "REMINDER_DELIVERY_METHOD": "console"}
+        with patch.dict(os.environ, env, clear=True):
+            with patch.dict(sys.modules, {"usage_tracker": _tracker_module()}):
+                with patch("os.path.exists", return_value=False):
+                    result = smart_send_message("hello", to_number="+1111")
+        assert result["method"] == "console"
+        assert result["attempts"] == []
+
     def test_whatsapp_no_template_sid_goes_to_freeform(self):
         """delivery=whatsapp but no SID → skips template, goes to freeform."""
         env = {**_CREDS, "REMINDER_DELIVERY_METHOD": "whatsapp"}
