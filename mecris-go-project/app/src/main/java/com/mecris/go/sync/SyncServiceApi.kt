@@ -248,7 +248,8 @@ data class WeatherHeuristicResponseDto(
     val is_walk_appropriate: Boolean,
     val conditions: String,
     val description: String,
-    val temperature: Double,
+    /** Null since v0.3.0: Spin does not check the weather yet (#188). */
+    val temperature: Double? = null,
     val sunrise: Long,
     val sunset: Long,
     val is_dark: Boolean,
@@ -256,8 +257,9 @@ data class WeatherHeuristicResponseDto(
     val data_ts: Long
 )
 
-/** The dashboard's weather temperature line. */
-fun weatherTemperatureLine(temperature: Double?): String = TODO("red skeleton")
+/** The dashboard's weather temperature line; "unknown" when Spin sends none (#188). */
+fun weatherTemperatureLine(temperature: Double?): String =
+    if (temperature == null) "Temp: unknown" else "Temp: ${temperature}°C"
 
 data class PhoneVerificationRequestDto(
     val phone_number: String

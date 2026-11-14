@@ -2457,7 +2457,7 @@ fun SovereignLabScreen(
             Column(modifier = Modifier.padding(12.dp)) {
                 if (weatherData != null) {
                     Text("Condition: ${weatherData!!.conditions} (${weatherData!!.description})", color = Color.White)
-                    Text("Temp: ${weatherData!!.temperature}°C", color = Color.White)
+                    Text(com.mecris.go.sync.weatherTemperatureLine(weatherData!!.temperature), color = Color.White)
                     Text("Dark: ${weatherData!!.is_dark}", color = Color.White)
                     Text("Safe to Walk: ${weatherData!!.is_walk_appropriate}", color = Color.White)
                     
