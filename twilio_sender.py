@@ -249,9 +249,11 @@ def smart_send_message(message: str, to_number: Optional[str] = None, user_id: O
             result.update({"sent": True, "method": "whatsapp_freeform"})
             return result
 
-    # Final fallback: Console
-    print(f"[NARRATOR] {message}")
-    result.update({"sent": True, "method": "console"})
+    # Final fallback: console. Nothing was delivered, so this is not a send.
+    # Never print: stdout is the MCP stdio channel. The body stays out of the
+    # log too (it can carry personal context); only its length is recorded.
+    logger.info("Console fallback: message not delivered (%d chars)", len(message or ""))
+    result.update({"sent": False, "method": "console"})
     return result
 
 if __name__ == "__main__":

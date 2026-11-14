@@ -1888,20 +1888,121 @@ async def get_last_sent_time(msg_type: Optional[str] = None, user_id: str = None
         logger.error(f"Failed to fetch last sent time: {e}")
         return None
 
+# ---------------------------------------------------------------------------
+# Shared nag damping (contracts/nag_damping_cases.json, #349 #368)
+# ---------------------------------------------------------------------------
+# The Python twin of Spin's damping and daily-cap gates. One SQL read fetches
+# the recent message_log rows; nag_damping_verdict applies the rules. A row
+# dated after now is included (and damps), matching Spin's
+# sent_at > now() - interval '240 minutes'.
+NAG_DAMPING_MINUTES = 240
+NAG_DEFAULT_MAX_PER_DAY = 3
+NAG_TIMEZONE = "America/New_York"  # hard-coded per the operator ruling; users.timezone is not read
+NAG_GUARD_SQL = """
+    SELECT type, channel, status, sent_at
+    FROM message_log
+    WHERE user_id = %s AND sent_at > now() - interval '48 hours'
+"""
+
+
+def _counts_toward_cap(row: Dict[str, Any]) -> bool:
+    """Outbound WhatsApp nag: channel whatsapp (NULL reads as whatsapp), status sent/failed/NULL."""
+    if row.get("type") == "phone_verification":
+        return False
+    channel = row.get("channel") or "whatsapp"
+    return channel == "whatsapp" and row.get("status") in (None, "sent", "failed")
+
+
+def _counts_toward_damping(row: Dict[str, Any]) -> bool:
+    """Any-channel nag: an outbound WhatsApp nag, or a local phone nag that was shown."""
+    if row.get("type") == "phone_verification":
+        return False
+    if _counts_toward_cap(row):
+        return True
+    return row.get("channel") == "android_native" and row.get("status") == "shown"
+
+
+def nag_damping_verdict(message_log: List[Dict[str, Any]], now: datetime,
+                        prefs: Optional[Dict[str, Any]] = None) -> Dict[str, str]:
+    """{'verdict': 'send'|'skip', 'reason': 'eligible'|'damped'|'daily_cap'}.
+
+    - damped: a counted nag on any channel is under NAG_DAMPING_MINUTES old
+      (whole minutes, floor of seconds / 60; a future-dated row counts).
+    - daily_cap: WhatsApp nags whose sent_at falls on today's New York date
+      reach prefs.max_messages_per_day (default 3). android_native rows and
+      phone_verification never count toward the cap.
+    """
+    from zoneinfo import ZoneInfo
+    ny = ZoneInfo(NAG_TIMEZONE)
+    prefs = prefs or {}
+    cap = prefs.get("max_messages_per_day")
+    cap = NAG_DEFAULT_MAX_PER_DAY if cap is None else int(cap)
+    today_ny = now.astimezone(ny).date()
+
+    for row in message_log:
+        sent_at = row.get("sent_at")
+        if sent_at is None or not _counts_toward_damping(row):
+            continue
+        if int((now - sent_at).total_seconds() // 60) < NAG_DAMPING_MINUTES:
+            return {"verdict": "skip", "reason": "damped"}
+
+    sent_today = sum(
+        1 for row in message_log
+        if row.get("sent_at") is not None and _counts_toward_cap(row)
+        and row["sent_at"].astimezone(ny).date() == today_ny
+    )
+    if sent_today >= cap:
+        return {"verdict": "skip", "reason": "daily_cap"}
+    return {"verdict": "send", "reason": "eligible"}
+
+
+def _nag_guard_rows(neon_url: str, target_user_id: str) -> List[Dict[str, Any]]:
+    import psycopg2
+    with psycopg2.connect(neon_url) as conn:
+        with conn.cursor() as cur:
+            cur.execute(NAG_GUARD_SQL, (target_user_id,))
+            return [
+                {"type": r[0], "channel": r[1], "status": r[2], "sent_at": r[3]}
+                for r in cur.fetchall()
+            ]
+
+
+def _delivery_channel_status(delivery_result: Dict[str, Any]) -> tuple:
+    """(channel, status) for the message_log row of one delivery attempt."""
+    if delivery_result.get("method") == "console":
+        return "console", "not_sent"
+    return "whatsapp", ("sent" if delivery_result.get("sent") else "failed")
+
+
 async def send_reminder_message(message_data: Dict[str, Any], user_id: str = None) -> Dict[str, Any]:
+    """Send one reminder, after the shared damping guard, and log it truthfully.
+
+    - The guard (nag_damping_verdict over NAG_GUARD_SQL) runs before any send.
+      trigger_reminder_check can still be called by hand, so this path needs
+      the same 4-hour any-channel damping and New York daily cap as Spin. A
+      failed read fails closed.
+    - sent_at is the database's NOW() (timestamptz, UTC), date is the New York
+      date, and channel is explicit. A console fallback is channel 'console',
+      status 'not_sent', never a WhatsApp 'sent'.
+    """
     msg_type = message_data.get("type")
     use_template = message_data.get("template_sid") is not None
     target_user_id = usage_tracker.resolve_user_id(user_id)
-    
+
     neon_url = os.getenv("NEON_DB_URL")
     if not neon_url:
         return {"sent": False, "reason": "NEON_DB_URL not configured"}
-        
-    today = date.today()
-    now = datetime.now()
-    
-    # Cooldown logic is now handled by the ReminderService heuristics.
-    # We trust the engine.
+
+    try:
+        guard_rows = await asyncio.to_thread(_nag_guard_rows, neon_url, target_user_id)
+        prefs = await asyncio.to_thread(neon_checker.get_notification_prefs, target_user_id)
+    except Exception as e:
+        logger.error(f"Reminder guard read failed; not sending: {type(e).__name__}")
+        return {"sent": False, "skipped": True, "reason": "guard_unavailable"}
+    verdict = nag_damping_verdict(guard_rows, datetime.now(timezone.utc), prefs or {})
+    if verdict["verdict"] != "send":
+        logger.info(f"Reminder {msg_type} not sent: {verdict['reason']}")
+        return {"sent": False, "skipped": True, "reason": verdict["reason"]}
 
     message = message_data.get("message") or message_data.get("fallback_message")
     if use_template:
@@ -1916,35 +2017,44 @@ async def send_reminder_message(message_data: Dict[str, Any], user_id: str = Non
         }
     else:
         delivery_result = smart_send_message(message, user_id=target_user_id)
+
     # Log to Neon, regardless of success or failure
-    status_val = "sent" if delivery_result.get("sent") else "failed"
-    error_val = None if delivery_result.get("sent") else "Failed to send (check twilio_sender logs)"
-    
+    channel_val, status_val = _delivery_channel_status(delivery_result)
+    if status_val == "sent":
+        error_val = None
+    elif status_val == "not_sent":
+        error_val = "Not delivered: console fallback"
+    else:
+        error_val = "Failed to send (check twilio_sender logs)"
+
     # Encrypt PII fields (error_msg, content) before storing
     encrypted_content = usage_tracker.encryption.try_encrypt(message)
     error_val = usage_tracker.encryption.try_encrypt(error_val)
-    
+
     def _write_log():
         import psycopg2
         with psycopg2.connect(neon_url) as conn:
             with conn.cursor() as cur:
                 try:
                     cur.execute(
-                        "INSERT INTO message_log (date, type, sent_at, user_id, status, error_msg, content) VALUES (%s, %s, %s, %s, %s, %s, %s)", 
-                        (today, msg_type, now, target_user_id, status_val, error_val, encrypted_content)
+                        "INSERT INTO message_log (date, type, sent_at, user_id, status, error_msg, content, channel) "
+                        "VALUES ((NOW() AT TIME ZONE 'America/New_York')::date, %s, NOW(), %s, %s, %s, %s, %s)",
+                        (msg_type, target_user_id, status_val, error_val, encrypted_content, channel_val)
                     )
                 except psycopg2.errors.UndefinedColumn:
-                    # Fallback if schema wasn't migrated
+                    # Fallback if schema wasn't migrated (NULL channel and status read as a
+                    # WhatsApp send, so the guard fails closed on these rows).
                     conn.rollback()
                     cur.execute(
-                        "INSERT INTO message_log (date, type, sent_at, user_id) VALUES (%s, %s, %s, %s)", 
-                        (today, msg_type, now, target_user_id)
+                        "INSERT INTO message_log (date, type, sent_at, user_id) "
+                        "VALUES ((NOW() AT TIME ZONE 'America/New_York')::date, %s, NOW(), %s)",
+                        (msg_type, target_user_id)
                     )
 
     try:
         await asyncio.to_thread(_write_log)
     except Exception as e:
-        logger.error(f"Failed to log message to Neon: {e}")
+        logger.error(f"Failed to log message to Neon: {type(e).__name__}")
 
     return delivery_result
 
@@ -2315,24 +2425,33 @@ async def get_daily_aggregate_status(user_id: str = None) -> Dict[str, Any]:
         "system_pulse": system_pulse
     }
 
-@mcp.tool(description="Update user notification preferences (time windows, vacation mode, etc).")
+@mcp.tool(description="Update user notification preferences (time windows, vacation mode, max_messages_per_day, etc).")
 async def set_notification_prefs(
     vacation_mode: Optional[bool] = None,
     time_window_start: Optional[int] = None,
     time_window_end: Optional[int] = None,
     sms_opted_in: Optional[bool] = None,
+    max_messages_per_day: Optional[int] = None,
     user_id: str = None
 ) -> Dict[str, Any]:
-    """Update user preferences stored in Neon notification_prefs JSONB."""
+    """Update user preferences stored in Neon notification_prefs JSONB.
+
+    max_messages_per_day caps WhatsApp nags per New York day (default 3); the
+    Spin gates and the Python send guard both read it.
+    """
     target_user_id = usage_tracker.resolve_user_id(user_id)
     if not target_user_id:
         return {"error": "Authentication Required"}
+
+    if max_messages_per_day is not None and not 0 <= max_messages_per_day <= 24:
+        return {"status": "error", "message": "max_messages_per_day must be between 0 and 24"}
 
     prefs = {}
     if vacation_mode is not None: prefs["vacation_mode"] = vacation_mode
     if time_window_start is not None: prefs["time_window_start"] = time_window_start
     if time_window_end is not None: prefs["time_window_end"] = time_window_end
     if sms_opted_in is not None: prefs["sms_opted_in"] = sms_opted_in
+    if max_messages_per_day is not None: prefs["max_messages_per_day"] = max_messages_per_day
 
     if not prefs:
         return {"status": "error", "message": "No preferences provided to update"}
