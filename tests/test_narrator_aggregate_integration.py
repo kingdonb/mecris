@@ -403,3 +403,68 @@ async def test_unknown_road_keeps_critical():
     goals = [_goal("reviewstack", "CRITICAL", road=None, due=0)]
     result = await _run_narrator_context_with_aggregate(_AGG, beeminder_goals=goals)
     assert "DERAILING: reviewstack" in result["urgent_items"]
+
+
+# ---------------------------------------------------------------------------
+# Claude Ultra subscription in the narrator (kingdonb/mecris#345)
+# ---------------------------------------------------------------------------
+
+_PLAN = {"state": "available", "summary_line": "Claude: available (3% weekly, resets Mon 4:00 AM)",
+         "observed_at": "2026-11-14T05:06:00+00:00"}
+
+
+def _subscription(health="GOOD", days=180, since=0):
+    alerts = {"GOOD": [], "ENDING": ["GRANT_ENDING"], "ENDED": ["GRANT_ENDED"]}[health]
+    return {"source_type": "subscription", "plan": "ultra", "budget_health": health, "alerts": alerts,
+            "grant_end": "2027-05-13", "period_end": "2027-05-13", "days_to_grant_end": days,
+            "days_remaining": days, "days_since_grant_end": since, "period_expired": False,
+            "remaining_budget": 20.72, "total_budget": 20.72}
+
+
+def _mentions(result, text):
+    return sum(text in line for line in result["urgent_items"] + result["recommendations"])
+
+
+@pytest.mark.asyncio
+async def test_subscription_merges_grant_and_plan_into_one_claude_phrase():
+    result = await _run_narrator_context_with_aggregate(_AGG, claude_plan=_PLAN, budget_status=_subscription())
+    assert "Claude: Ultra until 2027-05-13, available (3% weekly, resets Mon 4:00 AM)" in result["summary"]
+    assert result["summary"].count("Claude:") == 1
+    assert "Budget:" not in result["summary"]
+
+
+@pytest.mark.asyncio
+async def test_live_subscription_raises_no_budget_nag():
+    result = await _run_narrator_context_with_aggregate(_AGG, claude_plan=_PLAN, budget_status=_subscription(days=2))
+    assert _mentions(result, "update_budget") == 0
+    assert not any("BUDGET" in u for u in result["urgent_items"])
+    assert not any("budget constraints" in r for r in result["recommendations"])
+
+
+@pytest.mark.asyncio
+async def test_ending_grant_is_one_recommendation():
+    result = await _run_narrator_context_with_aggregate(
+        _AGG, claude_plan=_PLAN, budget_status=_subscription("ENDING", days=10))
+    hits = [r for r in result["recommendations"] if "grant ends 2027-05-13" in r]
+    assert len(hits) == 1
+    assert not any("GRANT" in u for u in result["urgent_items"])
+
+
+@pytest.mark.asyncio
+async def test_ended_grant_appears_exactly_once():
+    result = await _run_narrator_context_with_aggregate(
+        _AGG, claude_plan=_PLAN, budget_status=_subscription("ENDED", days=0, since=3))
+    assert _mentions(result, "GRANT ENDED") == 1
+    assert any("GRANT ENDED" in u for u in result["urgent_items"])
+    assert "Claude: Ultra ended 2027-05-13" in result["summary"]
+
+
+@pytest.mark.asyncio
+async def test_retired_budget_is_quiet():
+    retired = {"source_type": "retired", "budget_health": "RETIRED", "alerts": [], "period_expired": False,
+               "days_remaining": 0, "remaining_budget": 20.72, "total_budget": 20.72}
+    result = await _run_narrator_context_with_aggregate(_AGG, claude_plan=_PLAN, budget_status=retired)
+    assert "Budget: retired" in result["summary"]
+    assert "Claude: available (3% weekly" in result["summary"]
+    assert _mentions(result, "update_budget") == 0
+    assert not any("BUDGET" in u for u in result["urgent_items"])
