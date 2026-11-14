@@ -1,0 +1,117 @@
+"""No personal phone numbers in tracked files (#358).
+
+kingdonb/mecris is public. This scan reads every tracked text file and looks
+for E.164-shaped strings (+ and 10 to 15 digits). A match is allowed when it:
+
+- is a Twilio magic test number (+1500555xxxx);
+- is a NANP fiction number (NXX-555-0100 to 0199);
+- cannot be a dialable NANP number (+1 without exactly 10 national digits,
+  an area code or exchange starting with 0 or 1, or area code 555);
+- or its SHA-256 is listed in tests/fixtures/phone_allowlist_sha256.txt, which
+  is how already-public business numbers pass without being repeated here.
+
+Failures report file and line only. The scan never prints a number, so its
+output is safe to paste into an issue or CI log.
+"""
+import hashlib
+import re
+import shutil
+import subprocess
+from pathlib import Path
+
+import pytest
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+ALLOWLIST = REPO_ROOT / "tests" / "fixtures" / "phone_allowlist_sha256.txt"
+
+E164 = re.compile(r"(?<![\w+])\+[1-9]\d{9,14}(?!\w)")
+TWILIO_MAGIC = re.compile(r"1500555\d{4}")
+
+
+def load_allowlist(path=ALLOWLIST):
+    hashes = set()
+    for raw in path.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        hashes.add(line.split()[0].lower())
+    return hashes
+
+
+def allowed_by_rule(number):
+    """True when the E.164 string cannot belong to a person (see module doc)."""
+    digits = number[1:]
+    if TWILIO_MAGIC.fullmatch(digits):
+        return True
+    if digits.startswith("1"):
+        national = digits[1:]
+        if len(national) != 10:
+            return True
+        npa, nxx, line = national[:3], national[3:6], national[6:]
+        if npa[0] in "01" or nxx[0] in "01" or npa == "555":
+            return True
+        if nxx == "555" and line.startswith("01"):
+            return True
+    return False
+
+
+def is_allowed(number, allowlist):
+    if allowed_by_rule(number):
+        return True
+    return hashlib.sha256(number.encode("utf-8")).hexdigest() in allowlist
+
+
+def _tracked_files():
+    if shutil.which("git") is None:
+        pytest.skip("git is not available")
+    result = subprocess.run(["git", "ls-files", "-z"], cwd=REPO_ROOT, capture_output=True)
+    if result.returncode != 0:
+        pytest.skip("not running inside a git checkout")
+    names = result.stdout.decode("utf-8", "surrogateescape").split("\0")
+    return [REPO_ROOT / n for n in names if n]
+
+
+def find_unlisted_numbers(files, allowlist):
+    """Return 'path:line' for every E.164 match that is not allowed. Never the number."""
+    locations = []
+    for path in files:
+        try:
+            data = path.read_bytes()
+        except (FileNotFoundError, IsADirectoryError, PermissionError):
+            continue
+        if b"\0" in data[:8192]:
+            continue  # binary
+        text = data.decode("utf-8", "replace")
+        for lineno, line in enumerate(text.splitlines(), 1):
+            if any(not is_allowed(m.group(0), allowlist) for m in E164.finditer(line)):
+                locations.append(f"{path.relative_to(REPO_ROOT)}:{lineno}")
+    return locations
+
+
+def test_allowlist_entries_are_sha256_hashes():
+    for entry in load_allowlist():
+        assert re.fullmatch(r"[0-9a-f]{64}", entry), "allowlist entries must be SHA-256 hex digests"
+
+
+def test_rules_allow_test_and_fiction_numbers():
+    assert allowed_by_rule("+1" + "500555" + "0006")      # Twilio magic number
+    assert allowed_by_rule("+1" + "202" + "555" + "0143")  # NANP fiction range
+    assert allowed_by_rule("+1" + "555" + "1234567")       # area code 555
+    assert allowed_by_rule("+1" + "234567890")             # 9 national digits
+
+
+def test_rules_reject_a_dialable_number():
+    # Built at runtime so this file holds no dialable literal.
+    candidate = "+1" + "2" * 10
+    assert not allowed_by_rule(candidate)
+    assert not is_allowed(candidate, set())
+    assert is_allowed(candidate, {hashlib.sha256(candidate.encode()).hexdigest()})
+
+
+def test_no_personal_numbers_in_tracked_files():
+    locations = find_unlisted_numbers(_tracked_files(), load_allowlist())
+    assert locations == [], (
+        f"{len(locations)} line(s) hold a phone number that is not a test, fiction or "
+        "allowlisted number. Replace it with a Twilio magic number (+1500555xxxx), or, for an "
+        "already-public business number, add its SHA-256 to tests/fixtures/phone_allowlist_sha256.txt."
+    )
