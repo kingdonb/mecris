@@ -191,8 +191,8 @@ goal's aggregation, that is a double-count waiting to happen — the same bug fa
 
 ### The SMS loop (the nag ladder)
 
-`/internal/trigger-reminders` (guarded only by the literal key `test-internal-key` — a known
-gap) decrypts phone numbers and applies `should_dispatch`: local hour 9–20, steps < 2000,
+`/internal/trigger-reminders` (callable by a signed-in user or with the private
+`INTERNAL_API_KEY`; see S1) decrypts phone numbers and applies `should_dispatch`: local hour 9–20, steps < 2000,
 ≥120 min since last message, and deference to any Android heartbeat < 240 min old (the phone
 nagged first, so the cloud shuts up). Texts say *"...Reply YES to log 1 mile."* An incoming
 "YES" is matched to a user by decrypting every stored phone number (and, a security finding:
@@ -720,7 +720,7 @@ security findings, **W\*** are write-path fidelity findings.
 
 | # | Finding | Where | Status |
 |---|---|---|---|
-| S1 | Internal endpoints guarded by the literal key `test-internal-key` — a real value committed in the deploy scripts (`handle_trigger_reminders_post` and friends) | `deploy-akamai.sh` / `deploy-fermyon.sh` (`internal_api_key`), §4 | open |
+| S1 | Internal endpoints were guarded by the literal key `test-internal-key`, committed in the deploy scripts. Because platform cron cannot send headers and the Android app sent none, those callers were refused. Now: key comes from `INTERNAL_API_KEY` in `.env`, an unset or published key authorizes nobody, cron uses a `key` query parameter, Android sends its bearer token | `internal_caller_ok` in `sync-service/src/lib.rs`, `deploy-*.sh`, `scripts/setup_spin_cron.sh` | fixed in code; needs key generation, redeploy and cron recreation |
 | S2 | Edge JWT validation against a **deploy-frozen JWKS**, skipping `iss`/`aud`/`exp`; ships with an `auth_bypass` debug path (variable default `false`, but one deploy flag away from `true` — the Makefile's local run turns it on while listening on 0.0.0.0) | `sync-service/src/lib.rs:641-672`, `spin.toml`, §3 | open |
 | S3 | Python standalone mode decodes tokens with `verify_signature: False` | `cli/main.py:63-69, 161-165`, §3 | open (laptop-tolerated) |
 | S4 | Twilio webhook accepts "YES" with **no `X-Twilio-Signature` validation** — anyone who can reach the URL can text a fake mile onto the `bike` goal. The signature validator exists, but only in `lib.rs.beta4`; it was never wired into the live `lib.rs` | `sync-service/src/lib.rs:450-472` vs `.beta4` | open |

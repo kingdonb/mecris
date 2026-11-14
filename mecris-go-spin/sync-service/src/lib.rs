@@ -14,7 +14,36 @@ use aes_gcm::{aead::{Aead, KeyInit}, Aes256Gcm, Nonce};
 use chrono::{Timelike, TimeZone};
 
 #[derive(Deserialize, Default)] struct NotificationPrefs { #[allow(dead_code)] sms_opted_in: Option<bool> }
-fn internal_api_key_ok(cfg: &str, h: Option<&str>) -> bool { if cfg.is_empty() { true } else { h == Some(cfg) } }
+/// The key that was committed to the public deploy scripts. It can never authorize again.
+const BURNED_INTERNAL_KEY: &str = "test-internal-key";
+
+/// Compare two secrets without an early exit on the first differing byte.
+fn secret_eq(a: &str, b: &str) -> bool {
+    a.len() == b.len() && a.bytes().zip(b.bytes()).fold(0u8, |acc, (x, y)| acc | (x ^ y)) == 0
+}
+
+fn query_param(query: Option<&str>, key: &str) -> Option<String> {
+    parse_form(query?).into_iter().find(|(k, _)| k == key).map(|(_, v)| v)
+}
+
+/// Who may call the `/internal/*` trigger endpoints:
+/// - a signed-in user (the Android app sends its bearer token), or
+/// - a caller presenting the configured key, in the `x-internal-api-key` header or,
+///   for platform cron which can only set path and query, the `key` query parameter.
+/// An unset key authorizes nobody. So does the key that was once published.
+fn internal_caller_ok(cfg: &str, header_key: Option<&str>, query_key: Option<&str>, signed_in_user: bool) -> bool {
+    if signed_in_user { return true; }
+    if cfg.is_empty() || cfg == BURNED_INTERNAL_KEY { return false; }
+    header_key.map(|h| secret_eq(h, cfg)).unwrap_or(false) || query_key.map(|q| secret_eq(q, cfg)).unwrap_or(false)
+}
+
+async fn internal_request_ok(req: &Request) -> bool {
+    let cfg = variables::get("internal_api_key").await.unwrap_or_default();
+    let header_key = req.headers().get("x-internal-api-key").and_then(|v| v.to_str().ok());
+    let query_key = query_param(req.uri().query(), "key");
+    let signed_in = extract_user_id(req.headers().get("authorization")).await.is_some();
+    internal_caller_ok(&cfg, header_key, query_key.as_deref(), signed_in)
+}
 
 fn db_to_i32(v: &DbValue) -> i32 { 
     match v { 
@@ -73,14 +102,10 @@ async fn handle_sync_service(req: Request) -> anyhow::Result<Response<String>> {
         ("/profile", &Method::POST) => handle_profile_post(req).await?,
         ("/profile", &Method::GET) => handle_profile_get(req).await?,
         ("/internal/trigger-reminders", _) => {
-            let cfg = variables::get("internal_api_key").await.unwrap_or_default();
-            let key = req.headers().get("x-internal-api-key").and_then(|v| v.to_str().ok());
-            if !internal_api_key_ok(&cfg, key) { text_response(401, "Unauthorized")? } else { handle_trigger_reminders_post(req).await? }
+            if !internal_request_ok(&req).await { text_response(401, "Unauthorized")? } else { handle_trigger_reminders_post(req).await? }
         },
         ("/internal/failover-sync", _) => {
-            let cfg = variables::get("internal_api_key").await.unwrap_or_default();
-            let key = req.headers().get("x-internal-api-key").and_then(|v| v.to_str().ok());
-            if !internal_api_key_ok(&cfg, key) { text_response(401, "Unauthorized")? } else { handle_failover_sync_post(req).await? }
+            if !internal_request_ok(&req).await { text_response(401, "Unauthorized")? } else { handle_failover_sync_post(req).await? }
         },
         ("/internal/weather-heuristic", &Method::GET) => handle_weather_heuristic_get(req).await?,
         ("/internal/request-phone-verification", &Method::POST) => handle_request_phone_verification_post(req).await?,

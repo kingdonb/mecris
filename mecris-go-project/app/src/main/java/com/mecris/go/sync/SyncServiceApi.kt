@@ -38,7 +38,9 @@ interface SyncServiceApi {
     ): retrofit2.Response<SyncResponse>
 
     @POST("internal/trigger-reminders")
-    suspend fun triggerReminders(): retrofit2.Response<SyncResponse>
+    suspend fun triggerReminders(
+        @Header("Authorization") authHeader: String
+    ): retrofit2.Response<SyncResponse>
 
     @POST("heartbeat")
     suspend fun sendHeartbeat(
