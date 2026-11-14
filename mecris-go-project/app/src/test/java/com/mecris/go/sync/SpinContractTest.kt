@@ -88,6 +88,31 @@ class SpinContractTest {
         assertEquals(raw.get("pace"), back.get("pace"))
     }
 
+    // --- GET /internal/weather-heuristic (v0.3.0: weather is not checked) ---
+    // Spin's WeatherResp.temperature is Option<f64> and serialises None as null.
+    // Gson leaves a primitive double at 0.0 on null, so a non-null Double would
+    // show a made-up "Temp: 0.0°C" on the dashboard.
+
+    private val v030Weather = """
+        {"is_walk_appropriate": true, "conditions": "unknown", "description": "weather not checked",
+         "temperature": null, "sunrise": 1763121600, "sunset": 1763158000, "is_dark": false,
+         "now_epoch": 1763140000, "data_ts": 1763140000, "recommendation": "Daylight: a walk is fine. Weather is not checked."}
+    """.trimIndent()
+
+    @Test
+    fun `weather with null temperature parses to null, not zero`() {
+        val dto = gson.fromJson(v030Weather, WeatherHeuristicResponseDto::class.java)
+        assertNull("Spin sends no temperature; it must not read as 0.0", dto.temperature)
+        assertEquals("unknown", dto.conditions)
+    }
+
+    @Test
+    fun `dashboard temperature line says unknown when Spin sends none`() {
+        assertEquals("Temp: unknown", weatherTemperatureLine(null))
+        assertEquals("Temp: 21.5°C", weatherTemperatureLine(21.5))
+        assertEquals("Temp: 0.0°C", weatherTemperatureLine(0.0))
+    }
+
     @Test
     fun `the phone declares no trigger-reminders or cloud-sync route (#368)`() {
         val routes = SyncServiceApi::class.java.methods.flatMap { m ->

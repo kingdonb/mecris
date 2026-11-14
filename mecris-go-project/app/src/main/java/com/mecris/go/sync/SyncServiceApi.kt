@@ -256,6 +256,9 @@ data class WeatherHeuristicResponseDto(
     val data_ts: Long
 )
 
+/** The dashboard's weather temperature line. */
+fun weatherTemperatureLine(temperature: Double?): String = TODO("red skeleton")
+
 data class PhoneVerificationRequestDto(
     val phone_number: String
 )
