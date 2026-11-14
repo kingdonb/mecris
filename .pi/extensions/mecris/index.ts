@@ -208,7 +208,9 @@ function formatStatus(data: Record<string, any>): string {
   const next = alerts[0] ?? urgent[0] ?? recommendations[0] ?? "No immediate action.";
 
   return [
-    `- Budget: ${budget.budget_health ?? "unknown"}; ${budget.days_remaining ?? "?"} days; ends ${budget.period_end ?? "unknown"}.`,
+    budget.period_expired
+      ? `- Budget: ${budget.budget_health ?? "STALE"}; period ended ${budget.period_end ?? "unknown"}; needs update.`
+      : `- Budget: ${budget.budget_health ?? "unknown"}; ${budget.days_remaining ?? "?"} days; ends ${budget.period_end ?? "unknown"}.`,
     urgentGoal
       ? `- Beeminder: ${urgentGoal.slug}; ${urgentGoal.derail_risk}; ${urgentGoal.runway ?? `${urgentGoal.safebuf ?? "?"} days`}.`
       : "- Beeminder: no urgent goal reported.",
