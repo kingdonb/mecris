@@ -200,6 +200,22 @@ function systemState(pulse: Record<string, any>): string {
   return state ?? "unknown";
 }
 
+// The budget row is a dollar budget (api_credit), a plan grant (subscription,
+// e.g. Claude Ultra) or retired (#345).
+function budgetLine(budget: Record<string, any>): string {
+  if (budget.source_type === "subscription") {
+    const raw = String(budget.plan ?? "subscription");
+    const plan = raw.charAt(0).toUpperCase() + raw.slice(1);
+    const end = budget.grant_end ?? budget.period_end ?? "unknown";
+    const verb = budget.budget_health === "ENDED" ? "ended" : "until";
+    return `- Budget: Claude ${plan} ${verb} ${end}; ${budget.budget_health ?? "unknown"}; ${budget.days_to_grant_end ?? "?"} days left.`;
+  }
+  if (budget.source_type === "retired") return "- Budget: retired (no dollar budget).";
+  return budget.period_expired
+    ? `- Budget: ${budget.budget_health ?? "STALE"}; period ended ${budget.period_end ?? "unknown"}; needs update.`
+    : `- Budget: ${budget.budget_health ?? "unknown"}; ${budget.days_remaining ?? "?"} days; ends ${budget.period_end ?? "unknown"}.`;
+}
+
 function formatStatus(data: Record<string, any>): string {
   if (data.error) throw new Error(String(data.error));
   const budget = data.budget_status ?? {};
@@ -216,9 +232,7 @@ function formatStatus(data: Record<string, any>): string {
   const next = alerts[0] ?? urgent[0] ?? recommendations[0] ?? "No immediate action.";
 
   return [
-    budget.period_expired
-      ? `- Budget: ${budget.budget_health ?? "STALE"}; period ended ${budget.period_end ?? "unknown"}; needs update.`
-      : `- Budget: ${budget.budget_health ?? "unknown"}; ${budget.days_remaining ?? "?"} days; ends ${budget.period_end ?? "unknown"}.`,
+    budgetLine(budget),
     urgentGoal
       ? `- Beeminder: ${urgentGoal.slug}; ${urgentGoal.derail_risk}; ${urgentGoal.runway ?? `${urgentGoal.safebuf ?? "?"} days`}.`
       : "- Beeminder: no urgent goal reported.",

@@ -871,6 +871,23 @@ def _enrich_bookmarks_for_narrator(goals: List[Dict[str, Any]]) -> List[Dict[str
     return results
 
 
+def _plan_display_name(plan: Optional[str]) -> str:
+    plan = (plan or "").strip()
+    return plan[:1].upper() + plan[1:] if plan else "subscription"
+
+
+def _claude_subscription_phrase(budget_status: Dict[str, Any], claude_plan: Dict[str, Any]) -> str:
+    """'Claude: Ultra until 2027-05-13, available (3% weekly, resets Mon 4:00 AM)' (#345)."""
+    plan_name = _plan_display_name(budget_status.get("plan"))
+    grant_end = budget_status.get("grant_end") or budget_status.get("period_end", "?")
+    verb = "ended" if budget_status.get("budget_health") == "ENDED" else "until"
+    phrase = f"Claude: {plan_name} {verb} {grant_end}"
+    reading = (claude_plan or {}).get("summary_line") or ""
+    if reading.startswith("Claude: "):
+        reading = reading[len("Claude: "):]
+    return f"{phrase}, {reading}" if reading else phrase
+
+
 def _downgrade_not_due_goals(goals: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """Relabel CRITICAL goals that cannot derail today (#346 fold-in).
 
@@ -986,10 +1003,20 @@ async def get_narrator_context(user_id: str = None) -> Dict[str, Any]:
         
         # Budget (kingdonb/mecris#345): an expired period is stale, not exhausted,
         # and a missing/failed budget read is unknown, not zero days left.
+        # A subscription (Claude Ultra) merges with the plan reading into one
+        # "Claude: ..." phrase; a retired budget says so and never nags.
+        source_type = budget_status.get("source_type") or "api_credit"
+        subscription = source_type == "subscription" and not budget_status.get("error")
+        retired = source_type == "retired" and not budget_status.get("error")
         budget_days = budget_status.get("days_remaining")
-        budget_known = isinstance(budget_days, (int, float)) and not budget_status.get("error")
-        budget_expired = bool(budget_status.get("period_expired"))
-        if budget_expired:
+        budget_known = (isinstance(budget_days, (int, float)) and not budget_status.get("error")
+                        and source_type == "api_credit")
+        budget_expired = bool(budget_status.get("period_expired")) and source_type == "api_credit"
+        if subscription:
+            budget_phrase = _claude_subscription_phrase(budget_status, claude_plan)
+        elif retired:
+            budget_phrase = "Budget: retired (no dollar budget)"
+        elif budget_expired:
             budget_phrase = f"Budget: period ended {budget_status.get('period_end', '?')} (stale)"
         elif budget_known:
             budget_phrase = f"Budget: {budget_days:.1f} days left"
@@ -1008,6 +1035,17 @@ async def get_narrator_context(user_id: str = None) -> Dict[str, Any]:
         if budget_pressure and budget_days <= 2: recommendations.append("Urgent: Focus on highest-value work due to budget constraints")
         if budget_expired:
             recommendations.append(f"💳 Budget period ended {budget_status.get('days_since_period_end', '?')} days ago: update it with update_budget (or retire the dollar budget)")
+        if subscription:
+            plan_name = _plan_display_name(budget_status.get("plan"))
+            grant_end = budget_status.get("grant_end") or budget_status.get("period_end", "?")
+            if budget_status.get("budget_health") == "ENDING":
+                recommendations.append(
+                    f"🤖 Claude {plan_name} grant ends {grant_end} "
+                    f"({budget_status.get('days_to_grant_end', '?')} days left): decide what replaces it")
+            elif budget_status.get("budget_health") == "ENDED":
+                urgent_items.append(
+                    f"CLAUDE GRANT ENDED: {plan_name} ended {grant_end}; "
+                    "record the current plan with update_budget")
 
         # Majesty Cake: surface aggregate daily goal status early for discoverability (kingdonb/mecris#170)
         try:
@@ -1041,9 +1079,10 @@ async def get_narrator_context(user_id: str = None) -> Dict[str, Any]:
         if anthropic_cost_tracker:
             recommendations.append("📊 Real-time budget tracking is active via Anthropic Admin API")
 
-        # Claude plan availability (kingdonb/mecris#344)
+        # Claude plan availability (kingdonb/mecris#344); a subscription budget
+        # already carries it in the merged "Claude: ..." phrase (#345).
         claude_state = claude_plan.get("state")
-        if claude_plan.get("summary_line"):
+        if claude_plan.get("summary_line") and not subscription:
             summary += f", {claude_plan['summary_line']}"
         if claude_state == "exhausted":
             urgent_items.append(f"CLAUDE PLAN EXHAUSTED: {claude_plan.get('reason', '')}")
@@ -1373,12 +1412,31 @@ def complete_goal(goal_id: int, user_id: str = None) -> Dict[str, Any]:
         return {"error": "Authentication Required"}
     return usage_tracker.complete_goal(goal_id, target_user_id)
 
-@mcp.tool(description="Manually update budget information.")
-def update_budget(remaining_budget: float, total_budget: Optional[float] = None, period_end: Optional[str] = None, user_id: str = None) -> Dict[str, Any]:
+@mcp.tool(description=(
+    "Manually update budget information. Every field is optional. source_type is "
+    "'api_credit' (a dollar budget), 'subscription' (a plan grant such as Claude Ultra, "
+    "whose window is period_start..period_end) or 'retired'. plan names the plan "
+    "(e.g. 'ultra'); monthly_price_usd is optional. Dates are YYYY-MM-DD."
+))
+def update_budget(remaining_budget: Optional[float] = None, total_budget: Optional[float] = None,
+                  period_end: Optional[str] = None, period_start: Optional[str] = None,
+                  source_type: Optional[str] = None, plan: Optional[str] = None,
+                  monthly_price_usd: Optional[float] = None, user_id: str = None) -> Dict[str, Any]:
     target_user_id = resolve_target_user(user_id)
     if not target_user_id:
         return {"error": "Authentication Required"}
-    return usage_tracker.update_budget(remaining_budget, total_budget, period_end, target_user_id)
+    extras = {name: value for name, value in (
+        ("source_type", source_type), ("plan", plan),
+        ("period_start", period_start), ("monthly_price_usd", monthly_price_usd),
+    ) if value is not None}
+    try:
+        return usage_tracker.update_budget(remaining_budget, total_budget, period_end, target_user_id, **extras)
+    except Exception as e:
+        if "source_type" in str(e) or "monthly_price_usd" in str(e) or 'column "plan"' in str(e):
+            return {"error": "budget_tracking lacks the subscription columns: run "
+                             "scripts/migrate_v9_subscription_budget.py first"}
+        logger.error(f"update_budget failed: {type(e).__name__}")
+        return {"error": f"update_budget failed: {type(e).__name__}"}
 
 @mcp.tool(description="Record manual Groq odometer reading with cumulative cost.")
 async def record_groq_reading(value: float, notes: str = "", month: Optional[str] = None, user_id: str = None) -> Dict[str, Any]:
@@ -1534,7 +1592,19 @@ async def get_unified_cost_status(user_id: str = None) -> Dict[str, Any]:
         groq_tracker = _get_tracker()
         groq_status = await asyncio.to_thread(groq_tracker.check_reminder_needs, target_user_id)
         groq_usage = await asyncio.to_thread(groq_tracker.get_usage_for_virtual_budget, target_user_id)
-        return {"claude": budget_data, "groq": {**groq_status, **groq_usage}}
+        claude = dict(budget_data)
+        if claude.get("source_type") == "subscription":
+            # A plan grant has no dollars to track; pair it with the latest plan reading (#345).
+            try:
+                plan_status = await asyncio.to_thread(_get_claude_plan_status_sync, target_user_id)
+            except Exception as e:
+                logger.error(f"get_unified_cost_status: Claude plan status failed: {type(e).__name__}")
+                plan_status = {"state": "unknown"}
+            claude["plan_status"] = plan_status
+            claude["summary"] = _claude_subscription_phrase(claude, plan_status)
+        elif claude.get("source_type") == "retired":
+            claude["summary"] = "Budget: retired (no dollar budget)"
+        return {"claude": claude, "groq": {**groq_status, **groq_usage}}
     except Exception as e:
         logger.error(f"Failed to get unified cost status: {e}")
         return {"error": f"Failed to get unified cost status: {e}"}
