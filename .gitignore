@@ -104,3 +104,6 @@ tools/echokit/rust-sdk/
 tools/echokit/silero_vad_server/
 tools/moon-phase-clock/
 tools/talktype/talktype-repo/
+
+# Blog build output
+_site/

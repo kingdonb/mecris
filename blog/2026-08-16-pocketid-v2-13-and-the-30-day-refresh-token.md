@@ -9,7 +9,7 @@
 ## 1. The Field Test: Outside the Home Perimeter
 
 Following the Saturday soak of `v0.0.1-rc.6`, we took the Mecris Go Android app into the wild to test real-world offline degradation:
-1. **Network Disconnect**: We walked outside the home Wi-Fi and Tailscale perimeter where our local Synology NAS-hosted PocketID instance (`https://metnoom.urmanac.com`) resides.
+1. **Network Disconnect**: We walked outside the home Wi-Fi and Tailscale perimeter where our local Synology NAS-hosted PocketID instance resides.
 2. **Offline Execution**: We opened the app, watched network requests gracefully time out, and observed the calm offline UI indicator.
 3. **The Return Home**: Upon returning to the home network, we expected the app to quietly resume sync. Instead, the UI presented a modal snackbar and system alert:
    > `TOKEN_EXPIRED: Refresh token TTL exceeded (30-day sliding window)`
@@ -48,7 +48,7 @@ When the short-lived access token expired, AppAuth checked `internalAuthState.re
 
 Why was `refreshToken` null despite the Android app requesting `offline_access`?
 
-We queried the live PocketID OIDC configuration endpoint (`curl -s https://metnoom.urmanac.com/.well-known/openid-configuration`):
+We queried the live PocketID OIDC configuration endpoint (`curl -s https://<pocketid-host>/.well-known/openid-configuration`):
 ```json
 {
   "scopes_supported": ["openid", "profile", "email", "groups"],
