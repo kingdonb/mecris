@@ -1922,6 +1922,29 @@ def _counts_toward_damping(row: Dict[str, Any]) -> bool:
     return row.get("channel") == "android_native" and row.get("status") == "shown"
 
 
+def _nag_cap(value: Any) -> int:
+    """max_messages_per_day as Spin's Prefs::from_json reads it.
+
+    Integers, finite floats (floored) and integer strings are read; a
+    negative cap is 0; anything else (junk, bools, lists) is the default.
+    """
+    import math
+    if isinstance(value, bool):
+        return NAG_DEFAULT_MAX_PER_DAY
+    if isinstance(value, int):
+        n = value
+    elif isinstance(value, float) and math.isfinite(value):
+        n = math.floor(value)
+    elif isinstance(value, str) and "_" not in value:
+        try:
+            n = int(value.strip())
+        except ValueError:
+            return NAG_DEFAULT_MAX_PER_DAY
+    else:
+        return NAG_DEFAULT_MAX_PER_DAY
+    return max(0, n)
+
+
 def nag_damping_verdict(message_log: List[Dict[str, Any]], now: datetime,
                         prefs: Optional[Dict[str, Any]] = None) -> Dict[str, str]:
     """{'verdict': 'send'|'skip', 'reason': 'eligible'|'damped'|'daily_cap'}.
@@ -1935,8 +1958,7 @@ def nag_damping_verdict(message_log: List[Dict[str, Any]], now: datetime,
     from zoneinfo import ZoneInfo
     ny = ZoneInfo(NAG_TIMEZONE)
     prefs = prefs or {}
-    cap = prefs.get("max_messages_per_day")
-    cap = NAG_DEFAULT_MAX_PER_DAY if cap is None else int(cap)
+    cap = _nag_cap(prefs.get("max_messages_per_day"))
     today_ny = now.astimezone(ny).date()
 
     def _utc(value: datetime) -> datetime:
