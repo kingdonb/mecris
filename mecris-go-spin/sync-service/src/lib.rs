@@ -1584,7 +1584,8 @@ mod tests {
         assert!(lines.len() >= 3, "outbound, walk_ack/inbound and unknown-sender rows: {}", lines.len());
         for l in lines {
             assert!(!l.contains("CURRENT_DATE"), "GMT date in a message_log row: {}", l.trim());
-            assert!(l.contains("VALUES ((now() AT TIME ZONE 'America/New_York')::DATE,"), "no New York date: {}", l.trim());
+            // log-message dates the row by when the nag was shown, not when it was posted.
+            assert!(l.contains("VALUES ((now() AT TIME ZONE 'America/New_York')::DATE,") || l.contains("SELECT ({at} AT TIME ZONE 'America/New_York')::DATE,"), "no New York date: {}", l.trim());
         }
     }
 
