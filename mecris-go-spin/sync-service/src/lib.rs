@@ -748,9 +748,11 @@ async fn log_outbound(conn: &Connection, uid: &str, ty: &str, result: &Result<()
     let _ = conn.execute("INSERT INTO message_log (date, user_id, type, sent_at, status, channel, error_msg) VALUES ((now() AT TIME ZONE 'America/New_York')::DATE, $1, $2, CURRENT_TIMESTAMP, $3, 'whatsapp', $4)", &[ParameterValue::Str(uid.to_string()), ParameterValue::Str(ty.to_string()), ParameterValue::Str(status.to_string()), err]).await;
 }
 
-/// The scheduler_election role this deployment reports as.
+/// The scheduler_election role this deployment reports as. Akamai is the only live cloud,
+/// so an unset or unrecognised cloud_provider reports as akamai_functions; the 'unknown'
+/// role is no longer written (#346).
 fn cloud_role(provider: &str) -> &'static str {
-    match provider { "akamai" => "akamai_functions", "fermyon" => "fermyon_cloud", _ => "unknown" }
+    match provider { "fermyon" => "fermyon_cloud", _ => "akamai_functions" }
 }
 
 /// Upsert this user's cloud row after a cron job: heartbeat now, intent 'cron', this job's
