@@ -12,6 +12,8 @@
 #   failover-sync-edt   5 4 * * *
 #   failover-sync-est   5 5 * * *
 # Delete the old jobs of the same names first (spin aka cron delete <name>).
+# The app is the one linked to mecris-go-spin/sync-service (mecris-sync-v2), so no
+# --app-name is passed. Used by hand in this form for the 2026-11-14 deploy.
 
 set -euo pipefail
 
@@ -30,24 +32,21 @@ fi
 cd "$PROJECT_ROOT/mecris-go-spin/sync-service"
 
 echo "Existing cron jobs (delete stale ones with: spin aka cron delete <name>):"
-spin aka cron list --app-name mecris-go-api || { echo "Run: spin aka login" >&2; exit 1; }
+spin aka cron list || { echo "Run: spin aka login" >&2; exit 1; }
 
 spin aka cron create \
-  --app-name mecris-go-api \
   --path-and-query "/internal/trigger-reminders?key=${INTERNAL_API_KEY}" \
   --schedule "0 */2 * * *" \
   --name "trigger-reminders"
 
 spin aka cron create \
-  --app-name mecris-go-api \
   --path-and-query "/internal/failover-sync?key=${INTERNAL_API_KEY}" \
   --schedule "5 4 * * *" \
   --name "failover-sync-edt"
 
 spin aka cron create \
-  --app-name mecris-go-api \
   --path-and-query "/internal/failover-sync?key=${INTERNAL_API_KEY}" \
   --schedule "5 5 * * *" \
   --name "failover-sync-est"
 
-echo "Done. Verify with: spin aka cron list --app-name mecris-go-api"
+echo "Done. Verify with: spin aka cron list (it prints the key; do not paste its output anywhere)"
