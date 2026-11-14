@@ -11,6 +11,9 @@
 #     ignores ?dry_run=1 and would run the real reminder loop
 #   - no key, a wrong key and both forms of the old published key are refused,
 #     and the burned-key refusals are counted in internal_refusals
+#   - every key it presents is the real one, the burned one or marked with the
+#     verify-probe- prefix (outcome.rs VERIFY_PROBE_PREFIX, not a secret). Spin counts a
+#     marked key as reason 'probe', never 'bad_key', so this check raises no narrator alert
 #   - an unsigned or forged Twilio webhook post is refused
 #   - a dry run of trigger-reminders (sends and writes nothing) shows New York time
 #     and a verdict for every user
@@ -121,12 +124,19 @@ else stop "/version does not promise a dry run (\"dry_run\": true): an older han
 
 neon_ok=1
 if [[ -z "$NEON_DB_URL" ]]; then neon_ok=0; fail "NEON_DB_URL not found in $ENV_FILE: the database checks cannot run"; fi
+# A wrong key marked as this script's probe: refused, counted as 'probe', never 'bad_key'
+# (a bad_key refusal raises an urgent narrator item for the rest of the New York day).
+PROBE_KEY="verify-probe-not-the-key"
 burned_before=""
-[[ "$neon_ok" == 1 ]] && burned_before="$(neon refusals trigger-reminders burned_key)"
+probe_before=""
+if [[ "$neon_ok" == 1 ]]; then
+    burned_before="$(neon refusals trigger-reminders burned_key)"
+    probe_before="$(neon refusals trigger-reminders probe)"
+fi
 
 echo "Internal endpoints refuse callers without the private key:"
 check "trigger-reminders, no key" 401 "$(status "$BASE/internal/trigger-reminders")"
-check "trigger-reminders, wrong key" 401 "$(status "$BASE/internal/trigger-reminders?key=not-the-key")"
+check "trigger-reminders, wrong key (marked as a probe)" 401 "$(status "$BASE/internal/trigger-reminders?key=$PROBE_KEY")"
 check "trigger-reminders, old published key in header" 401 "$(status -H 'x-internal-api-key: test-internal-key' "$BASE/internal/trigger-reminders")"
 check "trigger-reminders, old published key in query" 401 "$(status "$BASE/internal/trigger-reminders?key=test-internal-key")"
 check "failover-sync, no key" 401 "$(status "$BASE/internal/failover-sync")"
@@ -142,6 +152,12 @@ if [[ "$neon_ok" == 1 ]]; then
     else
         # Only v0.3 counts refusals: an older service may still be answering.
         stop "burned-key refusals not counted in internal_refusals ('$burned_before' -> '$burned_after')"
+    fi
+    probe_after="$(neon refusals trigger-reminders probe)"
+    if [[ "$probe_before" =~ ^[0-9]+$ && "$probe_after" =~ ^[0-9]+$ ]] && (( probe_after >= probe_before + 1 )); then
+        echo "  ok    wrong-key probe counted as 'probe', not 'bad_key' ($probe_before -> $probe_after today)"
+    else
+        fail "wrong-key probe not counted as 'probe' ('$probe_before' -> '$probe_after'): it may have raised a bad_key alert"
     fi
 fi
 

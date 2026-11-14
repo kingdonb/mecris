@@ -3,7 +3,7 @@ Migration v9: cloud cron observability (kingdonb/mecris#183, #245).
 
 - internal_refusals: refused callers of the Spin cron endpoints and the Twilio webhook,
   one row per America/New_York day, endpoint and reason (no_key, bad_key, burned_key,
-  bad_signature), so scanners cannot grow it.
+  probe, bad_signature), so scanners cannot grow it.
 - scheduler_election.last_status / last_error / intent: re-asserted (v8 added them live),
   so a fresh database gets them too. Spin writes every cron run's outcome there.
 

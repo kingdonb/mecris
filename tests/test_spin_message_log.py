@@ -43,6 +43,10 @@ def test_failed_verification_send_is_logged_and_answers_with_an_object():
 
         cur.execute("SELECT type, status, channel, content FROM message_log WHERE user_id = %s", (uid,))
         assert cur.fetchall() == [("phone_verification", "failed", "whatsapp", None)]
+        # message_log.date is the New York date, as Python and log-message write it
+        # (the database clock is GMT: CURRENT_DATE is tomorrow after 19:00/20:00 New York).
+        cur.execute("SELECT date = (sent_at AT TIME ZONE 'America/New_York')::DATE FROM message_log WHERE user_id = %s", (uid,))
+        assert cur.fetchone()[0] is True
         cur.execute("SELECT phone_number_encrypted, phone_verified FROM users WHERE pocket_id_sub = %s", (uid,))
         enc, verified = cur.fetchone()
         assert enc and TEST_NUMBER not in enc and "5005550006" not in enc, "the requested number is stored, encrypted"

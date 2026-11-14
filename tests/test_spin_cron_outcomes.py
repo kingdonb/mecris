@@ -264,6 +264,35 @@ def test_verify_sends_no_keyed_request_when_burned_key_refusals_are_not_counted(
     assert _keyed(calls) == [], [c["url"].replace(GOOD_KEY, "<KEY>") for c in _keyed(calls)]
 
 
+def _rust_const(name):
+    src = (ROOT / "mecris-go-spin/sync-service/src/outcome.rs").read_text()
+    return re.search(rf'pub const {name}: &str = "([^"]+)";', src).group(1)
+
+
+def _presented_keys(call):
+    """Every key a request presents, in the query or the x-internal-api-key header."""
+    from urllib.parse import parse_qs, urlparse
+    keys = parse_qs(urlparse(call["url"] or "").query).get("key", [])
+    argv = call["argv"]
+    keys += [argv[i + 1].split(":", 1)[1].strip() for i, a in enumerate(argv[:-1])
+             if a == "-H" and argv[i + 1].lower().startswith("x-internal-api-key:")]
+    return keys
+
+
+def test_verify_probes_never_present_a_key_spin_counts_as_bad_key(tmp_path):
+    # A bad_key refusal raises the narrator's urgent "cron key and deployed key differ"
+    # item for the rest of the New York day. The deploy check must not cause one.
+    probe_prefix, burned = _rust_const("VERIFY_PROBE_PREFIX"), _rust_const("BURNED_INTERNAL_KEY")
+    proc, calls = _run_verify(tmp_path)
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    keys = [k for c in calls for k in _presented_keys(c)]
+    for k in keys:
+        assert k in (GOOD_KEY, burned) or k.startswith(probe_prefix), f"would be counted as bad_key: {k!r}"
+    assert any(k.startswith(probe_prefix) for k in keys), "a wrong key is still probed, marked as a probe"
+    neon = (tmp_path / "neon.log").read_text()
+    assert "refusals trigger-reminders probe" in neon, "the probe refusal is checked in internal_refusals"
+
+
 def test_verify_script_documents_its_modes():
     text = VERIFY.read_text()
     assert "--live-trigger" in text and "curl" in text and "-K -" in text
@@ -306,14 +335,16 @@ def test_refusals_are_counted_per_new_york_day():
     conn = connect()
     cur = conn.cursor()
     try:
-        before = {r: refusal_count(cur, "trigger-reminders", r) for r in ("bad_key", "burned_key", "no_key")}
+        before = {r: refusal_count(cur, "trigger-reminders", r) for r in ("bad_key", "burned_key", "no_key", "probe")}
         before_sync = refusal_count(cur, "failover-sync", "no_key")
         assert http("GET", "/internal/trigger-reminders?key=not-the-key")[0] == 401
         assert http("GET", "/internal/trigger-reminders?key=test-internal-key")[0] == 401
         assert http("GET", "/internal/trigger-reminders", headers={"x-internal-api-key": "test-internal-key"})[0] == 401
+        assert http("GET", f"/internal/trigger-reminders?key={_rust_const('VERIFY_PROBE_PREFIX')}not-the-key")[0] == 401
         assert http("GET", "/internal/trigger-reminders")[0] == 401
         assert http("GET", "/internal/failover-sync")[0] == 401
-        assert refusal_count(cur, "trigger-reminders", "bad_key") == before["bad_key"] + 1
+        assert refusal_count(cur, "trigger-reminders", "bad_key") == before["bad_key"] + 1, "a verify probe is never a bad_key"
+        assert refusal_count(cur, "trigger-reminders", "probe") == before["probe"] + 1
         assert refusal_count(cur, "trigger-reminders", "burned_key") == before["burned_key"] + 2
         assert refusal_count(cur, "trigger-reminders", "no_key") == before["no_key"] + 1
         assert refusal_count(cur, "failover-sync", "no_key") == before_sync + 1

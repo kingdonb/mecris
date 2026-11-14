@@ -737,13 +737,15 @@ async fn load_gate_inputs(conn: &Connection, uid: &str, now: chrono::DateTime<ch
 
 /// One outbound message_log row, sent or failed, never with content. error_msg holds a
 /// PII-free code, encrypted like the Python logger. Failed rows count toward the damping
-/// and the daily cap, so a failing channel cannot retry-storm (#364).
+/// and the daily cap, so a failing channel cannot retry-storm (#364). `date` is the
+/// America/New_York date, as every other message_log writer stores it (the database
+/// clock is GMT, so CURRENT_DATE would be tomorrow every evening).
 async fn log_outbound(conn: &Connection, uid: &str, ty: &str, result: &Result<(), String>) {
     let (status, err) = match result {
         Ok(()) => ("sent", ParameterValue::DbNull),
         Err(e) => ("failed", match encrypt_token(&outcome::pii_free_error(e)).await { Ok(enc) => ParameterValue::Str(enc), Err(_) => ParameterValue::DbNull }),
     };
-    let _ = conn.execute("INSERT INTO message_log (date, user_id, type, sent_at, status, channel, error_msg) VALUES (CURRENT_DATE, $1, $2, CURRENT_TIMESTAMP, $3, 'whatsapp', $4)", &[ParameterValue::Str(uid.to_string()), ParameterValue::Str(ty.to_string()), ParameterValue::Str(status.to_string()), err]).await;
+    let _ = conn.execute("INSERT INTO message_log (date, user_id, type, sent_at, status, channel, error_msg) VALUES ((now() AT TIME ZONE 'America/New_York')::DATE, $1, $2, CURRENT_TIMESTAMP, $3, 'whatsapp', $4)", &[ParameterValue::Str(uid.to_string()), ParameterValue::Str(ty.to_string()), ParameterValue::Str(status.to_string()), err]).await;
 }
 
 /// The scheduler_election role this deployment reports as.
@@ -1023,12 +1025,12 @@ async fn handle_twilio_webhook_post(req: Request) -> anyhow::Result<Response<Str
                     let _ = push_to_beeminder_idempotent(&uid, &goal, 1.0, "Walk logged via SMS", &requestid, &conn).await;
                 }
                 let ty = if ack { "walk_ack" } else { "inbound" };
-                let _ = conn.execute("INSERT INTO message_log (date, user_id, type, sent_at, status, channel) VALUES (CURRENT_DATE, $1, $2, CURRENT_TIMESTAMP, 'received', $3)", &[ParameterValue::Str(uid), ParameterValue::Str(ty.to_string()), ParameterValue::Str(channel.clone())]).await;
+                let _ = conn.execute("INSERT INTO message_log (date, user_id, type, sent_at, status, channel) VALUES ((now() AT TIME ZONE 'America/New_York')::DATE, $1, $2, CURRENT_TIMESTAMP, 'received', $3)", &[ParameterValue::Str(uid), ParameterValue::Str(ty.to_string()), ParameterValue::Str(channel.clone())]).await;
             }
         }
     }
     if !matched {
-        let _ = conn.execute("INSERT INTO message_log (date, user_id, type, sent_at, status, channel) VALUES (CURRENT_DATE, NULL, 'inbound', CURRENT_TIMESTAMP, 'received', $1)", &[ParameterValue::Str(channel)]).await;
+        let _ = conn.execute("INSERT INTO message_log (date, user_id, type, sent_at, status, channel) VALUES ((now() AT TIME ZONE 'America/New_York')::DATE, NULL, 'inbound', CURRENT_TIMESTAMP, 'received', $1)", &[ParameterValue::Str(channel)]).await;
     }
     Ok(Response::builder().status(200).header("content-type", "text/xml").body(r#"<?xml version="1.0" encoding="UTF-8"?><Response></Response>"#.to_string())?)
 }
@@ -1559,6 +1561,20 @@ mod tests {
         let src = include_str!("lib.rs");
         let needle = ["fn send_twilio", "_sms"].concat();
         assert!(!src.contains(&needle), "send_twilio_sms must be removed, not kept as a fallback");
+    }
+
+    #[test]
+    fn test_message_log_rows_carry_the_new_york_date() {
+        // Python and log-message write message_log.date as the America/New_York date; the
+        // database clock is GMT, so CURRENT_DATE is tomorrow from 19:00/20:00 New York time.
+        let src = include_str!("lib.rs");
+        let insert = ["INSERT INTO ", "message_log"].concat();
+        let lines: Vec<&str> = src.lines().filter(|l| l.contains(&insert)).collect();
+        assert!(lines.len() >= 3, "outbound, walk_ack/inbound and unknown-sender rows: {}", lines.len());
+        for l in lines {
+            assert!(!l.contains("CURRENT_DATE"), "GMT date in a message_log row: {}", l.trim());
+            assert!(l.contains("VALUES ((now() AT TIME ZONE 'America/New_York')::DATE,"), "no New York date: {}", l.trim());
+        }
     }
 
     // --- Internal endpoints: fail closed, no published key, callers that can actually authenticate ---
