@@ -78,11 +78,27 @@ def pulse_verdict(table, role, minutes):
     return {"visible": True, "display": entry["display"], "status": status}
 
 
+def pulse_modalities(table, rows):
+    """One modality per role: the newest row wins, the user's own row on a tie."""
+    best = {}
+    for row in rows:
+        cur = best.get(row["role"])
+        if cur is None or (row["minutes"], not row["own"]) < (cur["minutes"], not cur["own"]):
+            best[row["role"]] = row
+    out = []
+    for role, row in best.items():
+        verdict = pulse_verdict(table, role, row["minutes"])
+        if verdict["visible"]:
+            out.append({"display": verdict["display"], "status": verdict["status"],
+                        "own": row["own"], "minutes": row["minutes"]})
+    return out
+
+
 class TestPulseRoles:
     table = load("pulse_roles.json")
 
     def test_required_keys(self):
-        assert {"version", "roles", "unlisted_roles", "cases"} <= set(self.table)
+        assert {"version", "roles", "unlisted_roles", "cases", "duplicate_cases"} <= set(self.table)
         for role, entry in self.table["roles"].items():
             assert {"display", "lifecycle"} <= set(entry), role
             assert entry["lifecycle"] in ("expected", "paused", "retired"), role
@@ -107,6 +123,11 @@ class TestPulseRoles:
                              ids=lambda c: f"{c['role']}@{c['minutes']}")
     def test_case_matches_rules(self, case):
         assert pulse_verdict(self.table, case["role"], case["minutes"]) == case["expect"]
+
+    @pytest.mark.parametrize("case", load("pulse_roles.json")["duplicate_cases"], ids=lambda c: c["name"])
+    def test_duplicate_role_rows_show_once(self, case):
+        assert len(case["rows"]) > 1
+        assert pulse_modalities(self.table, case["rows"]) == case["expect"]
 
 
 # --- claude_plan_cases.json ----------------------------------------------------

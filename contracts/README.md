@@ -44,6 +44,14 @@ For `expected` roles the status is `healthy` while `minutes_since < healthy_unde
 
 `cases` give a role and an age with the expected `{visible, display, status}`.
 
+Each role is shown at most once. Readers select `user_id = $1 OR user_id IS NULL`, so one role
+can have several rows (`UNIQUE (user_id, role)` allows many NULL-user rows). The row with the
+newest heartbeat wins; on an equal heartbeat the user's own row wins. Visibility and status
+come from the winning row alone. `duplicate_cases` pin this.
+
+Carry-over: the web types (`web/src/types/mecris.ts`) and `Dashboard.css` have no `paused`
+status yet, so whichever arm owns the web must add it before the GHOST row renders styled.
+
 ## claude_plan_cases.json (#344)
 
 Each case is a reading (or `null`) plus `now`; `expect` holds `state`, `reason`,
