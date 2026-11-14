@@ -1122,6 +1122,23 @@ mod tests {
     use super::*;
     use serde_json::json;
 
+    // --- kingdonb/mecris#369: the API reports what is deployed ---
+    fn manifest_version(toml: &str) -> String {
+        toml.lines().find_map(|l| l.trim().strip_prefix("version = \"").and_then(|r| r.strip_suffix('"')).map(|v| v.to_string())).expect("version line")
+    }
+
+    #[test]
+    fn test_version_info_reports_package_version_and_provider() {
+        let v = serde_json::to_value(version_info("akamai")).unwrap();
+        assert_eq!(v, json!({"version": env!("CARGO_PKG_VERSION"), "cloud_provider": "akamai"}));
+    }
+
+    #[test]
+    fn test_cargo_and_spin_manifest_versions_agree() {
+        // /version reports the Cargo version; releases are named by the Spin manifest.
+        assert_eq!(manifest_version(include_str!("../Cargo.toml")), manifest_version(include_str!("../spin.toml")));
+    }
+
     // --- kingdonb/mecris#368: Spin sends WhatsApp templates, never SMS ---
     const STATUS_TEMPLATE: &str = "HX00000000000000000000000000000000";
 
