@@ -12,7 +12,6 @@ import com.mecris.go.sync.AggregateComponentsDto
 import com.mecris.go.sync.AggregateStatusResponseDto
 import com.mecris.go.sync.HeartbeatResponseDto
 import com.mecris.go.sync.HelixBalanceRequestDto
-import com.mecris.go.sync.SyncResponse
 import com.mecris.go.sync.SyncServiceApi
 import com.google.gson.Gson
 import io.mockk.*
@@ -90,9 +89,11 @@ class CooperativeWorkerTest {
             HeartbeatResponseDto::class.java
         )
 
+    // The trigger routes no longer exist on SyncServiceApi (SpinContractTest pins
+    // that). At quiet hours the heartbeat must be the worker's only Spin call.
     private fun assertNoCloudWork() {
-        coVerify(exactly = 0) { syncApi.triggerCloudSync(any()) }
-        coVerify(exactly = 0) { syncApi.triggerReminders(any()) }
+        coVerify(exactly = 1) { syncApi.sendHeartbeat(any(), any()) }
+        confirmVerified(syncApi)
         verify(exactly = 0) { prefsEditor.putLong("last_cloud_sync_trigger", any()) }
     }
 
@@ -101,16 +102,9 @@ class CooperativeWorkerTest {
         coEvery { syncApi.sendHeartbeat(any(), any()) } returns retrofit2.Response.success(
             HeartbeatResponseDto("ok", mcp_server_active = false)
         )
-        coEvery { syncApi.triggerCloudSync(any()) } returns retrofit2.Response.success(
-            SyncResponse("ok", "cloud sync triggered")
-        )
-        coEvery { syncApi.triggerReminders(any()) } returns retrofit2.Response.success(
-            SyncResponse("ok", "reminders triggered")
-        )
 
         WalkHeuristicsWorker(context, workerParams, pocketIdAuth, syncApi, etHourOverride = 3).doWork()
 
-        coVerify(exactly = 1) { syncApi.sendHeartbeat(any(), any()) }
         assertNoCloudWork()
         }
 
@@ -122,7 +116,6 @@ class CooperativeWorkerTest {
 
         WalkHeuristicsWorker(context, workerParams, pocketIdAuth, syncApi, etHourOverride = 3).doWork()
 
-        coVerify(exactly = 1) { syncApi.sendHeartbeat(any(), any()) }
         assertNoCloudWork()
         }
 
@@ -132,16 +125,9 @@ class CooperativeWorkerTest {
         coEvery { syncApi.sendHeartbeat(any(), any()) } returns retrofit2.Response.success(
             heartbeatFromSpinContract()
         )
-        coEvery { syncApi.triggerCloudSync(any()) } returns retrofit2.Response.success(
-            SyncResponse("ok", "cloud sync triggered")
-        )
-        coEvery { syncApi.triggerReminders(any()) } returns retrofit2.Response.success(
-            SyncResponse("ok", "reminders triggered")
-        )
 
         WalkHeuristicsWorker(context, workerParams, pocketIdAuth, syncApi, etHourOverride = 3).doWork()
 
-        coVerify(exactly = 1) { syncApi.sendHeartbeat(any(), any()) }
         assertNoCloudWork()
         }
 

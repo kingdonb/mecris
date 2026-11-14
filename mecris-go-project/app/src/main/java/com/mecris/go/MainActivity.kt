@@ -562,8 +562,7 @@ fun MecrisDashboard(
                         aggregateStatus = aggregateResponse.body()
                     }
                     
-                    // 1. QUICK FETCH: Get currently known languages first
-                    var langResponse = syncApi.getLanguages("Bearer $token")
+                    val langResponse = syncApi.getLanguages("Bearer $token")
                     if (langResponse.isSuccessful && !surgicalUpdateInProgress) {
                         languageStats = langResponse.body()?.languages ?: emptyList()
                     }
@@ -571,38 +570,9 @@ fun MecrisDashboard(
                     // We have DB data, so release the UI block immediately
                     isFetching = false
 
-                    // 2. SLOW SYNC: Proactively trigger cloud sync (Spin will skip if Home is active)
-                    try {
-                        val syncResponse = syncApi.triggerCloudSync("Bearer $token")
-                        if (!syncResponse.isSuccessful) {
-                            throw retrofit2.HttpException(syncResponse)
-                        }
-                        
-                        // 3. FRESH FETCH: Grab the updated stats after the sync completes
-                        langResponse = syncApi.getLanguages("Bearer $token")
-                        if (langResponse.isSuccessful && !surgicalUpdateInProgress) {
-                            languageStats = langResponse.body()?.languages ?: emptyList()
-                        }
-                        
-                        val freshAggregateResponse = syncApi.getAggregateStatus("Bearer $token")
-                        if (freshAggregateResponse.isSuccessful) {
-                            aggregateStatus = freshAggregateResponse.body()
-                        }
-                    } catch (se: retrofit2.HttpException) {
-                        val errorBody = se.response()?.errorBody()?.string()
-                        val detail = try {
-                            com.google.gson.Gson().fromJson(errorBody, com.mecris.go.sync.SyncResponse::class.java).message
-                        } catch (e: Exception) {
-                            errorBody ?: se.message()
-                        }
-                        Log.e("MecrisDashboard", "Cloud sync trigger failed ($detail)")
-                        fetchError = "Sync Failed: $detail"
-                        syncStatus = "Error"
-                    } catch (se: Exception) {
-                        Log.e("MecrisDashboard", "Cloud sync trigger skipped/failed: ${se.message}")
-                        fetchError = "Sync Error: ${se.message}"
-                        syncStatus = "Error"
-                    }
+                    // #368: no cloud-sync trigger from the phone. The cloud cron
+                    // (failover-sync) keeps language stats fresh; the web app keeps
+                    // its own manual cloud-sync button.
 
                     // Save to cache
                     val now = LocalDateTime.now().format(DateTimeFormatter.ofPattern("HH:mm"))

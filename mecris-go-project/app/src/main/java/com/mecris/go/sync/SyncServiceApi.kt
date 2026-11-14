@@ -32,15 +32,8 @@ interface SyncServiceApi {
         @Header("Authorization") authHeader: String
     ): retrofit2.Response<HealthResponseDto>
 
-    @POST("internal/cloud-sync")
-    suspend fun triggerCloudSync(
-        @Header("Authorization") authHeader: String
-    ): retrofit2.Response<SyncResponse>
-
-    @POST("internal/trigger-reminders")
-    suspend fun triggerReminders(
-        @Header("Authorization") authHeader: String
-    ): retrofit2.Response<SyncResponse>
+    // #368: no trigger-reminders or cloud-sync here. The cloud cron owns both;
+    // SpinContractTest fails if either route comes back.
 
     @POST("heartbeat")
     suspend fun sendHeartbeat(
@@ -172,7 +165,10 @@ data class HeartbeatRequestDto(
 
 data class HeartbeatResponseDto(
     val status: String,
-    val mcp_server_active: Boolean
+    // Spin's /heartbeat sends {status, message} only; null means "not reported",
+    // never "MCP is dark" (Gson would otherwise default a missing Boolean to false).
+    val mcp_server_active: Boolean? = null,
+    val message: String? = null
 )
 
 // Task 588 Android hook: response to POST helix-balance/request
