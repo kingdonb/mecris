@@ -799,6 +799,12 @@ fn parse_review_forecast(forecast: &serde_json::Value) -> (i32, i32) {
     (tom, n7)
 }
 
+/// The dashboard's `data-react-props` attribute, HTML-unescaped and parsed as JSON.
+fn decode_react_props(html: &str) -> anyhow::Result<serde_json::Value> {
+    let escaped = regex::Regex::new(r#"data-react-props="([^"]*)""#)?.captures(html).and_then(|cap| cap.get(1)).map(|m| m.as_str()).ok_or_else(|| anyhow::anyhow!("Props"))?;
+    Ok(serde_json::from_str(&html_escape::decode_html_entities(escaped))?)
+}
+
 async fn run_clozemaster_scraper(db: &str, uid: &str) -> anyhow::Result<()> {
     let conn = Connection::open(db).await?;
     let rs = conn.query("SELECT clozemaster_email_encrypted, clozemaster_password_encrypted FROM users WHERE pocket_id_sub = $1", &[ParameterValue::Str(uid.to_string())]).await?.collect().await?;
@@ -816,9 +822,8 @@ async fn run_clozemaster_scraper(db: &str, uid: &str) -> anyhow::Result<()> {
     let mut res = spin_sdk::http::send(Request::builder().method(Method::GET).uri("https://www.clozemaster.com/dashboard").header("User-Agent", ua).header("Cookie", &sess).body(String::new())?).await?;
     if res.status().as_u16() == 302 { if let Some(loc) = res.headers().get("location").and_then(|v| v.to_str().ok()) { let url = if loc.starts_with('/') { format!("https://www.clozemaster.com{}", loc) } else { loc.to_string() }; res = spin_sdk::http::send(Request::builder().method(Method::GET).uri(url).header("User-Agent", ua).header("Cookie", &sess).body(String::new())?).await?; } }
     let body = String::from_utf8(res.into_body().collect().await.map_err(|_| anyhow::anyhow!("body"))?.to_bytes().to_vec())?;
-    let props_escaped = regex::Regex::new(r#"data-react-props="([^"]*)""#)?.captures(&body).and_then(|cap| cap.get(1)).map(|m| m.as_str()).ok_or_else(|| anyhow::anyhow!("Props"))?;
+    let props = decode_react_props(&body)?;
     let fresh_csrf = regex::Regex::new(r#"<meta name="csrf-token" content="([^"]*)""#)?.captures(&body).and_then(|cap| cap.get(1)).map(|m| m.as_str()).unwrap_or(csrf);
-    let props: serde_json::Value = serde_json::from_str(&html_escape::decode_html_entities(props_escaped))?;
     if let Some(pairings) = props.get("languagePairings").and_then(|l| l.as_array()) {
         for p in pairings {
             let id = p.get("id").and_then(|v| v.as_i64().or_else(|| v.as_str().and_then(|s| s.parse::<i64>().ok()))).unwrap_or(0);
@@ -1331,6 +1336,20 @@ mod tests {
     #[test]
     fn test_twilio_failure_summary_string_code_is_dropped() {
         assert_eq!(twilio_failure_summary(400, r#"{"code": "21211 +15551234567"}"#), "twilio_http_400");
+    }
+
+    // --- kingdonb/mecris#337: html-escape 0.3 still decodes the Clozemaster dashboard props ---
+    #[test]
+    fn test_clozemaster_react_props_sample_decodes() {
+        let html = r#"<div id="app" data-react-props="{&quot;languagePairings&quot;:[{&quot;id&quot;:123,&quot;slug&quot;:&quot;ara-eng&quot;,&quot;numReadyForReview&quot;:42,&quot;score&quot;:1000,&quot;numPointsToday&quot;:32},{&quot;id&quot;:&quot;456&quot;,&quot;slug&quot;:&quot;ell-eng&quot;,&quot;numReadyForReview&quot;:0}],&quot;title&quot;:&quot;Fluent &amp; Friends &#39;24 &lt;3&quot;}"></div><meta name="csrf-token" content="abc">"#;
+        let props = decode_react_props(html).expect("props decode");
+        let pairings = props["languagePairings"].as_array().unwrap();
+        assert_eq!(pairings.len(), 2);
+        assert_eq!(pairings[0]["slug"], "ara-eng");
+        assert_eq!(pairings[0]["numReadyForReview"], 42);
+        assert_eq!(pairings[1]["id"], "456");
+        assert_eq!(props["title"], "Fluent & Friends '24 <3");
+        assert!(decode_react_props("<html>no props here</html>").is_err());
     }
 
     #[test]
