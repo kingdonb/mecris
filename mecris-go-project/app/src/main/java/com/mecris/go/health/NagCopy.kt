@@ -27,7 +27,9 @@ object NagCopy {
 
         val reviews = if (remaining == 1) "1 review" else "$remaining reviews"
         val perHour = entry.per_hour
-        if (perHour == null || perHour <= 0.0) return "Pace: $reviews left today, due now."
+        // Spin (pace.rs) sends per_hour == remaining when under an hour is left or
+        // 22:00 has passed: the whole remainder is due now. Null or <= 0 is defensive.
+        if (perHour == null || perHour <= 0.0 || perHour >= remaining) return "Pace: $reviews left today, due now."
         val rate = ceil(perHour).toInt().coerceAtLeast(1)
         return "Pace: $reviews left today, about $rate an hour to clear them by ${clearByLabel(entry.clear_by)}."
     }
