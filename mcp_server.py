@@ -59,7 +59,7 @@ dotenv_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '.env')
 load_dotenv(dotenv_path=dotenv_path)
 
 from mcp.server.fastmcp import FastMCP
-from fastapi import FastAPI, Depends, HTTPException, Security
+from fastapi import FastAPI, Depends, HTTPException, Request, Security
 from fastapi.middleware.cors import CORSMiddleware
 from services.auth_service import get_current_user, is_standalone_mode
 
@@ -153,23 +153,48 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-async def get_authorized_user(user_id: Optional[str] = Depends(get_current_user)):
+DEFAULT_BRIDGE_HOST = "127.0.0.1"
+BRIDGE_PORT = 8080
+
+
+def bridge_host() -> str:
+    """Interface the HTTP bridge binds to (MECRIS_BRIDGE_HOST, default loopback)."""
+    return os.getenv("MECRIS_BRIDGE_HOST", "").strip() or DEFAULT_BRIDGE_HOST
+
+
+def _is_loopback_client(request: Request) -> bool:
+    """True only when the TCP peer is a loopback address.
+
+    Uses the socket peer (request.client), never the Host header, so a LAN
+    caller cannot claim to be local by spoofing Host.
+    """
+    import ipaddress
+    host = request.client.host if request.client else None
+    if not host:
+        return False
+    try:
+        addr = ipaddress.ip_address(host.split("%", 1)[0])
+    except ValueError:
+        return False
+    mapped = getattr(addr, "ipv4_mapped", None)
+    return addr.is_loopback or bool(mapped and mapped.is_loopback)
+
+
+async def get_authorized_user(request: Request, user_id: Optional[str] = Depends(get_current_user)):
     """FastAPI Dependency: Enforces authentication and resolves target user ID."""
     mode = os.getenv("MECRIS_MODE", "standalone")
-    
-    # Cloud Cron Exception (Akamai/Fermyon): Special handling for unauthenticated triggers
-    # logic omitted here for brevity but handled in endpoint logic if needed
     
     if user_id:
         return user_id
 
-    if mode == "standalone":
-        # In standalone/trusted mode, we allow fallback to the local default user
+    if mode == "standalone" and _is_loopback_client(request):
+        # Standalone/trusted mode: only loopback callers may fall back to the
+        # local default user. Anyone else must present a bearer token.
         resolved_id = credentials_manager.resolve_user_id()
         if resolved_id:
             return resolved_id
     
-    # In multi-tenant mode, or if no local user could be resolved: REJECT.
+    # Multi-tenant mode, a non-loopback caller, or no local user: REJECT.
     print(f"AUTH FAILURE: No valid user_id found (mode={mode})", file=sys.stderr)
     raise HTTPException(status_code=401, detail="Authentication Required")
 
@@ -554,10 +579,8 @@ async def log_message_endpoint(request: Dict[str, Any], user_id: str = Depends(g
 async def budget_status_endpoint(user_id: str = Depends(get_authorized_user)):
     return get_budget_status(user_id)
 
-# Mount the MCP server's ASGI app
-# This allows the same process to serve both the MCP protocol (via stdio or SSE) 
-# and custom HTTP endpoints.
-app.mount("/mcp", mcp.sse_app())
+# The MCP protocol is served over stdio only. The SSE app used to be mounted
+# at /mcp, which exposed every tool to the network without credentials (#39).
 
 from scheduler import MecrisScheduler, _global_walk_sync_job
 
@@ -2216,10 +2239,18 @@ def search_bookmarks(query: str, top_k: int = 3) -> Dict[str, Any]:
     return _search_bookmarks(query, top_k=top_k)
 
 
+def run_http_bridge():
+    """Run the Android/Web HTTP bridge (blocking). Binds loopback unless
+    MECRIS_BRIDGE_HOST says otherwise."""
+    import uvicorn
+    host = bridge_host()
+    logger.info(f"Starting Mecris Android Bridge on http://{host}:{BRIDGE_PORT}")
+    uvicorn.run(app, host=host, port=BRIDGE_PORT, log_level="error")
+
+
 if __name__ == "__main__":
     import sys
     import asyncio
-    import uvicorn
     import threading
     import os
     import stat
@@ -2236,8 +2267,7 @@ if __name__ == "__main__":
     def run_http_server():
         try:
             log("HTTP server thread starting")
-            logger.info("Starting Mecris Android Bridge on http://0.0.0.0:8080")
-            uvicorn.run(app, host="0.0.0.0", port=8080, log_level="error")
+            run_http_bridge()
             log("HTTP server thread exited (uvicorn returned)")
         except Exception as e:
             log(f"HTTP SERVER ERROR: {e}")
