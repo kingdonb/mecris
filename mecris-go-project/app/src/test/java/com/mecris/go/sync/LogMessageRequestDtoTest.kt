@@ -1,54 +1,44 @@
 package com.mecris.go.sync
 
+import com.google.gson.Gson
+import com.google.gson.JsonParser
+import com.mecris.go.health.DelayedNagWorker
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.time.Instant
 
+/** Production code behind the #213 audit row: the request body and the nag types. */
 class LogMessageRequestDtoTest {
 
     @Test
-    fun `LogMessageRequestDto has required type and channel fields`() {
-        val dto = LogMessageRequestDto(type = "arabic_pressure", channel = "android_native")
-        assertEquals("arabic_pressure", dto.type)
-        assertEquals("android_native", dto.channel)
-        assertNull(dto.sent_at)
-    }
-
-    @Test
-    fun `LogMessageRequestDto accepts sent_at ISO timestamp`() {
-        val ts = "2026-04-24T12:00:00Z"
-        val dto = LogMessageRequestDto(type = "walk_reminder", channel = "android_native", sent_at = ts)
+    fun `shownNag builds an android_native row with an ISO sent_at`() {
+        val dto = LogMessageRequestDto.shownNag("walk_reminder", Instant.parse("2026-11-14T20:00:00Z"))
         assertEquals("walk_reminder", dto.type)
         assertEquals("android_native", dto.channel)
-        assertEquals(ts, dto.sent_at)
+        assertEquals("2026-11-14T20:00:00Z", dto.sent_at)
     }
 
     @Test
-    fun `nag type mapping covers all prefKeys`() {
-        val mapping = mapOf(
-            "last_arabic_nag_timestamp" to "arabic_pressure",
-            "last_walk_nag_timestamp" to "walk_reminder",
-            "last_greek_nag_timestamp" to "greek_reminder"
-        )
-        for ((prefKey, expectedType) in mapping) {
-            val nagType = when (prefKey) {
-                "last_arabic_nag_timestamp" -> "arabic_pressure"
-                "last_walk_nag_timestamp" -> "walk_reminder"
-                "last_greek_nag_timestamp" -> "greek_reminder"
-                else -> "unknown"
-            }
-            assertEquals("prefKey $prefKey should map to $expectedType", expectedType, nagType)
-        }
+    fun `wire body carries type, channel and sent_at only, never message content`() {
+        val json = Gson().toJson(LogMessageRequestDto.shownNag("arabic_pressure", Instant.parse("2026-11-14T20:00:00Z")))
+        assertEquals(setOf("type", "channel", "sent_at"), JsonParser.parseString(json).asJsonObject.keySet())
     }
 
     @Test
-    fun `unknown prefKey maps to unknown type`() {
-        val nagType = when ("some_new_key") {
-            "last_arabic_nag_timestamp" -> "arabic_pressure"
-            "last_walk_nag_timestamp" -> "walk_reminder"
-            "last_greek_nag_timestamp" -> "greek_reminder"
-            else -> "unknown"
+    fun `each goal maps to its message_log type`() {
+        assertEquals("arabic_pressure", DelayedNagWorker.nagTypeFor(DelayedNagWorker.GOAL_ARABIC))
+        assertEquals("walk_reminder", DelayedNagWorker.nagTypeFor(DelayedNagWorker.GOAL_WALK))
+        assertEquals("greek_reminder", DelayedNagWorker.nagTypeFor(DelayedNagWorker.GOAL_GREEK))
+        assertEquals("unknown", DelayedNagWorker.nagTypeFor("SOMETHING_NEW"))
+    }
+
+    @Test
+    fun `every type the worker can log is on Spin's allowlist`() {
+        val goals = listOf(DelayedNagWorker.GOAL_ARABIC, DelayedNagWorker.GOAL_WALK, DelayedNagWorker.GOAL_GREEK)
+        goals.forEach { goal ->
+            assertTrue(goal, DelayedNagWorker.nagTypeFor(goal) in LogMessageRequestDto.NAG_TYPES)
         }
-        assertEquals("unknown", nagType)
+        assertEquals(setOf("walk_reminder", "arabic_pressure", "greek_reminder"), LogMessageRequestDto.NAG_TYPES)
     }
 }

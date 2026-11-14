@@ -279,6 +279,9 @@ class DelayedNagWorker @JvmOverloads constructor(
 
         const val PREF_GLOBAL_LAST_NAG = "global_last_nag_timestamp"
 
+        /** message_log type for a goal's local nag (#213). */
+        fun nagTypeFor(goal: String): String = TODO("#213")
+
         fun greekNagMessage(arabicCleared: Boolean, isArabicHour: Boolean = true): String {
             return if (arabicCleared || !isArabicHour) {
                 "The moussaka is waiting! Spend a moment in Mykonos. 🇬🇷"

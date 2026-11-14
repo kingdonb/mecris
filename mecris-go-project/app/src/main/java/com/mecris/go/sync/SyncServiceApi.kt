@@ -81,6 +81,12 @@ interface SyncServiceApi {
         @Body request: LogMessageRequestDto
     ): retrofit2.Response<Unit>
 
+    @POST("internal/log-message")
+    suspend fun logMessage(
+        @Header("Authorization") authHeader: String,
+        @Body request: LogMessageRequestDto
+    ): retrofit2.Response<Unit>
+
     @GET("profile")
     suspend fun getProfile(
         @Header("Authorization") authHeader: String
@@ -284,5 +290,14 @@ data class LogMessageRequestDto(
     val type: String,
     val channel: String,
     val sent_at: String? = null
-)
+) {
+    companion object {
+        const val CHANNEL_ANDROID_NATIVE = "android_native"
+
+        /** Spin's POST /internal/log-message type allowlist (#213). */
+        val NAG_TYPES = setOf("walk_reminder", "arabic_pressure", "greek_reminder")
+
+        fun shownNag(type: String, sentAt: java.time.Instant): LogMessageRequestDto = TODO("#213")
+    }
+}
 
