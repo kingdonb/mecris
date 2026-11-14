@@ -15,8 +15,21 @@ load_dotenv()
 logger = logging.getLogger("mecris.twilio")
 
 def twilio_error_summary(exc: BaseException) -> str:
-    """PII-free one-line summary of a Twilio failure (kingdonb/mecris#167). Spec pending."""
-    return ""
+    """PII-free one-line summary of a Twilio failure (kingdonb/mecris#167).
+
+    Twilio's error *message* can embed the destination number (e.g. error 21211,
+    "The 'To' number +1... is not a valid phone number"), so it is never used.
+    Only the integer HTTP status and Twilio error code survive; any other
+    exception is reported by class name alone.
+    """
+    status = getattr(exc, "status", None)
+    code = getattr(exc, "code", None)
+    if isinstance(status, int) and not isinstance(status, bool):
+        summary = f"twilio_http_{status}"
+        if isinstance(code, int) and not isinstance(code, bool):
+            summary += f" code={code}"
+        return summary
+    return type(exc).__name__
 
 
 def send_sms(message: str, to_number: Optional[str] = None) -> bool:
@@ -73,7 +86,7 @@ def send_whatsapp_template(content_sid: str, variables: Dict[str, str], to_numbe
         logger.info(f"WhatsApp Template sent: {message_obj.sid}")
         return True
     except Exception as e:
-        logger.error(f"Failed to send WhatsApp Template: {e}")
+        logger.error(f"Failed to send WhatsApp Template: {twilio_error_summary(e)}")
         return False
 
 def send_message(message: str, to_number: Optional[str] = None, user_id: Optional[str] = None) -> bool:
@@ -112,7 +125,7 @@ def send_message(message: str, to_number: Optional[str] = None, user_id: Optiona
         logger.info(f"WhatsApp message sent: {message_obj.sid}")
         return True
     except Exception as e:
-        logger.error(f"Failed to send WhatsApp message: {e}")
+        logger.error(f"Failed to send WhatsApp message: {twilio_error_summary(e)}")
         return False
 
 def smart_send_message(message: str, to_number: Optional[str] = None, user_id: Optional[str] = None) -> dict:
