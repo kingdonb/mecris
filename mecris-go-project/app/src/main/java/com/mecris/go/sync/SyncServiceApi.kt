@@ -76,11 +76,7 @@ interface SyncServiceApi {
         @Body request: PhoneVerificationConfirmRequestDto
     ): retrofit2.Response<SyncResponse>
 
-    @POST("internal/log-message")
-    suspend fun logMessage(
-        @Body request: LogMessageRequestDto
-    ): retrofit2.Response<Unit>
-
+    /** #213: audit row for a shown local nag. Spin takes the user from the bearer. */
     @POST("internal/log-message")
     suspend fun logMessage(
         @Header("Authorization") authHeader: String,
@@ -297,7 +293,9 @@ data class LogMessageRequestDto(
         /** Spin's POST /internal/log-message type allowlist (#213). */
         val NAG_TYPES = setOf("walk_reminder", "arabic_pressure", "greek_reminder")
 
-        fun shownNag(type: String, sentAt: java.time.Instant): LogMessageRequestDto = TODO("#213")
+        /** The row for a nag the phone just showed. Never carries the message text. */
+        fun shownNag(type: String, sentAt: java.time.Instant): LogMessageRequestDto =
+            LogMessageRequestDto(type = type, channel = CHANNEL_ANDROID_NATIVE, sent_at = sentAt.toString())
     }
 }
 
