@@ -1273,9 +1273,10 @@ def _get_claude_plan_status_sync(target_user_id: str) -> Dict[str, Any]:
 @mcp.tool(description=(
     "Record a Claude subscription plan usage reading (kingdonb/mecris#344). Percentages are 0-100; "
     "resets_at values are ISO-8601 with offset (naive = UTC). Omit session_* once the account is verified. "
-    "This reads plan limits only; it never touches usage credits."
+    "This reads plan limits only; it never touches usage credits. "
+    "If CLAUDE_BEEMINDER_GOAL is set, the running total is also pushed to that Beeminder goal."
 ))
-def record_claude_plan_usage(
+async def record_claude_plan_usage(
     weekly_all_pct: float,
     weekly_all_resets_at: str,
     weekly_fable_pct: Optional[float] = None,
@@ -1300,12 +1301,25 @@ def record_claude_plan_usage(
         reading = claude_plan_usage.make_reading(windows, plan, verified, source, observed_at, notes)
     except ValueError as e:
         return {"recorded": False, "error": str(e)}
+    resolved_user_id = usage_tracker.resolve_user_id(target_user_id)
     try:
-        result = _claude_plan_store.record(usage_tracker.resolve_user_id(target_user_id), reading)
+        result = _claude_plan_store.record(resolved_user_id, reading)
     except Exception as e:
         logger.error(f"record_claude_plan_usage failed: {e}")
         return {"recorded": False, "error": str(e)}
-    return {**result, "status": claude_plan_usage.summarize(reading)}
+    beeminder = {"pushed": False, "reason": "reading not stored"}
+    if result.get("recorded"):
+        # The Beeminder graph (kingdonb/mecris#371). The reading is already stored;
+        # nothing here may turn that into a failure.
+        try:
+            goal = os.getenv("CLAUDE_BEEMINDER_GOAL", "").strip() or None
+            history = _claude_plan_store.history(resolved_user_id) if goal else []
+            beeminder = await claude_plan_usage.sync_reading_to_beeminder(
+                get_user_beeminder_client(target_user_id) if goal else None, goal, history, result.get("id"))
+        except Exception as e:
+            logger.error(f"Claude plan Beeminder push failed: {type(e).__name__}")
+            beeminder = {"pushed": False, "error": type(e).__name__}
+    return {**result, "status": claude_plan_usage.summarize(reading), "beeminder": beeminder}
 
 
 @mcp.tool(description="Is Claude plan usage available right now? Returns available/constrained/exhausted/unknown from the latest reading (stale readings are unknown).")
