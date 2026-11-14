@@ -13,8 +13,12 @@ use aes_gcm::{aead::{Aead, KeyInit}, Aes256Gcm, Nonce};
 use chrono::TimeZone;
 use std::collections::BTreeMap;
 
+mod claude_plan;
 mod gates;
 mod outcome;
+mod pace;
+mod pulse;
+mod solar;
 
 use gates::Verdict;
 use outcome::{ReminderOutcome, SyncOutcome};
@@ -1341,6 +1345,100 @@ async fn handle_weather_heuristic_get(_r: Request) -> anyhow::Result<Response<St
         recommendation: "Great day for a walk!".to_string()
     })
 }
+/// The scheduler_election role a user-triggered heartbeat (GET /health) writes, if any.
+/// An unset or unrecognised cloud_provider writes nothing rather than a stray 'unknown' row.
+fn heartbeat_role(_provider: &str) -> Option<&'static str> {
+    Some("unknown")
+}
+
+/// Nag types the phone may log (#213).
+const LOG_MESSAGE_TYPES: [&str; 3] = ["walk_reminder", "arabic_pressure", "greek_reminder"];
+/// A phone-reported sent_at older than this is not trusted; the row is stamped now.
+const LOG_MESSAGE_MAX_AGE_SECS: i64 = 24 * 60 * 60;
+
+/// A validated POST /internal/log-message body: the nag type, and how many seconds ago
+/// it was shown (0 = now). Channel, status and content are never taken from the body.
+#[derive(Debug, PartialEq)]
+struct LogMessage { ty: &'static str, age_secs: i64 }
+
+fn validate_log_message(_body: &[u8], _now: chrono::DateTime<chrono::Utc>) -> Result<LogMessage, &'static str> {
+    Err("not implemented")
+}
+
+#[derive(Serialize)]
+struct WeatherResp { is_walk_appropriate: bool, conditions: String, description: String, temperature: Option<f64>, sunrise: i64, sunset: i64, is_dark: bool, now_epoch: i64, data_ts: i64, recommendation: String }
+
+/// What /internal/weather-heuristic reports at `now` for lat/lon: real sun times and
+/// darkness; weather itself is not checked yet, so conditions are 'unknown'.
+fn weather_report(_now: chrono::DateTime<chrono::Utc>, _lat: f64, _lon: f64) -> WeatherResp {
+    WeatherResp { is_walk_appropriate: true, conditions: "Clear".to_string(), description: "sunny".to_string(), temperature: Some(25.0), sunrise: 1717650000, sunset: 1717700000, is_dark: false, now_epoch: 1717680000, data_ts: 1717680000, recommendation: "Great day for a walk!".to_string() }
+}
+
+#[derive(Serialize)] struct Comp { walk: bool, arabic: bool, greek: bool }
+#[derive(Serialize)] struct Pulse { modalities: Vec<pulse::Modality> }
+#[derive(Serialize)] struct AggResp {
+    score: String,
+    goals_met: i32,
+    total_goals: i32,
+    satisfied_count: i32,
+    total_count: i32,
+    all_clear: bool,
+    components: Comp,
+    budget_remaining: f64,
+    today_distance_miles: f64,
+    today_steps: i32,
+    vacation_mode_until: Option<String>,
+    phone_verified: bool,
+    modalities: Option<Vec<pulse::Modality>>,
+    system_pulse: Option<Pulse>,
+    claude_plan: Option<claude_plan::PlanStatus>,
+    pace: Option<Vec<pace::Pace>>,
+}
+
+/// The ?full=true extras.
+struct FullStatus { modalities: Vec<pulse::Modality>, claude_plan: Option<claude_plan::PlanStatus>, pace: Vec<pace::Pace> }
+
+struct AggInput {
+    walked: bool,
+    arabic_met: bool,
+    greek_met: bool,
+    goals_met: i32,
+    total_goals: i32,
+    budget_remaining: f64,
+    today_distance_miles: f64,
+    today_steps: i32,
+    vacation_mode_until: Option<String>,
+    /// vacation_mode_until is after now (computed in SQL). A past date is not a vacation.
+    vacation_active: bool,
+    phone_verified: bool,
+    full: Option<FullStatus>,
+}
+
+fn build_aggregate(i: AggInput) -> AggResp {
+    let (modalities, system_pulse) = match &i.full {
+        Some(f) => (Some(f.modalities.clone()), Some(Pulse { modalities: f.modalities.clone() })),
+        None => (None, None),
+    };
+    AggResp {
+        score: format!("{}/{}", i.goals_met, i.total_goals),
+        goals_met: i.goals_met,
+        total_goals: i.total_goals,
+        satisfied_count: i.goals_met,
+        total_count: i.total_goals,
+        all_clear: i.vacation_mode_until.is_some() || i.goals_met >= i.total_goals,
+        components: Comp { walk: i.walked, arabic: i.arabic_met, greek: i.greek_met },
+        budget_remaining: i.budget_remaining,
+        today_distance_miles: i.today_distance_miles,
+        today_steps: i.today_steps,
+        vacation_mode_until: i.vacation_mode_until,
+        phone_verified: i.phone_verified,
+        modalities,
+        system_pulse,
+        claude_plan: None,
+        pace: None,
+    }
+}
+
 #[derive(Serialize)] struct StatusResponse { status: String, message: String }
 #[derive(Deserialize, Serialize, Debug)] struct Jwks { keys: Vec<JwKey> }
 #[derive(Deserialize, Serialize, Debug)] struct JwKey { kid: String, kty: String, alg: String, n: String, e: String }
@@ -1813,5 +1911,149 @@ mod tests {
         assert!(!met_debt);
         let (_, _, met_clear) = effective_targets(0, 0, 1.0, 0, 0);
         assert!(met_clear); // vacuous success
+    }
+
+    // --- #346: GET /health stops writing a stray 'unknown' pulse row ---
+    #[test]
+    fn test_heartbeat_role_writes_only_known_providers() {
+        assert_eq!(heartbeat_role("akamai"), Some("akamai_functions"));
+        for provider in ["", "unknown_cloud", "local", "unknown", "something-else"] {
+            assert_eq!(heartbeat_role(provider), None, "{provider:?}");
+        }
+    }
+
+    // --- #213: POST /internal/log-message ---
+    fn utc(s: &str) -> chrono::DateTime<chrono::Utc> { chrono::DateTime::parse_from_rfc3339(s).unwrap().with_timezone(&chrono::Utc) }
+
+    #[test]
+    fn test_log_message_accepts_the_three_nag_types() {
+        let now = utc("2026-11-14T20:00:00Z");
+        for ty in ["walk_reminder", "arabic_pressure", "greek_reminder"] {
+            let body = json!({"type": ty, "channel": "android_native"}).to_string();
+            assert_eq!(validate_log_message(body.as_bytes(), now), Ok(LogMessage { ty, age_secs: 0 }), "{ty}");
+        }
+    }
+
+    #[test]
+    fn test_log_message_refuses_other_types_and_bad_bodies() {
+        let now = utc("2026-11-14T20:00:00Z");
+        for body in [
+            json!({"type": "phone_verification", "channel": "android_native"}).to_string(),
+            json!({"type": "walk_ack"}).to_string(),
+            json!({"type": "WALK_REMINDER"}).to_string(),
+            json!({"type": 3}).to_string(),
+            json!({"channel": "android_native"}).to_string(),
+            json!(["walk_reminder"]).to_string(),
+            "type=walk_reminder".to_string(),
+            String::new(),
+        ] {
+            assert!(validate_log_message(body.as_bytes(), now).is_err(), "{body}");
+        }
+    }
+
+    #[test]
+    fn test_log_message_clamps_sent_at_to_the_last_24_hours() {
+        let now = utc("2026-11-14T20:00:00Z");
+        let age = |sent_at: serde_json::Value| validate_log_message(json!({"type": "walk_reminder", "channel": "android_native", "sent_at": sent_at}).to_string().as_bytes(), now).map(|m| m.age_secs);
+        assert_eq!(age(json!("2026-11-14T19:58:30Z")), Ok(90));
+        assert_eq!(age(json!("2026-11-14T19:58:30.123456Z")), Ok(89), "whole seconds, rounded down");
+        assert_eq!(age(json!("2026-11-14T14:58:30-05:00")), Ok(90), "offsets are honoured");
+        assert_eq!(age(json!("2026-11-13T20:00:00Z")), Ok(86_400), "exactly 24 h old is kept");
+        assert_eq!(age(json!("2026-11-13T19:59:59Z")), Ok(0), "older than 24 h is stamped now");
+        assert_eq!(age(json!("2026-11-14T20:00:01Z")), Ok(0), "the future is stamped now");
+        assert_eq!(age(json!("yesterday")), Ok(0));
+        assert_eq!(age(json!(1731614400)), Ok(0));
+        assert_eq!(age(serde_json::Value::Null), Ok(0));
+    }
+
+    #[test]
+    fn test_log_message_ignores_channel_and_content() {
+        // The channel is fixed to android_native and nothing from the body is stored but the type.
+        let now = utc("2026-11-14T20:00:00Z");
+        let body = json!({"type": "greek_reminder", "channel": "whatsapp", "status": "sent", "content": "hello"}).to_string();
+        assert_eq!(validate_log_message(body.as_bytes(), now), Ok(LogMessage { ty: "greek_reminder", age_secs: 0 }));
+    }
+
+    // --- #188: real darkness, honest weather ---
+    #[test]
+    fn test_weather_report_is_honest_about_weather_and_real_about_the_sun() {
+        let now = utc("2026-11-14T22:30:00Z"); // 17:30 EST
+        let w = serde_json::to_value(weather_report(now, solar::DEFAULT_LAT, solar::DEFAULT_LON)).unwrap();
+        // Every field Android's WeatherHeuristicResponseDto reads, plus recommendation.
+        for k in ["is_walk_appropriate", "conditions", "description", "temperature", "sunrise", "sunset", "is_dark", "now_epoch", "data_ts", "recommendation"] {
+            assert!(w.get(k).is_some(), "missing {k}");
+        }
+        assert_eq!(w["conditions"], "unknown");
+        assert_eq!(w["is_walk_appropriate"], true);
+        assert_eq!(w["temperature"], serde_json::Value::Null, "no made-up temperature");
+        assert_eq!(w["is_dark"], true);
+        assert_eq!(w["now_epoch"], now.timestamp());
+        assert_eq!(w["data_ts"], now.timestamp());
+        let (rise, set) = solar::sun_times(chrono::NaiveDate::from_ymd_opt(2026, 11, 14).unwrap(), solar::DEFAULT_LAT, solar::DEFAULT_LON).unwrap();
+        assert_eq!((w["sunrise"].as_i64().unwrap(), w["sunset"].as_i64().unwrap()), (rise, set));
+        assert!(!w["recommendation"].as_str().unwrap().is_empty());
+
+        let noon = utc("2026-11-14T17:00:00Z");
+        let w = weather_report(noon, solar::DEFAULT_LAT, solar::DEFAULT_LON);
+        assert!(!w.is_dark);
+        assert_ne!(w.recommendation, weather_report(now, solar::DEFAULT_LAT, solar::DEFAULT_LON).recommendation, "dark and light read differently");
+    }
+
+    // --- #344 / #346: aggregate-status?full=true, the v0.3.0 shape ---
+    const AGG_CONTRACT: &str = include_str!("../../../contracts/spin_aggregate_status_full.json");
+
+    fn contract_input(full: bool) -> AggInput {
+        let m = |role: &str, status: &str, last_seen: &str, mins: u64, last_status: Option<&str>| pulse::Modality { role: role.into(), status: status.into(), last_seen: last_seen.into(), minutes_since: mins, last_status: last_status.map(String::from) };
+        let now = utc("2026-11-14T20:00:00Z");
+        let reading = claude_plan::Reading {
+            plan: Some("ultra".into()), verified: Some(false), source: Some("manual".into()), observed_at: utc("2026-11-14T19:00:00Z"),
+            windows: claude_plan::parse_windows(r#"[{"kind":"weekly_all","pct_used":62.4,"resets_at":"2026-11-16T09:00:00+00:00"},{"kind":"session","pct_used":20.0,"resets_at":"2026-11-14T23:00:00+00:00"}]"#),
+        };
+        AggInput {
+            walked: true, arabic_met: false, greek_met: false, goals_met: 1, total_goals: 3,
+            budget_remaining: 0.0, today_distance_miles: 1.42, today_steps: 4210,
+            vacation_mode_until: None, vacation_active: false, phone_verified: false,
+            full: full.then(|| FullStatus {
+                modalities: vec![
+                    m("ANDROID CLIENT", "healthy", "2026-11-14 19:18:02.41+00", 42, None),
+                    m("AKAMAI FUNCTIONS", "healthy", "2026-11-14 19:00:01.07+00", 60, Some("ok")),
+                    m("MCP SERVER", "offline", "2026-11-14 12:02:44.9+00", 477, None),
+                    m("GHOST", "paused", "2026-10-30 03:12:10+00", 22367, None),
+                ],
+                claude_plan: Some(claude_plan::summarize(Some(&reading), now, Some(60))),
+                pace: pace::pace_for_goals(&[("ARABIC".into(), 42, 35), ("GREEK".into(), 0, 0)], now),
+            }),
+        }
+    }
+
+    #[test]
+    fn test_aggregate_full_matches_the_contract() {
+        let want: serde_json::Value = serde_json::from_str(AGG_CONTRACT).unwrap();
+        let got = serde_json::to_value(build_aggregate(contract_input(true))).unwrap();
+        assert_eq!(got, want);
+    }
+
+    #[test]
+    fn test_aggregate_full_with_no_claude_reading_is_null_not_an_error() {
+        let mut input = contract_input(true);
+        input.full.as_mut().unwrap().claude_plan = None;
+        let got = serde_json::to_value(build_aggregate(input)).unwrap();
+        assert_eq!(got["claude_plan"], serde_json::Value::Null);
+        assert!(got["pace"].is_array());
+    }
+
+    #[test]
+    fn test_aggregate_past_vacation_is_not_all_clear() {
+        let mut input = contract_input(false);
+        input.vacation_mode_until = Some("2026-11-01 12:00:00+00".into());
+        input.vacation_active = false;
+        let got = serde_json::to_value(build_aggregate(input)).unwrap();
+        assert_eq!(got["all_clear"], false, "an expired vacation does not clear the day");
+        assert_eq!(got["vacation_mode_until"], "2026-11-01 12:00:00+00", "the date is still reported");
+
+        let mut input = contract_input(false);
+        input.vacation_mode_until = Some("2026-11-20 12:00:00+00".into());
+        input.vacation_active = true;
+        assert_eq!(serde_json::to_value(build_aggregate(input)).unwrap()["all_clear"], true);
     }
 }
