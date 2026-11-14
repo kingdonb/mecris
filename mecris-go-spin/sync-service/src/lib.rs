@@ -1076,6 +1076,67 @@ mod tests {
     use super::*;
     use serde_json::json;
 
+    // --- kingdonb/mecris#368: Spin sends WhatsApp templates, never SMS ---
+    const STATUS_TEMPLATE: &str = "HX00000000000000000000000000000000";
+
+    #[test]
+    fn test_whatsapp_addr_adds_prefix_once() {
+        assert_eq!(whatsapp_addr("+15005550006"), "whatsapp:+15005550006");
+        assert_eq!(whatsapp_addr("whatsapp:+15005550006"), "whatsapp:+15005550006");
+        assert_eq!(whatsapp_addr(" +15005550006 "), "whatsapp:+15005550006");
+    }
+
+    #[test]
+    fn test_template_form_carries_content_sid_and_json_variables() {
+        let vars = verification_variables("123456");
+        let body = twilio_template_form("whatsapp:+15005550001", "+15005550006", STATUS_TEMPLATE, &vars);
+        let form = parse_form(&body);
+        assert_eq!(form_value(&form, "From"), Some("whatsapp:+15005550001"));
+        assert_eq!(form_value(&form, "To"), Some("whatsapp:+15005550006"));
+        assert_eq!(form_value(&form, "ContentSid"), Some(STATUS_TEMPLATE));
+        assert_eq!(form_value(&form, "Body"), None, "a template send has no freeform body");
+        let sent: serde_json::Value = serde_json::from_str(form_value(&form, "ContentVariables").unwrap()).unwrap();
+        assert_eq!(sent, json!({"1": "Identity", "2": "PENDING", "3": "Code", "4": "123456", "5": "Account"}));
+    }
+
+    #[test]
+    fn test_walk_reminder_variables_match_python_reminder_service() {
+        // services/reminder_service.py fills mecris_status_v2 the same way.
+        let vars = walk_reminder_variables("03:15 PM");
+        let as_json = template_variables_json(&vars);
+        let sent: serde_json::Value = serde_json::from_str(&as_json).unwrap();
+        assert_eq!(sent, json!({"1": "Daily Walk", "2": "NOT FOUND", "3": "Boris & Fiona", "4": "EXPECTANT", "5": "03:15 PM"}));
+    }
+
+    #[test]
+    fn test_local_time_label_uses_the_users_timezone() {
+        let now = chrono::Utc.with_ymd_and_hms(2026, 11, 13, 20, 15, 0).unwrap();
+        assert_eq!(local_time_label("America/New_York", &now), "03:15 PM");
+        assert_eq!(local_time_label("not/a-zone", &now), "08:15 PM");
+    }
+
+    #[test]
+    fn test_whatsapp_config_error_names_what_is_missing() {
+        assert_eq!(whatsapp_config_error("whatsapp:+15005550001", STATUS_TEMPLATE), None);
+        assert_eq!(whatsapp_config_error("", STATUS_TEMPLATE), Some("whatsapp_sender_not_configured"));
+        assert_eq!(whatsapp_config_error("  ", STATUS_TEMPLATE), Some("whatsapp_sender_not_configured"));
+        assert_eq!(whatsapp_config_error("whatsapp:+15005550001", ""), Some("whatsapp_template_not_configured"));
+    }
+
+    #[test]
+    fn test_inbound_channel_follows_the_sender_address() {
+        assert_eq!(inbound_channel("whatsapp:+15005550006"), "whatsapp");
+        assert_eq!(inbound_channel("+15005550006"), "sms");
+    }
+
+    #[test]
+    fn test_no_sms_send_path_remains() {
+        // SMS is disabled for this account; a plain-body send can only fail.
+        let src = include_str!("lib.rs");
+        let needle = ["fn send_twilio", "_sms"].concat();
+        assert!(!src.contains(&needle), "send_twilio_sms must be removed, not kept as a fallback");
+    }
+
     // --- Internal endpoints: fail closed, no published key, callers that can actually authenticate ---
     #[test]
     fn test_internal_caller_unconfigured_key_fails_closed() {
