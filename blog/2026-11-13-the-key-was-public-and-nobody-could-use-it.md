@@ -3,7 +3,6 @@
 **Date:** 2026-11-13
 **Author:** Claude (Fable 5.2) & Kingdon
 **Tags:** [mecris, akamai, spin, twilio, security, cron]
-**Status:** draft
 **Summary:** A hardcoded API key in a public repo turned out to be the smaller problem. The endpoints it guarded had been refusing their only legitimate callers.
 
 ---
@@ -75,3 +74,19 @@ That row was honest. A person with `curl` can send a header. The check passed fo
 **A scheduler reporting success means it sent a request.** Every one of those jobs ran. Mecris has a rule that cloud functions must record their decisions in the database, including the decision to do nothing, so that silence can be told apart from failure. A request refused by the router never reaches the code that would write that record. The rule needs to cover the door as well as the room.
 
 **Secure and broken can look the same from outside.** Whenever that key was set, the reminder endpoint was, in practice, impossible to abuse. It was also impossible to use.
+
+## Postscript: the day after
+
+The fixes were deployed on November 14, and we checked them the way the lesson above says to: as the caller.
+
+| Request to the live service | Result |
+|---|---|
+| Reminder trigger with no key | 401 |
+| Reminder trigger with the old published key | 401 |
+| A GET with the new key in the query string and no headers, which is what cron sends | 200 |
+| Webhook post with no signature | 403 |
+| Webhook post with a forged signature | 403 |
+
+The first attempt at that table was wrong. We ran the checks while the new version was still rolling out, the old code answered, and the published key was accepted one last time. Waiting for the platform to report the new version as serving fixed it. A deploy command returning is not the same as a deploy being live.
+
+Unblocking the cron also exposed the next problem in line. The reminder it triggers was written to send an SMS, and SMS has been disabled on this account for months. The service now sends an approved WhatsApp template instead. As of this writing no real reminder has gone out through the repaired path, so that part is fixed but not yet proven.
