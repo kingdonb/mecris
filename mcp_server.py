@@ -1939,17 +1939,22 @@ def nag_damping_verdict(message_log: List[Dict[str, Any]], now: datetime,
     cap = NAG_DEFAULT_MAX_PER_DAY if cap is None else int(cap)
     today_ny = now.astimezone(ny).date()
 
-    for row in message_log:
-        sent_at = row.get("sent_at")
-        if sent_at is None or not _counts_toward_damping(row):
+    def _utc(value: datetime) -> datetime:
+        # message_log.sent_at is timestamptz; a naive value is read as UTC.
+        return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value
+
+    rows = [{**row, "sent_at": _utc(row["sent_at"])} for row in message_log
+            if row.get("sent_at") is not None]
+
+    for row in rows:
+        if not _counts_toward_damping(row):
             continue
-        if int((now - sent_at).total_seconds() // 60) < NAG_DAMPING_MINUTES:
+        if int((now - row["sent_at"]).total_seconds() // 60) < NAG_DAMPING_MINUTES:
             return {"verdict": "skip", "reason": "damped"}
 
     sent_today = sum(
-        1 for row in message_log
-        if row.get("sent_at") is not None and _counts_toward_cap(row)
-        and row["sent_at"].astimezone(ny).date() == today_ny
+        1 for row in rows
+        if _counts_toward_cap(row) and row["sent_at"].astimezone(ny).date() == today_ny
     )
     if sent_today >= cap:
         return {"verdict": "skip", "reason": "daily_cap"}
