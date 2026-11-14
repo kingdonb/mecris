@@ -112,14 +112,20 @@ pub fn secret_eq(a: &str, b: &str) -> bool {
     a.len() == b.len() && a.bytes().zip(b.bytes()).fold(0u8, |acc, (x, y)| acc | (x ^ y)) == 0
 }
 
+fn is_probe(k: &str) -> bool { k.starts_with(VERIFY_PROBE_PREFIX) }
+
 /// The internal cron key check: the header or the `key` query parameter must equal the
-/// configured key. An unset key authorizes nobody; neither does the published one.
+/// configured key. An unset key authorizes nobody; neither does the published one, nor a
+/// probe-marked one. A refusal where every key presented is probe-marked is a `Probe`
+/// (the deploy check's own wrong-key test), so it never raises the bad_key alert; a probe
+/// sent next to any other wrong key is still a `BadKey`.
 pub fn check_internal_key(cfg: &str, header: Option<&str>, query: Option<&str>) -> Result<(), Refusal> {
     let presented: Vec<&str> = [header, query].into_iter().flatten().filter(|k| !k.is_empty()).collect();
     if presented.is_empty() { return Err(Refusal::NoKey); }
-    let usable = !cfg.is_empty() && cfg != BURNED_INTERNAL_KEY;
+    let usable = !cfg.is_empty() && cfg != BURNED_INTERNAL_KEY && !is_probe(cfg);
     if usable && presented.iter().any(|k| secret_eq(k, cfg)) { return Ok(()); }
     if presented.iter().any(|k| *k == BURNED_INTERNAL_KEY) { return Err(Refusal::BurnedKey); }
+    if presented.iter().all(|k| is_probe(k)) { return Err(Refusal::Probe); }
     Err(Refusal::BadKey)
 }
 
