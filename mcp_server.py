@@ -2090,12 +2090,16 @@ async def send_reminder_message(message_data: Dict[str, Any], user_id: str = Non
                         (msg_type, target_user_id)
                     )
 
+    # An unlogged send is invisible to damping and the cap (here and in
+    # Spin), so the result says so instead of hiding it.
     try:
         await asyncio.to_thread(_write_log)
+        logged = True
     except Exception as e:
         logger.error(f"Failed to log message to Neon: {type(e).__name__}")
+        logged = False
 
-    return delivery_result
+    return {**delivery_result, "logged": logged}
 
 
 
