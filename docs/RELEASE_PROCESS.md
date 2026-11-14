@@ -126,14 +126,25 @@ gh run watch --repo kingdonb/mecris
 Check: https://github.com/kingdonb/mecris/releases/tag/v0.0.1-rc.4
 
 Assets should include:
-- `mecris-go-release-unsigned.apk`
+- `mecris-go-release-unsigned.apk` (unsigned: do **not** install it as is, see section 9)
 - `wasm-components.tar.gz`
+
+The workflow publishes the release as a **pre-release**. It becomes Latest only after the phone test (section 10).
+
+Both assets carry SLSA v1 build provenance from a GitHub-hosted runner (Build Level 2; Level 3 is #357). To check an asset you downloaded:
+
+```bash
+gh attestation verify mecris-go-release-unsigned.apk -R kingdonb/mecris
+gh attestation verify wasm-components.tar.gz -R kingdonb/mecris
+```
 
 ---
 
-### 8. Deploy the Spin API (a tag is not a deploy)
+### 8. Migrate, deploy the Spin API and recreate the crons (a tag is not a deploy)
 
-The release workflow builds the Wasm bundle and attaches it to the GitHub Release. **Nothing deploys it.** The Spin API is deployed by hand from a machine on the home network, because the build needs the private JWKS endpoint.
+**8a. Migrations, with the owner's OK.** If the release adds `scripts/migrate_*.py` files, run them against live Neon **before** the deploy, so the new code finds its columns. Each must be additive and safe to run twice. Never run one without the owner's explicit OK.
+
+**8b. Deploy.** The release workflow builds the Wasm bundle and attaches it to the GitHub Release. **Nothing deploys it.** The Spin API is deployed by hand from a machine on the home network, because the build needs the private JWKS endpoint.
 
 ```bash
 # .env must define INTERNAL_API_KEY and TWILIO_WHATSAPP_FROM (see mecris-go-spin/DEPLOYMENT.md)
@@ -145,11 +156,58 @@ The release workflow builds the Wasm bundle and attaches it to the GitHub Releas
 
 `spin aka app status` shows `Rolling Out` for a minute or two after the deploy command returns, and the old version answers during that time. Do not hand-test until the check script reports the new version.
 
-If `INTERNAL_API_KEY` was rotated, recreate the cron jobs afterwards with `scripts/setup_spin_cron.sh` (delete the old jobs first).
+**The check must not send WhatsApp.** Read the script's usage line before running it. The v0.2.0 script ends with a real cron-shaped `trigger-reminders` call, which sends a reminder when run inside the window; with that version, pass `--no-trigger`. From v0.3.0 the default is a dry run and a real send is opt-in.
 
-### 9. Install the Android build
+**8c. Crons.** Akamai cron can only carry the key in the query string, so the jobs must be recreated whenever `INTERNAL_API_KEY` rotates or the schedule changes:
 
-Download the APK from the GitHub Release and install it. The app and the API do not have to ship together: an older app keeps working against a newer API.
+1. List the jobs with `spin aka cron list`. It prints the key: never paste its output anywhere.
+2. Delete the jobs the script will recreate, and any retired ones, with `spin aka cron delete <name>`.
+3. Run `./scripts/setup_spin_cron.sh`, then `spin aka cron list` again to confirm the names and schedules.
+
+If cloud reminders were paused (as they were after v0.2.0), only recreate `trigger-reminders` once 8b has passed.
+
+**8d. Watch before you trust it.** Before the phone install, watch at least three cron cycles in `message_log` and the pulse (metadata only, never message contents): every run leaves a record, and no WhatsApp nag goes out outside the window, within 4 hours of another nag, while the phone's heartbeat is fresh, or beyond the daily cap.
+
+### 9. Install the Android build (never the unsigned asset)
+
+The release APK, `mecris-go-release-unsigned.apk`, is **unsigned**. Android will not install it over the app on the phone, which is signed with the debug key from Android Studio. The way out it offers, uninstalling the app first, **wipes the app's data** (sign-in, preferences, local history). **Never install the unsigned asset, and never accept an uninstall prompt.**
+
+Install one of these instead; both keep the same signing key, so the update installs in place:
+
+- **(a) Debug build at the tag, from Android Studio** (preferred):
+  ```bash
+  git fetch --tags && git checkout v0.3.0
+  ```
+  Open `mecris-go-project` in Android Studio on the same machine (same `~/.android/debug.keystore`), pick the `debug` variant and Run on the phone.
+- **(b) Sign the release asset locally with that same debug key:**
+  ```bash
+  zipalign -p -f 4 mecris-go-release-unsigned.apk mecris-go-aligned.apk
+  apksigner sign --ks ~/.android/debug.keystore --ks-key-alias androiddebugkey \
+    --out mecris-go-signed.apk mecris-go-aligned.apk   # prompts for the keystore password
+  adb install -r mecris-go-signed.apk
+  ```
+
+Then check the installed version and backend:
+
+```bash
+adb shell dumpsys package com.mecris.go | grep versionCode
+```
+
+In the app, the backend should read Akamai Cloud. If Android shows an uninstall or "conflicting package" prompt, stop: the key does not match.
+
+The app and the API do not have to ship together: an older app keeps working against a newer API. When a release changes what the phone asks of the cloud, install the app only after the cloud side has passed 8b and 8d.
+
+**Current status (2026-11-14): do not install the 0.2.0 APK (versionCode 40).** v0.2.0's cloud reminders went out at the wrong hours, and the app's VERIFY flow cannot parse the Spin API's verification replies (#369). VC 41 (v0.3.0) waits for the cloud fix: install it only after v0.3.0's Spin deploy has passed the dry-run check and three clean cron cycles. Until then, keep the installed VC 39 and do not tap VERIFY.
+
+### 10. Promote to Latest after the phone test
+
+Once the phone checks for the release pass on the installed build, promote the pre-release:
+
+```bash
+gh release edit v0.3.0 --prerelease=false --latest
+```
+
+Until then it stays a pre-release, so nobody mistakes an untested build for the current one.
 
 ---
 
@@ -165,6 +223,9 @@ Download the APK from the GitHub Release and install it. The app and the API do 
 | Forget to run tests | Broken release | `make test` must pass |
 | Treat the tag as a deploy | The live API still runs the previous version | Run `deploy-akamai.sh`, then `scripts/verify_spin_deploy.sh` |
 | Test right after `spin aka deploy` returns | The old version answers during rollout and results mislead | Let `verify_spin_deploy.sh` wait for the new version |
+| Install `mecris-go-release-unsigned.apk`, or accept an uninstall prompt | The app's data is wiped | Install a debug build at the tag, or sign the asset with the same debug key (section 9) |
+| Run the deploy check with a real trigger inside the window | A real WhatsApp reminder goes out | Use the dry run (section 8b) |
+| Mark the release Latest before the phone test | An untested build looks current | Promote only after section 10's checks |
 
 ---
 
@@ -180,6 +241,7 @@ git push origin :refs/tags/v0.0.1-rc.4
 
 # Fix version on a branch, open PR, merge, retag
 make bump-version VERSION=0.0.1-rc.5 VC=29
+```
 
 ---
 
@@ -216,7 +278,7 @@ The release workflow only runs on tag push — merging to main does NOT trigger 
 
 This distinction is intentional: the user (`yebyen`) operates through the fork for autonomous agent turns (`mecris-bot` workflow, Pi harness extensions, session logs), while releases, CI triggers, and production artifacts are published from the canonical repo (`kingdonb/mecris`). Both repositories are controlled by the same operator; the separation is architectural, not organizational.
 
-### Verified Releases (as of this document's last update: 2026-09-06)
+### Verified Releases (as of this document's last update: 2026-11-14)
 
 | Tag | Date | Canonical Repo | Source PR | Notes |
 |-----|------|---------------|-----------|-------|
@@ -228,6 +290,7 @@ This distinction is intentional: the user (`yebyen`) operates through the fork f
 | `v0.1.2` | 2026-10-01 | `kingdonb/mecris` | PR `#333` | Constructive interference: review pump honors Beeminder due-today road math; all version refs synced, Android VC=37 |
 | `v0.1.3` | 2026-10-01 | `kingdonb/mecris` | PR `#334` | Beeminder safebump & epoch road fix; constructive interference verified live (160 due), Android VC=38 |
 | `v0.1.4` | 2026-10-04 | `kingdonb/mecris` | PR `#335` | Battery diet: background 8 hr 11 min → target ≤ ~2.5 hr/day (heartbeat 15→60 min w/ UPDATE policy, ET quiet-hours gate, helix-balance ≤ 1/hr throttle, cheap-first nag worker, WORKER_METRIC instrumentation); calendar-rot CI test fix; Android VC=39 |
+| `v0.2.0` | 2026-11-14 | `kingdonb/mecris` | PR `#375` | Public `GET /version`, post-deploy check script; Android VC=40. **Do not install its APK**: cloud reminders went out at the wrong hours (#369) |
 
 **Note**: This table reflects releases verified at the time of this document's creation. For the most current release state, consult `VERSION_MANIFEST.json`, the `main` branch tags (`v*`), and the active PR list on `kingdonb/mecris`. This document is evergreen — it is not guaranteed to remain up-to-date without manual verification.
 
