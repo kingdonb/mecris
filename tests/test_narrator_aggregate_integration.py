@@ -246,3 +246,59 @@ async def test_live_budget_near_end_still_alarms():
     result = await _run_narrator_context_with_aggregate(_AGG, budget_status=live)
     assert any("BUDGET CRITICAL" in u for u in result["urgent_items"])
     assert "Budget: 1.0 days left" in result["summary"]
+
+
+# ---------------------------------------------------------------------------
+# Beeminder graph of Claude plan usage (kingdonb/mecris#371)
+# ---------------------------------------------------------------------------
+
+async def _record_reading(goal_env, add_datapoint):
+    """Call the record tool with the store and Beeminder client mocked."""
+    sys.modules.pop("mcp_server", None)
+    env = _base_env()
+    if goal_env is not None:
+        env["CLAUDE_BEEMINDER_GOAL"] = goal_env
+    stored = [{"id": 5, "plan": "ultra", "observed_at": "2026-11-13T20:00:00+00:00",
+               "windows": [{"kind": "weekly_all", "pct_used": 12, "resets_at": "2026-11-16T04:00:00-05:00"}]}]
+    client = MagicMock()
+    client.add_datapoint = add_datapoint
+    with patch.dict("os.environ", env, clear=False), patch("psycopg2.connect"):
+        import os as _os
+        if goal_env is None:
+            _os.environ.pop("CLAUDE_BEEMINDER_GOAL", None)
+        import mcp_server
+        with patch("mcp_server.resolve_target_user", return_value="test-user"), \
+             patch.object(mcp_server.usage_tracker, "resolve_user_id", return_value="test-user"), \
+             patch.object(mcp_server._claude_plan_store, "record", return_value={"recorded": True, "id": 5}), \
+             patch.object(mcp_server._claude_plan_store, "history", return_value=stored) as history, \
+             patch("mcp_server.get_user_beeminder_client", return_value=client):
+            result = await mcp_server.record_claude_plan_usage(12, "2026-11-16T04:00:00-05:00")
+    return result, history
+
+
+@pytest.mark.asyncio
+async def test_record_reading_without_goal_makes_no_beeminder_call():
+    add = AsyncMock(return_value=True)
+    result, history = await _record_reading(None, add)
+    assert result["recorded"] is True
+    assert result["beeminder"]["pushed"] is False
+    add.assert_not_called()
+    history.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_record_reading_pushes_running_total_to_configured_goal():
+    add = AsyncMock(return_value=True)
+    result, _ = await _record_reading("claude-usage", add)
+    assert result["beeminder"] == {"pushed": True, "goal": "claude-usage", "value": 12, "requestid": "claude-plan-5"}
+    assert add.call_args.args[:2] == ("claude-usage", 12)
+    assert add.call_args.kwargs["requestid"] == "claude-plan-5"
+
+
+@pytest.mark.asyncio
+async def test_beeminder_failure_does_not_fail_the_recording():
+    add = AsyncMock(side_effect=RuntimeError("beeminder down: response body"))
+    result, _ = await _record_reading("claude-usage", add)
+    assert result["recorded"] is True and result["status"]["state"] == "available"
+    assert result["beeminder"]["pushed"] is False
+    assert "response body" not in str(result["beeminder"])

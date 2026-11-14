@@ -152,6 +152,86 @@ def summarize(reading: Optional[Dict[str, Any]], now: Optional[datetime] = None)
     }
 
 
+# --- Beeminder graph (kingdonb/mecris#371) -----------------------------------
+#
+# The goal is a do-more odometer of plan usage. Weekly usage resets to 0 every
+# week, so the datapoint is a running total instead: each week's highest
+# reading, added up. 100 means one full week's allowance. The total never
+# drops, whatever Beeminder does with resets.
+
+def _weekly_point(reading: Dict[str, Any]) -> Optional[tuple]:
+    """(week key, percent used) for a reading's weekly_all window, if it has one."""
+    for w in reading.get("windows") or []:
+        if w.get("kind") == "weekly_all":
+            resets = _parse_dt(w.get("resets_at"))
+            if resets is None or w.get("pct_used") is None:
+                return None
+            # Weekly resets are 7 days apart, so the UTC date identifies the week
+            # even when the same reset time is typed in slightly differently.
+            return resets.astimezone(timezone.utc).date().isoformat(), float(w["pct_used"])
+    return None
+
+
+def _tidy(value: float) -> float:
+    rounded = round(value, 2)
+    return int(rounded) if rounded == int(rounded) else rounded
+
+
+def cumulative_weekly_pct(readings: List[Dict[str, Any]]) -> float:
+    """Running total of plan usage: the highest weekly_all reading of each week, summed."""
+    peak_by_week: Dict[str, float] = {}
+    for reading in readings:
+        point = _weekly_point(reading)
+        if point:
+            week, pct = point
+            peak_by_week[week] = max(peak_by_week.get(week, 0.0), pct)
+    return _tidy(sum(peak_by_week.values()))
+
+
+def beeminder_datapoint(history: List[Dict[str, Any]], reading_id: Any) -> Optional[Dict[str, Any]]:
+    """Datapoint to push for the reading `reading_id`, or None if it changes nothing.
+
+    `history` is every stored reading for the user, each with an "id". The request
+    id comes from the reading id, so retrying the same reading cannot duplicate it.
+    """
+    current = next((r for r in history if r.get("id") == reading_id), None)
+    if current is None:
+        return None
+    point = _weekly_point(current)
+    if point is None:
+        return None
+    total = cumulative_weekly_pct(history)
+    before = cumulative_weekly_pct([r for r in history if r.get("id") != reading_id])
+    if total == before:
+        return None
+    weekly = next(w for w in current["windows"] if w.get("kind") == "weekly_all")
+    comment = (f"Claude {current.get('plan', 'plan')}: {_tidy(point[1])}% of this week used, "
+               f"resets {_fmt_reset(weekly['resets_at'])} (running total {total})")
+    return {"value": total, "comment": comment, "requestid": f"claude-plan-{reading_id}"}
+
+
+async def sync_reading_to_beeminder(client: Any, goal: Optional[str], history: List[Dict[str, Any]],
+                                    reading_id: Any) -> Dict[str, Any]:
+    """Push the reading's datapoint to `goal`. Never raises: a Beeminder problem is
+    reported in the result and must not fail the recording of the reading itself."""
+    if not goal:
+        return {"pushed": False, "reason": "CLAUDE_BEEMINDER_GOAL not set"}
+    datapoint = beeminder_datapoint(history, reading_id)
+    if datapoint is None:
+        return {"pushed": False, "reason": "running total unchanged"}
+    result = {"pushed": True, "goal": goal, "value": datapoint["value"], "requestid": datapoint["requestid"]}
+    try:
+        await client.add_datapoint(goal, datapoint["value"], comment=datapoint["comment"],
+                                   requestid=datapoint["requestid"])
+    except Exception as e:
+        status = getattr(e, "status_code", None)
+        if status == 422:  # Beeminder's duplicate-requestid answer: this reading is already in
+            return {**result, "note": "already recorded"}
+        # Type and status only; the response body is not echoed.
+        return {"pushed": False, "goal": goal, "error": f"{type(e).__name__} status={status}"}
+    return result
+
+
 class ClaudePlanUsageStore:
     """Neon persistence for claude_plan_usage readings (user-scoped)."""
 
@@ -202,6 +282,27 @@ class ClaudePlanUsageStore:
                 )
                 row_id = cur.fetchone()[0]
         return {"recorded": True, "id": row_id}
+
+    def history(self, user_id: str) -> List[Dict[str, Any]]:
+        """Every stored reading for the user (id, plan, windows, observed_at), oldest first."""
+        if not self.neon_url:
+            return []
+        self.init_database()
+        with self._connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """SELECT id, plan, windows, observed_at FROM claude_plan_usage_readings
+                       WHERE user_id = %s ORDER BY observed_at ASC""",
+                    (user_id,),
+                )
+                rows = cur.fetchall()
+        out = []
+        for rid, plan, windows, observed_at in rows:
+            if isinstance(windows, str):
+                windows = json.loads(windows)
+            out.append({"id": rid, "plan": plan, "windows": windows,
+                        "observed_at": _parse_dt(observed_at).isoformat()})
+        return out
 
     def latest(self, user_id: str) -> Optional[Dict[str, Any]]:
         if not self.neon_url:
