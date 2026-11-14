@@ -604,8 +604,15 @@ async fn handle_trigger_reminders_post(_req: Request) -> anyhow::Result<Response
         if hb_rs.first().and_then(|hr| match &hr[0] { DbValue::Floating64(f) => Some(*f as u64), _ => None }).map_or(false, |m| m < 240) { continue; }
         let ph = decrypt_token(&ph_enc).await?;
         match send_twilio_sms(&sid, &_tok, &from, &ph, "Mecris: Time for a walk! Reply YES to log 1 mile.").await {
-            Ok(_) => { let _ = conn.execute("INSERT INTO message_log (user_id, type, sent_at, compliance_status) VALUES ($1, 'walk_reminder', CURRENT_TIMESTAMP, 'sent')", &[ParameterValue::Str(uid.clone())]).await; sent += 1; }
-            Err(_) => { errors += 1; }
+            // Every attempt is logged for compliance (kingdonb/mecris#167). Failed attempts also
+            // count toward the walk_reminder cooldown above, so a failing channel cannot retry-storm.
+            // error_msg holds only twilio_failure_summary output, encrypted like the Python logger.
+            Ok(_) => { let _ = conn.execute("INSERT INTO message_log (date, user_id, type, sent_at, status, channel) VALUES (CURRENT_DATE, $1, 'walk_reminder', CURRENT_TIMESTAMP, 'sent', 'sms')", &[ParameterValue::Str(uid.clone())]).await; sent += 1; }
+            Err(e) => {
+                let err_param = match encrypt_token(&e.to_string()).await { Ok(enc) => ParameterValue::Str(enc), Err(_) => ParameterValue::DbNull };
+                let _ = conn.execute("INSERT INTO message_log (date, user_id, type, sent_at, status, channel, error_msg) VALUES (CURRENT_DATE, $1, 'walk_reminder', CURRENT_TIMESTAMP, 'failed', 'sms', $2)", &[ParameterValue::Str(uid.clone()), err_param]).await;
+                errors += 1;
+            }
         }
     }
     json_response(200, &format!("Sent {} reminders, {} errors", sent, errors))
@@ -683,7 +690,7 @@ async fn handle_twilio_webhook_post(req: Request) -> anyhow::Result<Response<Str
                 if !ph.is_empty() && clean(&ph) == clean(&from_num) {
                     let requestid = format!("{}-{}-{}-sms", uid, goal, chrono::Utc::now().format("%Y-%m-%d"));
                     let _ = push_to_beeminder_idempotent(&uid, &goal, 1.0, "Walk logged via SMS", &requestid, &conn).await;
-                    let _ = conn.execute("INSERT INTO message_log (user_id, type, sent_at, compliance_status) VALUES ($1, 'walk_ack', CURRENT_TIMESTAMP, 'received')", &[ParameterValue::Str(uid)]).await;
+                    let _ = conn.execute("INSERT INTO message_log (date, user_id, type, sent_at, status, channel) VALUES (CURRENT_DATE, $1, 'walk_ack', CURRENT_TIMESTAMP, 'received', 'sms')", &[ParameterValue::Str(uid)]).await;
                 }
             }
         }
@@ -870,11 +877,26 @@ async fn push_to_beeminder(uid: &str, slug: &str, val: f64, comment: &str, conn:
     Ok(())
 }
 
+/// PII-free summary of a failed Twilio API call (kingdonb/mecris#167).
+/// Twilio's error `message` can embed the destination number (e.g. 21211), so only
+/// the HTTP status and the integer `code` field are kept; the body text never is.
+fn twilio_failure_summary(http_status: u16, body: &str) -> String {
+    let mut summary = format!("twilio_http_{}", http_status);
+    if let Some(code) = serde_json::from_str::<serde_json::Value>(body).ok().and_then(|v| v.get("code").and_then(|c| c.as_u64())) {
+        summary.push_str(&format!(" code={}", code));
+    }
+    summary
+}
+
 async fn send_twilio_sms(sid: &str, tok: &str, from: &str, to: &str, msg: &str) -> anyhow::Result<()> {
     let auth = base64::engine::general_purpose::STANDARD.encode(format!("{}:{}", sid, tok));
     let body = format!("From={}&To={}&Body={}", urlencoding::encode(from), urlencoding::encode(to), urlencoding::encode(msg));
     let res = spin_sdk::http::send(Request::builder().method(Method::POST).uri(format!("https://api.twilio.com/2010-04-01/Accounts/{}/Messages.json", sid)).header("Authorization", &format!("Basic {}", auth)).header("Content-Type", "application/x-www-form-urlencoded").body(body)?).await?;
-    if !(200..300).contains(&res.status().as_u16()) { return Err(anyhow::anyhow!("Twilio: {}", res.status())); }
+    let status = res.status().as_u16();
+    if !(200..300).contains(&status) {
+        let bytes = res.into_body().collect().await.map(|b| b.to_bytes()).unwrap_or_default();
+        return Err(anyhow::anyhow!(twilio_failure_summary(status, &String::from_utf8_lossy(&bytes))));
+    }
     Ok(())
 }
 
@@ -970,6 +992,30 @@ async fn handle_weather_heuristic_get(_r: Request) -> anyhow::Result<Response<St
 mod tests {
     use super::*;
     use serde_json::json;
+
+    // --- kingdonb/mecris#167: Twilio failures are summarized without PII ---
+    const TWILIO_21211: &str = r#"{"code": 21211, "message": "The 'To' number +15551234567 is not a valid phone number.", "more_info": "https://www.twilio.com/docs/errors/21211", "status": 400}"#;
+
+    #[test]
+    fn test_twilio_failure_summary_keeps_status_and_code() {
+        assert_eq!(twilio_failure_summary(400, TWILIO_21211), "twilio_http_400 code=21211");
+    }
+
+    #[test]
+    fn test_twilio_failure_summary_never_contains_phone() {
+        assert!(!twilio_failure_summary(400, TWILIO_21211).contains("5551234567"));
+        assert!(!twilio_failure_summary(502, "upstream said +15551234567").contains("5551234567"));
+    }
+
+    #[test]
+    fn test_twilio_failure_summary_non_json_body_is_status_only() {
+        assert_eq!(twilio_failure_summary(502, "<html>Bad Gateway</html>"), "twilio_http_502");
+    }
+
+    #[test]
+    fn test_twilio_failure_summary_string_code_is_dropped() {
+        assert_eq!(twilio_failure_summary(400, r#"{"code": "21211 +15551234567"}"#), "twilio_http_400");
+    }
 
     #[test]
     fn test_parse_review_forecast_with_objects() {

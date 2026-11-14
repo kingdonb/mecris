@@ -493,10 +493,11 @@ async def request_phone_verification_endpoint(request: Dict[str, Any], user_id: 
                 "4": code,
                 "5": "Account"
             }
-            send_whatsapp_template(template_sid, variables, to_number=phone)
-            logger.info(f"Verification code sent via WhatsApp template to {phone[:5]}...")
+            sent = send_whatsapp_template(template_sid, variables, to_number=phone)
+            logger.info(f"Verification code WhatsApp template for {user_id}: sent={sent}")
         except Exception as e:
-            logger.error(f"Failed to send verification WhatsApp: {e}")
+            from twilio_sender import twilio_error_summary
+            logger.error(f"Failed to send verification WhatsApp for {user_id}: {twilio_error_summary(e)}")
 
         return {"status": "success", "message": "Verification code sent"}
     except Exception as e:

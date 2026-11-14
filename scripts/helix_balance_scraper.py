@@ -482,9 +482,9 @@ async def _alert_balance_dark(user_id: str, count: int) -> None:
         if result.get("sent"):
             with psycopg2.connect(url) as conn:
                 with conn.cursor() as cur:
-                    cur.execute("INSERT INTO message_log (user_id, type, sent_at, compliance_status) "
-                                "VALUES (%s, %s, CURRENT_TIMESTAMP, 'sent')",
-                                (user_id, "helix_balance_dark"))
+                    cur.execute("INSERT INTO message_log (date, user_id, type, sent_at, status) "
+                                "VALUES (%s, %s, %s, CURRENT_TIMESTAMP, 'sent')",
+                                (today, user_id, "helix_balance_dark"))
                     conn.commit()
     except Exception as exc:  # the pulse alert is best-effort, never fatal
         logger.warning("helix balance dark alert failed: %s", exc)
