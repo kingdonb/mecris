@@ -1,3 +1,6 @@
+## 2026-11-14
+* **Deletion**: Removed `architecture/infrastructure/index.md`. Its five concepts (`prometheus-status`, `alertmanager-install`, `flux-status`, `kubeconfig-setup`, `iron-heart`) were deleted on 2026-09-06, which left the index with five broken links and an otherwise empty directory (OKF improvement plan steps 1c and 1d, now in `docs/attic/OKF_IMPROVEMENT_PLAN.md`).
+
 ## 2026-10-01
 * **Creation**: Documented concept `decisions/2026-10-01-review-pump-beeminder-interference.md` (Review Pump Honors Beeminder Due-Today): max(pump, Beeminder due) interference, goal-met gate, operator rulings (PLAY MODE intent, NY-hardcoded timezone), drift fences (Greek floor, ÷16 canonical, dead cloud-pump route), helix-ml guardrail, WhatsApp documentation hand-off, and backlog (SpinKube topology, helix-ml widget, per-user timezone).
 
