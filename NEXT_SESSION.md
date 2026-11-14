@@ -25,6 +25,7 @@ In the hygiene-docs PR (chore/v0.3-hygiene):
 - [ ] Watch at least 3 cron cycles in `message_log` (metadata only): no WhatsApp nag outside 14:00-17:59 New York, within 4 h of another nag, while the phone heartbeat is fresh, or beyond 3 a day.
 - [ ] In the installed app, VERIFY the phone once; expect a 'sent' and then a 'received' phone_verification row and `phone_verified = true`.
 - [ ] After 3 clean cycles: install VC 41 from Android Studio at tag v0.3.0 (debug variant, same debug key, decline any uninstall prompt). See `docs/RELEASE_PROCESS.md` section 9.
+- [ ] After a 3-day `message_log` watch and the phone checks: promote v0.3.0 to Latest (`docs/RELEASE_PROCESS.md` section 10).
 - [ ] With the owner's dates: one `update_budget` call to switch the budget row to the Ultra subscription; then `get_narrator_context` should show `Claude: Ultra until …` with no budget nag.
 - [ ] Optional, needs the owner's OK: `python scripts/fetch_template_bodies.py` (read-only Twilio Content API) to commit `data/templates/*.json` for #363.
 

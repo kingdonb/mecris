@@ -26,9 +26,9 @@ Decisions already taken:
 - **Android health**: healthy under 90 minutes since the last heartbeat, degraded under 240.
 - **Phone**: a Claude plan card replaces the VIRTUAL BUDGET odometer (the web keeps it).
 
-Pull requests, in merge order: localhost-only bridge (#39), shared contracts, repo hygiene and docs (#347, #348, #218), the Spin cloud arm (#183, #368, #349 damping), the Python MCP server (#346, #345, #351), Android (#344, #349, #213), Spin status (#344, #213, #346, #188), then the release itself.
+Pull requests, in merge order: shared contracts, repo hygiene and docs (#347, #348, #218), the Spin cloud arm (#183, #368, #349 damping), the Python MCP server (#346, #345, #351, and the loopback-only bridge #39), Android (#344, #349, #213), Spin status (#344, #213, #346, #188), then the release itself.
 
-Deploy and verify, in order: additive migrations (with the owner's OK), `deploy-akamai.sh`, recreate the crons, a dry-run verify, a 3-day `message_log` watch, and only then install VC 41 on the phone (see `docs/RELEASE_PROCESS.md`).
+Deploy and verify, in order: additive migrations (with the owner's OK), `deploy-akamai.sh`, recreate the crons, a dry-run verify, 3 clean cron cycles, then install VC 41 on the phone; promote the release to Latest only after a 3-day `message_log` watch (see `docs/RELEASE_PROCESS.md`).
 
 ---
 
@@ -81,7 +81,7 @@ Other spend is tracked separately: the Helix wallet balance (`helix-ml` odometer
 ## Security: what is true today
 
 Only claims the code backs up:
-- **Spin (Rust) arm**: tokens, credentials and the phone number are encrypted with AES-256-GCM, and it refuses to store a phone number it cannot encrypt. Location (latitude and longitude) is stored in plaintext. The `/internal/*` endpoints require the private `INTERNAL_API_KEY`, and the Twilio webhook checks the request signature.
+- **Spin (Rust) arm**: tokens, credentials and the phone number are encrypted with AES-256-GCM, and it refuses to store a phone number it cannot encrypt. Location (latitude and longitude) is stored in plaintext. The Twilio webhook checks the request signature. The cron endpoints (`/internal/trigger-reminders`, `/internal/failover-sync`) accept the private `INTERNAL_API_KEY` (header or `key` query parameter) **or any signed-in PocketID bearer**; v0.3.0 is to make them cron-key only. The other `/internal/*` routes take a signed-in bearer, except `/internal/weather-heuristic`, which is open.
 - **Python arm**: encryption still **fails open**. `try_encrypt` returns plaintext when `MASTER_ENCRYPTION_KEY` is missing, and the legacy plaintext `users.beeminder_user` column is still read and written. Fixing this is the #358 remainder.
 - **MCP bridge**: in v0.2.0 it listens on all interfaces on port 8080; v0.3.0 makes it loopback-only (#39).
 - **Builds**: release assets carry SLSA v1 provenance from GitHub-hosted runners, which is **Build Level 2**. Level 3 is #357. The release APK is **unsigned**; see `docs/RELEASE_PROCESS.md` for how to install safely.

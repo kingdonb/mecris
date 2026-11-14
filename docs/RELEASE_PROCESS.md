@@ -129,7 +129,7 @@ Assets should include:
 - `mecris-go-release-unsigned.apk` (unsigned: do **not** install it as is, see section 9)
 - `wasm-components.tar.gz`
 
-The workflow publishes the release as a **pre-release**. It becomes Latest only after the phone test (section 10).
+The workflow publishes the release as a **pre-release**. It becomes Latest only after the phone test and the 3-day `message_log` watch (section 10).
 
 Both assets carry SLSA v1 build provenance from a GitHub-hosted runner (Build Level 2; Level 3 is #357). To check an asset you downloaded:
 
@@ -197,11 +197,11 @@ In the app, the backend should read Akamai Cloud. If Android shows an uninstall 
 
 The app and the API do not have to ship together: an older app keeps working against a newer API. When a release changes what the phone asks of the cloud, install the app only after the cloud side has passed 8b and 8d.
 
-**Current status (2026-11-14): do not install the 0.2.0 APK (versionCode 40).** v0.2.0's cloud reminders went out at the wrong hours, and the app's VERIFY flow cannot parse the Spin API's verification replies (#369). VC 41 (v0.3.0) waits for the cloud fix: install it only after v0.3.0's Spin deploy has passed the dry-run check and three clean cron cycles. Until then, keep the installed VC 39 and do not tap VERIFY.
+**Current status (2026-11-14): do not install the 0.2.0 APK (versionCode 40).** v0.2.0's cloud reminders went out at the wrong hours; its `WalkHeuristicsWorker` calls `/internal/trigger-reminders` with your bearer token, which the v0.2.0 API accepts, so installing it would add WhatsApp sends; and the app's VERIFY flow cannot parse the Spin API's verification replies (#369). VC 41 (v0.3.0) waits for the cloud fix: install it only after v0.3.0's Spin deploy has passed the dry-run check and three clean cron cycles. Until then, keep the installed VC 39 and do not tap VERIFY.
 
-### 10. Promote to Latest after the phone test
+### 10. Promote to Latest after the phone test and the 3-day watch
 
-Once the phone checks for the release pass on the installed build, promote the pre-release:
+Promote the pre-release only when both hold: the phone checks for the release pass on the installed build, and a 3-day watch of `message_log` after the deploy shows reminders only inside the window and within the daily cap:
 
 ```bash
 gh release edit v0.3.0 --prerelease=false --latest
@@ -225,7 +225,7 @@ Until then it stays a pre-release, so nobody mistakes an untested build for the 
 | Test right after `spin aka deploy` returns | The old version answers during rollout and results mislead | Let `verify_spin_deploy.sh` wait for the new version |
 | Install `mecris-go-release-unsigned.apk`, or accept an uninstall prompt | The app's data is wiped | Install a debug build at the tag, or sign the asset with the same debug key (section 9) |
 | Run the deploy check with a real trigger inside the window | A real WhatsApp reminder goes out | Use the dry run (section 8b) |
-| Mark the release Latest before the phone test | An untested build looks current | Promote only after section 10's checks |
+| Mark the release Latest before the phone test or the 3-day watch | An untested build looks current | Promote only after section 10's checks |
 
 ---
 

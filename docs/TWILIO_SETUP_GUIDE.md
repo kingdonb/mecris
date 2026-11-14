@@ -37,7 +37,7 @@ TWILIO_STATUS_TEMPLATE_SID=
 TWILIO_WEBHOOK_URL=
 ```
 
-The recipient is the phone number in your profile, stored encrypted in Neon and verified once from the app (VERIFY, then the WhatsApp code). `TWILIO_TO_NUMBER` is only a local fallback for the Python arm. The Spin variables are pushed from `.env` by `mecris-go-spin/sync-service/deploy-akamai.sh`; see `mecris-go-spin/DEPLOYMENT.md`.
+The recipient is the phone number in your profile, stored encrypted in Neon. Phone verification exists but does not yet gate sends: the reminder query ignores `phone_verified`, and the app's VERIFY flow cannot parse the Spin API's replies until v0.3.0 (#369). `TWILIO_TO_NUMBER` is only a local fallback for the Python arm. The Spin variables are pushed from `.env` by `mecris-go-spin/sync-service/deploy-akamai.sh`; see `mecris-go-spin/DEPLOYMENT.md`.
 
 ### 2. Templates
 
@@ -81,5 +81,5 @@ Replies reach `/internal/twilio-webhook` on the Spin API, which rejects requests
 ## Security notes
 
 - Never commit `.env`, a personal phone number or a message body. Log Twilio failures by status and numeric code only.
-- `INTERNAL_API_KEY` guards the Spin `/internal/*` endpoints. Akamai cron passes it in the query string, so `spin aka cron list` output must never be pasted anywhere.
+- `INTERNAL_API_KEY` is the cron key for `/internal/trigger-reminders` and `/internal/failover-sync` (today those also accept any signed-in bearer; v0.3.0 is to make them cron-key only). Akamai cron passes it in the query string, so `spin aka cron list` output must never be pasted anywhere.
 - The Twilio sandbox (`whatsapp:+14155238886`) is for development only; production uses the approved business sender.
