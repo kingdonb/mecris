@@ -1,4 +1,27 @@
 import os
+
+# Keep the test session off live services. This must run before any project
+# import: beeminder_client, twilio_sender and others call a bare load_dotenv()
+# at import, which walks up from the module's directory. A worktree under the
+# user's checkout then found the checkout's real .env, and importing
+# mcp_server ran DDL against live Neon. dotenv is made a no-op and live
+# credentials are stripped from the environment. MECRIS_TESTS_USE_ENV=1 opts
+# back in for deliberate live runs.
+_LIVE_KEYS = ("NEON_DB_URL", "DATABASE_URL", "CLAUDE_API_KEY")
+_LIVE_PREFIXES = ("TWILIO_", "BEEMINDER_", "ANTHROPIC_", "OPENROUTER_", "GROQ_")
+
+if os.environ.get("MECRIS_TESTS_USE_ENV") != "1":
+    import dotenv
+    import dotenv.main
+
+    def _dotenv_disabled(*args, **kwargs):
+        return False
+
+    dotenv.load_dotenv = _dotenv_disabled
+    dotenv.main.load_dotenv = _dotenv_disabled
+    for _key in [k for k in os.environ if k in _LIVE_KEYS or k.startswith(_LIVE_PREFIXES)]:
+        del os.environ[_key]
+
 import tempfile
 import pytest
 import types

@@ -66,3 +66,14 @@ def test_an_explicit_dotenv_path_is_not_read_either(tmp_path, monkeypatch):
     finally:
         os.environ.pop(SENTINEL, None)
     assert loaded is False
+
+
+def test_importing_modules_with_a_bare_load_dotenv_leaves_no_live_keys():
+    # These modules call load_dotenv() at import; in a worktree that used to
+    # pull the checkout's real .env into the session.
+    import beeminder_client  # noqa: F401
+    import twilio_sender  # noqa: F401
+    leaked = sorted(
+        k for k in os.environ if k in LIVE_KEYS or k.startswith(LIVE_PREFIXES)
+    )
+    assert leaked == []
