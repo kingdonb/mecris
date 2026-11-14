@@ -1493,6 +1493,15 @@ mod tests {
     }
 
     #[test]
+    fn test_cron_outcomes_never_write_the_unknown_role() {
+        assert_eq!(cloud_role("akamai"), "akamai_functions");
+        assert_eq!(cloud_role("fermyon"), "fermyon_cloud");
+        for unrecognised in ["", "unknown_cloud", "local", "something_else"] {
+            assert_eq!(cloud_role(unrecognised), "akamai_functions", "{unrecognised:?}");
+        }
+    }
+
+    #[test]
     fn test_same_phone_number_compares_digits_of_plaintexts() {
         assert!(same_phone_number(Some("+15855550100"), "+15855550100"));
         assert!(same_phone_number(Some("+1 (585) 555-0100"), " +15855550100 "), "formatting is not a new number");
