@@ -192,6 +192,14 @@ function parseMcpObject(result: any): Record<string, any> {
   throw new Error("Mecris returned no structured status data");
 }
 
+// Leader or standby is a state, not an error (#346): losing leadership after a
+// dark wake is normal failover.
+function systemState(pulse: Record<string, any>): string {
+  const state = pulse.state ?? (pulse.is_leader === true ? "leader" : undefined);
+  if (state === "standby") return `standby (leader ${pulse.leader_process_id ?? "unknown"})`;
+  return state ?? "unknown";
+}
+
 function formatStatus(data: Record<string, any>): string {
   if (data.error) throw new Error(String(data.error));
   const budget = data.budget_status ?? {};
@@ -214,7 +222,7 @@ function formatStatus(data: Record<string, any>): string {
     urgentGoal
       ? `- Beeminder: ${urgentGoal.slug}; ${urgentGoal.derail_risk}; ${urgentGoal.runway ?? `${urgentGoal.safebuf ?? "?"} days`}.`
       : "- Beeminder: no urgent goal reported.",
-    `- System: running=${pulse.running ?? "unknown"}; leader=${pulse.is_leader ?? "unknown"}; error=${pulse.last_error ?? "none"}.`,
+    `- System: ${systemState(pulse)}; running=${pulse.running ?? "unknown"}${pulse.last_error ? `; error=${pulse.last_error}` : ""}.`,
     `- Daily: ${aggregate.score ?? "?/?"}; ${aggregate.satisfied_count ?? aggregate.goals_met ?? "?"} satisfied.`,
     `- ${data.claude_plan?.summary_line ?? "Claude: unknown (no plan status)"}.`,
     `- Next: ${next}`,

@@ -124,7 +124,6 @@ from services.beeminder_road import combine_pump_and_due
 
 # Feature Flags - set these to 'true' in .env to enable
 ENABLE_OBSIDIAN = os.getenv("MECRIS_ENABLE_OBSIDIAN", "false").lower() == "true"
-ENABLE_CLOUD_PUMP = os.getenv("MECRIS_ENABLE_CLOUD_PUMP", "false").lower() == "true"
 from services.credentials_manager import credentials_manager
 from ghost.presence import get_neon_store, StatusType
 from services.rag_retriever import RAGRetriever
@@ -318,18 +317,34 @@ async def get_authorized_user(
 async def health_check():
     # Check Neon connectivity
     neon_active = False
+    leader_pid = None
     try:
         import psycopg2
         conn = psycopg2.connect(os.getenv("NEON_DB_URL"))
-        conn.close()
         neon_active = True
-    except: pass
-    
+        try:
+            # The leader named in the election row, not this process (#346).
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT process_id FROM scheduler_election "
+                    "WHERE role = 'leader' AND user_id = %s AND process_id IS NOT NULL "
+                    "ORDER BY heartbeat DESC NULLS LAST LIMIT 1",
+                    (scheduler.user_id,),
+                )
+                row = cur.fetchone()
+                if isinstance(row, (tuple, list)) and row:
+                    leader_pid = row[0]
+        finally:
+            conn.close()
+    except Exception:
+        pass
+
     return {
         "status": "healthy",
         "home_server_active": True,
         "neon_connected": neon_active,
-        "leader_pid": scheduler.process_id if scheduler else "unknown",
+        "leader_pid": leader_pid,
+        "this_pid": scheduler.process_id if scheduler else None,
         "last_seen": datetime.now(timezone.utc).isoformat()
     }
 
@@ -856,6 +871,27 @@ def _enrich_bookmarks_for_narrator(goals: List[Dict[str, Any]]) -> List[Dict[str
     return results
 
 
+def _downgrade_not_due_goals(goals: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Relabel CRITICAL goals that cannot derail today (#346 fold-in).
+
+    derail_risk comes from safebuf alone, so a goal whose road says nothing is
+    due today, or a do-more goal on a flat road (paused), still reads CRITICAL.
+    - DUE_LATER: the road and yaw are known and beeminder_due_today is 0.
+    - PAUSED: rate 0 on a do-more goal (yaw 1) whose road could not be read.
+    A CRITICAL goal with an unreadable road and a non-zero rate stays CRITICAL.
+    """
+    out = []
+    for goal in goals or []:
+        if isinstance(goal, dict) and goal.get("derail_risk") == "CRITICAL":
+            road_known = goal.get("beeminder_road_today") is not None and goal.get("yaw") is not None
+            if road_known and (goal.get("beeminder_due_today") or 0) == 0:
+                goal = {**goal, "derail_risk": "DUE_LATER"}
+            elif not road_known and goal.get("yaw") == 1 and float(goal.get("rate") or 0) == 0:
+                goal = {**goal, "derail_risk": "PAUSED"}
+        out.append(goal)
+    return out
+
+
 @mcp.tool(description="Get unified strategic context with goals, budget, and recommendations.")
 async def get_narrator_context(user_id: str = None) -> Dict[str, Any]:
     """Get unified strategic context with goals, budget, and recommendations."""
@@ -882,6 +918,7 @@ async def get_narrator_context(user_id: str = None) -> Dict[str, Any]:
         except Exception as e:
             logger.error(f"Failed to fetch Beeminder goals: {e}")
             beeminder_goals = []
+        beeminder_goals = _downgrade_not_due_goals(beeminder_goals)
 
         client = get_user_beeminder_client(target_user_id)
         
@@ -1021,8 +1058,19 @@ async def get_narrator_context(user_id: str = None) -> Dict[str, Any]:
                 urgent_items.append(f"GROQ: {groq_urgent}")
                 recommendations.append(groq_urgent)
 
+        # Akamai cron refused with a bad key today: the cron and the deploy disagree
+        # about the key. burned_key probes (verify script) do not count.
+        akamai = next((m for m in (daily_aggregate.get("system_pulse") or {}).get("modalities", [])
+                       if isinstance(m, dict) and m.get("role") == "AKAMAI FUNCTIONS"), None)
+        if akamai and (akamai.get("bad_key_refusals_today") or 0) > 0:
+            urgent_items.append(
+                f"AKAMAI: {akamai['bad_key_refusals_today']} cron call(s) refused today (bad_key); "
+                "the cron key and the deployed key differ"
+            )
+
         presence_info = await _get_presence_summary(target_user_id)
-        if presence_info.get("ghost_age_seconds") is not None:
+        # The ghost is paused (#359); its heartbeat is noise unless re-enabled.
+        if _ghost_enabled() and presence_info.get("ghost_age_seconds") is not None:
             ghost_age_min = presence_info["ghost_age_seconds"] / 60
             if ghost_age_min < 120:
                 recommendations.insert(0, f"👻 Ghost Heartbeat: Bot was active {ghost_age_min:.0f}m ago.")
@@ -1046,6 +1094,8 @@ async def get_narrator_context(user_id: str = None) -> Dict[str, Any]:
             "system_pulse": {
                 "running": scheduler.running,
                 "is_leader": scheduler.is_leader,
+                "state": scheduler.role_state,
+                "leader_process_id": scheduler.leader_process_id,
                 "process_id": scheduler.process_id,
                 "last_status": scheduler.last_status,
                 "intent": scheduler.intent,
@@ -1545,7 +1595,13 @@ def get_scheduler_queue() -> Dict[str, Any]:
         "queue": scheduler.get_queue()
     }
 
-from services.health_checker import HealthChecker as _HealthChecker
+from services.health_checker import (
+    HealthChecker as _HealthChecker,
+    classify_role as _classify_pulse_role,
+    ghost_enabled as _ghost_enabled,
+    pick_newest_rows as _pick_newest_pulse_rows,
+    whole_minutes as _whole_minutes,
+)
 _health_checker = _HealthChecker()
 
 @mcp.tool(description="Get unified health status for all registered system processes (Python MCP, Android client, Spin cloud) from the scheduler_election table.")
@@ -1556,7 +1612,9 @@ async def get_system_health(user_id: str = None) -> Dict[str, Any]:
         return {"error": "Authentication Required"}
     result = await asyncio.to_thread(_health_checker.get_system_health, target_user_id)
     if "error" not in result:
-        result["leader_process_id"] = scheduler.process_id
+        # leader_process_id comes from the leader row (HealthChecker), not from
+        # whichever process answered this call (#346).
+        result["this_process_id"] = scheduler.process_id
         result["is_leader"] = scheduler.is_leader
     return result
 
@@ -1661,32 +1719,6 @@ async def get_language_velocity_stats(user_id: str = None) -> Dict[str, Any]:
                 min_target = 100
 
             pump_status = None
-            if ENABLE_CLOUD_PUMP:
-                import httpx
-                try:
-                    def _fetch_pump():
-                        with httpx.Client(timeout=5.0) as client:
-                            resp = client.post(
-                                "https://mecris-sync.fermyon.app/internal/review-pump-status-py",
-                                json={
-                                    "debt": current_debt,
-                                    "tomorrow_liability": tomorrow_liability,
-                                    "daily_completions": daily_done,
-                                    "multiplier_x10": int(multiplier * 10),
-                                    "unit": unit
-                                }
-                            )
-                            resp.raise_for_status()
-                            return resp.json()
-                    pump_status = await asyncio.to_thread(_fetch_pump)
-                    if min_target > 0 and pump_status.get("target_flow_rate", 0) < min_target and current_debt == 0:
-                        pump_status["target_flow_rate"] = min_target - daily_done
-                        if pump_status["target_flow_rate"] < 0:
-                            pump_status["target_flow_rate"] = 0
-                        pump_status["goal_met"] = daily_done >= min_target
-                except Exception as e:
-                    logger.warning(f"Cloud pump sync skipped or failed for {lang}: {e}")
-
             if not pump_status:
                 pump = ReviewPump(multiplier=multiplier)
                 pump_status = pump.get_status(current_debt, tomorrow_liability, daily_done, unit=unit, min_target=min_target)
@@ -1900,7 +1932,6 @@ reminder_service = ReminderService(get_narrator_context, get_coaching_insight, g
 # ---------------------------------------------------------------------------
 # Budget Governor — Neon-backed (Phase 1 complete, Phase 2 MCP exposure)
 # ---------------------------------------------------------------------------
-import httpx
 from services.budget_governor import NeonBudgetGovernor as _NeonBudgetGovernor
 
 # OpenRouter Tracker
@@ -1916,20 +1947,11 @@ _neon_budget_governor = _NeonBudgetGovernor()
 
 @mcp.tool(description="Get per-bucket LLM spend envelope status and routing recommendation (Budget Governor).")
 def get_budget_governor_status(user_id: str = None) -> Dict[str, Any]:
-    """Returns per-bucket consumption, envelope status, and a routing recommendation."""
-    # Try cloud WASM component first
-    try:
-        response = httpx.post(
-            "https://mecris-sync.fermyon.app/internal/budget-governor-py",
-            json={"action": "status"},
-            timeout=5.0
-        )
-        response.raise_for_status()
-        return response.json()
-    except Exception as e:
-        logger.error(f"Failed to fetch BudgetGovernor status from cloud: {e}")
-        # Fallback to local NeonBudgetGovernor
-        return _neon_budget_governor.get_status()
+    """Returns per-bucket consumption, envelope status, and a routing recommendation.
+
+    Local NeonBudgetGovernor only; the Fermyon WASM copy is retired (#346).
+    """
+    return _neon_budget_governor.get_status()
 
 @mcp.tool(description="Check if a spend would be allowed under the 5%/5% envelope (Budget Governor).")
 def budget_governor_check(bucket: str, cost_estimate: float = 0.01, user_id: str = None) -> Dict[str, Any]:
@@ -1998,32 +2020,58 @@ def budget_governor_openrouter_status(user_id: str = None) -> Dict[str, Any]:
     }
 
 def get_modality_status(role: str, mins: float) -> str:
-    """Determine healthy/degraded/offline status based on heartbeat age (minutes)."""
-    if role == "leader":
-        if mins < 2: return "healthy"
-        if mins < 5: return "degraded"
-        return "offline"
-    elif role == "android_client":
-        if mins < 20: return "healthy"
-        if mins < 60: return "degraded"
-        return "offline"
-    elif role == "akamai_functions":
-        if mins < 135: return "healthy"
-        if mins < 250: return "degraded"
-        return "offline"
-    elif role == "fermyon_cloud":
-        if mins < 5: return "reactive"
-        if mins < 15: return "degraded"
-        return "unknown"
-    elif role == "unknown_cloud":
-        # Handle cases where provider variable is missing but cloud is active
-        if mins < 135: return "healthy"
-        if mins < 250: return "degraded"
-        return "offline"
-    return "unknown"
+    """Status for a role at an age in minutes, from contracts/pulse_roles.json (#346).
+
+    Roles the registry hides (retired, or unlisted and stale) report 'hidden'.
+    """
+    verdict = _classify_pulse_role(role, mins)
+    return verdict["status"] if verdict["visible"] else "hidden"
+
+
+# Cron and webhook refusals Spin counted today (New York day). One row per day,
+# endpoint and reason; a row's last_at falls on its own day, so filtering on
+# last_at avoids depending on the day column's name. burned_key probes from
+# scripts/verify_spin_deploy.sh are counted in the total but never alert.
+REFUSALS_TODAY_SQL = """
+    SELECT COALESCE(SUM("count"), 0)::BIGINT,
+           COALESCE(SUM("count") FILTER (WHERE reason = 'bad_key'), 0)::BIGINT
+    FROM internal_refusals
+    WHERE (last_at AT TIME ZONE 'America/New_York')::date
+          = (now() AT TIME ZONE 'America/New_York')::date
+"""
+
+
+def _as_count(value: Any) -> int:
+    from decimal import Decimal
+    if isinstance(value, bool) or not isinstance(value, (int, float, Decimal)):
+        return 0
+    return max(int(value), 0)
+
+
+def _refusals_today(conn, cur) -> tuple:
+    """(total, bad_key) refusals today; a missing table or any error counts as 0."""
+    try:
+        cur.execute(REFUSALS_TODAY_SQL)
+        row = cur.fetchone()
+    except Exception:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        return 0, 0
+    if not isinstance(row, (tuple, list)) or len(row) < 2:
+        return 0, 0
+    return _as_count(row[0]), _as_count(row[1])
+
 
 async def fetch_system_pulse(user_id: str) -> Dict[str, Any]:
-    """Fetch recent heartbeats from scheduler_election and return formatted pulse modalities."""
+    """Fetch heartbeats from scheduler_election and return pulse modalities.
+
+    Roles, display names, limits and visibility come from
+    contracts/pulse_roles.json (#346): one modality per role, newest heartbeat
+    wins (the user's own row on a tie), retired roles hidden, unlisted roles
+    shown only while fresh, GHOST 'paused' unless MECRIS_GHOST_ENABLED is set.
+    """
     neon_url = os.getenv("NEON_DB_URL")
     if not neon_url:
         return {"modalities": []}
@@ -2038,7 +2086,8 @@ async def fetch_system_pulse(user_id: str) -> Dict[str, Any]:
                     cur.execute("""
                         SELECT role, heartbeat,
                                EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - heartbeat)) / 60 AS minutes_since,
-                               last_status, intent, last_error
+                               last_status, intent, last_error,
+                               user_id IS NOT NULL AS own
                         FROM scheduler_election
                         WHERE user_id = %s OR user_id IS NULL
                         ORDER BY heartbeat DESC
@@ -2048,39 +2097,52 @@ async def fetch_system_pulse(user_id: str) -> Dict[str, Any]:
                     cur.execute("""
                         SELECT role, heartbeat,
                                EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - heartbeat)) / 60 AS minutes_since,
-                               NULL, NULL, NULL
+                               NULL, NULL, NULL,
+                               user_id IS NOT NULL AS own
                         FROM scheduler_election
                         WHERE user_id = %s OR user_id IS NULL
                         ORDER BY heartbeat DESC
                     """, (target_user_id,))
-                return cur.fetchall()
+                rows = cur.fetchall()
+                refusals = (0, 0)
+                if any(r[0] == "akamai_functions" for r in rows):
+                    refusals = _refusals_today(conn, cur)
+                return rows, refusals
 
     try:
-        rows = await asyncio.to_thread(_query)
-        modalities = []
-        for role, heartbeat, mins_since, last_status, intent, last_error in rows:
-            # Skip only unknown ghosts
-            if role == "unknown_cloud":
-                continue
-
-            mins = float(mins_since or 9999)
-            
-            # Map machine names to human-friendly display names (Neural Link aesthetic)
-            if role == "leader": display_role = "MCP SERVER"
-            elif role == "akamai_functions": display_role = "AKAMAI FUNCTIONS"
-            elif role == "fermyon_cloud": display_role = "FERMYON CLOUD"
-            elif role == "android_client": display_role = "ANDROID CLIENT"
-            else: display_role = role.replace('_', ' ').upper()
-
-            modalities.append({
-                "role": display_role,
-                "status": get_modality_status(role, mins),
-                "last_seen": heartbeat.isoformat() if heartbeat else "never",
-                "minutes_since": int(mins),
+        rows, (refusals_total, refusals_bad_key) = await asyncio.to_thread(_query)
+        candidates = []
+        for row in rows:
+            role, heartbeat, mins_since, last_status, intent, last_error = row[:6]
+            candidates.append({
+                "role": role,
+                "heartbeat": heartbeat,
+                "minutes": None if mins_since is None else float(mins_since),
+                "own": bool(row[6]) if len(row) > 6 else False,
                 "last_status": last_status,
                 "intent": intent,
                 "last_error": last_error,
             })
+
+        modalities = []
+        for row in _pick_newest_pulse_rows(candidates):
+            verdict = _classify_pulse_role(row["role"], row["minutes"])
+            if not verdict["visible"]:
+                continue
+            heartbeat = row["heartbeat"]
+            modality = {
+                "role": verdict["display"],
+                "status": verdict["status"],
+                "last_seen": heartbeat.isoformat() if heartbeat else "never",
+                "minutes_since": _whole_minutes(row["minutes"]),
+                "last_status": row["last_status"],
+                "intent": row["intent"],
+                "last_error": row["last_error"],
+            }
+            if row["role"] == "akamai_functions":
+                modality["refusals_today"] = refusals_total
+                modality["bad_key_refusals_today"] = refusals_bad_key
+            modalities.append(modality)
         return {"modalities": modalities}
     except Exception as e:
         logger.error(f"fetch_system_pulse failed: {e}")

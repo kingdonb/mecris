@@ -40,6 +40,34 @@ def _walk_status_text(walk_status: Dict[str, Any]) -> tuple[str, str]:
     return status.capitalize(), "white"
 
 
+def _role_state_text(system_pulse: Dict[str, Any]) -> str:
+    """Leader / standby as a state (#346). Standby is normal failover, not an error."""
+    state = system_pulse.get("state")
+    if state is None:
+        state = "leader" if system_pulse.get("is_leader") else "unknown"
+    if state == "leader":
+        return "[bold]LEADER[/bold]"
+    if state == "standby":
+        return f"[dim]standby (leader {system_pulse.get('leader_process_id') or 'unknown'})[/dim]"
+    return f"[dim]{state}[/dim]"
+
+
+def _heartbeat_text(system_pulse: Dict[str, Any], daily_agg: Dict[str, Any]) -> str:
+    running = system_pulse.get("running", False)
+    pid = system_pulse.get("process_id", "?")
+    sched_color = "green" if running else "red"
+    agg_score = daily_agg.get("score", "?")
+    agg_color = "green" if daily_agg.get("all_clear", False) else "yellow"
+    lines = [
+        f"Scheduler: [{sched_color}]{'UP' if running else 'DOWN'}[/{sched_color}] {_role_state_text(system_pulse)}",
+        f"PID: {pid}",
+    ]
+    if system_pulse.get("last_error"):
+        lines.append(f"[red]Error: {system_pulse['last_error']}[/red]")
+    lines.append(f"Daily goals: [{agg_color}]{agg_score}[/{agg_color}]")
+    return "\n".join(lines)
+
+
 def render_pulse(context: Dict[str, Any]) -> None:
     """Render the full pulse dashboard using rich."""
     from rich.console import Console
@@ -112,20 +140,7 @@ def render_pulse(context: Dict[str, Any]) -> None:
     ))
 
     # System heartbeat panel
-    running = system_pulse.get("running", False)
-    is_leader = system_pulse.get("is_leader", False)
-    pid = system_pulse.get("process_id", "?")
-    sched_color = "green" if running else "red"
-    leader_tag = " [bold]LEADER[/bold]" if is_leader else ""
-    agg_score = daily_agg.get("score", "?")
-    agg_all_clear = daily_agg.get("all_clear", False)
-    agg_color = "green" if agg_all_clear else "yellow"
-    heartbeat_text = (
-        f"Scheduler: [{sched_color}]{'UP' if running else 'DOWN'}[/{sched_color}]{leader_tag}\n"
-        f"PID: {pid}\n"
-        f"Daily goals: [{agg_color}]{agg_score}[/{agg_color}]"
-    )
-    panels.append(Panel(heartbeat_text, title="Heartbeat", border_style="cyan"))
+    panels.append(Panel(_heartbeat_text(system_pulse, daily_agg), title="Heartbeat", border_style="cyan"))
 
     console.print(Columns(panels, equal=True))
 

@@ -282,6 +282,22 @@ class MecrisScheduler:
         self.last_status: Optional[str] = None
         self.intent: Optional[str] = None
         self.last_error: Optional[str] = None
+        # Process id named in the leader row at the last election pass (#346).
+        self.leader_process_id: Optional[str] = None
+
+    @property
+    def role_state(self) -> str:
+        """'leader', 'standby' (another process leads) or 'starting' (no election seen yet)."""
+        if self.is_leader:
+            return "leader"
+        return "standby" if self.leader_process_id else "starting"
+
+    def _mark_standby(self, leader_id: Optional[str]) -> None:
+        """Record standby in memory. Standby is a state, not an error (#346)."""
+        self.leader_process_id = leader_id
+        self.last_status = f"standby (leader {leader_id or 'unknown'})"
+        self.intent = "standby"
+        self.last_error = None
 
     def start(self):
         """Start the coordination engine."""
@@ -381,23 +397,30 @@ class MecrisScheduler:
                             if not self.is_leader:
                                 logger.info(f"🏆 Process {self.process_id} ELECTED as Leader for {self.user_id} (Neon).")
                                 self.is_leader = True
+                            self.leader_process_id = self.process_id
                             self._write_obs_status(cur, "Elected as leader", "claim leadership")
                         else:
                             # Check if WE are currently the leader
                             cur.execute("SELECT process_id, heartbeat FROM scheduler_election WHERE user_id = %s AND role = 'leader'", (self.user_id,))
                             row = cur.fetchone()
+                            leader_id = row[0] if row else None
                             if self.is_leader:
                                 if not row or row[0] != self.process_id:
-                                    logger.warning(f"🏳️ Process {self.process_id} LOST leadership for {self.user_id} (Neon). Current leader: {row[0] if row else 'None'}")
+                                    logger.warning(f"🏳️ Process {self.process_id} LOST leadership for {self.user_id} (Neon). Current leader: {leader_id or 'None'}")
                                     self.is_leader = False
-                                    preempted_by = row[0] if row else "unknown"
-                                    self._write_obs_status(cur, "Lost leadership", "standby", error=f"preempted by {preempted_by}")
+                                    standby = f"standby (leader {leader_id or 'unknown'})"
+                                    self._write_obs_status(cur, standby, "standby")
+                                    self._mark_standby(leader_id)
                                     self._stop_leader_jobs()
                                 else:
                                     # We are still leader, maintain heartbeat
                                     cur.execute("UPDATE scheduler_election SET heartbeat = %s WHERE user_id = %s AND role = 'leader' AND process_id = %s", (now, self.user_id, self.process_id))
+                                    self.leader_process_id = self.process_id
                                     self._write_obs_status(cur, "Heartbeat active", "maintain leadership")
                                     logger.debug(f"💓 Leader {self.process_id} heartbeat active.")
+                            else:
+                                # Another process leads: label only, in memory (that row is not ours to write).
+                                self._mark_standby(leader_id)
                 if self.is_leader:
                     await self._start_leader_jobs()
                 return
