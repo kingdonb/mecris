@@ -5,7 +5,7 @@
 //! America/New_York, hard-coded per the operator ruling (lib.rs road_value_today);
 //! `users.timezone` is not read. The truth table is contracts/nag_damping_cases.json.
 
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Timelike, Utc};
 use chrono_tz::Tz;
 use spin_sdk::pg::DbValue;
 
@@ -16,8 +16,27 @@ pub const WALK_STEPS: i64 = 2000;
 pub const FAILOVER_FRESH_MINUTES: i64 = 100;
 
 /// A whole number (an age in minutes or a count) from a SQL value.
-pub fn db_i64(_v: &DbValue) -> Option<i64> {
-    None
+///
+/// Postgres 14+ returns `EXTRACT(...) / 60` as NUMERIC, which Spin hands over as
+/// `DbValue::Decimal`; a `::BIGINT` cast arrives as `Int64`. Both, and floats or
+/// numeric text, floor to whole numbers. Text that is not a number (a timestamp,
+/// say) is not a number of minutes: it is never parsed as a date.
+pub fn db_i64(v: &DbValue) -> Option<i64> {
+    fn from_text(s: &str) -> Option<i64> {
+        let t = s.trim();
+        if let Ok(i) = t.parse::<i64>() { return Some(i); }
+        t.parse::<f64>().ok().filter(|f| f.is_finite()).map(|f| f.floor() as i64)
+    }
+    match v {
+        DbValue::Int8(i) => Some(*i as i64),
+        DbValue::Int16(i) => Some(*i as i64),
+        DbValue::Int32(i) => Some(*i as i64),
+        DbValue::Int64(i) => Some(*i),
+        DbValue::Floating32(f) if f.is_finite() => Some(f.floor() as i64),
+        DbValue::Floating64(f) if f.is_finite() => Some(f.floor() as i64),
+        DbValue::Decimal(s) | DbValue::Str(s) => from_text(s),
+        _ => None,
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -37,9 +56,51 @@ impl Default for Prefs {
 }
 
 impl Prefs {
-    /// Parse `users.notification_prefs` text. NULL, `{}` or junk give the defaults.
-    pub fn from_json(_text: &str) -> Prefs {
-        Prefs::default()
+    /// Parse `users.notification_prefs` text. NULL, `{}` or junk give the defaults;
+    /// numbers may arrive as integers, floats or numeric strings.
+    pub fn from_json(text: &str) -> Prefs {
+        let d = Prefs::default();
+        let v: serde_json::Value = match serde_json::from_str(text) { Ok(v) => v, Err(_) => return d };
+        let Some(o) = v.as_object() else { return d };
+        let num = |k: &str| -> Option<i64> {
+            match o.get(k)? {
+                serde_json::Value::Number(n) => n.as_i64().or_else(|| n.as_f64().filter(|f| f.is_finite()).map(|f| f.floor() as i64)),
+                serde_json::Value::String(s) => s.trim().parse::<i64>().ok(),
+                _ => None,
+            }
+        };
+        let strings = |k: &str| -> Option<Vec<String>> {
+            o.get(k)?.as_array().map(|a| a.iter().filter_map(|x| x.as_str().map(|s| s.to_string())).collect())
+        };
+        let hour = |k: &str, dflt: u32| num(k).filter(|h| (0..=23).contains(h)).map(|h| h as u32).unwrap_or(dflt);
+        Prefs {
+            window_start: hour("time_window_start", d.window_start),
+            window_end: hour("time_window_end", d.window_end),
+            max_per_day: num("max_messages_per_day").map(|n| n.max(0)).unwrap_or(d.max_per_day),
+            enabled_days: strings("enabled_days").unwrap_or_default(),
+            message_types: strings("message_types"),
+            vacation_mode: o.get("vacation_mode").and_then(|b| b.as_bool()).unwrap_or(false),
+        }
+    }
+
+    /// Both ends inclusive, as Python's reminder_service: 14..17 is 14:00 to 17:59.
+    /// A start after the end wraps past midnight.
+    fn hour_in_window(&self, h: u32) -> bool {
+        if self.window_start <= self.window_end { self.window_start <= h && h <= self.window_end }
+        else { h >= self.window_start || h <= self.window_end }
+    }
+
+    /// Absent or empty means every day. Full names and 3-letter abbreviations, any case.
+    fn day_enabled(&self, weekday_abbrev: &str) -> bool {
+        self.enabled_days.is_empty() || self.enabled_days.iter().any(|d| {
+            let d = d.trim().to_lowercase();
+            d.get(..3) == Some(weekday_abbrev)
+        })
+    }
+
+    /// Absent means every type.
+    fn type_enabled(&self, ty: &str) -> bool {
+        self.message_types.as_ref().map_or(true, |ts| ts.iter().any(|t| t == ty))
     }
 }
 
@@ -74,7 +135,11 @@ impl Reason {
     }
 
     pub fn verdict(self) -> Verdict {
-        Verdict::Send
+        match self {
+            Reason::Eligible => Verdict::Send,
+            Reason::PhoneActive => Verdict::StandDown,
+            _ => Verdict::Skip,
+        }
     }
 }
 
@@ -94,36 +159,56 @@ pub struct GateInputs {
     pub nags_today: i64,
 }
 
-pub fn decide(_i: &GateInputs) -> Reason {
+/// The first gate that blocks, or Eligible. Each contract case trips at most one gate,
+/// so this order only decides which reason a real run reports when several apply.
+pub fn decide(i: &GateInputs) -> Reason {
+    let p = &i.prefs;
+    if !i.phone_verified { return Reason::PhoneUnverified; }
+    if p.vacation_mode || i.vacation_until_future { return Reason::Vacation; }
+    if !p.day_enabled(&ny_weekday_abbrev(&i.now)) { return Reason::DayDisabled; }
+    if !p.type_enabled("walk_reminder") { return Reason::TypeDisabled; }
+    if !p.hour_in_window(ny_hour(&i.now)) { return Reason::OutsideWindow; }
+    if i.steps_today >= WALK_STEPS { return Reason::WalkedToday; }
+    if i.standdown_minutes > 0 && i.phone_heartbeat_minutes.is_some_and(|m| m < i.standdown_minutes) { return Reason::PhoneActive; }
+    if i.minutes_since_last_nag.is_some_and(|m| m < DAMPING_MINUTES) { return Reason::Damped; }
+    if i.nags_today >= p.max_per_day { return Reason::DailyCap; }
     Reason::Eligible
 }
 
-pub fn ny_hour(_now: &DateTime<Utc>) -> u32 { 0 }
-pub fn ny_date(now: &DateTime<Utc>) -> chrono::NaiveDate { now.date_naive() }
+fn ny(now: &DateTime<Utc>) -> DateTime<Tz> { now.with_timezone(&NY) }
+fn ny_weekday_abbrev(now: &DateTime<Utc>) -> String { ny(now).format("%a").to_string().to_lowercase() }
+
+pub fn ny_hour(now: &DateTime<Utc>) -> u32 { ny(now).hour() }
+pub fn ny_date(now: &DateTime<Utc>) -> chrono::NaiveDate { ny(now).date_naive() }
 /// The {{5}} slot of the walk reminder template.
-pub fn ny_time_label(_now: &DateTime<Utc>) -> String { String::new() }
+pub fn ny_time_label(now: &DateTime<Utc>) -> String { ny(now).format("%I:%M %p").to_string() }
 /// A human New York clock for the dry run, e.g. "2026-11-14 15:00 EST".
-pub fn ny_clock(_now: &DateTime<Utc>) -> String { String::new() }
+pub fn ny_clock(now: &DateTime<Utc>) -> String { ny(now).format("%Y-%m-%d %H:%M %Z").to_string() }
 
 /// The `reminder_standdown_minutes` Spin variable. Empty or junk is the default; negative is 0.
-pub fn standdown_minutes_from_var(_s: &str) -> i64 { 0 }
+pub fn standdown_minutes_from_var(s: &str) -> i64 {
+    s.trim().parse::<i64>().map(|m| m.max(0)).unwrap_or(DEFAULT_STANDDOWN_MINUTES)
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FailoverDecision { Scrape, Fresh(i64) }
 
 /// Scrape when the newest language_stats.last_updated is FAILOVER_FRESH_MINUTES or older, or absent.
-pub fn failover_decision(_minutes_since_update: Option<i64>) -> FailoverDecision {
-    FailoverDecision::Scrape
+pub fn failover_decision(minutes_since_update: Option<i64>) -> FailoverDecision {
+    match minutes_since_update {
+        Some(m) if m < FAILOVER_FRESH_MINUTES => FailoverDecision::Fresh(m),
+        _ => FailoverDecision::Scrape,
+    }
 }
 
 /// message_log rows that damp: any type but phone_verification, outbound WhatsApp
 /// (sent, failed or NULL status; a NULL channel is the column default 'whatsapp'),
 /// or a local phone nag that was shown. Alias the table as `m`.
-pub const DAMPING_ROWS_SQL: &str = "FALSE";
+pub const DAMPING_ROWS_SQL: &str = "m.type <> 'phone_verification' AND ((COALESCE(m.channel, 'whatsapp') = 'whatsapp' AND (m.status IS NULL OR m.status IN ('sent', 'failed'))) OR (m.channel = 'android_native' AND m.status = 'shown'))";
 
 /// message_log rows that count toward max_messages_per_day: outbound WhatsApp only.
 /// The caller adds the New York date of `sent_at`, never the GMT `date` column.
-pub const CAP_ROWS_SQL: &str = "FALSE";
+pub const CAP_ROWS_SQL: &str = "m.type <> 'phone_verification' AND COALESCE(m.channel, 'whatsapp') = 'whatsapp' AND (m.status IS NULL OR m.status IN ('sent', 'failed'))";
 
 #[cfg(test)]
 mod tests {
