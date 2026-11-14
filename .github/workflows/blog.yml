@@ -1,0 +1,52 @@
+name: Blog
+
+# Builds blog/*.md into a static site. Pull requests build and test only;
+# pushes to main also publish to GitHub Pages.
+
+on:
+  push:
+    branches: [main]
+    paths: ['blog/**', 'tests/test_blog_build.py', '.github/workflows/blog.yml']
+  pull_request:
+    paths: ['blog/**', 'tests/test_blog_build.py', '.github/workflows/blog.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: blog-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build blog
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - name: Install build dependencies
+        run: python3 -m pip install --user -r blog/requirements.txt pytest
+      - name: Test the generator
+        run: python3 -m pytest -q -p no:cacheprovider tests/test_blog_build.py
+      - name: Build site
+        run: python3 blog/build.py --out _site
+      - name: Upload Pages artifact
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9  # v5.0.0
+        with:
+          path: _site
+
+  deploy:
+    name: Publish to GitHub Pages
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346  # v5.0.1
