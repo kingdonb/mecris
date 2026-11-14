@@ -1,6 +1,9 @@
 package com.mecris.go.health
 
+import com.mecris.go.sync.PaceDto
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -39,5 +42,56 @@ class DelayedNagWorkerMessageTest {
             "Greek nag should still mention moussaka. Got: $msg",
             msg.contains("moussaka", ignoreCase = true)
         )
+    }
+
+    // --- #349: pace line from aggregate-status pace ---
+
+    private val contractPace = listOf(
+        PaceDto(goal = "ARABIC", remaining = 42, per_hour = 6.0, clear_by = "2026-11-14T22:00:00-05:00", due_today = 35),
+        PaceDto(goal = "GREEK", remaining = 0, per_hour = 0.0, clear_by = "2026-11-14T22:00:00-05:00", due_today = 0)
+    )
+
+    @Test
+    fun `pace present appends one line`() {
+        assertEquals(
+            "Clear the cards.\nPace: 42 reviews left today, about 6 an hour to clear them by 10:00 PM.",
+            NagCopy.withPace("Clear the cards.", "ARABIC", contractPace)
+        )
+    }
+
+    @Test
+    fun `pace goal matches case-insensitively and rounds the hourly pace up`() {
+        val pace = listOf(PaceDto(goal = "greek", remaining = 1, per_hour = 0.4, clear_by = "2026-11-14T22:00:00-05:00"))
+        assertEquals(
+            "Pace: 1 review left today, about 1 an hour to clear them by 10:00 PM.",
+            NagCopy.paceLine("GREEK", pace)
+        )
+    }
+
+    @Test
+    fun `reviews left with no hourly pace (after 22 00) says due now`() {
+        val pace = listOf(PaceDto(goal = "ARABIC", remaining = 12, per_hour = null, clear_by = "2026-11-14T22:00:00-05:00"))
+        assertEquals("Pace: 12 reviews left today, due now.", NagCopy.paceLine("ARABIC", pace))
+    }
+
+    @Test
+    fun `missing clear_by assumes 10 PM`() {
+        val pace = listOf(PaceDto(goal = "ARABIC", remaining = 10, per_hour = 2.0, clear_by = null))
+        assertEquals("Pace: 10 reviews left today, about 2 an hour to clear them by 10:00 PM.", NagCopy.paceLine("ARABIC", pace))
+    }
+
+    @Test
+    fun `pace missing or remaining 0 leaves the text unchanged`() {
+        assertEquals("msg", NagCopy.withPace("msg", "ARABIC", null))
+        assertEquals("msg", NagCopy.withPace("msg", "ARABIC", emptyList()))
+        assertEquals("msg", NagCopy.withPace("msg", "GREEK", contractPace))
+        assertEquals("msg", NagCopy.withPace("msg", "ARABIC", listOf(PaceDto(goal = "ARABIC", remaining = null))))
+        assertNull(NagCopy.paceLine("GREEK", contractPace))
+    }
+
+    @Test
+    fun `walk nags never get a pace line`() {
+        val pace = contractPace + PaceDto(goal = "WALK", remaining = 2000, per_hour = 500.0)
+        assertEquals("msg", NagCopy.withPace("msg", "WALK", pace))
     }
 }

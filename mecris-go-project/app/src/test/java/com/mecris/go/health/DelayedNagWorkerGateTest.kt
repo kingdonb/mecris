@@ -9,6 +9,7 @@ import com.mecris.go.auth.PocketIdAuthRepository
 import com.mecris.go.sync.AggregateComponentsDto
 import com.mecris.go.sync.AggregateStatusResponseDto
 import com.mecris.go.sync.NagNotificationManager
+import com.mecris.go.sync.PaceDto
 import com.mecris.go.sync.SyncServiceApi
 import com.mecris.go.sync.WeatherHeuristicResponseDto
 import io.mockk.*
@@ -64,14 +65,15 @@ class DelayedNagWorkerGateTest {
         unmockkAll()
     }
 
-    private fun aggregateStatus(arabic: Boolean, walk: Boolean, greek: Boolean) =
+    private fun aggregateStatus(arabic: Boolean, walk: Boolean, greek: Boolean, pace: List<PaceDto>? = null) =
         AggregateStatusResponseDto(
             score = if (arabic && walk && greek) "complete" else "partial",
             goals_met = listOf(arabic, walk, greek).count { it },
             total_goals = 3,
             all_clear = arabic && walk && greek,
             components = AggregateComponentsDto(walk = walk, arabic = arabic, greek = greek),
-            vacation_mode_until = null
+            vacation_mode_until = null,
+            pace = pace
         )
 
     private fun worker(hour: Int) = DelayedNagWorker(
@@ -79,11 +81,76 @@ class DelayedNagWorkerGateTest {
         injectedHealthManager = healthManager, injectedHour = hour
     )
 
-    private fun stubAggregate(arabic: Boolean, walk: Boolean, greek: Boolean) {
+    private fun stubAggregate(arabic: Boolean, walk: Boolean, greek: Boolean, pace: List<PaceDto>? = null) {
         coEvery { syncApi.getAggregateStatus(any()) } returns retrofit2.Response.success(
-            aggregateStatus(arabic, walk, greek)
+            aggregateStatus(arabic, walk, greek, pace)
         )
     }
+
+    private val pace = listOf(
+        PaceDto(goal = "ARABIC", remaining = 42, per_hour = 6.0, clear_by = "2026-11-14T22:00:00-05:00"),
+        PaceDto(goal = "GREEK", remaining = 8, per_hour = 2.0, clear_by = "2026-11-14T22:00:00-05:00")
+    )
+
+    private fun sunny() = WeatherHeuristicResponseDto(
+        is_walk_appropriate = true, conditions = "sunny", description = "Sunny", temperature = 20.0,
+        sunrise = 0L, sunset = 0L, is_dark = false, now_epoch = 0L, data_ts = 0L
+    )
+
+    // --- #349: pace line on local Arabic and Greek nags ---
+
+        @Test
+        fun `arabic nag carries the pace line even when the LLM writes the message`() = runBlocking {
+        stubAggregate(arabic = false, walk = true, greek = true, pace = pace)
+
+        worker(hour = 10).doWork()
+
+        verify(exactly = 1) {
+            nagManager.showNag(
+                "ARABIC PRESSURE",
+                "LLM nag\nPace: 42 reviews left today, about 6 an hour to clear them by 10:00 PM.",
+                "com.clozemaster.v2",
+                "arabic_pressure"
+            )
+        }
+        }
+
+        @Test
+        fun `greek nag with the static message carries the pace line`() = runBlocking {
+        stubAggregate(arabic = true, walk = true, greek = false, pace = pace)
+        coEvery { brain.generateNarrativeDirective("GREEK", any(), any(), any()) } returns null
+
+        worker(hour = 18).doWork()
+
+        verify(exactly = 1) {
+            nagManager.showNag(
+                "GREEK ISLAND TIME 🏝️",
+                DelayedNagWorker.greekNagMessage(arabicCleared = true) +
+                    "\nPace: 8 reviews left today, about 2 an hour to clear them by 10:00 PM.",
+                "com.clozemaster.v2",
+                "greek_reminder"
+            )
+        }
+        }
+
+        @Test
+        fun `walk nag is unchanged by pace`() = runBlocking {
+        stubAggregate(arabic = true, walk = false, greek = true, pace = pace)
+        coEvery { syncApi.getWeatherHeuristic(any(), any()) } returns retrofit2.Response.success(sunny())
+
+        worker(hour = 12).doWork()
+
+        verify(exactly = 1) { nagManager.showNag("PHYSICAL GOAL", "LLM nag", "com.google.android.apps.fitness", "walk_reminder") }
+        }
+
+        @Test
+        fun `no pace from an older Spin leaves the arabic nag unchanged`() = runBlocking {
+        stubAggregate(arabic = false, walk = true, greek = true, pace = null)
+
+        worker(hour = 10).doWork()
+
+        verify(exactly = 1) { nagManager.showNag("ARABIC PRESSURE", "LLM nag", "com.clozemaster.v2", "arabic_pressure") }
+        }
 
     // --- Cooldown gates before expensive work ---
 
