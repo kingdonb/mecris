@@ -15,7 +15,7 @@ base64 = "0.23.0"
 chrono = { version = "0.4.44", features = ["std"] }
 chrono-tz = "0.10.0"
 hmac = "0.13.0"
-html-escape = "0.2.13"
+html-escape = "0.3.0"
 p384 = "0.14.0"
 regex = "1.12.3"
 serde = { version = "1.0.228", features = ["derive"] }
