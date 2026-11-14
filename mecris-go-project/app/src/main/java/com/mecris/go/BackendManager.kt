@@ -16,9 +16,12 @@ object BackendManager {
         "Fermyon Cloud" to "https://mecris-sync-v2-glo0zpfm.fermyon.app/"
     )
 
+    /** The URL to use given what the picker stored (null on a fresh install). Pure. */
+    fun resolveBaseUrl(stored: String?): String = stored ?: ENDPOINTS[1].second
+
     fun getBaseUrl(context: Context): String {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        return prefs.getString(KEY_BACKEND_URL, ENDPOINTS[1].second) ?: ENDPOINTS[1].second
+        return resolveBaseUrl(prefs.getString(KEY_BACKEND_URL, null))
     }
 
     fun setBaseUrl(context: Context, url: String) {
