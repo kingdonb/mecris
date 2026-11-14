@@ -95,12 +95,15 @@ pub fn pii_free_error(msg: &str) -> String {
 /// The key that was committed to the public deploy scripts. It can never authorize again.
 pub const BURNED_INTERNAL_KEY: &str = "test-internal-key";
 
+/// scripts/verify_spin_deploy.sh marks its wrong-key probe with this prefix. Not a secret.
+pub const VERIFY_PROBE_PREFIX: &str = "verify-probe-";
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Refusal { NoKey, BadKey, BurnedKey, BadSignature }
+pub enum Refusal { NoKey, BadKey, BurnedKey, Probe, BadSignature }
 
 impl Refusal {
     pub fn code(self) -> &'static str {
-        match self { Refusal::NoKey => "no_key", Refusal::BadKey => "bad_key", Refusal::BurnedKey => "burned_key", Refusal::BadSignature => "bad_signature" }
+        match self { Refusal::NoKey => "no_key", Refusal::BadKey => "bad_key", Refusal::BurnedKey => "burned_key", Refusal::Probe => "probe", Refusal::BadSignature => "bad_signature" }
     }
 }
 
@@ -240,8 +243,30 @@ mod tests {
     }
 
     #[test]
+    fn verify_probes_are_refused_as_probes_never_as_bad_keys() {
+        // bad_key raises the narrator's urgent "cron key and deployed key differ" item for
+        // the rest of the New York day; the deploy check's own wrong-key probe must not.
+        let k = "0123456789abcdef0123456789abcdef";
+        let probe = format!("{VERIFY_PROBE_PREFIX}not-the-key");
+        assert_eq!(check_internal_key(k, None, Some(&probe)), Err(Refusal::Probe));
+        assert_eq!(check_internal_key(k, Some(&probe), None), Err(Refusal::Probe));
+        assert_eq!(check_internal_key("", None, Some(&probe)), Err(Refusal::Probe));
+        // A probe never hides a real mismatch sent with it...
+        assert_eq!(check_internal_key(k, Some("wrong"), Some(&probe)), Err(Refusal::BadKey));
+        assert_eq!(check_internal_key(k, Some(&probe), Some("wrong")), Err(Refusal::BadKey));
+        // ...never authorizes, even if someone configured a probe-marked key...
+        assert_eq!(check_internal_key(&probe, None, Some(&probe)), Err(Refusal::Probe));
+        assert_eq!(check_internal_key(&probe, Some(&probe), None), Err(Refusal::Probe));
+        // ...and never stops the real key next to it from working.
+        assert_eq!(check_internal_key(k, Some(&probe), Some(k)), Ok(()));
+        // A bare prefix-alike is still a bad key.
+        assert_eq!(check_internal_key(k, None, Some("verify-probe")), Err(Refusal::BadKey));
+        assert_ne!(Refusal::Probe.code(), Refusal::BadKey.code());
+    }
+
+    #[test]
     fn refusal_codes_are_the_table_vocabulary() {
-        let codes: Vec<&str> = [Refusal::NoKey, Refusal::BadKey, Refusal::BurnedKey, Refusal::BadSignature].iter().map(|r| r.code()).collect();
-        assert_eq!(codes, ["no_key", "bad_key", "burned_key", "bad_signature"]);
+        let codes: Vec<&str> = [Refusal::NoKey, Refusal::BadKey, Refusal::BurnedKey, Refusal::Probe, Refusal::BadSignature].iter().map(|r| r.code()).collect();
+        assert_eq!(codes, ["no_key", "bad_key", "burned_key", "probe", "bad_signature"]);
     }
 }

@@ -1432,6 +1432,20 @@ mod tests {
         assert!(!src.contains(&needle), "send_twilio_sms must be removed, not kept as a fallback");
     }
 
+    #[test]
+    fn test_message_log_rows_carry_the_new_york_date() {
+        // Python and log-message write message_log.date as the America/New_York date; the
+        // database clock is GMT, so CURRENT_DATE is tomorrow from 19:00/20:00 New York time.
+        let src = include_str!("lib.rs");
+        let insert = ["INSERT INTO ", "message_log"].concat();
+        let lines: Vec<&str> = src.lines().filter(|l| l.contains(&insert)).collect();
+        assert!(lines.len() >= 3, "outbound, walk_ack/inbound and unknown-sender rows: {}", lines.len());
+        for l in lines {
+            assert!(!l.contains("CURRENT_DATE"), "GMT date in a message_log row: {}", l.trim());
+            assert!(l.contains("VALUES ((now() AT TIME ZONE 'America/New_York')::DATE,"), "no New York date: {}", l.trim());
+        }
+    }
+
     // --- Internal endpoints: fail closed, no published key, callers that can actually authenticate ---
     /// The router's decision for a caller. `signed_in_user` is kept to show it no longer matters:
     /// internal_request_check never looks at the bearer.
