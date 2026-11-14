@@ -1273,10 +1273,11 @@ def get_weather_full_report() -> Dict[str, Any]:
 
 @mcp.tool(description="Force an immediate scrape of Clozemaster and push to Beeminder.")
 async def trigger_language_sync() -> Dict[str, Any]:
-    """Manually trigger the Clozemaster to Beeminder sync process."""
-    guard = _neon_budget_governor.budget_gate("anthropic_api")
-    if guard and guard.get("budget_halted"):
-        return guard
+    """Manually trigger the Clozemaster to Beeminder sync process.
+
+    Deterministic (scrape + Beeminder push, no LLM), so not gated on the
+    anthropic_api bucket (#351).
+    """
     result = await language_sync_service.sync_all(dry_run=False)
     if not result.get("success", False):
         return {"error": result.get("error", "Sync failed")}
@@ -1567,9 +1568,8 @@ async def get_coaching_insight(user_id: str = None) -> Dict[str, Any]:
     target_user_id = resolve_target_user(user_id)
     if not target_user_id:
         return {"error": "Authentication Required"}
-    guard = _neon_budget_governor.budget_gate("anthropic_api")
-    if guard and guard.get("budget_halted"):
-        return guard
+    # Deterministic (services/coaching_service.py makes no LLM call) and on the
+    # nag path, so not gated on the anthropic_api bucket (#351).
     try:
         # Dependency Injection for the Service
         async def _get_obsidian_context():
