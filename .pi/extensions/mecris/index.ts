@@ -214,6 +214,7 @@ function formatStatus(data: Record<string, any>): string {
       : "- Beeminder: no urgent goal reported.",
     `- System: running=${pulse.running ?? "unknown"}; leader=${pulse.is_leader ?? "unknown"}; error=${pulse.last_error ?? "none"}.`,
     `- Daily: ${aggregate.score ?? "?/?"}; ${aggregate.satisfied_count ?? aggregate.goals_met ?? "?"} satisfied.`,
+    `- ${data.claude_plan?.summary_line ?? "Claude: unknown (no plan status)"}.`,
     `- Next: ${next}`,
   ].join("\n");
 }
