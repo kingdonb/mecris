@@ -61,6 +61,7 @@ This updates:
 - `mecris-go-project/app/build.gradle.kts` (Android `versionName` + `versionCode`)
 - `boris-fiona-walker/spin.toml` (Spin/WASM)
 - `mecris-go-spin/sync-service/spin.toml` (Spin/WASM)
+- `mecris-go-spin/sync-service/Cargo.toml` and `Cargo.lock` (the version `GET /version` reports)
 - `pyproject.toml` (Python)
 - `uv.lock` (Auto-synchronized via `uv lock`)
 - `web/package.json` (Web)
@@ -92,9 +93,8 @@ Wait for CI to run and pass on the PR. Mandatory checks run automatically.
 Wait for CI to pass on the PR, then merge to `main`:
 
 ```bash
-gh pr merge --squash --auto
-# Or merge once green:
-gh pr merge --squash --delete-branch
+# Squash merging is disabled for this repository (since 2026-11-13). Use a merge commit.
+gh pr merge --merge --delete-branch
 ```
 
 ### 5. Tag and Push Release on Main
@@ -131,6 +131,28 @@ Assets should include:
 
 ---
 
+### 8. Deploy the Spin API (a tag is not a deploy)
+
+The release workflow builds the Wasm bundle and attaches it to the GitHub Release. **Nothing deploys it.** The Spin API is deployed by hand from a machine on the home network, because the build needs the private JWKS endpoint.
+
+```bash
+# .env must define INTERNAL_API_KEY and TWILIO_WHATSAPP_FROM (see mecris-go-spin/DEPLOYMENT.md)
+./mecris-go-spin/sync-service/deploy-akamai.sh
+
+# Tests as the callers do, and waits until the new version is actually serving
+./scripts/verify_spin_deploy.sh
+```
+
+`spin aka app status` shows `Rolling Out` for a minute or two after the deploy command returns, and the old version answers during that time. Do not hand-test until the check script reports the new version.
+
+If `INTERNAL_API_KEY` was rotated, recreate the cron jobs afterwards with `scripts/setup_spin_cron.sh` (delete the old jobs first).
+
+### 9. Install the Android build
+
+Download the APK from the GitHub Release and install it. The app and the API do not have to ship together: an older app keeps working against a newer API.
+
+---
+
 ## Common Mistakes to Avoid
 
 | Mistake | Consequence | Fix |
@@ -141,6 +163,8 @@ Assets should include:
 | Forget `VC=nn` for Android | `versionCode` not incremented in APK | Specify `VC=nn` in `make bump-version` |
 | Push tag before merging version bump to `main` | Release built with old version | Merge PR to `main` first, then tag `main` |
 | Forget to run tests | Broken release | `make test` must pass |
+| Treat the tag as a deploy | The live API still runs the previous version | Run `deploy-akamai.sh`, then `scripts/verify_spin_deploy.sh` |
+| Test right after `spin aka deploy` returns | The old version answers during rollout and results mislead | Let `verify_spin_deploy.sh` wait for the new version |
 
 ---
 

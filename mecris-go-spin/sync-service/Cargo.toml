@@ -2,7 +2,7 @@
 name = "sync-service"
 authors = ["Kingdon B <kingdon@urmanac.com>"]
 description = ""
-version = "0.1.0"
+version = "0.2.0"
 rust-version = "1.78"
 edition = "2021"
 
