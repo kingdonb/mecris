@@ -256,6 +256,29 @@ def test_guard_reads_recent_rows_once(server):
     assert "sent_at >" in sql  # recent rows, future-dated ones included
 
 
+@pytest.mark.asyncio
+async def test_result_says_whether_the_row_was_logged(server):
+    conn, cur = _db()
+    result, _ = await _send(server, conn, {"sent": True, "method": "whatsapp_freeform"})
+    assert result["logged"] is True
+
+
+@pytest.mark.asyncio
+async def test_a_failed_log_write_is_reported_not_hidden(server):
+    # An unlogged WhatsApp is invisible to damping and the cap, so callers
+    # and the narrator must be able to tell.
+    conn, cur = _db()
+
+    def execute(sql, params=None):
+        if "INSERT INTO message_log" in sql:
+            raise RuntimeError("write failed")
+
+    cur.execute.side_effect = execute
+    result, _ = await _send(server, conn, {"sent": True, "method": "whatsapp_freeform"})
+    assert result["sent"] is True
+    assert result["logged"] is False
+
+
 # ---------------------------------------------------------------------------
 # Console fallback in twilio_sender
 # ---------------------------------------------------------------------------
