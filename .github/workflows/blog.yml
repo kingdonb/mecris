@@ -6,9 +6,9 @@ name: Blog
 on:
   push:
     branches: [main]
-    paths: ['blog/**', 'tests/test_blog_build.py', '.github/workflows/blog.yml']
+    paths: ['blog/**', '.github/workflows/blog.yml']
   pull_request:
-    paths: ['blog/**', 'tests/test_blog_build.py', '.github/workflows/blog.yml']
+    paths: ['blog/**', '.github/workflows/blog.yml']
   workflow_dispatch:
 
 permissions:
@@ -27,7 +27,7 @@ jobs:
       - name: Install build dependencies
         run: python3 -m pip install --user -r blog/requirements.txt pytest
       - name: Test the generator
-        run: python3 -m pytest -q -p no:cacheprovider tests/test_blog_build.py
+        run: python3 -m pytest -q -p no:cacheprovider --rootdir blog --confcutdir blog blog/test_build.py
       - name: Build site
         run: python3 blog/build.py --out _site
       - name: Upload Pages artifact

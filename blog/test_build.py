@@ -1,4 +1,8 @@
-"""Tests for the blog static site generator (blog/build.py)."""
+"""Tests for the blog static site generator (blog/build.py).
+
+Kept beside the generator, outside tests/, so they run without the server's
+dependencies: python -m pytest blog/test_build.py --rootdir blog --confcutdir blog
+"""
 
 import importlib.util
 import xml.etree.ElementTree as ET
@@ -9,8 +13,7 @@ import pytest
 
 pytest.importorskip("markdown")
 
-REPO = Path(__file__).resolve().parent.parent
-_spec = importlib.util.spec_from_file_location("blog_build", REPO / "blog" / "build.py")
+_spec = importlib.util.spec_from_file_location("blog_build", Path(__file__).resolve().parent / "build.py")
 blog = importlib.util.module_from_spec(_spec)
 import sys
 sys.modules["blog_build"] = blog  # dataclasses needs the module registered
