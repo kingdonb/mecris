@@ -677,8 +677,13 @@ async fn handle_request_phone_verification_post(req: Request) -> anyhow::Result<
     let from = variables::get("twilio_whatsapp_from").await.unwrap_or_default();
     let template = variables::get("twilio_status_template_sid").await.unwrap_or_default();
     send_twilio_whatsapp_template(&sid, &auth, &from, &vr.phone_number, &template, &verification_variables(&code)).await?;
-    json_response(200, &"Verification code sent")
+    Ok(Response::builder().status(200).header("content-type", "application/json").body(verification_sent_body()?)?)
 }
+
+/// Body of a successful verification request. Android parses it as SyncResponse.
+fn verification_sent_body() -> anyhow::Result<String> { Ok(serde_json::to_string(&"Verification code sent")?) }
+/// Body of a successful confirmation.
+fn phone_verified_body() -> anyhow::Result<String> { Ok(serde_json::to_string(&"Phone verified")?) }
 
 async fn handle_confirm_phone_verification_post(req: Request) -> anyhow::Result<Response<String>> {
     let uid = match extract_user_id(req.headers().get("authorization")).await { Some(id) => id, None => return Ok(text_response(401, "Unauthorized")?) };
@@ -697,7 +702,7 @@ async fn handle_confirm_phone_verification_post(req: Request) -> anyhow::Result<
     if hex::encode(Sha256::digest(cr.code.as_bytes())) == db_hash {
         conn.execute("UPDATE users SET phone_verified = true WHERE pocket_id_sub = $1", &[ParameterValue::Str(uid.clone())]).await?;
         conn.execute("DELETE FROM phone_verifications WHERE user_id = $1", &[ParameterValue::Str(uid.clone())]).await?;
-        json_response(200, &"Phone verified")
+        Ok(Response::builder().status(200).header("content-type", "application/json").body(phone_verified_body()?)?)
     } else {
         conn.execute("UPDATE phone_verifications SET attempts = attempts + 1 WHERE user_id = $1", &[ParameterValue::Str(uid.clone())]).await?;
         text_response(400, "Invalid code")
@@ -1312,6 +1317,34 @@ mod tests {
         assert!(is_walk_ack(&parse_form("Body=yes")));
         assert!(!is_walk_ack(&parse_form("Body=no&ProfileName=Yesenia")));
         assert!(!is_walk_ack(&parse_form("From=%2B15005550006")));
+    }
+
+    #[test]
+    fn test_walk_ack_needs_yes_as_a_whole_word() {
+        // A match pushes +1 to the walk goal, so 'yesterday' must not count (#369).
+        assert!(is_walk_ack(&parse_form("Body=yes")));
+        assert!(is_walk_ack(&parse_form("Body=Yes%21")));
+        assert!(is_walk_ack(&parse_form("Body=ok+YES+done")));
+        assert!(!is_walk_ack(&parse_form("Body=yesterday")));
+        assert!(!is_walk_ack(&parse_form("Body=eyes")));
+        assert!(!is_walk_ack(&parse_form("Body=YESSS")));
+        assert!(!is_walk_ack(&parse_form("Body=ok")));
+    }
+
+    // --- #358 slice: Android parses every verification response as a SyncResponse object ---
+    const STATUS_CONTRACT: &str = include_str!("../../../contracts/spin_status_response.json");
+
+    #[test]
+    fn test_verification_sent_body_matches_the_status_contract() {
+        let want: serde_json::Value = serde_json::from_str(STATUS_CONTRACT).unwrap();
+        let got: serde_json::Value = serde_json::from_str(&verification_sent_body().unwrap()).unwrap();
+        assert_eq!(got, want);
+    }
+
+    #[test]
+    fn test_phone_verified_body_is_a_status_object() {
+        let got: serde_json::Value = serde_json::from_str(&phone_verified_body().unwrap()).unwrap();
+        assert_eq!(got, json!({"status": "success", "message": "Phone verified"}));
     }
 
     // --- kingdonb/mecris#167: Twilio failures are summarized without PII ---
