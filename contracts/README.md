@@ -61,13 +61,27 @@ Rules (all local times are America/New_York, hard-coded per the operator ruling;
 
 - **Phone verified**: only `users.phone_verified = true` is eligible.
 - **Vacation**: `prefs.vacation_mode` true, or `users.vacation_mode_until` after now. A past date does not block.
-- **Days**: `prefs.enabled_days`, if present, lists lower-case weekday abbreviations (`mon` .. `sun`); absent means every day.
+- **Prefs**: a NULL `users.notification_prefs` reads as `{}`, so every key takes its default.
+- **Days**: `prefs.enabled_days` lists weekdays. The canonical form is the full English name
+  (`monday` .. `sunday`, as the v7 migration stored it); 3-letter abbreviations (`mon` .. `sun`)
+  are an alias. Match case-insensitively on the first three letters. Absent, NULL or an empty
+  list means every day (the v7 migration defaulted a missing value to `[]`).
 - **Types**: `prefs.message_types`, if present, must include `walk_reminder`; absent means all types.
 - **Window**: the New York hour must be within `time_window_start..time_window_end`, both inclusive (defaults 13 and 17). Live prefs 14/17 mean 14:00 to 17:59.
 - **Walked**: no reminder once a 2000+ step walk is recorded for today's New York date.
 - **Stand-down**: Spin stands down while the `android_client` heartbeat is younger than the Spin variable `reminder_standdown_minutes` (default 240; 0 disables).
-- **Damping**: no send while a counted nag is under 240 minutes old. Counted rows are any type except `phone_verification`, on channel `whatsapp` with status `sent` or `failed`, or on channel `android_native` with status `shown`. Inbound (`received`) and console (`not_sent`) rows never count.
-- **Daily cap**: `prefs.max_messages_per_day` (default 3) counts `whatsapp` rows with status `sent` or `failed`, any type except `phone_verification`, whose `sent_at` falls on today's New York date. Never count by the `message_log.date` column, which Spin fills in GMT. Local phone nags (`android_native`) do not count toward the cap.
+- **Damping**: no send while a counted nag is under 240 minutes old. Counted rows are any type except `phone_verification`, on channel `whatsapp` with status `sent`, `failed` or NULL, or on channel `android_native` with status `shown`. Inbound (`received`) and console (`not_sent`) rows never count.
+- **Daily cap**: `prefs.max_messages_per_day` (default 3) counts `whatsapp` rows with status `sent`, `failed` or NULL, any type except `phone_verification`, whose `sent_at` falls on today's New York date. Never count by the `message_log.date` column, which Spin fills in GMT. Local phone nags (`android_native`) do not count toward the cap.
+- **NULL columns fail closed**: a NULL `channel` reads as `whatsapp` (the column default), and a
+  `whatsapp` row with NULL status is an outbound send. Existing writers produce such rows
+  (`scheduler.py` logs `android_dark` alerts with no status; the `UndefinedColumn` fallback in
+  `mcp_server.py` writes neither status nor channel). New writers should still set both.
+- **Minutes**: every age is whole minutes, `floor(seconds / 60)`. In Postgres that is
+  `FLOOR(EXTRACT(EPOCH FROM now() - t) / 60)::BIGINT` (a bare `CAST(... AS BIGINT)` rounds, and
+  a bare division arrives in Spin as `DbValue::Decimal`); in Python, `int(seconds // 60)`. This
+  applies to the stand-down heartbeat age and to pulse `minutes_since` too.
+- **Future rows**: a counted row whose `sent_at` is at or after now damps (its age is negative),
+  matching the SQL form `sent_at > now() - interval '240 minutes'`.
 
 The Python send guard implements only damping and the daily cap; it consumes the
 cases tagged `damping` or `daily_cap`, whose other inputs are all eligible.

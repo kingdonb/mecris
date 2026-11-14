@@ -12,13 +12,13 @@
     "eligible": "send: every gate passed",
     "phone_unverified": "skip: users.phone_verified is not true",
     "vacation": "skip: prefs.vacation_mode is true, or users.vacation_mode_until is after now",
-    "day_disabled": "skip: prefs.enabled_days is set and omits today's New York weekday",
+    "day_disabled": "skip: prefs.enabled_days is a non-empty list that omits today's New York weekday (full names or 3-letter abbreviations, any case)",
     "type_disabled": "skip: prefs.message_types is set and omits walk_reminder",
     "outside_window": "skip: the New York hour is outside time_window_start..time_window_end (both inclusive)",
     "walked_today": "skip: a walk of 2000+ steps is recorded for today's New York date",
     "phone_active": "stand_down: the android_client heartbeat is younger than reminder_standdown_minutes (0 disables)",
-    "damped": "skip: a counted nag on any channel is under damping_minutes old",
-    "daily_cap": "skip: whatsapp nags sent or failed today (New York date of sent_at) >= max_messages_per_day"
+    "damped": "skip: a counted nag on any channel is under damping_minutes old (floor of seconds / 60; a row dated after now counts)",
+    "daily_cap": "skip: whatsapp nags sent, failed or NULL-status today (New York date of sent_at) >= max_messages_per_day"
   },
   "base": {
     "now": "2026-11-14T20:00:00Z",

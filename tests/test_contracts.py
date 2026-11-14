@@ -153,19 +153,34 @@ def resolve(case):
     return inputs
 
 
+WHATSAPP_COUNTED = ("sent", "failed", None)  # NULL status is an outbound send (fail closed)
+
+
+def _channel(row):
+    return row.get("channel") or "whatsapp"  # NULL channel reads as the column default
+
+
 def _counts_for_damping(row):
     if row["type"] == "phone_verification":
         return False
-    if row["channel"] == "whatsapp":
-        return row["status"] in ("sent", "failed")
-    if row["channel"] == "android_native":
-        return row["status"] == "shown"
+    if _channel(row) == "whatsapp":
+        return row.get("status") in WHATSAPP_COUNTED
+    if _channel(row) == "android_native":
+        return row.get("status") == "shown"
     return False
 
 
 def _counts_for_cap(row):
-    return (row["type"] != "phone_verification" and row["channel"] == "whatsapp"
-            and row["status"] in ("sent", "failed"))
+    return (row["type"] != "phone_verification" and _channel(row) == "whatsapp"
+            and row.get("status") in WHATSAPP_COUNTED)
+
+
+def _day_enabled(days, local):
+    """Full weekday names or 3-letter abbreviations, any case; empty or absent = every day."""
+    if not days:
+        return True
+    today = local.strftime("%a").lower()
+    return any(str(d).strip().lower()[:3] == today for d in days)
 
 
 def failing_gates(inputs):
@@ -174,15 +189,14 @@ def failing_gates(inputs):
     defaults = consts["default_prefs"]
     now = ts(inputs["now"])
     local = now.astimezone(NY)
-    prefs = inputs["prefs"]
+    prefs = inputs["prefs"] or {}
     out = []
     if inputs["phone_verified"] is not True:
         out.append(("skip", "phone_unverified"))
     until = inputs["vacation_mode_until"]
     if prefs.get("vacation_mode") or (until and ts(until) > now):
         out.append(("skip", "vacation"))
-    days = prefs.get("enabled_days")
-    if days is not None and local.strftime("%a").lower() not in [d.lower() for d in days]:
+    if not _day_enabled(prefs.get("enabled_days"), local):
         out.append(("skip", "day_disabled"))
     types = prefs.get("message_types")
     if types is not None and "walk_reminder" not in types:
@@ -198,8 +212,9 @@ def failing_gates(inputs):
     if standdown > 0 and beat is not None and beat < standdown:
         out.append(("stand_down", "phone_active"))
     log = inputs["message_log"]
+    # minutes = floor(seconds / 60); a row dated after now has a negative age and damps
     ages = [int((now - ts(r["sent_at"])).total_seconds() // 60) for r in log if _counts_for_damping(r)]
-    if any(0 <= age < consts["damping_minutes"] for age in ages):
+    if any(age < consts["damping_minutes"] for age in ages):
         out.append(("skip", "damped"))
     cap = prefs.get("max_messages_per_day", defaults["max_messages_per_day"])
     today = [r for r in log if _counts_for_cap(r) and ts(r["sent_at"]).astimezone(NY).date() == local.date()]
