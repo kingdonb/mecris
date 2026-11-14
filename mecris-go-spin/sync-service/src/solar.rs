@@ -93,7 +93,9 @@ fn to_epoch(date: NaiveDate, minutes: f64) -> i64 {
 }
 
 /// Sunrise and sunset (Unix seconds) on `date` at lat/lon (east positive). None when the
-/// sun neither rises nor sets that day.
+/// sun neither rises nor sets that day. The service uses solar_day; this checks the
+/// NOAA golden times.
+#[cfg(test)]
 pub fn sun_times(date: NaiveDate, lat: f64, lon: f64) -> Option<(i64, i64)> {
     match sun_minutes(date, lat, lon) {
         Sun::RiseSet(r, s) => Some((to_epoch(date, r), to_epoch(date, s))),
