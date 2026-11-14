@@ -17,6 +17,7 @@ import hashlib
 import re
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -115,3 +116,34 @@ def test_no_personal_numbers_in_tracked_files():
         "allowlisted number. Replace it with a Twilio magic number (+1500555xxxx), or, for an "
         "already-public business number, add its SHA-256 to tests/fixtures/phone_allowlist_sha256.txt."
     )
+
+
+def _scan_one(tmp_path, monkeypatch, text):
+    monkeypatch.setattr(sys.modules[__name__], "REPO_ROOT", tmp_path)
+    f = tmp_path / "sample.txt"
+    f.write_text(text, encoding="utf-8")
+    return find_unlisted_numbers([f], set())
+
+
+def test_scan_catches_percent_encoded_plus(tmp_path, monkeypatch):
+    # Twilio form bodies and webhook vectors carry '+' as %2B.
+    dialable = "1" + "2" * 10
+    assert _scan_one(tmp_path, monkeypatch, "From=%2B" + dialable + "&Body=hi\n") == ["sample.txt:1"]
+    assert _scan_one(tmp_path, monkeypatch, "To=whatsapp%3A%2b" + dialable + "\n") == ["sample.txt:1"]
+
+
+def test_scan_catches_bare_nanp_digits(tmp_path, monkeypatch):
+    # The bare 1NXXNXXXXXX form, e.g. a JSON key, with no '+' in front.
+    dialable = "1" + "2" * 10
+    assert _scan_one(tmp_path, monkeypatch, '{"' + dialable + '": {"sent": 1}}\n') == ["sample.txt:1"]
+
+
+def test_scan_ignores_bare_digits_that_are_not_dialable(tmp_path, monkeypatch):
+    lines = [
+        "ts=1700000000000",              # epoch millis, 13 digits
+        "id 1" + "0" * 10,                # exchange starts with 0
+        "v=1.2" + "2" * 10,               # part of a decimal
+        "magic " + "1500555" + "0006",    # Twilio magic number
+        "fiction " + "1202555" + "0143",  # NANP fiction range
+    ]
+    assert _scan_one(tmp_path, monkeypatch, "\n".join(lines) + "\n") == []
