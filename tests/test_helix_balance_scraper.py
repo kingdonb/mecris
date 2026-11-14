@@ -256,3 +256,41 @@ def test_provision_helix_token_stores_encrypted(monkeypatch):
 def test_provision_helix_token_noop_without_env(monkeypatch):
     monkeypatch.delenv("HELIX_BILLING_API_TOKEN", raising=False)
     assert scr.provision_helix_token("uuid-1") is False
+
+
+# ---------------------------------------------------------------------------
+# helix_balance_dark alert logs to real message_log columns (kingdonb/mecris#167)
+# ---------------------------------------------------------------------------
+
+def test_balance_dark_alert_inserts_status_column(monkeypatch):
+    """message_log has no compliance_status column; the insert must use status."""
+    import asyncio
+    import sys
+    import types
+    import scripts.helix_balance_scraper as scr
+
+    executed = []
+
+    class FakeCur:
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+        def execute(self, sql, params=None): executed.append(sql)
+        def fetchone(self): return None
+
+    class FakeConn:
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+        def cursor(self): return FakeCur()
+        def commit(self): pass
+
+    monkeypatch.setattr(scr, "_neon_url", lambda: "postgres://fake")
+    monkeypatch.setattr(scr.psycopg2, "connect", lambda url: FakeConn())
+    fake_sender = types.SimpleNamespace(smart_send_message=lambda msg: {"sent": True})
+    monkeypatch.setitem(sys.modules, "twilio_sender", fake_sender)
+
+    asyncio.run(scr._alert_balance_dark("user-1", 3))
+
+    inserts = [s for s in executed if s.lstrip().upper().startswith("INSERT INTO MESSAGE_LOG")]
+    assert len(inserts) == 1
+    assert "compliance_status" not in inserts[0]
+    assert "status" in inserts[0]

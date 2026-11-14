@@ -870,6 +870,9 @@ async fn push_to_beeminder(uid: &str, slug: &str, val: f64, comment: &str, conn:
     Ok(())
 }
 
+/// PII-free summary of a failed Twilio API call (kingdonb/mecris#167). Spec pending.
+fn twilio_failure_summary(_http_status: u16, _body: &str) -> String { String::new() }
+
 async fn send_twilio_sms(sid: &str, tok: &str, from: &str, to: &str, msg: &str) -> anyhow::Result<()> {
     let auth = base64::engine::general_purpose::STANDARD.encode(format!("{}:{}", sid, tok));
     let body = format!("From={}&To={}&Body={}", urlencoding::encode(from), urlencoding::encode(to), urlencoding::encode(msg));
@@ -970,6 +973,30 @@ async fn handle_weather_heuristic_get(_r: Request) -> anyhow::Result<Response<St
 mod tests {
     use super::*;
     use serde_json::json;
+
+    // --- kingdonb/mecris#167: Twilio failures are summarized without PII ---
+    const TWILIO_21211: &str = r#"{"code": 21211, "message": "The 'To' number +15551234567 is not a valid phone number.", "more_info": "https://www.twilio.com/docs/errors/21211", "status": 400}"#;
+
+    #[test]
+    fn test_twilio_failure_summary_keeps_status_and_code() {
+        assert_eq!(twilio_failure_summary(400, TWILIO_21211), "twilio_http_400 code=21211");
+    }
+
+    #[test]
+    fn test_twilio_failure_summary_never_contains_phone() {
+        assert!(!twilio_failure_summary(400, TWILIO_21211).contains("5551234567"));
+        assert!(!twilio_failure_summary(502, "upstream said +15551234567").contains("5551234567"));
+    }
+
+    #[test]
+    fn test_twilio_failure_summary_non_json_body_is_status_only() {
+        assert_eq!(twilio_failure_summary(502, "<html>Bad Gateway</html>"), "twilio_http_502");
+    }
+
+    #[test]
+    fn test_twilio_failure_summary_string_code_is_dropped() {
+        assert_eq!(twilio_failure_summary(400, r#"{"code": "21211 +15551234567"}"#), "twilio_http_400");
+    }
 
     #[test]
     fn test_parse_review_forecast_with_objects() {

@@ -426,3 +426,58 @@ class TestSmartSendMessage:
         variables = json.loads(inst.messages.create.call_args[1]["content_variables"])
         assert variables["1"] == "Activity"  # default v1
         assert variables["2"] == "Pending"   # default v2
+
+
+# ---------------------------------------------------------------------------
+# PII-free failure logging (kingdonb/mecris#167)
+# ---------------------------------------------------------------------------
+
+_PHONE = "+15551234567"
+_PHONE_DIGITS = "5551234567"
+
+
+class _FakeTwilioRestException(Exception):
+    """Shape of twilio.base.exceptions.TwilioRestException: msg embeds the 'To' number."""
+
+    def __init__(self, status=400, code=21211):
+        self.status = status
+        self.code = code
+        self.msg = f"The 'To' number {_PHONE} is not a valid phone number."
+        super().__init__(f"HTTP {status} error: Unable to create record: {self.msg}")
+
+
+class TestTwilioErrorSummary:
+    def test_rest_exception_keeps_status_and_code(self):
+        from twilio_sender import twilio_error_summary
+        assert twilio_error_summary(_FakeTwilioRestException()) == "twilio_http_400 code=21211"
+
+    def test_rest_exception_summary_has_no_phone(self):
+        from twilio_sender import twilio_error_summary
+        assert _PHONE_DIGITS not in twilio_error_summary(_FakeTwilioRestException())
+
+    def test_generic_exception_reports_class_name_only(self):
+        from twilio_sender import twilio_error_summary
+        assert twilio_error_summary(ValueError(f"bad number {_PHONE}")) == "ValueError"
+
+    def test_non_integer_code_is_dropped(self):
+        from twilio_sender import twilio_error_summary
+        exc = _FakeTwilioRestException(status=400, code=MagicMock())
+        assert twilio_error_summary(exc) == "twilio_http_400"
+
+
+class TestFailureLogsHaveNoPii:
+    def test_send_message_failure_log_has_code_not_phone(self, caplog):
+        cls = MagicMock(return_value=MagicMock(**{"messages.create.side_effect": _FakeTwilioRestException()}))
+        with patch.dict(os.environ, _CREDS, clear=True), patch("twilio_sender.Client", cls):
+            with caplog.at_level("ERROR", logger="mecris.twilio"):
+                assert send_message("hi", to_number=_PHONE) is False
+        assert _PHONE_DIGITS not in caplog.text
+        assert "code=21211" in caplog.text
+
+    def test_send_template_failure_log_has_code_not_phone(self, caplog):
+        cls = MagicMock(return_value=MagicMock(**{"messages.create.side_effect": _FakeTwilioRestException()}))
+        with patch.dict(os.environ, _CREDS, clear=True), patch("twilio_sender.Client", cls):
+            with caplog.at_level("ERROR", logger="mecris.twilio"):
+                assert send_whatsapp_template("HX123", {"1": "a"}, to_number=_PHONE) is False
+        assert _PHONE_DIGITS not in caplog.text
+        assert "code=21211" in caplog.text

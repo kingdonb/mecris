@@ -14,6 +14,11 @@ from dotenv import load_dotenv
 load_dotenv()
 logger = logging.getLogger("mecris.twilio")
 
+def twilio_error_summary(exc: BaseException) -> str:
+    """PII-free one-line summary of a Twilio failure (kingdonb/mecris#167). Spec pending."""
+    return ""
+
+
 def send_sms(message: str, to_number: Optional[str] = None) -> bool:
     """Send SMS via Twilio (DISABLED: requires A2P 10DLC registration which is not active)."""
     logger.error("SMS attempted but DISABLED: No A2P campaign active. SMS will fail and incur costs.")
