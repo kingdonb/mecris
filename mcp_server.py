@@ -61,7 +61,9 @@ load_dotenv(dotenv_path=dotenv_path)
 from mcp.server.fastmcp import FastMCP
 from fastapi import FastAPI, Depends, HTTPException, Request, Security
 from fastapi.middleware.cors import CORSMiddleware
-from services.auth_service import get_current_user, is_standalone_mode
+from fastapi.security import HTTPAuthorizationCredentials
+from services import auth_service
+from services.auth_service import get_current_user, is_standalone_mode, security as bearer_scheme
 
 from obsidian_client import ObsidianMCPClient
 from beeminder_client import BeeminderClient
@@ -144,10 +146,14 @@ mcp = FastMCP("mecris")
 # Create FastAPI app for HTTP endpoints
 app = FastAPI(title="Mecris API")
 
+# The local web UI (Vite dev server). Also the only browser Origin that may
+# use the standalone default-user fallback.
+LOCAL_WEB_ORIGINS = ("http://localhost:5173", "http://127.0.0.1:5173")
+
 # Add CORS middleware for Web UI development
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_origins=list(LOCAL_WEB_ORIGINS),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -162,11 +168,15 @@ def bridge_host() -> str:
     return os.getenv("MECRIS_BRIDGE_HOST", "").strip() or DEFAULT_BRIDGE_HOST
 
 
+LOOPBACK_HOST_NAMES = frozenset({"localhost", "127.0.0.1", "::1"})
+
+
 def _is_loopback_client(request: Request) -> bool:
     """True only when the TCP peer is a loopback address.
 
-    Uses the socket peer (request.client), never the Host header, so a LAN
-    caller cannot claim to be local by spoofing Host.
+    Uses the socket peer (request.client), so a LAN caller cannot claim to
+    be local by spoofing Host. On its own this does not stop a browser on
+    this machine; see _is_trusted_local_request.
     """
     import ipaddress
     host = request.client.host if request.client else None
@@ -180,21 +190,87 @@ def _is_loopback_client(request: Request) -> bool:
     return addr.is_loopback or bool(mapped and mapped.is_loopback)
 
 
-async def get_authorized_user(request: Request, user_id: Optional[str] = Depends(get_current_user)):
-    """FastAPI Dependency: Enforces authentication and resolves target user ID."""
-    mode = os.getenv("MECRIS_MODE", "standalone")
-    
-    if user_id:
-        return user_id
+def _host_header_name(request: Request) -> str:
+    """Host header without port or brackets, lower-cased ('' if absent)."""
+    raw = (request.headers.get("host") or "").strip().lower()
+    if raw.startswith("["):
+        return raw[1:].split("]", 1)[0]
+    return raw.rsplit(":", 1)[0] if raw.count(":") == 1 else raw
 
-    if mode == "standalone" and _is_loopback_client(request):
-        # Standalone/trusted mode: only loopback callers may fall back to the
-        # local default user. Anyone else must present a bearer token.
+
+def _is_trusted_local_request(request: Request) -> bool:
+    """True for a local process or the local web UI, not for a web page.
+
+    All of these must hold:
+    - the TCP peer is loopback (a LAN host cannot qualify);
+    - the Host header names loopback (defeats DNS rebinding, where the peer
+      is loopback but Host is the attacker's domain);
+    - Origin is absent or the local web UI, and Sec-Fetch-Site is not
+      cross-site (defeats cross-site simple requests, i.e. CSRF).
+    """
+    if not _is_loopback_client(request):
+        return False
+    if _host_header_name(request) not in LOOPBACK_HOST_NAMES:
+        return False
+    origin = request.headers.get("origin")
+    if origin is not None and origin not in LOCAL_WEB_ORIGINS:
+        return False
+    if (request.headers.get("sec-fetch-site") or "").lower() == "cross-site":
+        return False
+    return True
+
+
+def _verify_signed_token(token: str) -> Optional[str]:
+    """Return the sub of a JWKS-verified RS256 token from our issuer, else None.
+
+    Standalone verify_token (services/auth_service.py) skips the signature
+    check, so callers that are not trusted-local go through this instead.
+    """
+    import jwt
+    try:
+        signing_key = auth_service._get_jwks_client().get_signing_key_from_jwt(token)
+        payload = jwt.decode(
+            token, signing_key.key, algorithms=["RS256"], options={"verify_aud": False}
+        )
+    except Exception as e:
+        # Exception type only: messages can echo token contents.
+        print(f"AUTH FAILURE: bearer token failed verification ({type(e).__name__})", file=sys.stderr)
+        return None
+    if payload.get("iss") != os.getenv("OIDC_ISSUER", auth_service.POCKET_ID_URL):
+        print("AUTH FAILURE: bearer token issuer mismatch", file=sys.stderr)
+        return None
+    return payload.get("sub") or None
+
+
+async def get_authorized_user(
+    request: Request,
+    credentials: Optional[HTTPAuthorizationCredentials] = Security(bearer_scheme),
+    user_id: Optional[str] = Depends(get_current_user),
+):
+    """FastAPI Dependency: Enforces authentication and resolves target user ID.
+
+    Cloud mode: get_current_user has already verified the token signature.
+    Standalone mode: a trusted local request (see _is_trusted_local_request)
+    may use the default user or an unverified token, as before. Everyone else
+    needs a token that passes the JWKS signature check.
+    """
+    mode = os.getenv("MECRIS_MODE", "standalone")
+
+    if mode != "standalone":
+        if user_id:
+            return user_id
+    elif _is_trusted_local_request(request):
+        if user_id:
+            return user_id
         resolved_id = credentials_manager.resolve_user_id()
         if resolved_id:
             return resolved_id
-    
-    # Multi-tenant mode, a non-loopback caller, or no local user: REJECT.
+    elif credentials and credentials.credentials:
+        verified_id = await asyncio.to_thread(_verify_signed_token, credentials.credentials)
+        if verified_id:
+            return verified_id
+
+    # No verified user, an untrusted caller, or no local user: REJECT.
     print(f"AUTH FAILURE: No valid user_id found (mode={mode})", file=sys.stderr)
     raise HTTPException(status_code=401, detail="Authentication Required")
 
