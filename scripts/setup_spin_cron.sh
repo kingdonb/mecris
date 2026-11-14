@@ -7,8 +7,11 @@
 # therefore means: redeploy (deploy-akamai.sh), then rerun this script.
 #
 # Usage: ./scripts/setup_spin_cron.sh
-#   FAILOVER_SCHEDULES="0 9 * * *;0 10 * * *" to also create failover-sync jobs
-#   (copy the schedules from `spin aka cron list` before deleting the old jobs).
+# The jobs it creates match what `spin aka cron list` showed on 2026-11-13:
+#   trigger-reminders   0 */2 * * *
+#   failover-sync-edt   5 4 * * *
+#   failover-sync-est   5 5 * * *
+# Delete the old jobs of the same names first (spin aka cron delete <name>).
 
 set -euo pipefail
 
@@ -35,19 +38,16 @@ spin aka cron create \
   --schedule "0 */2 * * *" \
   --name "trigger-reminders"
 
-if [[ -n "${FAILOVER_SCHEDULES:-}" ]]; then
-    i=0
-    IFS=';' read -ra SCHEDULES <<< "$FAILOVER_SCHEDULES"
-    for schedule in "${SCHEDULES[@]}"; do
-        i=$((i + 1))
-        spin aka cron create \
-          --app-name mecris-go-api \
-          --path-and-query "/internal/failover-sync?key=${INTERNAL_API_KEY}" \
-          --schedule "$schedule" \
-          --name "failover-sync-$i"
-    done
-else
-    echo "FAILOVER_SCHEDULES not set: failover-sync jobs were not created."
-fi
+spin aka cron create \
+  --app-name mecris-go-api \
+  --path-and-query "/internal/failover-sync?key=${INTERNAL_API_KEY}" \
+  --schedule "5 4 * * *" \
+  --name "failover-sync-edt"
+
+spin aka cron create \
+  --app-name mecris-go-api \
+  --path-and-query "/internal/failover-sync?key=${INTERNAL_API_KEY}" \
+  --schedule "5 5 * * *" \
+  --name "failover-sync-est"
 
 echo "Done. Verify with: spin aka cron list --app-name mecris-go-api"
