@@ -23,8 +23,10 @@ def standalone_client():
     with env_patch, db_patch:
         from mcp_server import app
         from fastapi.testclient import TestClient
-        # The default-user fallback is loopback-only (#39).
-        yield TestClient(app, client=("127.0.0.1", 50000))
+        # The default-user fallback needs a loopback peer and a loopback
+        # Host name (#39).
+        yield TestClient(app, client=("127.0.0.1", 50000),
+                         base_url="http://localhost:8080")
     sys.modules.pop("mcp_server", None)
 
 
