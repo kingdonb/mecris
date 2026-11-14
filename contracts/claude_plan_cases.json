@@ -1,0 +1,127 @@
+{
+  "_doc": "Claude plan state (#344). Each case gives a reading (a claude_plan_usage_readings row, or null) and 'now'; expect is what claude_plan_usage.derive_state and summarize return. fresh_window_kinds lists the windows whose resets_at is after now, in reading order. Rules: a reading older than 24 h (strictly) is stale; a window is fresh only while resets_at > now; with no fresh weekly_all window the state is unknown; otherwise the worst fresh window decides: >= 100 exhausted, > 80 constrained, else available. Reset times in summary_line are shown in America/New_York as '%a %-I:%M %p'. Percentages are printed with no decimals; avoid .5 values, whose rounding differs between languages.",
+  "version": 1,
+  "cases": [
+    {
+      "name": "fresh",
+      "now": "2026-11-14T20:00:00Z",
+      "reading": {"plan": "ultra", "verified": false, "source": "manual", "observed_at": "2026-11-14T19:00:00Z",
+                  "windows": [{"kind": "weekly_all", "pct_used": 62.4, "resets_at": "2026-11-16T09:00:00Z"},
+                              {"kind": "session", "pct_used": 20.0, "resets_at": "2026-11-14T23:00:00Z"}]},
+      "expect": {"state": "available", "reason": "weekly_all at 62%", "stale": false,
+                 "summary_line": "Claude: available (62% weekly, resets Mon 4:00 AM)",
+                 "fresh_window_kinds": ["weekly_all", "session"]}
+    },
+    {
+      "name": "no_session_window",
+      "now": "2026-11-14T20:00:00Z",
+      "reading": {"plan": "ultra", "verified": null, "source": "manual", "observed_at": "2026-11-14T19:00:00Z",
+                  "windows": [{"kind": "weekly_all", "pct_used": 40.0, "resets_at": "2026-11-16T09:00:00Z"},
+                              {"kind": "weekly_fable", "pct_used": 10.0, "resets_at": "2026-11-16T09:00:00Z"}]},
+      "expect": {"state": "available", "reason": "weekly_all at 40%", "stale": false,
+                 "summary_line": "Claude: available (40% weekly, resets Mon 4:00 AM)",
+                 "fresh_window_kinds": ["weekly_all", "weekly_fable"]}
+    },
+    {
+      "name": "expired_session_window_is_ignored",
+      "now": "2026-11-14T20:00:00Z",
+      "reading": {"plan": "ultra", "verified": false, "source": "manual", "observed_at": "2026-11-14T18:00:00Z",
+                  "windows": [{"kind": "weekly_all", "pct_used": 30.0, "resets_at": "2026-11-16T09:00:00Z"},
+                              {"kind": "session", "pct_used": 95.0, "resets_at": "2026-11-14T19:30:00Z"}]},
+      "expect": {"state": "available", "reason": "weekly_all at 30%", "stale": false,
+                 "summary_line": "Claude: available (30% weekly, resets Mon 4:00 AM)",
+                 "fresh_window_kinds": ["weekly_all"]}
+    },
+    {
+      "name": "exactly_24h_old_is_still_fresh",
+      "now": "2026-11-14T20:00:00Z",
+      "reading": {"plan": "ultra", "verified": null, "source": "manual", "observed_at": "2026-11-13T20:00:00Z",
+                  "windows": [{"kind": "weekly_all", "pct_used": 55.0, "resets_at": "2026-11-16T09:00:00Z"}]},
+      "expect": {"state": "available", "reason": "weekly_all at 55%", "stale": false,
+                 "summary_line": "Claude: available (55% weekly, resets Mon 4:00 AM)",
+                 "fresh_window_kinds": ["weekly_all"]}
+    },
+    {
+      "name": "over_24h_old",
+      "now": "2026-11-14T20:00:00Z",
+      "reading": {"plan": "ultra", "verified": null, "source": "manual", "observed_at": "2026-11-13T19:59:00Z",
+                  "windows": [{"kind": "weekly_all", "pct_used": 55.0, "resets_at": "2026-11-16T09:00:00Z"}]},
+      "expect": {"state": "unknown", "reason": "reading is stale", "stale": true,
+                 "summary_line": "Claude: unknown (reading is stale)",
+                 "fresh_window_kinds": []}
+    },
+    {
+      "name": "weekly_window_past_its_reset",
+      "now": "2026-11-14T20:00:00Z",
+      "reading": {"plan": "ultra", "verified": null, "source": "manual", "observed_at": "2026-11-14T08:00:00Z",
+                  "windows": [{"kind": "weekly_all", "pct_used": 97.0, "resets_at": "2026-11-14T09:00:00Z"}]},
+      "expect": {"state": "unknown", "reason": "weekly window has reset since the last reading", "stale": true,
+                 "summary_line": "Claude: unknown (weekly window has reset since the last reading)",
+                 "fresh_window_kinds": []}
+    },
+    {
+      "name": "reset_at_exactly_now_counts_as_reset",
+      "now": "2026-11-14T20:00:00Z",
+      "reading": {"plan": "ultra", "verified": null, "source": "manual", "observed_at": "2026-11-14T19:00:00Z",
+                  "windows": [{"kind": "weekly_all", "pct_used": 50.0, "resets_at": "2026-11-14T20:00:00Z"}]},
+      "expect": {"state": "unknown", "reason": "weekly window has reset since the last reading", "stale": true,
+                 "summary_line": "Claude: unknown (weekly window has reset since the last reading)",
+                 "fresh_window_kinds": []}
+    },
+    {
+      "name": "exactly_80_is_available",
+      "now": "2026-11-14T20:00:00Z",
+      "reading": {"plan": "ultra", "verified": null, "source": "manual", "observed_at": "2026-11-14T19:00:00Z",
+                  "windows": [{"kind": "weekly_all", "pct_used": 80.0, "resets_at": "2026-11-16T09:00:00Z"}]},
+      "expect": {"state": "available", "reason": "weekly_all at 80%", "stale": false,
+                 "summary_line": "Claude: available (80% weekly, resets Mon 4:00 AM)",
+                 "fresh_window_kinds": ["weekly_all"]}
+    },
+    {
+      "name": "over_80_is_constrained",
+      "now": "2026-11-14T20:00:00Z",
+      "reading": {"plan": "ultra", "verified": null, "source": "manual", "observed_at": "2026-11-14T19:00:00Z",
+                  "windows": [{"kind": "weekly_all", "pct_used": 85.0, "resets_at": "2026-11-16T09:00:00Z"}]},
+      "expect": {"state": "constrained", "reason": "weekly_all at 85%", "stale": false,
+                 "summary_line": "Claude: constrained (85% weekly, resets Mon 4:00 AM)",
+                 "fresh_window_kinds": ["weekly_all"]}
+    },
+    {
+      "name": "session_window_binds",
+      "now": "2026-11-14T20:00:00Z",
+      "reading": {"plan": "ultra", "verified": false, "source": "manual", "observed_at": "2026-11-14T19:00:00Z",
+                  "windows": [{"kind": "weekly_all", "pct_used": 50.0, "resets_at": "2026-11-16T09:00:00Z"},
+                              {"kind": "session", "pct_used": 92.0, "resets_at": "2026-11-14T23:00:00Z"}]},
+      "expect": {"state": "constrained", "reason": "session at 92%", "stale": false,
+                 "summary_line": "Claude: constrained (50% weekly, resets Mon 4:00 AM); session 92%",
+                 "fresh_window_kinds": ["weekly_all", "session"]}
+    },
+    {
+      "name": "weekly_at_100_is_exhausted",
+      "now": "2026-11-14T20:00:00Z",
+      "reading": {"plan": "ultra", "verified": null, "source": "manual", "observed_at": "2026-11-14T19:00:00Z",
+                  "windows": [{"kind": "weekly_all", "pct_used": 100.0, "resets_at": "2026-11-16T09:00:00Z"}]},
+      "expect": {"state": "exhausted", "reason": "weekly_all at 100%", "stale": false,
+                 "summary_line": "Claude: exhausted (100% weekly, resets Mon 4:00 AM)",
+                 "fresh_window_kinds": ["weekly_all"]}
+    },
+    {
+      "name": "fable_window_exhausted",
+      "now": "2026-11-14T20:00:00Z",
+      "reading": {"plan": "ultra", "verified": null, "source": "manual", "observed_at": "2026-11-14T19:00:00Z",
+                  "windows": [{"kind": "weekly_all", "pct_used": 70.0, "resets_at": "2026-11-16T09:00:00Z"},
+                              {"kind": "weekly_fable", "pct_used": 100.0, "resets_at": "2026-11-16T09:00:00Z"}]},
+      "expect": {"state": "exhausted", "reason": "weekly_fable at 100%", "stale": false,
+                 "summary_line": "Claude: exhausted (70% weekly, resets Mon 4:00 AM); weekly_fable 100%",
+                 "fresh_window_kinds": ["weekly_all", "weekly_fable"]}
+    },
+    {
+      "name": "no_reading",
+      "now": "2026-11-14T20:00:00Z",
+      "reading": null,
+      "expect": {"state": "unknown", "reason": "no reading recorded", "stale": true,
+                 "summary_line": "Claude: unknown (no reading recorded)",
+                 "fresh_window_kinds": []}
+    }
+  ]
+}

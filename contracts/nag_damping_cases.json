@@ -1,0 +1,105 @@
+{
+  "_doc": "Cloud walk-reminder gates (#368, #349). A case's inputs are 'base' with the case's 'given' keys replacing base keys whole (a shallow merge: a given prefs object replaces the base prefs). Each case trips at most one gate, so the order gates are checked in does not change the reason. See contracts/README.md for the rules.",
+  "version": 1,
+  "constants": {
+    "timezone": "America/New_York",
+    "damping_minutes": 240,
+    "default_reminder_standdown_minutes": 240,
+    "default_prefs": {"time_window_start": 13, "time_window_end": 17, "max_messages_per_day": 3}
+  },
+  "verdicts": ["send", "skip", "stand_down"],
+  "reasons": {
+    "eligible": "send: every gate passed",
+    "phone_unverified": "skip: users.phone_verified is not true",
+    "vacation": "skip: prefs.vacation_mode is true, or users.vacation_mode_until is after now",
+    "day_disabled": "skip: prefs.enabled_days is set and omits today's New York weekday",
+    "type_disabled": "skip: prefs.message_types is set and omits walk_reminder",
+    "outside_window": "skip: the New York hour is outside time_window_start..time_window_end (both inclusive)",
+    "walked_today": "skip: a walk of 2000+ steps is recorded for today's New York date",
+    "phone_active": "stand_down: the android_client heartbeat is younger than reminder_standdown_minutes (0 disables)",
+    "damped": "skip: a counted nag on any channel is under damping_minutes old",
+    "daily_cap": "skip: whatsapp nags sent or failed today (New York date of sent_at) >= max_messages_per_day"
+  },
+  "base": {
+    "now": "2026-11-14T20:00:00Z",
+    "prefs": {"time_window_start": 14, "time_window_end": 17, "max_messages_per_day": 3},
+    "phone_verified": true,
+    "vacation_mode_until": null,
+    "walked_today": false,
+    "phone_heartbeat_minutes": null,
+    "reminder_standdown_minutes": 240,
+    "message_log": []
+  },
+  "cases": [
+    {"name": "eligible_in_window", "tags": ["window"], "given": {}, "expect": {"verdict": "send", "reason": "eligible"}},
+
+    {"name": "1359_ny_is_before_window", "tags": ["window"], "given": {"now": "2026-11-14T18:59:00Z"}, "expect": {"verdict": "skip", "reason": "outside_window"}},
+    {"name": "1400_ny_opens_window", "tags": ["window"], "given": {"now": "2026-11-14T19:00:00Z"}, "expect": {"verdict": "send", "reason": "eligible"}},
+    {"name": "1759_ny_is_inside_window", "tags": ["window"], "given": {"now": "2026-11-14T22:59:00Z"}, "expect": {"verdict": "send", "reason": "eligible"}},
+    {"name": "1800_ny_is_after_window", "tags": ["window"], "given": {"now": "2026-11-14T23:00:00Z"}, "expect": {"verdict": "skip", "reason": "outside_window"}},
+    {"name": "0459_ny_is_outside_window", "tags": ["window"], "given": {"now": "2026-11-14T09:59:00Z"}, "expect": {"verdict": "skip", "reason": "outside_window"}},
+    {"name": "summer_1400_edt_opens_window", "tags": ["window"], "given": {"now": "2026-07-15T18:00:00Z"}, "expect": {"verdict": "send", "reason": "eligible"}},
+    {"name": "summer_1800_edt_is_after_window", "tags": ["window"], "given": {"now": "2026-07-15T22:00:00Z"}, "expect": {"verdict": "skip", "reason": "outside_window"}},
+    {"name": "default_window_starts_at_13", "tags": ["window"], "given": {"now": "2026-11-14T18:30:00Z", "prefs": {}}, "expect": {"verdict": "send", "reason": "eligible"}},
+    {"name": "default_window_ends_after_17", "tags": ["window"], "given": {"now": "2026-11-14T23:30:00Z", "prefs": {}}, "expect": {"verdict": "skip", "reason": "outside_window"}},
+
+    {"name": "enabled_days_omits_saturday", "tags": ["prefs"], "given": {"prefs": {"time_window_start": 14, "time_window_end": 17, "max_messages_per_day": 3, "enabled_days": ["mon", "tue", "wed", "thu", "fri"]}}, "expect": {"verdict": "skip", "reason": "day_disabled"}},
+    {"name": "enabled_days_includes_saturday", "tags": ["prefs"], "given": {"prefs": {"time_window_start": 14, "time_window_end": 17, "max_messages_per_day": 3, "enabled_days": ["sat", "sun"]}}, "expect": {"verdict": "send", "reason": "eligible"}},
+    {"name": "message_types_omit_walk_reminder", "tags": ["prefs"], "given": {"prefs": {"time_window_start": 14, "time_window_end": 17, "max_messages_per_day": 3, "message_types": ["arabic_pressure"]}}, "expect": {"verdict": "skip", "reason": "type_disabled"}},
+    {"name": "message_types_include_walk_reminder", "tags": ["prefs"], "given": {"prefs": {"time_window_start": 14, "time_window_end": 17, "max_messages_per_day": 3, "message_types": ["walk_reminder"]}}, "expect": {"verdict": "send", "reason": "eligible"}},
+    {"name": "vacation_mode_pref", "tags": ["vacation"], "given": {"prefs": {"time_window_start": 14, "time_window_end": 17, "max_messages_per_day": 3, "vacation_mode": true}}, "expect": {"verdict": "skip", "reason": "vacation"}},
+    {"name": "vacation_until_future", "tags": ["vacation"], "given": {"vacation_mode_until": "2026-11-20T00:00:00Z"}, "expect": {"verdict": "skip", "reason": "vacation"}},
+    {"name": "vacation_until_past", "tags": ["vacation"], "given": {"vacation_mode_until": "2026-11-01T00:00:00Z"}, "expect": {"verdict": "send", "reason": "eligible"}},
+    {"name": "phone_unverified", "tags": ["phone_verified"], "given": {"phone_verified": false}, "expect": {"verdict": "skip", "reason": "phone_unverified"}},
+    {"name": "walked_today", "tags": ["walked"], "given": {"walked_today": true}, "expect": {"verdict": "skip", "reason": "walked_today"}},
+
+    {"name": "phone_heartbeat_35_min_stands_down", "tags": ["standdown"], "given": {"phone_heartbeat_minutes": 35}, "expect": {"verdict": "stand_down", "reason": "phone_active"}},
+    {"name": "phone_heartbeat_239_min_stands_down", "tags": ["standdown"], "given": {"phone_heartbeat_minutes": 239}, "expect": {"verdict": "stand_down", "reason": "phone_active"}},
+    {"name": "phone_heartbeat_240_min_is_eligible", "tags": ["standdown"], "given": {"phone_heartbeat_minutes": 240}, "expect": {"verdict": "send", "reason": "eligible"}},
+    {"name": "standdown_zero_disables", "tags": ["standdown"], "given": {"phone_heartbeat_minutes": 35, "reminder_standdown_minutes": 0}, "expect": {"verdict": "send", "reason": "eligible"}},
+    {"name": "custom_standdown_60", "tags": ["standdown"], "given": {"phone_heartbeat_minutes": 60, "reminder_standdown_minutes": 60}, "expect": {"verdict": "send", "reason": "eligible"}},
+
+    {"name": "whatsapp_sent_239_min_ago_damps", "tags": ["damping"], "given": {"message_log": [{"type": "walk_reminder", "channel": "whatsapp", "status": "sent", "sent_at": "2026-11-14T16:01:00Z"}]}, "expect": {"verdict": "skip", "reason": "damped"}},
+    {"name": "whatsapp_failed_239_min_ago_damps", "tags": ["damping"], "given": {"message_log": [{"type": "walk_reminder", "channel": "whatsapp", "status": "failed", "sent_at": "2026-11-14T16:01:00Z"}]}, "expect": {"verdict": "skip", "reason": "damped"}},
+    {"name": "android_native_walk_239_min_ago_damps", "tags": ["damping"], "given": {"message_log": [{"type": "walk_reminder", "channel": "android_native", "status": "shown", "sent_at": "2026-11-14T16:01:00Z"}]}, "expect": {"verdict": "skip", "reason": "damped"}},
+    {"name": "android_native_other_type_damps", "tags": ["damping"], "given": {"message_log": [{"type": "arabic_pressure", "channel": "android_native", "status": "shown", "sent_at": "2026-11-14T18:00:00Z"}]}, "expect": {"verdict": "skip", "reason": "damped"}},
+    {"name": "whatsapp_sent_240_min_ago_is_eligible", "tags": ["damping"], "given": {"message_log": [{"type": "walk_reminder", "channel": "whatsapp", "status": "sent", "sent_at": "2026-11-14T16:00:00Z"}]}, "expect": {"verdict": "send", "reason": "eligible"}},
+    {"name": "phone_verification_never_damps", "tags": ["damping"], "given": {"message_log": [{"type": "phone_verification", "channel": "whatsapp", "status": "sent", "sent_at": "2026-11-14T19:50:00Z"}]}, "expect": {"verdict": "send", "reason": "eligible"}},
+    {"name": "inbound_reply_never_damps", "tags": ["damping"], "given": {"message_log": [{"type": "inbound", "channel": "whatsapp", "status": "received", "sent_at": "2026-11-14T19:50:00Z"}]}, "expect": {"verdict": "send", "reason": "eligible"}},
+    {"name": "console_fallback_never_damps", "tags": ["damping"], "given": {"message_log": [{"type": "walk_reminder", "channel": "console", "status": "not_sent", "sent_at": "2026-11-14T19:50:00Z"}]}, "expect": {"verdict": "send", "reason": "eligible"}},
+
+    {"name": "three_whatsapp_today_hit_cap", "tags": ["daily_cap"], "given": {"message_log": [
+      {"type": "walk_reminder", "channel": "whatsapp", "status": "sent", "sent_at": "2026-11-14T05:30:00Z"},
+      {"type": "walk_reminder", "channel": "whatsapp", "status": "sent", "sent_at": "2026-11-14T08:00:00Z"},
+      {"type": "walk_reminder", "channel": "whatsapp", "status": "sent", "sent_at": "2026-11-14T12:00:00Z"}]}, "expect": {"verdict": "skip", "reason": "daily_cap"}},
+    {"name": "failed_whatsapp_counts_toward_cap", "tags": ["daily_cap"], "given": {"message_log": [
+      {"type": "walk_reminder", "channel": "whatsapp", "status": "sent", "sent_at": "2026-11-14T05:30:00Z"},
+      {"type": "walk_reminder", "channel": "whatsapp", "status": "failed", "sent_at": "2026-11-14T08:00:00Z"},
+      {"type": "walk_reminder", "channel": "whatsapp", "status": "sent", "sent_at": "2026-11-14T12:00:00Z"}]}, "expect": {"verdict": "skip", "reason": "daily_cap"}},
+    {"name": "two_whatsapp_today_under_cap", "tags": ["daily_cap"], "given": {"message_log": [
+      {"type": "walk_reminder", "channel": "whatsapp", "status": "sent", "sent_at": "2026-11-14T08:00:00Z"},
+      {"type": "walk_reminder", "channel": "whatsapp", "status": "sent", "sent_at": "2026-11-14T12:00:00Z"}]}, "expect": {"verdict": "send", "reason": "eligible"}},
+    {"name": "cap_counts_new_york_date_not_gmt_date", "tags": ["daily_cap"], "given": {"message_log": [
+      {"type": "walk_reminder", "channel": "whatsapp", "status": "sent", "sent_at": "2026-11-14T01:00:00Z", "date": "2026-11-14"},
+      {"type": "walk_reminder", "channel": "whatsapp", "status": "sent", "sent_at": "2026-11-14T02:00:00Z", "date": "2026-11-14"},
+      {"type": "walk_reminder", "channel": "whatsapp", "status": "sent", "sent_at": "2026-11-14T03:00:00Z", "date": "2026-11-14"}]}, "expect": {"verdict": "send", "reason": "eligible"}},
+    {"name": "android_native_rows_skip_the_cap", "tags": ["daily_cap"], "given": {"message_log": [
+      {"type": "walk_reminder", "channel": "android_native", "status": "shown", "sent_at": "2026-11-14T06:00:00Z"},
+      {"type": "walk_reminder", "channel": "android_native", "status": "shown", "sent_at": "2026-11-14T09:00:00Z"},
+      {"type": "walk_reminder", "channel": "android_native", "status": "shown", "sent_at": "2026-11-14T12:00:00Z"}]}, "expect": {"verdict": "send", "reason": "eligible"}},
+    {"name": "phone_verification_skips_the_cap", "tags": ["daily_cap"], "given": {"message_log": [
+      {"type": "phone_verification", "channel": "whatsapp", "status": "sent", "sent_at": "2026-11-14T06:00:00Z"},
+      {"type": "phone_verification", "channel": "whatsapp", "status": "sent", "sent_at": "2026-11-14T09:00:00Z"},
+      {"type": "phone_verification", "channel": "whatsapp", "status": "sent", "sent_at": "2026-11-14T12:00:00Z"}]}, "expect": {"verdict": "send", "reason": "eligible"}},
+    {"name": "custom_cap_of_one", "tags": ["daily_cap"], "given": {"prefs": {"time_window_start": 14, "time_window_end": 17, "max_messages_per_day": 1}, "message_log": [
+      {"type": "walk_reminder", "channel": "whatsapp", "status": "sent", "sent_at": "2026-11-14T12:00:00Z"}]}, "expect": {"verdict": "skip", "reason": "daily_cap"}},
+    {"name": "cap_defaults_to_three", "tags": ["daily_cap"], "given": {"prefs": {"time_window_start": 14, "time_window_end": 17}, "message_log": [
+      {"type": "walk_reminder", "channel": "whatsapp", "status": "sent", "sent_at": "2026-11-14T05:30:00Z"},
+      {"type": "walk_reminder", "channel": "whatsapp", "status": "sent", "sent_at": "2026-11-14T08:00:00Z"},
+      {"type": "walk_reminder", "channel": "whatsapp", "status": "sent", "sent_at": "2026-11-14T12:00:00Z"}]}, "expect": {"verdict": "skip", "reason": "daily_cap"}},
+    {"name": "at_0030_utc_today_is_the_previous_new_york_date", "tags": ["daily_cap", "window"], "given": {"now": "2026-11-15T00:30:00Z", "prefs": {"time_window_start": 14, "time_window_end": 20, "max_messages_per_day": 3}, "message_log": [
+      {"type": "walk_reminder", "channel": "whatsapp", "status": "sent", "sent_at": "2026-11-14T06:00:00Z"},
+      {"type": "walk_reminder", "channel": "whatsapp", "status": "sent", "sent_at": "2026-11-14T10:00:00Z"},
+      {"type": "walk_reminder", "channel": "whatsapp", "status": "sent", "sent_at": "2026-11-14T14:00:00Z"}]}, "expect": {"verdict": "skip", "reason": "daily_cap"}}
+  ]
+}
