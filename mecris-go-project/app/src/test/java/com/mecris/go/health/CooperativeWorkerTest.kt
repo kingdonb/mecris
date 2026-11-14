@@ -14,12 +14,14 @@ import com.mecris.go.sync.HeartbeatResponseDto
 import com.mecris.go.sync.HelixBalanceRequestDto
 import com.mecris.go.sync.SyncResponse
 import com.mecris.go.sync.SyncServiceApi
+import com.google.gson.Gson
 import io.mockk.*
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Before
 import org.junit.Test
+import java.io.File
 import java.time.Instant
 
 class CooperativeWorkerTest {
@@ -78,43 +80,24 @@ class CooperativeWorkerTest {
             vacation_mode_until = null
         )
 
-        @Test
-        fun `worker triggers cloud sync when MCP is dark`() = runBlocking {
-        // GIVEN: MCP is reported as NOT active
-        coEvery { syncApi.sendHeartbeat(any(), any()) } returns retrofit2.Response.success(
-            HeartbeatResponseDto("ok", mcp_server_active = false)
-        )
-        coEvery { syncApi.triggerCloudSync(any()) } returns retrofit2.Response.success(
-            SyncResponse("ok", "cloud sync triggered")
-        )
+    // --- #368: the cloud cron owns trigger-reminders and cloud-sync ---
+    // Whatever the heartbeat says about the MCP server (dark, active, or the field
+    // missing, which is what Spin actually sends), the phone never calls either.
 
-        // GIVEN: We use the injected dependencies
-        val worker = WalkHeuristicsWorker(context, workerParams, pocketIdAuth, syncApi)
-
-        worker.doWork()
-
-        // VERIFY: The cloud sync was triggered
-        coVerify(exactly = 1) { syncApi.triggerCloudSync(any()) }
-        }
-
-        @Test
-        fun `worker DOES NOT trigger cloud sync when MCP is active`() = runBlocking {
-        // GIVEN: MCP is reported as active
-        coEvery { syncApi.sendHeartbeat(any(), any()) } returns retrofit2.Response.success(
-            HeartbeatResponseDto("ok", mcp_server_active = true)
+    private fun heartbeatFromSpinContract(): HeartbeatResponseDto =
+        Gson().fromJson(
+            File("../../contracts/spin_heartbeat_response.json").readText(),
+            HeartbeatResponseDto::class.java
         )
 
-        val worker = WalkHeuristicsWorker(context, workerParams, pocketIdAuth, syncApi)
-
-        worker.doWork()
-
-        // VERIFY: The cloud sync was NOT triggered
+    private fun assertNoCloudWork() {
         coVerify(exactly = 0) { syncApi.triggerCloudSync(any()) }
-        }
+        coVerify(exactly = 0) { syncApi.triggerReminders(any()) }
+        verify(exactly = 0) { prefsEditor.putLong("last_cloud_sync_trigger", any()) }
+    }
 
         @Test
-        fun `worker triggers reminders when MCP is dark`() = runBlocking {
-        // GIVEN: MCP is reported as NOT active
+        fun `worker never triggers cloud sync or reminders when MCP is dark`() = runBlocking {
         coEvery { syncApi.sendHeartbeat(any(), any()) } returns retrofit2.Response.success(
             HeartbeatResponseDto("ok", mcp_server_active = false)
         )
@@ -125,28 +108,41 @@ class CooperativeWorkerTest {
             SyncResponse("ok", "reminders triggered")
         )
 
-        val worker = WalkHeuristicsWorker(context, workerParams, pocketIdAuth, syncApi)
+        WalkHeuristicsWorker(context, workerParams, pocketIdAuth, syncApi, etHourOverride = 3).doWork()
 
-        worker.doWork()
-
-        // VERIFY: Both cloud sync AND reminders were triggered
-        coVerify(exactly = 1) { syncApi.triggerCloudSync(any()) }
-        coVerify(exactly = 1) { syncApi.triggerReminders(any()) }
+        coVerify(exactly = 1) { syncApi.sendHeartbeat(any(), any()) }
+        assertNoCloudWork()
         }
 
         @Test
-        fun `worker DOES NOT trigger reminders when MCP is active`() = runBlocking {
-        // GIVEN: MCP is reported as active
+        fun `worker never triggers cloud sync or reminders when MCP is active`() = runBlocking {
         coEvery { syncApi.sendHeartbeat(any(), any()) } returns retrofit2.Response.success(
             HeartbeatResponseDto("ok", mcp_server_active = true)
         )
 
-        val worker = WalkHeuristicsWorker(context, workerParams, pocketIdAuth, syncApi)
+        WalkHeuristicsWorker(context, workerParams, pocketIdAuth, syncApi, etHourOverride = 3).doWork()
 
-        worker.doWork()
+        coVerify(exactly = 1) { syncApi.sendHeartbeat(any(), any()) }
+        assertNoCloudWork()
+        }
 
-        // VERIFY: Reminders were NOT triggered
-        coVerify(exactly = 0) { syncApi.triggerReminders(any()) }
+        @Test
+        fun `worker never triggers cloud sync or reminders when heartbeat omits mcp_server_active`() = runBlocking {
+        // Spin's real /heartbeat body has no mcp_server_active field.
+        coEvery { syncApi.sendHeartbeat(any(), any()) } returns retrofit2.Response.success(
+            heartbeatFromSpinContract()
+        )
+        coEvery { syncApi.triggerCloudSync(any()) } returns retrofit2.Response.success(
+            SyncResponse("ok", "cloud sync triggered")
+        )
+        coEvery { syncApi.triggerReminders(any()) } returns retrofit2.Response.success(
+            SyncResponse("ok", "reminders triggered")
+        )
+
+        WalkHeuristicsWorker(context, workerParams, pocketIdAuth, syncApi, etHourOverride = 3).doWork()
+
+        coVerify(exactly = 1) { syncApi.sendHeartbeat(any(), any()) }
+        assertNoCloudWork()
         }
 
     // --- Battery diet (task 000622): helix doorbell throttle ---
