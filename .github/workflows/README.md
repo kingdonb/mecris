@@ -16,9 +16,9 @@
 **What it does:**
 
 1. **Setup**
-   - Installs Node.js 20 (for Pi CLI and extension)
+   - Installs Node.js 24 (for Pi CLI and extension)
    - Installs Python + uv (for MCP server)
-   - Spins up a local PostgreSQL 16 (test database)
+   - Spins up a local PostgreSQL 18 (test database, same image as ci.yml)
    - Installs npm deps for the extension
 
 2. **Validation**
@@ -133,7 +133,7 @@ on:
 ```yaml
 services:
   postgres:
-    image: postgres:16
+    image: postgres:18
     ports: [5432:5432]
     # MCP server can connect to this for test data
 ```

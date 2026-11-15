@@ -7,6 +7,8 @@ date: "2025-10-19"
 
 # 🚀 Mecris Roadmap
 
+> **Historical (2025-10-19).** The current plan is the root [`ROADMAP.md`](../ROADMAP.md) and epic [#360](https://github.com/kingdonb/mecris/issues/360). This file is kept as the record of the SMS-era vision.
+
 *Strategic priorities toward autonomous SMS accountability system*
 
 ## Vision Statement

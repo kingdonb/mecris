@@ -146,12 +146,12 @@ See [docs/PI_HARNESS_ROADMAP.md](docs/PI_HARNESS_ROADMAP.md) for detailed parity
 #### ✅ Usage Tracking - **PRODUCTION READY**
 - **Neon (Postgres)** for cloud-native persistence and multi-tenant isolation.
 - **Accurate cost calculation** using official Anthropic pricing
-- **Real-time budget tracking** via Anthropic Admin API and Neon.
-- **Alert system** via Twilio for critical budget states
+- **Budget tracking** in Neon; Claude is a subscription (Ultra plan) since 2026-11-13, see Budget Management below
+- **Claude plan readings** via `record_claude_plan_usage` / `get_claude_plan_status`
 - **Historical analysis** and burn rate projection
 
-#### ✅ Twilio Alerts - **CONFIGURED**
-- SMS notifications for beemergencies and budget alerts
+#### ✅ Twilio WhatsApp - **CONFIGURED**
+- WhatsApp template messages (Meta-approved) for walk reminders and beemergencies; SMS is off
 - Integrated with background task processing
 - Configurable alert thresholds
 
@@ -170,8 +170,8 @@ See [docs/PI_HARNESS_ROADMAP.md](docs/PI_HARNESS_ROADMAP.md) for detailed parity
 ### ✅ Production Ready
 - **MCP Server**: Secure, robust, stdio-integrated
 - **Beeminder Integration**: Live API, comprehensive testing
-- **Budget Tracking**: Real-time via Anthropic Admin API and Neon (Postgres)
-- **Alert System**: Twilio SMS for critical notifications
+- **Budget Tracking**: Neon (Postgres); Claude Ultra subscription model from v0.3.0
+- **Alert System**: Twilio WhatsApp templates (cloud reminders paused until v0.3.0 deploys)
 - **Coordination**: Distributed leader election across instances
 
 ### 🚧 In Progress  
@@ -259,17 +259,18 @@ LOG_LEVEL=INFO                # Logging level
 
 ## Budget Management
 
-### Current Budget: $20.88 remaining (as of April 2026)
-- **Daily burn rate**: Automatically calculated from usage
-- **Budget alerts**: SMS notifications for critical states
-- **Manual updates**: Use `/usage/update_budget` endpoint
+### Claude: Ultra plan (subscription, to about 2027-05-13)
+Claude work runs on the Ultra plan, a subscription grant that started 2026-11-13. It is not a prepaid API balance, so there is no dollar figure to burn down. **Usage credits stay off.**
 
-### Update Budget
-```bash
-curl -X POST http://127.0.0.1:8000/usage/update_budget \
-  -H "Content-Type: application/json" \
-  -d '{"remaining_budget": 15.50}'
-```
+From v0.3.0 (#345) the budget follows the subscription:
+- **GOOD** while the grant runs, **ENDING** within 14 days of its end date, **ENDED** after it; a `retired` source raises no alerts.
+- The narrator shows one phrase, for example `Claude: Ultra until 2027-05-13, available (3% weekly, resets Mon 4:00 AM)`, and no `update_budget` nag while the grant is live.
+- Plan usage comes from readings: record one with the `record_claude_plan_usage` tool and read it with `get_claude_plan_status`. A reading older than 24 hours shows as unknown.
+- The phone shows a Claude plan card; the web keeps the virtual budget odometer.
+
+Switching the budget row to the subscription is one `update_budget` call with `source_type`, `plan`, `period_start` and `period_end`, made by the owner after the v0.3.0 migration. The plan's price is not hard-coded.
+
+Other spend is tracked separately: the Helix wallet (`docs/HELIX_BALANCE_SYNC.md`) and the Groq odometer. See `ROADMAP.md` for the full budget section.
 
 ## Documentation
 
@@ -287,4 +288,4 @@ curl -X POST http://127.0.0.1:8000/usage/update_budget \
 For issues or questions:
 - Check server logs in `logs/` directory
 - Run health checks to diagnose problems
-- Review test output for integration issues# CI Cache Validation Test
+- Review test output for integration issues
