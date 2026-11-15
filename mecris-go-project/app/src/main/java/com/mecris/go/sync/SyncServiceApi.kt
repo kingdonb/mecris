@@ -83,6 +83,16 @@ interface SyncServiceApi {
         @Body request: LogMessageRequestDto
     ): retrofit2.Response<Unit>
 
+    /**
+     * #363 phase 1: a tap, dismissal or action on a shown nag, found by client_ref.
+     * 201 inserted, 200 already recorded, 404 unknown nag, 400 bad body.
+     */
+    @POST("internal/log-message-event")
+    suspend fun logMessageEvent(
+        @Header("Authorization") authHeader: String,
+        @Body request: MessageEventRequestDto
+    ): retrofit2.Response<Unit>
+
     @GET("profile")
     suspend fun getProfile(
         @Header("Authorization") authHeader: String
@@ -158,7 +168,12 @@ data class LanguagesResponseDto(
 
 data class HeartbeatRequestDto(
     val role: String,
-    val process_id: String
+    val process_id: String,
+    /**
+     * #363: notifications on AND the nag channel not silenced. Optional; Gson omits
+     * null, so the body is exactly what old servers already accept.
+     */
+    val notifications_enabled: Boolean? = null
 )
 
 data class HeartbeatResponseDto(
@@ -290,7 +305,9 @@ data class ProfileUpdateRequestDto(
 data class LogMessageRequestDto(
     val type: String,
     val channel: String,
-    val sent_at: String? = null
+    val sent_at: String? = null,
+    /** #363: the phone's id for this nag; null (so omitted) for old callers. */
+    val client_ref: String? = null
 ) {
     companion object {
         const val CHANNEL_ANDROID_NATIVE = "android_native"
@@ -299,8 +316,32 @@ data class LogMessageRequestDto(
         val NAG_TYPES = setOf("walk_reminder", "arabic_pressure", "greek_reminder")
 
         /** The row for a nag the phone just showed. Never carries the message text. */
-        fun shownNag(type: String, sentAt: java.time.Instant): LogMessageRequestDto =
-            LogMessageRequestDto(type = type, channel = CHANNEL_ANDROID_NATIVE, sent_at = sentAt.toString())
+        fun shownNag(type: String, sentAt: java.time.Instant, clientRef: String? = null): LogMessageRequestDto =
+            LogMessageRequestDto(
+                type = type,
+                channel = CHANNEL_ANDROID_NATIVE,
+                sent_at = sentAt.toString(),
+                client_ref = clientRef
+            )
+    }
+}
+
+/** Body of POST /internal/log-message-event (#363). Never carries message text. */
+data class MessageEventRequestDto(
+    val client_ref: String,
+    val event: String,
+    /** RFC 3339 UTC; Spin clamps it to the last 24 h. */
+    val at: String
+) {
+    companion object {
+        fun of(clientRef: String, event: String, at: java.time.Instant): MessageEventRequestDto =
+            // Millisecond precision: Postgres keeps microseconds, and a retried upload
+            // must send the identical 'at' for UNIQUE (message_log_id, event, at).
+            MessageEventRequestDto(
+                client_ref = clientRef,
+                event = event,
+                at = at.truncatedTo(java.time.temporal.ChronoUnit.MILLIS).toString()
+            )
     }
 }
 
