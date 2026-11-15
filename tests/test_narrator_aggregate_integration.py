@@ -225,6 +225,67 @@ def test_get_claude_plan_status_failure_reports_unknown():
     assert "db down" in status["error"]
 
 
+# Status line readings (#383): source claude_code_cli, UTC offsets, fractional
+# percentages, no weekly_fable, minutes old.
+
+def _status_line_row(weekly, session=None, minutes_old=7):
+    from datetime import datetime, timedelta, timezone
+    now = datetime.now(timezone.utc).replace(second=0, microsecond=0)
+    windows = [{"kind": "weekly_all", "pct_used": weekly,
+                "resets_at": (now + timedelta(days=2)).isoformat()}]  # "+00:00", as the status line writes it
+    if session is not None:
+        windows.append({"kind": "session", "pct_used": session,
+                        "resets_at": (now + timedelta(hours=2)).isoformat()})
+    return {"plan": "ultra", "verified": False, "windows": windows, "source": "claude_code_cli",
+            "observed_at": (now - timedelta(minutes=minutes_old)).isoformat(), "notes": "Claude Code status line"}
+
+
+def test_get_claude_plan_status_reads_a_status_line_row():
+    sys.modules.pop("mcp_server", None)
+    row = _status_line_row(26.0, session=30.0)
+    assert row["windows"][0]["resets_at"].endswith("+00:00")
+    with patch.dict("os.environ", _base_env()), patch("psycopg2.connect"):
+        import mcp_server
+        with patch("mcp_server.resolve_target_user", return_value="test-user"), \
+             patch.object(mcp_server.usage_tracker, "resolve_user_id", return_value="test-user"), \
+             patch.object(mcp_server._claude_plan_store, "latest", return_value=row):
+            status = mcp_server.get_claude_plan_status()
+    assert status["state"] == "available" and status["stale"] is False
+    assert status["source"] == "claude_code_cli"
+    assert status["reason"] == "session at 30%"
+    assert status["summary_line"].startswith("Claude: available (26% weekly, resets ")
+
+
+@pytest.mark.asyncio
+async def test_narrator_status_line_80_5_is_constrained_and_printed_as_80():
+    import claude_plan_usage as cpu
+    plan = cpu.summarize(_status_line_row(80.5, session=40.0))
+    result = await _run_narrator_context_with_aggregate(_AGG, claude_plan=plan)
+    assert result["claude_plan"]["source"] == "claude_code_cli"
+    assert "Claude: constrained (80% weekly, resets " in result["summary"]
+    assert any("weekly_all at 80%" in r for r in result["recommendations"])
+    assert not any("stale" in r for r in result["recommendations"])
+    assert not any("CLAUDE" in u for u in result["urgent_items"])
+
+
+@pytest.mark.asyncio
+async def test_narrator_status_line_session_exhausted_without_weekly_fable_is_urgent():
+    import claude_plan_usage as cpu
+    plan = cpu.summarize(_status_line_row(64.0, session=100.0, minutes_old=2))
+    result = await _run_narrator_context_with_aggregate(_AGG, claude_plan=plan)
+    assert any("CLAUDE PLAN EXHAUSTED: session at 100%" in u for u in result["urgent_items"])
+    assert "Claude: exhausted (64% weekly, resets " in result["summary"]
+
+
+@pytest.mark.asyncio
+async def test_subscription_phrase_with_a_fractional_status_line_reading():
+    import claude_plan_usage as cpu
+    plan = cpu.summarize(_status_line_row(23.5))
+    result = await _run_narrator_context_with_aggregate(_AGG, claude_plan=plan, budget_status=_subscription())
+    assert "Claude: Ultra until 2027-05-13, available (24% weekly, resets " in result["summary"]
+    assert result["summary"].count("Claude:") == 1
+
+
 # ---------------------------------------------------------------------------
 # Budget false alarms (kingdonb/mecris#345)
 # ---------------------------------------------------------------------------
