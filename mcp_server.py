@@ -1314,8 +1314,9 @@ CLAUDE_SNAPSHOT_INGEST_SECONDS = 300
 async def _ingest_local_claude_reading() -> Dict[str, Any]:
     """Store the status line snapshot if claude_statusline.should_record says so. Never raises.
 
-    Every mcp_server process runs the loop (Claude Desktop starts several); only
-    the scheduler leader stores, checked on each tick so a handover is honoured.
+    Every process that starts the scheduler runs the loop (Claude Desktop starts
+    several); only the scheduler leader stores, checked on each tick so a
+    handover is honoured.
     """
     if not scheduler.is_leader:
         return {"recorded": False, "reason": "not the scheduler leader"}
@@ -1323,10 +1324,12 @@ async def _ingest_local_claude_reading() -> Dict[str, Any]:
         target_user_id = resolve_target_user(None)
         if not target_user_id:
             return {"recorded": False, "reason": "no local user"}
+        reading = claude_statusline.load_reading(claude_statusline.snapshot_path())
+        if reading is None:
+            return {"recorded": False, "reason": "no status line snapshot"}
         owner = usage_tracker.resolve_user_id(target_user_id)
         stored = await asyncio.to_thread(_claude_plan_store.latest, owner)
-        reading = claude_statusline.pending_reading(claude_statusline.snapshot_path(), stored)
-        if reading is None:
+        if not claude_statusline.should_record(reading, stored):
             return {"recorded": False, "reason": "nothing new"}
         return await _store_claude_reading(target_user_id, reading)
     except Exception as e:
@@ -1334,9 +1337,23 @@ async def _ingest_local_claude_reading() -> Dict[str, Any]:
         return {"recorded": False, "error": type(e).__name__}
 
 
+def _claude_ingest_outcome(result: Dict[str, Any]) -> str:
+    if result.get("recorded"):
+        return "stored a reading"
+    if result.get("error"):
+        return "failed"  # the error itself is logged where it happens
+    return str(result.get("reason", "not stored"))
+
+
 async def _claude_snapshot_ingest_loop() -> None:
+    # Log each change of outcome, so a process that never stores (a standby, or
+    # a leader with no snapshot file) shows up in the log without a line per tick.
+    last = None
     while True:
-        await _ingest_local_claude_reading()
+        outcome = _claude_ingest_outcome(await _ingest_local_claude_reading())
+        if outcome != last:
+            logger.info(f"Claude snapshot ingest: {outcome}")
+            last = outcome
         await asyncio.sleep(CLAUDE_SNAPSHOT_INGEST_SECONDS)
 
 

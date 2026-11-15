@@ -76,11 +76,23 @@ dashboard can read it:
   a change of state (for example available to constrained) or a new week is
   stored at once. Stored readings feed the Beeminder graph the same way manual
   ones do.
-- Only the scheduler leader stores. Every MCP server process runs the
-  five-minute check (Claude Desktop alone starts several), but a standby process
-  skips it. Leadership is checked on each run, so after a handover the new
-  leader takes over. A process that has just started is not yet leader, so the
-  first store can come up to five minutes after startup.
+- Only the scheduler leader stores. Every process that starts the scheduler
+  (`mcp_server.py`, `mcp_stdio_server.py` and `simple_main.py`) runs the
+  five-minute check, and Claude Desktop alone starts several, but a standby
+  process skips it: while another process leads, this one never stores.
+  Leadership is checked on each run, so after a handover the new leader takes
+  over at its next check.
+- A process that finds the leader slot free (a clean shutdown frees it) is
+  usually leader by its first check and stores at once. If the slot is still
+  held by a process that died without freeing it, the slot is taken over once
+  that heartbeat is 90 seconds old (elections run every 30 seconds), and the
+  first store comes at the next five-minute check.
+- The leader stores the snapshot in its own `HOME`. A leader on a machine with
+  no `~/.claude/usage.json` stores nothing, even if another machine has one.
+- The check logs each change of outcome to the server log as
+  `Claude snapshot ingest: ...` (for example `not the scheduler leader`,
+  `no status line snapshot`, `stored a reading`, `nothing new`), so a process
+  that never stores can be told apart from one with nothing new to store.
 - A reading is not stored twice. The insert skips a reading whose user, source
   and `observed_at` are already stored, in the same statement, and nothing is
   pushed to Beeminder when it skips. There is no unique index on those columns,
@@ -91,9 +103,11 @@ dashboard can read it:
 ## Rounding
 
 Every display rounds a percentage to a whole number with round half to even:
-22.5 shows as 22 and 23.5 as 24. The status line (`f"{x:.0f}"`),
-`get_claude_plan_status` (`'{:.0f}'`), Spin (Rust `{:.0}`) and Android (Kotlin
-`HALF_EVEN`) all use this rule, so they show the same number. The stored and
+22.5 shows as 22 and 23.5 as 24. The status line (`f"{x:.0f}"`) and
+`get_claude_plan_status` (`'{:.0f}'`) use this rule. The Spin display (Rust
+`{:.0}`, on `feat/v0.3-spin-status`) and the Android display (Kotlin
+`HALF_EVEN`, on `feat/v0.3-android`) use it too, but neither branch is merged
+yet; once they are, every display shows the same number. The stored and
 snapshot values keep their decimals.
 
 ## Limits

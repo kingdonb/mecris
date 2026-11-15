@@ -37,12 +37,14 @@ async def main():
     
     # Import the FastMCP and FastAPI app
     # These are defined in mcp_server.py at module level
-    from mcp_server import mcp, app, scheduler
+    from mcp_server import mcp, app, scheduler, start_claude_snapshot_ingest
     from services.walk_cache_listener import start_walk_cache_listener, set_cache_reference
     from mcp_server import daily_activity_cache
-    
+
     log("Starting scheduler")
     scheduler.start()
+    # Only the scheduler leader stores Claude plan readings (kingdonb/mecris#344).
+    start_claude_snapshot_ingest()
     
     # Walk cache listener
     try:

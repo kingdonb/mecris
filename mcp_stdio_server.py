@@ -28,10 +28,13 @@ def main():
     logger.info("Starting Mecris MCP Server in stdio mode...")
     import asyncio
     try:
-        from mcp_server import mcp, scheduler
-        
+        from mcp_server import mcp, scheduler, start_claude_snapshot_ingest
+
         async def run_stdio_with_scheduler():
             scheduler.start()
+            # This process may win the scheduler leadership, and only the leader
+            # stores Claude plan readings (kingdonb/mecris#344).
+            start_claude_snapshot_ingest()
             try:
                 await mcp.run_stdio_async()
             finally:
