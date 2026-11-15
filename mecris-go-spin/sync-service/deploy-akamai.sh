@@ -98,6 +98,7 @@ spin aka deploy --build --no-confirm --skip-readiness-check \
   --variable twilio_auth_token_encrypted="$TWILIO_AUTH_TOKEN_ENCRYPTED" \
   --variable twilio_from_number="+15744757115" \
   --variable twilio_webhook_url="${TWILIO_WEBHOOK_URL:-}" \
+  --variable twilio_status_callback_url="${TWILIO_STATUS_CALLBACK_URL:-}" \
   --variable twilio_whatsapp_from="$TWILIO_WHATSAPP_FROM" \
   --variable twilio_status_template_sid="$TWILIO_STATUS_TEMPLATE_SID" \
   --variable twilio_whatsapp_template_sid="$TWILIO_WHATSAPP_TEMPLATE_SID" \

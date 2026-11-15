@@ -1,0 +1,65 @@
+{
+  "_doc": "Phase 1 of docs/WALK_REMINDERS.md (#363): see what happens to every reminder. Owner of the shapes: Spin (mecris-go-spin/sync-service). Readers: Android (DelayedNagWorker, NagNotificationManager, the event uploader), Spin tests, pytest. Every timestamp is RFC 3339 with an offset. No message text, phone numbers or names ever appear in these payloads or tables.",
+
+  "schema": {
+    "_doc": "Added by scripts/migrate_v10_message_events.py: additive and idempotent, with IF NOT EXISTS on everything; run it before deploying phase 1.",
+    "message_log_new_columns": {
+      "client_ref": "TEXT, nullable. A phone-generated id for a shown nag (see client_ref_rule). Unique per user when present: partial unique index on (user_id, client_ref) WHERE client_ref IS NOT NULL.",
+      "message_sid": "TEXT, nullable. Twilio's message SID for a WhatsApp send. Partial unique index WHERE message_sid IS NOT NULL.",
+      "delivery_status": "TEXT, nullable. The latest Twilio status we accept, moving forward only: queued < sent < delivered < read. undelivered and failed are terminal and replace anything below them.",
+      "delivery_error": "INTEGER, nullable. Twilio ErrorCode from the status callback, e.g. 63051.",
+      "status_updated_at": "TIMESTAMPTZ, nullable."
+    },
+    "message_events_table": {
+      "id": "SERIAL PRIMARY KEY",
+      "message_log_id": "INTEGER NOT NULL REFERENCES message_log(id) ON DELETE CASCADE",
+      "user_id": "VARCHAR(255) NOT NULL",
+      "event": "TEXT NOT NULL, one of event_vocabulary",
+      "at": "TIMESTAMPTZ NOT NULL, when it happened on the device or at Twilio",
+      "created_at": "TIMESTAMPTZ NOT NULL DEFAULT now()",
+      "_unique": "UNIQUE (message_log_id, event, at), so retried uploads and repeated callbacks are idempotent"
+    },
+    "users_new_columns": {
+      "notifications_enabled": "BOOLEAN, nullable. From the phone's heartbeat: notifications on AND the nag channel not silenced.",
+      "notifications_checked_at": "TIMESTAMPTZ, nullable."
+    }
+  },
+
+  "client_ref_rule": "1-64 characters from [A-Za-z0-9-]; the phone uses a random UUID string. Anything else is a 400.",
+
+  "event_vocabulary": {
+    "phone": ["tapped", "dismissed", "action_later", "action_start"],
+    "whatsapp": ["queued", "sent", "delivered", "read", "undelivered", "failed"],
+    "_doc": "Phone events come from POST /internal/log-message-event. WhatsApp events come from Twilio's status callback and are recorded alongside the message_log.delivery_status update. 'shown' is not an event: it is the message_log row itself (status 'shown', channel 'android_native')."
+  },
+
+  "api": {
+    "log_message": {
+      "route": "POST /internal/log-message (exists since v0.3.0; bearer required)",
+      "request_example": { "type": "walk_reminder", "sent_at": "2026-11-15T19:02:11Z", "client_ref": "3f2b8c1e-7a4d-4e0b-9c55-2b1f0d6a9e11" },
+      "_doc": "client_ref is new and optional; old clients omit it. When present it must match client_ref_rule. A repeat with the same (user, client_ref) inserts nothing new and answers 200 (idempotent retry). Otherwise the answer is 201.",
+      "response_201_example": { "status": "success", "message": "Nag logged" },
+      "response_200_duplicate_example": { "status": "success", "message": "Already logged" }
+    },
+    "log_message_event": {
+      "route": "POST /internal/log-message-event (bearer required; the user comes from the token, never from the body)",
+      "request_example": { "client_ref": "3f2b8c1e-7a4d-4e0b-9c55-2b1f0d6a9e11", "event": "action_later", "at": "2026-11-15T19:05:40Z" },
+      "_doc": "event must be one of event_vocabulary.phone. 'at' is clamped to the last 24 h; missing or out of range means now. The row is found by (user, client_ref) on channel android_native. 201 when inserted, 200 when it was already recorded, 404 when no such nag exists for this user, 400 on a bad body.",
+      "response_201_example": { "status": "success", "message": "Event logged" },
+      "response_404_example": { "status": "error", "message": "Unknown nag" }
+    },
+    "heartbeat": {
+      "route": "POST /heartbeat (exists; bearer required)",
+      "request_example": { "process_id": "com.mecris.go", "role": "android_client", "notifications_enabled": true },
+      "_doc": "notifications_enabled is new and optional. When present and boolean, Spin stores it on users with notifications_checked_at = now(). Old clients omit it, and nothing changes. The response shape is unchanged (spin_heartbeat_response.json)."
+    },
+    "twilio_status_callback": {
+      "route": "POST /internal/twilio-status (Twilio calls it; form-encoded; X-Twilio-Signature verified exactly like /internal/twilio-webhook, fail closed, 403 on a bad signature and recorded in internal_refusals as bad_signature)",
+      "request_form_example": { "MessageSid": "SM0123456789abcdef0123456789abcdef", "MessageStatus": "delivered", "ErrorCode": "" },
+      "_doc": "Updates message_log by message_sid, moving delivery_status forward only (see schema), sets delivery_error when ErrorCode is non-empty, and inserts a message_events row (event = MessageStatus, at = now). An unknown SID answers 200 and changes nothing, so Twilio stops retrying. The callback URL Spin sends to Twilio is the variable twilio_status_callback_url; when it is unset, Spin sends no StatusCallback at all and still records the SID."
+    },
+    "whatsapp_send": {
+      "_doc": "Every Spin WhatsApp send (walk reminder, verification) reads 'sid' from Twilio's JSON response and stores it in message_log.message_sid, with delivery_status 'queued' or whatever Twilio returned. With twilio_status_callback_url set, it adds StatusCallback to the form."
+    }
+  }
+}
