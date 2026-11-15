@@ -1,5 +1,5 @@
 {
-  "_doc": "Claude plan state (#344). Each case gives a reading (a claude_plan_usage_readings row, or null) and 'now'; expect is what claude_plan_usage.derive_state and summarize return. fresh_window_kinds lists the windows whose resets_at is after now, in reading order. Rules: a reading older than 24 h (strictly) is stale; a window is fresh only while resets_at > now; with no fresh weekly_all window the state is unknown; otherwise the worst fresh window decides: >= 100 exhausted, > 80 constrained, else available. Reset times in summary_line are shown in America/New_York as '%a %-I:%M %p'. Percentages are printed with no decimals; avoid .5 values, whose rounding differs between languages.",
+  "_doc": "Claude plan state (#344). Each case gives a reading (a claude_plan_usage_readings row, or null) and 'now'; expect is what claude_plan_usage.derive_state and summarize return. fresh_window_kinds lists the windows whose resets_at is after now, in reading order. Rules: a reading older than 24 h (strictly) is stale; a window is fresh only while resets_at > now; with no fresh weekly_all window the state is unknown; otherwise the worst fresh window decides: >= 100 exhausted, > 80 constrained, else available. Reset times in summary_line are shown in America/New_York as '%a %-I:%M %p'. Percentages are printed with no decimals: the exact binary value rounded half to even (Python f'{x:.0f}', Rust '{:.0}', Kotlin BigDecimal HALF_EVEN), so 23.5 -> 24, 80.5 -> 80, 62.5 -> 62. Java's %.0f and floor(x + 0.5) round half up and differ on those. The state always compares the unrounded value. Timestamps may carry any UTC offset (manual readings use -05:00, status line readings +00:00) and fractional seconds; compare them as instants, never as text. Optional per-case keys: note (a comment) and same_instant_as (another case with the same instants written in a different offset, which must expect the same result).",
   "version": 1,
   "cases": [
     {
@@ -122,6 +122,84 @@
       "expect": {"state": "unknown", "reason": "no reading recorded", "stale": true,
                  "summary_line": "Claude: unknown (no reading recorded)",
                  "fresh_window_kinds": []}
+    },
+    {
+      "name": "status_line_7_minutes_old",
+      "note": "The shape of live row #5: a claude_code_cli reading, UTC offsets, float percentages, no weekly_fable. The session window binds the reason; available adds no suffix.",
+      "now": "2026-11-15T00:30:00Z",
+      "reading": {"plan": "ultra", "verified": false, "source": "claude_code_cli", "observed_at": "2026-11-15T00:23:00+00:00",
+                  "windows": [{"kind": "weekly_all", "pct_used": 26.0, "resets_at": "2026-11-16T09:00:00+00:00"},
+                              {"kind": "session", "pct_used": 30.0, "resets_at": "2026-11-15T00:50:00+00:00"}]},
+      "expect": {"state": "available", "reason": "session at 30%", "stale": false,
+                 "summary_line": "Claude: available (26% weekly, resets Mon 4:00 AM)",
+                 "fresh_window_kinds": ["weekly_all", "session"]}
+    },
+    {
+      "name": "status_line_session_reset_in_utc",
+      "note": "The session reset (00:50 UTC, 19:50 New York) is before now (01:00 UTC, 20:00 New York), so the 95% is ignored. Reading +00:00 as local time would keep it fresh and say constrained.",
+      "now": "2026-11-15T01:00:00Z",
+      "reading": {"plan": "ultra", "verified": false, "source": "claude_code_cli", "observed_at": "2026-11-15T00:45:00+00:00",
+                  "windows": [{"kind": "weekly_all", "pct_used": 26.0, "resets_at": "2026-11-16T09:00:00+00:00"},
+                              {"kind": "session", "pct_used": 95.0, "resets_at": "2026-11-15T00:50:00+00:00"}]},
+      "expect": {"state": "available", "reason": "weekly_all at 26%", "stale": false,
+                 "summary_line": "Claude: available (26% weekly, resets Mon 4:00 AM)",
+                 "fresh_window_kinds": ["weekly_all"]}
+    },
+    {
+      "name": "manual_twin_of_session_reset_in_utc",
+      "note": "status_line_session_reset_in_utc with every instant written at -05:00, as manual readings are: same instants, same answer.",
+      "same_instant_as": "status_line_session_reset_in_utc",
+      "now": "2026-11-14T20:00:00-05:00",
+      "reading": {"plan": "ultra", "verified": false, "source": "manual", "observed_at": "2026-11-14T19:45:00-05:00",
+                  "windows": [{"kind": "weekly_all", "pct_used": 26.0, "resets_at": "2026-11-16T04:00:00-05:00"},
+                              {"kind": "session", "pct_used": 95.0, "resets_at": "2026-11-14T19:50:00-05:00"}]},
+      "expect": {"state": "available", "reason": "weekly_all at 26%", "stale": false,
+                 "summary_line": "Claude: available (26% weekly, resets Mon 4:00 AM)",
+                 "fresh_window_kinds": ["weekly_all"]}
+    },
+    {
+      "name": "offsets_compare_as_instants_not_text",
+      "note": "The session resets at 20:10 New York (01:10 UTC), 10 minutes after now. As text, '2026-11-14T20:10:00-05:00' sorts before '2026-11-15T01:00:00Z'; a text comparison would drop the window.",
+      "now": "2026-11-15T01:00:00Z",
+      "reading": {"plan": "ultra", "verified": false, "source": "manual", "observed_at": "2026-11-14T19:30:00-05:00",
+                  "windows": [{"kind": "weekly_all", "pct_used": 26.0, "resets_at": "2026-11-16T04:00:00-05:00"},
+                              {"kind": "session", "pct_used": 92.0, "resets_at": "2026-11-14T20:10:00-05:00"}]},
+      "expect": {"state": "constrained", "reason": "session at 92%", "stale": false,
+                 "summary_line": "Claude: constrained (26% weekly, resets Mon 4:00 AM); session 92%",
+                 "fresh_window_kinds": ["weekly_all", "session"]}
+    },
+    {
+      "name": "status_line_fractional_pct",
+      "note": "23.5 prints as 24 under both half-even and half-up rounding. observed_at carries microseconds, as status line snapshots do.",
+      "now": "2026-11-14T20:00:00Z",
+      "reading": {"plan": "ultra", "verified": false, "source": "claude_code_cli", "observed_at": "2026-11-14T19:58:41.123456+00:00",
+                  "windows": [{"kind": "weekly_all", "pct_used": 23.5, "resets_at": "2026-11-16T09:00:00+00:00"},
+                              {"kind": "session", "pct_used": 12.0, "resets_at": "2026-11-14T22:50:00+00:00"}]},
+      "expect": {"state": "available", "reason": "weekly_all at 24%", "stale": false,
+                 "summary_line": "Claude: available (24% weekly, resets Mon 4:00 AM)",
+                 "fresh_window_kinds": ["weekly_all", "session"]}
+    },
+    {
+      "name": "status_line_80_5_is_constrained",
+      "note": "The state compares the unrounded value: 80.5 > 80 is constrained. The printed value rounds half to even, so it shows 80 (a half-up formatter would show 81).",
+      "now": "2026-11-14T20:00:00Z",
+      "reading": {"plan": "ultra", "verified": false, "source": "claude_code_cli", "observed_at": "2026-11-14T19:50:00+00:00",
+                  "windows": [{"kind": "weekly_all", "pct_used": 80.5, "resets_at": "2026-11-16T09:00:00+00:00"},
+                              {"kind": "session", "pct_used": 40.0, "resets_at": "2026-11-14T22:50:00+00:00"}]},
+      "expect": {"state": "constrained", "reason": "weekly_all at 80%", "stale": false,
+                 "summary_line": "Claude: constrained (80% weekly, resets Mon 4:00 AM)",
+                 "fresh_window_kinds": ["weekly_all", "session"]}
+    },
+    {
+      "name": "status_line_no_weekly_fable",
+      "note": "The status line never reports weekly_fable; its absence must not matter. The weekly reset is Tuesday 03:00 UTC but Monday 10:00 PM in New York.",
+      "now": "2026-11-14T20:00:00Z",
+      "reading": {"plan": "ultra", "verified": false, "source": "claude_code_cli", "observed_at": "2026-11-14T19:55:00+00:00",
+                  "windows": [{"kind": "weekly_all", "pct_used": 64.0, "resets_at": "2026-11-17T03:00:00+00:00"},
+                              {"kind": "session", "pct_used": 100.0, "resets_at": "2026-11-14T22:50:00+00:00"}]},
+      "expect": {"state": "exhausted", "reason": "session at 100%", "stale": false,
+                 "summary_line": "Claude: exhausted (64% weekly, resets Mon 10:00 PM); session 100%",
+                 "fresh_window_kinds": ["weekly_all", "session"]}
     }
   ]
 }
