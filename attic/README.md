@@ -20,6 +20,19 @@ This directory contains historical documentation and reference materials for the
 
 **Current Contents**: *(Will be populated as documents are moved from active development)*
 
+### Layout (convention since 2026-11, #347 and #348)
+
+`attic/` is the one archive for anything retired from the repo root or `scripts/`. Move files with `git mv` so their history follows them; do not delete. (`docs/attic/` predates this and is kept as is.)
+
+| Directory | What goes there |
+|-----------|-----------------|
+| `docs/` | Dated root docs (check-ins, status updates, one-off plans and analyses) and third-party reference material. `template_category_guidelines.pdf` is Meta's template category guide; the current version lives at <https://developers.facebook.com/docs/whatsapp/updates-to-pricing/new-template-guidelines>. |
+| `session-logs/` | Dated `SESSION_LOG_*.md` files. `session_log.md` and `NEXT_SESSION.md` stay at the root: the orient and archive skills read them. |
+| `images/` | Screenshots and photos that were committed at the root. |
+| `scripts/` | One-off diagnostics. `scripts/spin-v6-migration/` holds the regex rewrites of `lib.rs` from the Spin v5/v6 port. |
+| `tests/` | Retired tests. `tests/conftest.py` stops pytest from collecting them, because some act at import time against live services. |
+| `data/`, `deploy/` | Stray reports and manifests for platforms no longer used. |
+
 ## Document Lifecycle
 
 ```
