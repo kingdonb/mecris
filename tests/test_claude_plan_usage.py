@@ -270,3 +270,71 @@ class TestSyncReadingToBeeminder:
         assert out["pushed"] is False
         assert out["error"] == "_ApiError status=500"
         assert "details" not in str(out)
+
+
+# ---------------------------------------------------------------------------
+# Status line readings (#383): source claude_code_cli, UTC offsets, fractional
+# percentages, no weekly_fable, usually minutes old. The contract cases cover
+# derive_state / summarize; these cover the store and the Beeminder graph.
+# ---------------------------------------------------------------------------
+
+MON_4AM_ET_IN_UTC = "2026-11-16T09:00:00+00:00"  # the same instant as MON_4AM_ET
+
+
+def _status_line_row(weekly=26.0, session=30.0, observed=NOW - timedelta(minutes=7)):
+    """A claude_plan_usage_readings row as the status line ingest stores it (live row #5's shape)."""
+    windows = [{"kind": "weekly_all", "pct_used": weekly, "resets_at": MON_4AM_ET_IN_UTC}]
+    if session is not None:
+        windows.append({"kind": "session", "pct_used": session, "resets_at": "2026-11-13T21:50:00+00:00"})
+    return {"plan": "ultra", "verified": False, "windows": windows, "source": "claude_code_cli",
+            "observed_at": observed.isoformat(), "notes": "Claude Code status line"}
+
+
+class TestStatusLineRows:
+    def test_latest_reads_a_status_line_row(self):
+        store = cpu.ClaudePlanUsageStore("postgres://fake")
+        store._initialized = True
+        row = _status_line_row()
+        observed = datetime(2026, 11, 13, 19, 53, 41, 123456, tzinfo=timezone.utc)
+        cur = MagicMock()
+        # psycopg2 hands jsonb back already decoded, and timestamptz as a datetime.
+        cur.fetchone.return_value = ("ultra", False, row["windows"], "claude_code_cli", observed, row["notes"])
+        conn = MagicMock()
+        conn.__enter__.return_value = conn
+        conn.cursor.return_value.__enter__.return_value = cur
+        with patch("psycopg2.connect", return_value=conn):
+            latest = store.latest("user-1")
+        assert latest["source"] == "claude_code_cli"
+        assert latest["observed_at"] == "2026-11-13T19:53:41.123456+00:00"
+        status = cpu.summarize(latest, NOW)
+        assert status["state"] == "available" and status["stale"] is False
+        assert status["reason"] == "session at 30%"
+        assert status["summary_line"] == "Claude: available (26% weekly, resets Mon 4:00 AM)"
+        assert status["source"] == "claude_code_cli"
+
+    def test_minutes_old_reading_is_fresh(self):
+        assert cpu.derive_state(_status_line_row(observed=NOW - timedelta(minutes=3)), NOW)["stale"] is False
+
+    def test_no_weekly_fable_and_no_session_is_still_judged(self):
+        status = cpu.summarize(_status_line_row(weekly=81.5, session=None), NOW)
+        assert status["state"] == "constrained"
+        assert status["reason"] == "weekly_all at 82%"
+
+    def test_manual_and_status_line_readings_of_one_week_are_one_week(self):
+        """A manual 23 at -05:00, then a status line 26.0 at +00:00 for the same reset: the total is 26, not 49."""
+        history = _hist((4, 23, MON_4AM_ET)) + [{**_status_line_row(26.0), "id": 5}]
+        assert cpu.cumulative_weekly_pct(history) == 26
+        dp = cpu.beeminder_datapoint(history, reading_id=5)
+        assert dp["value"] == 26
+        assert "26% of this week" in dp["comment"] and "resets Mon 4:00 AM" in dp["comment"]
+        assert dp["requestid"] == "claude-plan-5"
+
+    def test_fractional_status_line_pct_reaches_the_graph_unrounded(self):
+        history = _hist((4, 23, MON_4AM_ET)) + [{**_status_line_row(23.5), "id": 5}]
+        dp = cpu.beeminder_datapoint(history, reading_id=5)
+        assert dp["value"] == 23.5
+        assert "23.5% of this week" in dp["comment"]
+
+    def test_status_line_reading_below_the_manual_peak_is_not_pushed(self):
+        history = _hist((4, 23, MON_4AM_ET)) + [{**_status_line_row(22.5), "id": 5}]
+        assert cpu.beeminder_datapoint(history, reading_id=5) is None

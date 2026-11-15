@@ -7,13 +7,15 @@
 # therefore means: redeploy (deploy-akamai.sh), then rerun this script.
 #
 # Usage: ./scripts/setup_spin_cron.sh
-# The jobs it creates match what `spin aka cron list` showed on 2026-11-13:
-#   trigger-reminders   0 */2 * * *
-#   failover-sync-edt   5 4 * * *
-#   failover-sync-est   5 5 * * *
-# Delete the old jobs of the same names first (spin aka cron delete <name>).
+# The jobs it creates (v0.3.0):
+#   trigger-reminders   0 */2 * * *   walk reminder gates; WhatsApp only as the fallback
+#   failover-sync       5 */2 * * *   cloud-owned Clozemaster sync; skips stats under 100 min old
+# Delete the old jobs of the same names first (spin aka cron delete <name>). Upgrading
+# from v0.2.0 also means deleting the two daily jobs this replaces:
+#   spin aka cron delete failover-sync-edt
+#   spin aka cron delete failover-sync-est
 # The app is the one linked to mecris-go-spin/sync-service (mecris-sync-v2), so no
-# --app-name is passed. Used by hand in this form for the 2026-11-14 deploy.
+# --app-name is passed.
 
 set -euo pipefail
 
@@ -41,12 +43,7 @@ spin aka cron create \
 
 spin aka cron create \
   --path-and-query "/internal/failover-sync?key=${INTERNAL_API_KEY}" \
-  --schedule "5 4 * * *" \
-  --name "failover-sync-edt"
-
-spin aka cron create \
-  --path-and-query "/internal/failover-sync?key=${INTERNAL_API_KEY}" \
-  --schedule "5 5 * * *" \
-  --name "failover-sync-est"
+  --schedule "5 */2 * * *" \
+  --name "failover-sync"
 
 echo "Done. Verify with: spin aka cron list (it prints the key; do not paste its output anywhere)"

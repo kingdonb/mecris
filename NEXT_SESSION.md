@@ -1,40 +1,38 @@
-# Next Session: Validate deterministic Pi status and merge PR #296
+# Next Session: land v0.3.0 (prove the cloud arm), then install VC 41
 
-## Current Status (2026-09-06)
+## Current Status (2026-11-14)
 
-- Work is on `okf/continuous-improvement`; `main` remains PR-protected.
-- PR [#296](https://github.com/kingdonb/mecris/pull/296) is titled **feat(pi): deterministic Mecris status and progressive context loading**.
-- The OKF bundle contains 23 concepts and passes strict validation with 0 errors, 0 warnings, 0 broken links, 0 orphans, and 0 stale concepts.
-- The original OKF improvement plan is complete except for the explicitly deferred OKF MCP integration and now lives at `docs/attic/OKF_IMPROVEMENT_PLAN.md`.
+- v0.2.0 is tagged and deployed to Akamai (Spin API). It sent five WhatsApp walk reminders on 2026-11-14 at the wrong hours: the gates ignore `notification_prefs`, and two Postgres type traps break the cooldown and the Android stand-down (#369).
+- The `trigger-reminders` Akamai cron is **paused** (deleted) until v0.3.0 deploys. The failover-sync crons still run.
+- **Do not install the 0.2.0 APK**, and do not tap VERIFY in the app until v0.3.0 is deployed: Spin's verification replies are not JSON objects yet.
+- v0.3.0 is planned in epic #360 as seven PRs plus the release PR: localhost-bridge, contracts, hygiene, spin-cloud-arm, truthful-narrator (Python MCP), android, spin-status, then release. Merge with merge commits; `main` is PR-protected.
+- Claude runs on the Ultra plan (subscription grant to about 2027-05-13). Usage credits stay off.
 
-## What Changed
+## Verified This Session
 
-- `/status` is now a native Pi extension command. It bypasses the LLM, calls `get_narrator_context` with `{}`, and renders five deterministic lines.
-- `/mecris [focus]` remains model-mediated for richer interpretation.
-- FastMCP narrator results are unwrapped from `structuredContent.result`; the missing unwrap caused the first `/status` output to show `unknown` and `?/?`.
-- Pi exposes only `get_narrator_context` plus `mecris_load_tools` at startup; forty deferred tools remain available through the loader.
-- Optional `user_id` is hidden from Pi's core read-only schema. The backend resolves the logged-in identity from `~/.mecris/credentials.json`; `DEFAULT_USER_ID` is only a fallback.
-- Hardcoded identity values were removed from prompts, committed harness configuration, and OKF articles.
-- `AGENTS.md` was reduced from 7,987 bytes to 1,449 bytes. OKF details now load progressively through the `okf-agent-memory` skill and relevant runbooks.
-- Added `decisions/2026-09-06-deterministic-status` and corrected narrator-context, MCP-server, daily-aggregate, Gall-loop, bootstrap, and maintenance knowledge.
+In the hygiene-docs PR (chore/v0.3-hygiene):
 
-## Validation Completed
+- [x] Root one-offs, dated docs and screenshots archived under `attic/` with `git mv` (#347, #348); `poc/v6-hello/target/` untracked.
+- [x] The personal number committed in two tracked files was replaced with a Twilio magic number; `tests/test_no_personal_numbers.py` now guards every tracked file (#358).
+- [x] Renovate holds Python below 3.15 and ignores mcp majors (#218). JSON-checked only: confirm the next Dependency Dashboard refresh shows no config error.
 
-- [x] Live `get_narrator_context()` succeeds with no explicit identity and with `DEFAULT_USER_ID` removed from the process environment.
-- [x] Live MCP response confirmed the `structuredContent.result` wrapper.
-- [x] Corrected parser returns real fields (`budget_health=GOOD`, daily score `0/3`).
-- [x] Pi extension loads via `pi -e ./.pi/extensions/mecris/index.ts --list-models`.
-- [x] Credential/MCP/narrator tests: 37 passed.
-- [x] `make okf-validate` passes cleanly.
+## Pending Verification (Next Session)
 
-## Pending Before Merge
+- [ ] Merge in this order once each is green: `fix/v0.3-localhost-bridge`, `chore/v0.3-contracts`, `chore/v0.3-hygiene`, `fix/v0.3-spin-cloud-arm`, `fix/v0.3-truthful-narrator`, `feat/v0.3-android`, `feat/v0.3-spin-status`, then the release PR.
+- [ ] Before the deploy, with the owner's OK: run the additive migrations on live Neon (`scripts/migrate_v9_*.py`).
+- [ ] Deploy from the home network: `./mecris-go-spin/sync-service/deploy-akamai.sh`, then `./scripts/verify_spin_deploy.sh` (it must send no WhatsApp; check its usage line first).
+- [ ] Recreate the crons with `./scripts/setup_spin_cron.sh` after deleting the old ones; confirm with `spin aka cron list` without pasting its output (it prints the key).
+- [ ] Watch at least 3 cron cycles in `message_log` (metadata only): no WhatsApp nag outside 14:00-17:59 New York, within 4 h of another nag, while the phone heartbeat is fresh, or beyond 3 a day.
+- [ ] In the installed app, VERIFY the phone once; expect a 'sent' and then a 'received' phone_verification row and `phone_verified = true`.
+- [ ] After 3 clean cycles: install VC 41 from Android Studio at tag v0.3.0 (debug variant, same debug key, decline any uninstall prompt). See `docs/RELEASE_PROCESS.md` section 9.
+- [ ] After a 3-day `message_log` watch and the phone checks: promote v0.3.0 to Latest (`docs/RELEASE_PROCESS.md` section 10).
+- [ ] With the owner's dates: one `update_budget` call to switch the budget row to the Ultra subscription; then `get_narrator_context` should show `Claude: Ultra until …` with no budget nag.
+- [ ] Optional, needs the owner's OK: `python scripts/fetch_template_bodies.py` (read-only Twilio Content API) to commit `data/templates/*.json` for #363.
 
-- [x] In a fresh Pi session, `/status` returned five populated deterministic lines without a model turn.
-- [x] `/mecris` provided the richer model-interpreted status successfully.
-- [x] `/status` now gives immediate footer feedback while narrator context is gathered.
-- [ ] Wait for the latest PR #296 CI run after the final documentation commits.
-- [ ] Merge PR #296 only after CI passes.
+## Infrastructure Notes
 
-## Local Environment Note
-
-The functional Python 3.13 environment was restored as `.venv`. The incomplete Python 3.14 environment is retained locally as `.venv_py314_incomplete` for reversible cleanup; neither directory is committed.
+- Cron: `trigger-reminders` paused; `failover-sync-edt` and `failover-sync-est` still active until v0.3.0 replaces them with one `5 */2 * * *` job.
+- The MCP bridge listens on 0.0.0.0:8080 until v0.3.0 makes it loopback-only (#39). Stop leftover `mcp_server.py` processes after the merge.
+- The release APK is unsigned. Never install it over the debug-signed app and never accept an uninstall: that wipes the app's data.
+- `deploy-fermyon.sh` and `spin.fermyon.toml` stay until boris-fiona-walker is retired; the Makefile still calls them.
+- Owner decisions still open: a git history rewrite (the old number and the 219 MB target tree are still in history), whether `tools/kev/` goes into `.gitignore`, and whether `cron_reminder_check.sh` is still in the crontab.

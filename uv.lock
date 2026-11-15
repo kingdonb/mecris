@@ -944,7 +944,7 @@ requires-dist = [
     { name = "flask", specifier = ">=3.0.3" },
     { name = "httpx", specifier = ">=0.25.0" },
     { name = "keyboard", specifier = ">=0.13.5" },
-    { name = "mcp", extras = ["cli"], specifier = ">=1.26.0" },
+    { name = "mcp", extras = ["cli"], specifier = ">=1.26.0,<2.0.0" },
     { name = "numpy", specifier = ">=1.24.0" },
     { name = "playwright", specifier = ">=1.55.0" },
     { name = "psycopg2-binary", specifier = ">=2.9.11" },

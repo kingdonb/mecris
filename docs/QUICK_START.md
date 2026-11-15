@@ -137,6 +137,8 @@ Yes! They all connect to the same Neon database:
 
 Each spawns its own MCP server subprocess; they coordinate via the database. Only the Android bridge (`mcp_server.py --stdio` on :8080) can't run in parallel with others (port conflict). Use local Python harness for that.
 
+The bridge listens on `127.0.0.1:8080` by default. If your phone uses the Android app's **"Local (Python: 8080)"** backend, set `MECRIS_BRIDGE_HOST=0.0.0.0` in `.env` so the LAN can reach it; the phone must then sign in with Pocket ID, because only local callers may use the standalone default user without a token. See `docs/PI_MECRIS_GUIDE.md` §6 and `.env.example`.
+
 **Q: How do I see available tools?**
 
 In Pi:

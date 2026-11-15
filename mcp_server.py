@@ -15,16 +15,53 @@ import hashlib
 # Two sinks:
 #   1. stderr  -> ERROR only. Keeps the stdio MCP channel quiet and avoids
 #      flooding Pi's captured stderr, matching prior behavior.
-#   2. rotating file (logs/mecris_server.log) -> INFO+. Persists breadcrumbs and
-#      tracebacks so incidents can be diagnosed after the fact instead of
-#      scrolling off a launch terminal and being lost.
+#   2. rotating file (MECRIS_LOG_FILE, default logs/mecris_server.log) -> INFO+.
+#      Persists breadcrumbs and tracebacks so incidents can be diagnosed after
+#      the fact instead of scrolling off a launch terminal and being lost.
+#      tests/conftest.py points MECRIS_LOG_FILE at a temp file so test runs
+#      never write into the production log.
 #
 # force=True ensures this takes precedence over any config set by imports.
+import re as _re
 import logging.handlers as _logging_handlers
 
 _LOG_FORMAT = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-_LOG_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs")
-_LOG_FILE = os.path.join(_LOG_DIR, "mecris_server.log")
+_LOG_FILE = os.getenv("MECRIS_LOG_FILE", "").strip() or os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "logs", "mecris_server.log"
+)
+_LOG_DIR = os.path.dirname(os.path.abspath(_LOG_FILE))
+
+# Secrets that travel in URLs (Beeminder sends auth_token as a query parameter).
+_SECRET_QUERY_RE = _re.compile(r"\b(auth_token|access_token|api_key)=[^&\s'\"]*", _re.IGNORECASE)
+
+
+def redact_secrets(text: str) -> str:
+    """Replace secret query parameters, name included, with a fixed marker."""
+    return _SECRET_QUERY_RE.sub(lambda m: f"[{m.group(1).lower()} redacted]", text)
+
+
+def _install_redacting_record_factory() -> None:
+    """Redact secrets when a log record is created, so every sink sees the redacted text."""
+    current = logging.getLogRecordFactory()
+    if getattr(current, "_mecris_redacting", False):
+        return
+
+    def factory(*args, **kwargs):
+        record = current(*args, **kwargs)
+        try:
+            message = record.getMessage()
+        except Exception:
+            return record
+        redacted = redact_secrets(message)
+        if redacted != message:
+            record.msg, record.args = redacted, ()
+        return record
+
+    factory._mecris_redacting = True
+    logging.setLogRecordFactory(factory)
+
+
+_install_redacting_record_factory()
 
 _stderr_handler = logging.StreamHandler(sys.stderr)
 _stderr_handler.setLevel(logging.ERROR)
@@ -48,6 +85,9 @@ logging.basicConfig(level=logging.INFO, handlers=_log_handlers, force=True)
 # Namespace levels: our own code INFO+, noisy third-party MCP internals WARNING+.
 logging.getLogger("mecris").setLevel(logging.INFO)
 logging.getLogger("mcp").setLevel(logging.WARNING)
+# httpx logs every request URL at INFO, query string included.
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
 
 from datetime import datetime, timedelta, date, timezone
 from typing import List, Dict, Any, Optional
@@ -59,9 +99,11 @@ dotenv_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '.env')
 load_dotenv(dotenv_path=dotenv_path)
 
 from mcp.server.fastmcp import FastMCP
-from fastapi import FastAPI, Depends, HTTPException, Security
+from fastapi import FastAPI, Depends, HTTPException, Request, Security
 from fastapi.middleware.cors import CORSMiddleware
-from services.auth_service import get_current_user, is_standalone_mode
+from fastapi.security import HTTPAuthorizationCredentials
+from services import auth_service
+from services.auth_service import get_current_user, is_standalone_mode, security as bearer_scheme
 
 from obsidian_client import ObsidianMCPClient
 from beeminder_client import BeeminderClient
@@ -82,7 +124,6 @@ from services.beeminder_road import combine_pump_and_due
 
 # Feature Flags - set these to 'true' in .env to enable
 ENABLE_OBSIDIAN = os.getenv("MECRIS_ENABLE_OBSIDIAN", "false").lower() == "true"
-ENABLE_CLOUD_PUMP = os.getenv("MECRIS_ENABLE_CLOUD_PUMP", "false").lower() == "true"
 from services.credentials_manager import credentials_manager
 from ghost.presence import get_neon_store, StatusType
 from services.rag_retriever import RAGRetriever
@@ -144,32 +185,131 @@ mcp = FastMCP("mecris")
 # Create FastAPI app for HTTP endpoints
 app = FastAPI(title="Mecris API")
 
+# The local web UI (Vite dev server). Also the only browser Origin that may
+# use the standalone default-user fallback.
+LOCAL_WEB_ORIGINS = ("http://localhost:5173", "http://127.0.0.1:5173")
+
 # Add CORS middleware for Web UI development
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_origins=list(LOCAL_WEB_ORIGINS),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-async def get_authorized_user(user_id: Optional[str] = Depends(get_current_user)):
-    """FastAPI Dependency: Enforces authentication and resolves target user ID."""
-    mode = os.getenv("MECRIS_MODE", "standalone")
-    
-    # Cloud Cron Exception (Akamai/Fermyon): Special handling for unauthenticated triggers
-    # logic omitted here for brevity but handled in endpoint logic if needed
-    
-    if user_id:
-        return user_id
+DEFAULT_BRIDGE_HOST = "127.0.0.1"
+BRIDGE_PORT = 8080
 
-    if mode == "standalone":
-        # In standalone/trusted mode, we allow fallback to the local default user
+
+def bridge_host() -> str:
+    """Interface the HTTP bridge binds to (MECRIS_BRIDGE_HOST, default loopback)."""
+    return os.getenv("MECRIS_BRIDGE_HOST", "").strip() or DEFAULT_BRIDGE_HOST
+
+
+LOOPBACK_HOST_NAMES = frozenset({"localhost", "127.0.0.1", "::1"})
+
+
+def _is_loopback_client(request: Request) -> bool:
+    """True only when the TCP peer is a loopback address.
+
+    Uses the socket peer (request.client), so a LAN caller cannot claim to
+    be local by spoofing Host. On its own this does not stop a browser on
+    this machine; see _is_trusted_local_request.
+    """
+    import ipaddress
+    host = request.client.host if request.client else None
+    if not host:
+        return False
+    try:
+        addr = ipaddress.ip_address(host.split("%", 1)[0])
+    except ValueError:
+        return False
+    mapped = getattr(addr, "ipv4_mapped", None)
+    return addr.is_loopback or bool(mapped and mapped.is_loopback)
+
+
+def _host_header_name(request: Request) -> str:
+    """Host header without port or brackets, lower-cased ('' if absent)."""
+    raw = (request.headers.get("host") or "").strip().lower()
+    if raw.startswith("["):
+        return raw[1:].split("]", 1)[0]
+    return raw.rsplit(":", 1)[0] if raw.count(":") == 1 else raw
+
+
+def _is_trusted_local_request(request: Request) -> bool:
+    """True for a local process or the local web UI, not for a web page.
+
+    All of these must hold:
+    - the TCP peer is loopback (a LAN host cannot qualify);
+    - the Host header names loopback (defeats DNS rebinding, where the peer
+      is loopback but Host is the attacker's domain);
+    - Origin is absent or the local web UI, and Sec-Fetch-Site is not
+      cross-site (defeats cross-site simple requests, i.e. CSRF).
+    """
+    if not _is_loopback_client(request):
+        return False
+    if _host_header_name(request) not in LOOPBACK_HOST_NAMES:
+        return False
+    origin = request.headers.get("origin")
+    if origin is not None and origin not in LOCAL_WEB_ORIGINS:
+        return False
+    if (request.headers.get("sec-fetch-site") or "").lower() == "cross-site":
+        return False
+    return True
+
+
+def _verify_signed_token(token: str) -> Optional[str]:
+    """Return the sub of a JWKS-verified RS256 token from our issuer, else None.
+
+    Standalone verify_token (services/auth_service.py) skips the signature
+    check, so callers that are not trusted-local go through this instead.
+    """
+    import jwt
+    try:
+        signing_key = auth_service._get_jwks_client().get_signing_key_from_jwt(token)
+        payload = jwt.decode(
+            token, signing_key.key, algorithms=["RS256"], options={"verify_aud": False}
+        )
+    except Exception as e:
+        # Exception type only: messages can echo token contents.
+        print(f"AUTH FAILURE: bearer token failed verification ({type(e).__name__})", file=sys.stderr)
+        return None
+    if payload.get("iss") != os.getenv("OIDC_ISSUER", auth_service.POCKET_ID_URL):
+        print("AUTH FAILURE: bearer token issuer mismatch", file=sys.stderr)
+        return None
+    return payload.get("sub") or None
+
+
+async def get_authorized_user(
+    request: Request,
+    credentials: Optional[HTTPAuthorizationCredentials] = Security(bearer_scheme),
+    user_id: Optional[str] = Depends(get_current_user),
+):
+    """FastAPI Dependency: Enforces authentication and resolves target user ID.
+
+    Cloud mode: get_current_user has already verified the token signature.
+    Standalone mode: a trusted local request (see _is_trusted_local_request)
+    may use the default user or an unverified token, as before. Everyone else
+    needs a token that passes the JWKS signature check.
+    """
+    mode = os.getenv("MECRIS_MODE", "standalone")
+
+    if mode != "standalone":
+        if user_id:
+            return user_id
+    elif _is_trusted_local_request(request):
+        if user_id:
+            return user_id
         resolved_id = credentials_manager.resolve_user_id()
         if resolved_id:
             return resolved_id
-    
-    # In multi-tenant mode, or if no local user could be resolved: REJECT.
+    elif credentials and credentials.credentials:
+        verified_id = await asyncio.to_thread(_verify_signed_token, credentials.credentials)
+        if verified_id:
+            return verified_id
+
+    # No verified user, an untrusted caller, or no local user: REJECT.
     print(f"AUTH FAILURE: No valid user_id found (mode={mode})", file=sys.stderr)
     raise HTTPException(status_code=401, detail="Authentication Required")
 
@@ -177,18 +317,34 @@ async def get_authorized_user(user_id: Optional[str] = Depends(get_current_user)
 async def health_check():
     # Check Neon connectivity
     neon_active = False
+    leader_pid = None
     try:
         import psycopg2
         conn = psycopg2.connect(os.getenv("NEON_DB_URL"))
-        conn.close()
         neon_active = True
-    except: pass
-    
+        try:
+            # The leader named in the election row, not this process (#346).
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT process_id FROM scheduler_election "
+                    "WHERE role = 'leader' AND user_id = %s AND process_id IS NOT NULL "
+                    "ORDER BY heartbeat DESC NULLS LAST LIMIT 1",
+                    (scheduler.user_id,),
+                )
+                row = cur.fetchone()
+                if isinstance(row, (tuple, list)) and row:
+                    leader_pid = row[0]
+        finally:
+            conn.close()
+    except Exception:
+        pass
+
     return {
         "status": "healthy",
         "home_server_active": True,
         "neon_connected": neon_active,
-        "leader_pid": scheduler.process_id if scheduler else "unknown",
+        "leader_pid": leader_pid,
+        "this_pid": scheduler.process_id if scheduler else None,
         "last_seen": datetime.now(timezone.utc).isoformat()
     }
 
@@ -554,10 +710,8 @@ async def log_message_endpoint(request: Dict[str, Any], user_id: str = Depends(g
 async def budget_status_endpoint(user_id: str = Depends(get_authorized_user)):
     return get_budget_status(user_id)
 
-# Mount the MCP server's ASGI app
-# This allows the same process to serve both the MCP protocol (via stdio or SSE) 
-# and custom HTTP endpoints.
-app.mount("/mcp", mcp.sse_app())
+# The MCP protocol is served over stdio only. The SSE app used to be mounted
+# at /mcp, which exposed every tool to the network without credentials (#39).
 
 from scheduler import MecrisScheduler, _global_walk_sync_job
 
@@ -717,6 +871,44 @@ def _enrich_bookmarks_for_narrator(goals: List[Dict[str, Any]]) -> List[Dict[str
     return results
 
 
+def _plan_display_name(plan: Optional[str]) -> str:
+    plan = (plan or "").strip()
+    return plan[:1].upper() + plan[1:] if plan else "subscription"
+
+
+def _claude_subscription_phrase(budget_status: Dict[str, Any], claude_plan: Dict[str, Any]) -> str:
+    """'Claude: Ultra until 2027-05-13, available (3% weekly, resets Mon 4:00 AM)' (#345)."""
+    plan_name = _plan_display_name(budget_status.get("plan"))
+    grant_end = budget_status.get("grant_end") or budget_status.get("period_end", "?")
+    verb = "ended" if budget_status.get("budget_health") == "ENDED" else "until"
+    phrase = f"Claude: {plan_name} {verb} {grant_end}"
+    reading = (claude_plan or {}).get("summary_line") or ""
+    if reading.startswith("Claude: "):
+        reading = reading[len("Claude: "):]
+    return f"{phrase}, {reading}" if reading else phrase
+
+
+def _downgrade_not_due_goals(goals: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Relabel CRITICAL goals that cannot derail today (#346 fold-in).
+
+    derail_risk comes from safebuf alone, so a goal whose road says nothing is
+    due today, or a do-more goal on a flat road (paused), still reads CRITICAL.
+    - DUE_LATER: the road and yaw are known and beeminder_due_today is 0.
+    - PAUSED: rate 0 on a do-more goal (yaw 1) whose road could not be read.
+    A CRITICAL goal with an unreadable road and a non-zero rate stays CRITICAL.
+    """
+    out = []
+    for goal in goals or []:
+        if isinstance(goal, dict) and goal.get("derail_risk") == "CRITICAL":
+            road_known = goal.get("beeminder_road_today") is not None and goal.get("yaw") is not None
+            if road_known and (goal.get("beeminder_due_today") or 0) == 0:
+                goal = {**goal, "derail_risk": "DUE_LATER"}
+            elif not road_known and goal.get("yaw") == 1 and float(goal.get("rate") or 0) == 0:
+                goal = {**goal, "derail_risk": "PAUSED"}
+        out.append(goal)
+    return out
+
+
 @mcp.tool(description="Get unified strategic context with goals, budget, and recommendations.")
 async def get_narrator_context(user_id: str = None) -> Dict[str, Any]:
     """Get unified strategic context with goals, budget, and recommendations."""
@@ -743,6 +935,7 @@ async def get_narrator_context(user_id: str = None) -> Dict[str, Any]:
         except Exception as e:
             logger.error(f"Failed to fetch Beeminder goals: {e}")
             beeminder_goals = []
+        beeminder_goals = _downgrade_not_due_goals(beeminder_goals)
 
         client = get_user_beeminder_client(target_user_id)
         
@@ -810,10 +1003,20 @@ async def get_narrator_context(user_id: str = None) -> Dict[str, Any]:
         
         # Budget (kingdonb/mecris#345): an expired period is stale, not exhausted,
         # and a missing/failed budget read is unknown, not zero days left.
+        # A subscription (Claude Ultra) merges with the plan reading into one
+        # "Claude: ..." phrase; a retired budget says so and never nags.
+        source_type = budget_status.get("source_type") or "api_credit"
+        subscription = source_type == "subscription" and not budget_status.get("error")
+        retired = source_type == "retired" and not budget_status.get("error")
         budget_days = budget_status.get("days_remaining")
-        budget_known = isinstance(budget_days, (int, float)) and not budget_status.get("error")
-        budget_expired = bool(budget_status.get("period_expired"))
-        if budget_expired:
+        budget_known = (isinstance(budget_days, (int, float)) and not budget_status.get("error")
+                        and source_type == "api_credit")
+        budget_expired = bool(budget_status.get("period_expired")) and source_type == "api_credit"
+        if subscription:
+            budget_phrase = _claude_subscription_phrase(budget_status, claude_plan)
+        elif retired:
+            budget_phrase = "Budget: retired (no dollar budget)"
+        elif budget_expired:
             budget_phrase = f"Budget: period ended {budget_status.get('period_end', '?')} (stale)"
         elif budget_known:
             budget_phrase = f"Budget: {budget_days:.1f} days left"
@@ -832,6 +1035,17 @@ async def get_narrator_context(user_id: str = None) -> Dict[str, Any]:
         if budget_pressure and budget_days <= 2: recommendations.append("Urgent: Focus on highest-value work due to budget constraints")
         if budget_expired:
             recommendations.append(f"💳 Budget period ended {budget_status.get('days_since_period_end', '?')} days ago: update it with update_budget (or retire the dollar budget)")
+        if subscription:
+            plan_name = _plan_display_name(budget_status.get("plan"))
+            grant_end = budget_status.get("grant_end") or budget_status.get("period_end", "?")
+            if budget_status.get("budget_health") == "ENDING":
+                recommendations.append(
+                    f"🤖 Claude {plan_name} grant ends {grant_end} "
+                    f"({budget_status.get('days_to_grant_end', '?')} days left): decide what replaces it")
+            elif budget_status.get("budget_health") == "ENDED":
+                urgent_items.append(
+                    f"CLAUDE GRANT ENDED: {plan_name} ended {grant_end}; "
+                    "record the current plan with update_budget")
 
         # Majesty Cake: surface aggregate daily goal status early for discoverability (kingdonb/mecris#170)
         try:
@@ -865,9 +1079,10 @@ async def get_narrator_context(user_id: str = None) -> Dict[str, Any]:
         if anthropic_cost_tracker:
             recommendations.append("📊 Real-time budget tracking is active via Anthropic Admin API")
 
-        # Claude plan availability (kingdonb/mecris#344)
+        # Claude plan availability (kingdonb/mecris#344); a subscription budget
+        # already carries it in the merged "Claude: ..." phrase (#345).
         claude_state = claude_plan.get("state")
-        if claude_plan.get("summary_line"):
+        if claude_plan.get("summary_line") and not subscription:
             summary += f", {claude_plan['summary_line']}"
         if claude_state == "exhausted":
             urgent_items.append(f"CLAUDE PLAN EXHAUSTED: {claude_plan.get('reason', '')}")
@@ -882,8 +1097,19 @@ async def get_narrator_context(user_id: str = None) -> Dict[str, Any]:
                 urgent_items.append(f"GROQ: {groq_urgent}")
                 recommendations.append(groq_urgent)
 
+        # Akamai cron refused with a bad key today: the cron and the deploy disagree
+        # about the key. burned_key probes (verify script) do not count.
+        akamai = next((m for m in (daily_aggregate.get("system_pulse") or {}).get("modalities", [])
+                       if isinstance(m, dict) and m.get("role") == "AKAMAI FUNCTIONS"), None)
+        if akamai and (akamai.get("bad_key_refusals_today") or 0) > 0:
+            urgent_items.append(
+                f"AKAMAI: {akamai['bad_key_refusals_today']} cron call(s) refused today (bad_key); "
+                "the cron key and the deployed key differ"
+            )
+
         presence_info = await _get_presence_summary(target_user_id)
-        if presence_info.get("ghost_age_seconds") is not None:
+        # The ghost is paused (#359); its heartbeat is noise unless re-enabled.
+        if _ghost_enabled() and presence_info.get("ghost_age_seconds") is not None:
             ghost_age_min = presence_info["ghost_age_seconds"] / 60
             if ghost_age_min < 120:
                 recommendations.insert(0, f"👻 Ghost Heartbeat: Bot was active {ghost_age_min:.0f}m ago.")
@@ -907,6 +1133,8 @@ async def get_narrator_context(user_id: str = None) -> Dict[str, Any]:
             "system_pulse": {
                 "running": scheduler.running,
                 "is_leader": scheduler.is_leader,
+                "state": scheduler.role_state,
+                "leader_process_id": scheduler.leader_process_id,
                 "process_id": scheduler.process_id,
                 "last_status": scheduler.last_status,
                 "intent": scheduler.intent,
@@ -1134,10 +1362,11 @@ def get_weather_full_report() -> Dict[str, Any]:
 
 @mcp.tool(description="Force an immediate scrape of Clozemaster and push to Beeminder.")
 async def trigger_language_sync() -> Dict[str, Any]:
-    """Manually trigger the Clozemaster to Beeminder sync process."""
-    guard = _neon_budget_governor.budget_gate("anthropic_api")
-    if guard and guard.get("budget_halted"):
-        return guard
+    """Manually trigger the Clozemaster to Beeminder sync process.
+
+    Deterministic (scrape + Beeminder push, no LLM), so not gated on the
+    anthropic_api bucket (#351).
+    """
     result = await language_sync_service.sync_all(dry_run=False)
     if not result.get("success", False):
         return {"error": result.get("error", "Sync failed")}
@@ -1183,12 +1412,31 @@ def complete_goal(goal_id: int, user_id: str = None) -> Dict[str, Any]:
         return {"error": "Authentication Required"}
     return usage_tracker.complete_goal(goal_id, target_user_id)
 
-@mcp.tool(description="Manually update budget information.")
-def update_budget(remaining_budget: float, total_budget: Optional[float] = None, period_end: Optional[str] = None, user_id: str = None) -> Dict[str, Any]:
+@mcp.tool(description=(
+    "Manually update budget information. Every field is optional. source_type is "
+    "'api_credit' (a dollar budget), 'subscription' (a plan grant such as Claude Ultra, "
+    "whose window is period_start..period_end) or 'retired'. plan names the plan "
+    "(e.g. 'ultra'); monthly_price_usd is optional. Dates are YYYY-MM-DD."
+))
+def update_budget(remaining_budget: Optional[float] = None, total_budget: Optional[float] = None,
+                  period_end: Optional[str] = None, period_start: Optional[str] = None,
+                  source_type: Optional[str] = None, plan: Optional[str] = None,
+                  monthly_price_usd: Optional[float] = None, user_id: str = None) -> Dict[str, Any]:
     target_user_id = resolve_target_user(user_id)
     if not target_user_id:
         return {"error": "Authentication Required"}
-    return usage_tracker.update_budget(remaining_budget, total_budget, period_end, target_user_id)
+    extras = {name: value for name, value in (
+        ("source_type", source_type), ("plan", plan),
+        ("period_start", period_start), ("monthly_price_usd", monthly_price_usd),
+    ) if value is not None}
+    try:
+        return usage_tracker.update_budget(remaining_budget, total_budget, period_end, target_user_id, **extras)
+    except Exception as e:
+        if "source_type" in str(e) or "monthly_price_usd" in str(e) or 'column "plan"' in str(e):
+            return {"error": "budget_tracking lacks the subscription columns: run "
+                             "scripts/migrate_v9_subscription_budget.py first"}
+        logger.error(f"update_budget failed: {type(e).__name__}")
+        return {"error": f"update_budget failed: {type(e).__name__}"}
 
 @mcp.tool(description="Record manual Groq odometer reading with cumulative cost.")
 async def record_groq_reading(value: float, notes: str = "", month: Optional[str] = None, user_id: str = None) -> Dict[str, Any]:
@@ -1344,7 +1592,19 @@ async def get_unified_cost_status(user_id: str = None) -> Dict[str, Any]:
         groq_tracker = _get_tracker()
         groq_status = await asyncio.to_thread(groq_tracker.check_reminder_needs, target_user_id)
         groq_usage = await asyncio.to_thread(groq_tracker.get_usage_for_virtual_budget, target_user_id)
-        return {"claude": budget_data, "groq": {**groq_status, **groq_usage}}
+        claude = dict(budget_data)
+        if claude.get("source_type") == "subscription":
+            # A plan grant has no dollars to track; pair it with the latest plan reading (#345).
+            try:
+                plan_status = await asyncio.to_thread(_get_claude_plan_status_sync, target_user_id)
+            except Exception as e:
+                logger.error(f"get_unified_cost_status: Claude plan status failed: {type(e).__name__}")
+                plan_status = {"state": "unknown"}
+            claude["plan_status"] = plan_status
+            claude["summary"] = _claude_subscription_phrase(claude, plan_status)
+        elif claude.get("source_type") == "retired":
+            claude["summary"] = "Budget: retired (no dollar budget)"
+        return {"claude": claude, "groq": {**groq_status, **groq_usage}}
     except Exception as e:
         logger.error(f"Failed to get unified cost status: {e}")
         return {"error": f"Failed to get unified cost status: {e}"}
@@ -1405,7 +1665,13 @@ def get_scheduler_queue() -> Dict[str, Any]:
         "queue": scheduler.get_queue()
     }
 
-from services.health_checker import HealthChecker as _HealthChecker
+from services.health_checker import (
+    HealthChecker as _HealthChecker,
+    classify_role as _classify_pulse_role,
+    ghost_enabled as _ghost_enabled,
+    pick_newest_rows as _pick_newest_pulse_rows,
+    whole_minutes as _whole_minutes,
+)
 _health_checker = _HealthChecker()
 
 @mcp.tool(description="Get unified health status for all registered system processes (Python MCP, Android client, Spin cloud) from the scheduler_election table.")
@@ -1416,7 +1682,9 @@ async def get_system_health(user_id: str = None) -> Dict[str, Any]:
         return {"error": "Authentication Required"}
     result = await asyncio.to_thread(_health_checker.get_system_health, target_user_id)
     if "error" not in result:
-        result["leader_process_id"] = scheduler.process_id
+        # leader_process_id comes from the leader row (HealthChecker), not from
+        # whichever process answered this call (#346).
+        result["this_process_id"] = scheduler.process_id
         result["is_leader"] = scheduler.is_leader
     return result
 
@@ -1428,9 +1696,8 @@ async def get_coaching_insight(user_id: str = None) -> Dict[str, Any]:
     target_user_id = resolve_target_user(user_id)
     if not target_user_id:
         return {"error": "Authentication Required"}
-    guard = _neon_budget_governor.budget_gate("anthropic_api")
-    if guard and guard.get("budget_halted"):
-        return guard
+    # Deterministic (services/coaching_service.py makes no LLM call) and on the
+    # nag path, so not gated on the anthropic_api bucket (#351).
     try:
         # Dependency Injection for the Service
         async def _get_obsidian_context():
@@ -1522,32 +1789,6 @@ async def get_language_velocity_stats(user_id: str = None) -> Dict[str, Any]:
                 min_target = 100
 
             pump_status = None
-            if ENABLE_CLOUD_PUMP:
-                import httpx
-                try:
-                    def _fetch_pump():
-                        with httpx.Client(timeout=5.0) as client:
-                            resp = client.post(
-                                "https://mecris-sync.fermyon.app/internal/review-pump-status-py",
-                                json={
-                                    "debt": current_debt,
-                                    "tomorrow_liability": tomorrow_liability,
-                                    "daily_completions": daily_done,
-                                    "multiplier_x10": int(multiplier * 10),
-                                    "unit": unit
-                                }
-                            )
-                            resp.raise_for_status()
-                            return resp.json()
-                    pump_status = await asyncio.to_thread(_fetch_pump)
-                    if min_target > 0 and pump_status.get("target_flow_rate", 0) < min_target and current_debt == 0:
-                        pump_status["target_flow_rate"] = min_target - daily_done
-                        if pump_status["target_flow_rate"] < 0:
-                            pump_status["target_flow_rate"] = 0
-                        pump_status["goal_met"] = daily_done >= min_target
-                except Exception as e:
-                    logger.warning(f"Cloud pump sync skipped or failed for {lang}: {e}")
-
             if not pump_status:
                 pump = ReviewPump(multiplier=multiplier)
                 pump_status = pump.get_status(current_debt, tomorrow_liability, daily_done, unit=unit, min_target=min_target)
@@ -1647,20 +1888,166 @@ async def get_last_sent_time(msg_type: Optional[str] = None, user_id: str = None
         logger.error(f"Failed to fetch last sent time: {e}")
         return None
 
+# ---------------------------------------------------------------------------
+# Shared nag damping (contracts/nag_damping_cases.json, #349 #368)
+# ---------------------------------------------------------------------------
+# The Python twin of Spin's damping and daily-cap gates. One SQL read fetches
+# the recent message_log rows; nag_damping_verdict applies the rules. A row
+# dated after now is included (and damps), matching Spin's
+# sent_at > now() - interval '240 minutes'.
+NAG_DAMPING_MINUTES = 240
+NAG_DEFAULT_MAX_PER_DAY = 3
+NAG_TIMEZONE = "America/New_York"  # hard-coded per the operator ruling; users.timezone is not read
+NAG_GUARD_SQL = """
+    SELECT type, channel, status, sent_at
+    FROM message_log
+    WHERE user_id = %s AND sent_at > now() - interval '48 hours'
+"""
+
+
+def _counts_toward_cap(row: Dict[str, Any]) -> bool:
+    """Outbound WhatsApp nag: channel whatsapp (NULL reads as whatsapp), status sent/failed/NULL."""
+    if row.get("type") == "phone_verification":
+        return False
+    channel = row.get("channel") or "whatsapp"
+    return channel == "whatsapp" and row.get("status") in (None, "sent", "failed")
+
+
+def _counts_toward_damping(row: Dict[str, Any]) -> bool:
+    """Any-channel nag: an outbound WhatsApp nag, or a local phone nag that was shown."""
+    if row.get("type") == "phone_verification":
+        return False
+    if _counts_toward_cap(row):
+        return True
+    return row.get("channel") == "android_native" and row.get("status") == "shown"
+
+
+def _nag_cap(value: Any) -> int:
+    """max_messages_per_day as Spin's Prefs::from_json reads it.
+
+    Integers, finite floats (floored) and integer strings are read; a
+    negative cap is 0; anything else (junk, bools, lists) is the default.
+    """
+    import math
+    if isinstance(value, bool):
+        return NAG_DEFAULT_MAX_PER_DAY
+    if isinstance(value, int):
+        n = value
+    elif isinstance(value, float) and math.isfinite(value):
+        n = math.floor(value)
+    elif isinstance(value, str) and "_" not in value:
+        try:
+            n = int(value.strip())
+        except ValueError:
+            return NAG_DEFAULT_MAX_PER_DAY
+    else:
+        return NAG_DEFAULT_MAX_PER_DAY
+    return max(0, n)
+
+
+def nag_damping_verdict(message_log: List[Dict[str, Any]], now: datetime,
+                        prefs: Optional[Dict[str, Any]] = None) -> Dict[str, str]:
+    """{'verdict': 'send'|'skip', 'reason': 'eligible'|'damped'|'daily_cap'}.
+
+    - damped: a counted nag on any channel is under NAG_DAMPING_MINUTES old
+      (whole minutes, floor of seconds / 60; a future-dated row counts).
+    - daily_cap: WhatsApp nags whose sent_at falls on today's New York date
+      reach prefs.max_messages_per_day (default 3). android_native rows and
+      phone_verification never count toward the cap.
+    """
+    from zoneinfo import ZoneInfo
+    ny = ZoneInfo(NAG_TIMEZONE)
+    prefs = prefs or {}
+    cap = _nag_cap(prefs.get("max_messages_per_day"))
+    today_ny = now.astimezone(ny).date()
+
+    def _utc(value: datetime) -> datetime:
+        # message_log.sent_at is timestamptz; a naive value is read as UTC.
+        return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value
+
+    rows = [{**row, "sent_at": _utc(row["sent_at"])} for row in message_log
+            if row.get("sent_at") is not None]
+
+    for row in rows:
+        if not _counts_toward_damping(row):
+            continue
+        if int((now - row["sent_at"]).total_seconds() // 60) < NAG_DAMPING_MINUTES:
+            return {"verdict": "skip", "reason": "damped"}
+
+    sent_today = sum(
+        1 for row in rows
+        if _counts_toward_cap(row) and row["sent_at"].astimezone(ny).date() == today_ny
+    )
+    if sent_today >= cap:
+        return {"verdict": "skip", "reason": "daily_cap"}
+    return {"verdict": "send", "reason": "eligible"}
+
+
+def _nag_guard_rows(neon_url: str, target_user_id: str) -> List[Dict[str, Any]]:
+    import psycopg2
+    with psycopg2.connect(neon_url) as conn:
+        with conn.cursor() as cur:
+            cur.execute(NAG_GUARD_SQL, (target_user_id,))
+            return [
+                {"type": r[0], "channel": r[1], "status": r[2], "sent_at": r[3]}
+                for r in cur.fetchall()
+            ]
+
+
+def _delivery_channel_status(delivery_result: Dict[str, Any]) -> tuple:
+    """(channel, status) for the message_log row of one delivery attempt.
+
+    Any WhatsApp attempt is a WhatsApp row, sent or failed: a failed attempt
+    damps and counts toward the cap (contracts/nag_damping_cases.json), even
+    when smart_send_message then fell through to the console fallback. Only
+    a console delivery where no WhatsApp send was tried is console/not_sent;
+    anything else reads as WhatsApp, so an unknown result still damps.
+    """
+    tried_whatsapp = any(
+        str((a or {}).get("method", "")).startswith("whatsapp")
+        for a in delivery_result.get("attempts") or []
+    )
+    if delivery_result.get("method") == "console" and not tried_whatsapp:
+        return "console", "not_sent"
+    return "whatsapp", ("sent" if delivery_result.get("sent") else "failed")
+
+
 async def send_reminder_message(message_data: Dict[str, Any], user_id: str = None) -> Dict[str, Any]:
+    """Send one reminder, after the shared damping guard, and log it truthfully.
+
+    - The guard (nag_damping_verdict over NAG_GUARD_SQL) runs before any send.
+      trigger_reminder_check can still be called by hand, so this path needs
+      the same 4-hour any-channel damping and New York daily cap as Spin. A
+      failed message_log read fails closed. A failed prefs read gives {},
+      so the default cap of 3 applies, as in Spin.
+    - It does not apply Spin's 14:00-17:59 New York window. This path is a
+      manual or ReminderService-driven override (ReminderService keeps its
+      own windows); damping and the shared daily cap bound it.
+    - The result carries 'logged': False when the message_log write failed,
+      because an unlogged send is invisible to damping and the cap.
+    - sent_at is the database's NOW() (timestamptz, UTC), date is the New York
+      date, and channel is explicit. A console fallback with no WhatsApp
+      attempt is channel 'console', status 'not_sent', never a WhatsApp
+      'sent'. A failed WhatsApp attempt is 'whatsapp'/'failed', so it damps.
+    """
     msg_type = message_data.get("type")
     use_template = message_data.get("template_sid") is not None
     target_user_id = usage_tracker.resolve_user_id(user_id)
-    
+
     neon_url = os.getenv("NEON_DB_URL")
     if not neon_url:
         return {"sent": False, "reason": "NEON_DB_URL not configured"}
-        
-    today = date.today()
-    now = datetime.now()
-    
-    # Cooldown logic is now handled by the ReminderService heuristics.
-    # We trust the engine.
+
+    try:
+        guard_rows = await asyncio.to_thread(_nag_guard_rows, neon_url, target_user_id)
+        prefs = await asyncio.to_thread(neon_checker.get_notification_prefs, target_user_id)
+    except Exception as e:
+        logger.error(f"Reminder guard read failed; not sending: {type(e).__name__}")
+        return {"sent": False, "skipped": True, "reason": "guard_unavailable"}
+    verdict = nag_damping_verdict(guard_rows, datetime.now(timezone.utc), prefs or {})
+    if verdict["verdict"] != "send":
+        logger.info(f"Reminder {msg_type} not sent: {verdict['reason']}")
+        return {"sent": False, "skipped": True, "reason": verdict["reason"]}
 
     message = message_data.get("message") or message_data.get("fallback_message")
     if use_template:
@@ -1675,37 +2062,50 @@ async def send_reminder_message(message_data: Dict[str, Any], user_id: str = Non
         }
     else:
         delivery_result = smart_send_message(message, user_id=target_user_id)
+
     # Log to Neon, regardless of success or failure
-    status_val = "sent" if delivery_result.get("sent") else "failed"
-    error_val = None if delivery_result.get("sent") else "Failed to send (check twilio_sender logs)"
-    
+    channel_val, status_val = _delivery_channel_status(delivery_result)
+    if status_val == "sent":
+        error_val = None
+    elif status_val == "not_sent":
+        error_val = "Not delivered: console fallback"
+    else:
+        error_val = "Failed to send (check twilio_sender logs)"
+
     # Encrypt PII fields (error_msg, content) before storing
     encrypted_content = usage_tracker.encryption.try_encrypt(message)
     error_val = usage_tracker.encryption.try_encrypt(error_val)
-    
+
     def _write_log():
         import psycopg2
         with psycopg2.connect(neon_url) as conn:
             with conn.cursor() as cur:
                 try:
                     cur.execute(
-                        "INSERT INTO message_log (date, type, sent_at, user_id, status, error_msg, content) VALUES (%s, %s, %s, %s, %s, %s, %s)", 
-                        (today, msg_type, now, target_user_id, status_val, error_val, encrypted_content)
+                        "INSERT INTO message_log (date, type, sent_at, user_id, status, error_msg, content, channel) "
+                        "VALUES ((NOW() AT TIME ZONE 'America/New_York')::date, %s, NOW(), %s, %s, %s, %s, %s)",
+                        (msg_type, target_user_id, status_val, error_val, encrypted_content, channel_val)
                     )
                 except psycopg2.errors.UndefinedColumn:
-                    # Fallback if schema wasn't migrated
+                    # Fallback if schema wasn't migrated (NULL channel and status read as a
+                    # WhatsApp send, so the guard fails closed on these rows).
                     conn.rollback()
                     cur.execute(
-                        "INSERT INTO message_log (date, type, sent_at, user_id) VALUES (%s, %s, %s, %s)", 
-                        (today, msg_type, now, target_user_id)
+                        "INSERT INTO message_log (date, type, sent_at, user_id) "
+                        "VALUES ((NOW() AT TIME ZONE 'America/New_York')::date, %s, NOW(), %s)",
+                        (msg_type, target_user_id)
                     )
 
+    # An unlogged send is invisible to damping and the cap (here and in
+    # Spin), so the result says so instead of hiding it.
     try:
         await asyncio.to_thread(_write_log)
+        logged = True
     except Exception as e:
-        logger.error(f"Failed to log message to Neon: {e}")
+        logger.error(f"Failed to log message to Neon: {type(e).__name__}")
+        logged = False
 
-    return delivery_result
+    return {**delivery_result, "logged": logged}
 
 
 
@@ -1761,7 +2161,6 @@ reminder_service = ReminderService(get_narrator_context, get_coaching_insight, g
 # ---------------------------------------------------------------------------
 # Budget Governor — Neon-backed (Phase 1 complete, Phase 2 MCP exposure)
 # ---------------------------------------------------------------------------
-import httpx
 from services.budget_governor import NeonBudgetGovernor as _NeonBudgetGovernor
 
 # OpenRouter Tracker
@@ -1777,20 +2176,11 @@ _neon_budget_governor = _NeonBudgetGovernor()
 
 @mcp.tool(description="Get per-bucket LLM spend envelope status and routing recommendation (Budget Governor).")
 def get_budget_governor_status(user_id: str = None) -> Dict[str, Any]:
-    """Returns per-bucket consumption, envelope status, and a routing recommendation."""
-    # Try cloud WASM component first
-    try:
-        response = httpx.post(
-            "https://mecris-sync.fermyon.app/internal/budget-governor-py",
-            json={"action": "status"},
-            timeout=5.0
-        )
-        response.raise_for_status()
-        return response.json()
-    except Exception as e:
-        logger.error(f"Failed to fetch BudgetGovernor status from cloud: {e}")
-        # Fallback to local NeonBudgetGovernor
-        return _neon_budget_governor.get_status()
+    """Returns per-bucket consumption, envelope status, and a routing recommendation.
+
+    Local NeonBudgetGovernor only; the Fermyon WASM copy is retired (#346).
+    """
+    return _neon_budget_governor.get_status()
 
 @mcp.tool(description="Check if a spend would be allowed under the 5%/5% envelope (Budget Governor).")
 def budget_governor_check(bucket: str, cost_estimate: float = 0.01, user_id: str = None) -> Dict[str, Any]:
@@ -1859,32 +2249,58 @@ def budget_governor_openrouter_status(user_id: str = None) -> Dict[str, Any]:
     }
 
 def get_modality_status(role: str, mins: float) -> str:
-    """Determine healthy/degraded/offline status based on heartbeat age (minutes)."""
-    if role == "leader":
-        if mins < 2: return "healthy"
-        if mins < 5: return "degraded"
-        return "offline"
-    elif role == "android_client":
-        if mins < 20: return "healthy"
-        if mins < 60: return "degraded"
-        return "offline"
-    elif role == "akamai_functions":
-        if mins < 135: return "healthy"
-        if mins < 250: return "degraded"
-        return "offline"
-    elif role == "fermyon_cloud":
-        if mins < 5: return "reactive"
-        if mins < 15: return "degraded"
-        return "unknown"
-    elif role == "unknown_cloud":
-        # Handle cases where provider variable is missing but cloud is active
-        if mins < 135: return "healthy"
-        if mins < 250: return "degraded"
-        return "offline"
-    return "unknown"
+    """Status for a role at an age in minutes, from contracts/pulse_roles.json (#346).
+
+    Roles the registry hides (retired, or unlisted and stale) report 'hidden'.
+    """
+    verdict = _classify_pulse_role(role, mins)
+    return verdict["status"] if verdict["visible"] else "hidden"
+
+
+# Cron and webhook refusals Spin counted today (New York day). One row per day,
+# endpoint and reason; a row's last_at falls on its own day, so filtering on
+# last_at avoids depending on the day column's name. burned_key probes from
+# scripts/verify_spin_deploy.sh are counted in the total but never alert.
+REFUSALS_TODAY_SQL = """
+    SELECT COALESCE(SUM("count"), 0)::BIGINT,
+           COALESCE(SUM("count") FILTER (WHERE reason = 'bad_key'), 0)::BIGINT
+    FROM internal_refusals
+    WHERE (last_at AT TIME ZONE 'America/New_York')::date
+          = (now() AT TIME ZONE 'America/New_York')::date
+"""
+
+
+def _as_count(value: Any) -> int:
+    from decimal import Decimal
+    if isinstance(value, bool) or not isinstance(value, (int, float, Decimal)):
+        return 0
+    return max(int(value), 0)
+
+
+def _refusals_today(conn, cur) -> tuple:
+    """(total, bad_key) refusals today; a missing table or any error counts as 0."""
+    try:
+        cur.execute(REFUSALS_TODAY_SQL)
+        row = cur.fetchone()
+    except Exception:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        return 0, 0
+    if not isinstance(row, (tuple, list)) or len(row) < 2:
+        return 0, 0
+    return _as_count(row[0]), _as_count(row[1])
+
 
 async def fetch_system_pulse(user_id: str) -> Dict[str, Any]:
-    """Fetch recent heartbeats from scheduler_election and return formatted pulse modalities."""
+    """Fetch heartbeats from scheduler_election and return pulse modalities.
+
+    Roles, display names, limits and visibility come from
+    contracts/pulse_roles.json (#346): one modality per role, newest heartbeat
+    wins (the user's own row on a tie), retired roles hidden, unlisted roles
+    shown only while fresh, GHOST 'paused' unless MECRIS_GHOST_ENABLED is set.
+    """
     neon_url = os.getenv("NEON_DB_URL")
     if not neon_url:
         return {"modalities": []}
@@ -1899,7 +2315,8 @@ async def fetch_system_pulse(user_id: str) -> Dict[str, Any]:
                     cur.execute("""
                         SELECT role, heartbeat,
                                EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - heartbeat)) / 60 AS minutes_since,
-                               last_status, intent, last_error
+                               last_status, intent, last_error,
+                               user_id IS NOT NULL AS own
                         FROM scheduler_election
                         WHERE user_id = %s OR user_id IS NULL
                         ORDER BY heartbeat DESC
@@ -1909,39 +2326,52 @@ async def fetch_system_pulse(user_id: str) -> Dict[str, Any]:
                     cur.execute("""
                         SELECT role, heartbeat,
                                EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - heartbeat)) / 60 AS minutes_since,
-                               NULL, NULL, NULL
+                               NULL, NULL, NULL,
+                               user_id IS NOT NULL AS own
                         FROM scheduler_election
                         WHERE user_id = %s OR user_id IS NULL
                         ORDER BY heartbeat DESC
                     """, (target_user_id,))
-                return cur.fetchall()
+                rows = cur.fetchall()
+                refusals = (0, 0)
+                if any(r[0] == "akamai_functions" for r in rows):
+                    refusals = _refusals_today(conn, cur)
+                return rows, refusals
 
     try:
-        rows = await asyncio.to_thread(_query)
-        modalities = []
-        for role, heartbeat, mins_since, last_status, intent, last_error in rows:
-            # Skip only unknown ghosts
-            if role == "unknown_cloud":
-                continue
-
-            mins = float(mins_since or 9999)
-            
-            # Map machine names to human-friendly display names (Neural Link aesthetic)
-            if role == "leader": display_role = "MCP SERVER"
-            elif role == "akamai_functions": display_role = "AKAMAI FUNCTIONS"
-            elif role == "fermyon_cloud": display_role = "FERMYON CLOUD"
-            elif role == "android_client": display_role = "ANDROID CLIENT"
-            else: display_role = role.replace('_', ' ').upper()
-
-            modalities.append({
-                "role": display_role,
-                "status": get_modality_status(role, mins),
-                "last_seen": heartbeat.isoformat() if heartbeat else "never",
-                "minutes_since": int(mins),
+        rows, (refusals_total, refusals_bad_key) = await asyncio.to_thread(_query)
+        candidates = []
+        for row in rows:
+            role, heartbeat, mins_since, last_status, intent, last_error = row[:6]
+            candidates.append({
+                "role": role,
+                "heartbeat": heartbeat,
+                "minutes": None if mins_since is None else float(mins_since),
+                "own": bool(row[6]) if len(row) > 6 else False,
                 "last_status": last_status,
                 "intent": intent,
                 "last_error": last_error,
             })
+
+        modalities = []
+        for row in _pick_newest_pulse_rows(candidates):
+            verdict = _classify_pulse_role(row["role"], row["minutes"])
+            if not verdict["visible"]:
+                continue
+            heartbeat = row["heartbeat"]
+            modality = {
+                "role": verdict["display"],
+                "status": verdict["status"],
+                "last_seen": heartbeat.isoformat() if heartbeat else "never",
+                "minutes_since": _whole_minutes(row["minutes"]),
+                "last_status": row["last_status"],
+                "intent": row["intent"],
+                "last_error": row["last_error"],
+            }
+            if row["role"] == "akamai_functions":
+                modality["refusals_today"] = refusals_total
+                modality["bad_key_refusals_today"] = refusals_bad_key
+            modalities.append(modality)
         return {"modalities": modalities}
     except Exception as e:
         logger.error(f"fetch_system_pulse failed: {e}")
@@ -2044,24 +2474,33 @@ async def get_daily_aggregate_status(user_id: str = None) -> Dict[str, Any]:
         "system_pulse": system_pulse
     }
 
-@mcp.tool(description="Update user notification preferences (time windows, vacation mode, etc).")
+@mcp.tool(description="Update user notification preferences (time windows, vacation mode, max_messages_per_day, etc).")
 async def set_notification_prefs(
     vacation_mode: Optional[bool] = None,
     time_window_start: Optional[int] = None,
     time_window_end: Optional[int] = None,
     sms_opted_in: Optional[bool] = None,
+    max_messages_per_day: Optional[int] = None,
     user_id: str = None
 ) -> Dict[str, Any]:
-    """Update user preferences stored in Neon notification_prefs JSONB."""
+    """Update user preferences stored in Neon notification_prefs JSONB.
+
+    max_messages_per_day caps WhatsApp nags per New York day (default 3); the
+    Spin gates and the Python send guard both read it.
+    """
     target_user_id = usage_tracker.resolve_user_id(user_id)
     if not target_user_id:
         return {"error": "Authentication Required"}
+
+    if max_messages_per_day is not None and not 0 <= max_messages_per_day <= 24:
+        return {"status": "error", "message": "max_messages_per_day must be between 0 and 24"}
 
     prefs = {}
     if vacation_mode is not None: prefs["vacation_mode"] = vacation_mode
     if time_window_start is not None: prefs["time_window_start"] = time_window_start
     if time_window_end is not None: prefs["time_window_end"] = time_window_end
     if sms_opted_in is not None: prefs["sms_opted_in"] = sms_opted_in
+    if max_messages_per_day is not None: prefs["max_messages_per_day"] = max_messages_per_day
 
     if not prefs:
         return {"status": "error", "message": "No preferences provided to update"}
@@ -2216,10 +2655,18 @@ def search_bookmarks(query: str, top_k: int = 3) -> Dict[str, Any]:
     return _search_bookmarks(query, top_k=top_k)
 
 
+def run_http_bridge():
+    """Run the Android/Web HTTP bridge (blocking). Binds loopback unless
+    MECRIS_BRIDGE_HOST says otherwise."""
+    import uvicorn
+    host = bridge_host()
+    logger.info(f"Starting Mecris Android Bridge on http://{host}:{BRIDGE_PORT}")
+    uvicorn.run(app, host=host, port=BRIDGE_PORT, log_level="error")
+
+
 if __name__ == "__main__":
     import sys
     import asyncio
-    import uvicorn
     import threading
     import os
     import stat
@@ -2236,8 +2683,7 @@ if __name__ == "__main__":
     def run_http_server():
         try:
             log("HTTP server thread starting")
-            logger.info("Starting Mecris Android Bridge on http://0.0.0.0:8080")
-            uvicorn.run(app, host="0.0.0.0", port=8080, log_level="error")
+            run_http_bridge()
             log("HTTP server thread exited (uvicorn returned)")
         except Exception as e:
             log(f"HTTP SERVER ERROR: {e}")

@@ -123,3 +123,30 @@ def test_render_pulse_scheduler_down():
     ctx = build_mock_context()
     ctx["system_pulse"] = {"running": False, "is_leader": False, "process_id": "dead"}
     render_pulse(ctx)
+
+
+# ── Budget panel branches on source_type (kingdonb/mecris#345) ──────────────
+
+def test_budget_text_for_a_subscription_names_the_plan_not_dollars():
+    from cli.pulse import _budget_text
+    text = _budget_text({"source_type": "subscription", "plan": "ultra", "grant_end": "2027-05-13",
+                         "days_to_grant_end": 180, "budget_health": "GOOD",
+                         "remaining_budget": 20.72, "total_budget": 20.72})
+    assert "Claude Ultra" in text
+    assert "until 2027-05-13" in text
+    assert "$" not in text
+
+
+def test_budget_text_for_a_retired_budget():
+    from cli.pulse import _budget_text
+    text = _budget_text({"source_type": "retired", "budget_health": "RETIRED",
+                         "remaining_budget": 20.72, "total_budget": 20.72})
+    assert "retired" in text.lower()
+    assert "$" not in text
+
+
+def test_budget_text_for_api_credit_is_unchanged():
+    from cli.pulse import _budget_text
+    text = _budget_text({"remaining_budget": 12.5, "total_budget": 20.0, "days_remaining": 4.2})
+    assert "$12.50 remaining" in text
+    assert "4.2 days left" in text
