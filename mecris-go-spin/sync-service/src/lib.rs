@@ -14,6 +14,7 @@ use chrono::TimeZone;
 use std::collections::BTreeMap;
 
 mod claude_plan;
+mod events;
 mod gates;
 mod outcome;
 mod pace;
@@ -106,6 +107,7 @@ async fn handle_sync_service(req: Request) -> anyhow::Result<Response<String>> {
         ("/aggregate-status", &Method::GET) => handle_aggregate_status_get(req).await?,
         ("/claude-plan", &Method::GET) => handle_claude_plan_get(req).await?,
         ("/internal/log-message", &Method::POST) => handle_log_message_post(req).await?,
+        ("/internal/log-message-event", &Method::POST) => handle_log_message_event_post(req).await?,
         ("/profile", &Method::POST) => handle_profile_post(req).await?,
         ("/profile", &Method::GET) => handle_profile_get(req).await?,
         ("/internal/trigger-reminders", _) => match internal_request_check(&req).await {
@@ -120,6 +122,7 @@ async fn handle_sync_service(req: Request) -> anyhow::Result<Response<String>> {
         ("/internal/request-phone-verification", &Method::POST) => handle_request_phone_verification_post(req).await?,
         ("/internal/confirm-phone-verification", &Method::POST) => handle_confirm_phone_verification_post(req).await?,
         ("/internal/twilio-webhook", &Method::POST) => handle_twilio_webhook_post(req).await?,
+        ("/internal/twilio-status", &Method::POST) => handle_twilio_status_post(req).await?,
         _ => text_response(404, "Not Found")?,
     };
     Ok(add_cors(resp))
@@ -485,7 +488,12 @@ async fn handle_heartbeat_post(req: Request) -> anyhow::Result<Response<String>>
     let role = b.get("role").and_then(|v| v.as_str()).unwrap_or("leader");
     let db = match variables::get("db_url").await { Ok(v) if !v.is_empty() => v, _ => variables::get("neon_db_url").await? };
     let conn = Connection::open(&db).await?;
-    conn.execute("INSERT INTO scheduler_election (user_id, role, process_id, heartbeat) VALUES ($1, $2, $3, CURRENT_TIMESTAMP) ON CONFLICT (user_id, role) DO UPDATE SET heartbeat = EXCLUDED.heartbeat, process_id = EXCLUDED.process_id", &[ParameterValue::Str(uid), ParameterValue::Str(role.to_string()), ParameterValue::Str(pid.to_string())]).await?;
+    conn.execute("INSERT INTO scheduler_election (user_id, role, process_id, heartbeat) VALUES ($1, $2, $3, CURRENT_TIMESTAMP) ON CONFLICT (user_id, role) DO UPDATE SET heartbeat = EXCLUDED.heartbeat, process_id = EXCLUDED.process_id", &[ParameterValue::Str(uid.clone()), ParameterValue::Str(role.to_string()), ParameterValue::Str(pid.to_string())]).await?;
+    // #363: the phone reports whether its nags can be seen. Best-effort, so a database
+    // without migrate_v10 still answers the heartbeat.
+    if let Some(enabled) = events::heartbeat_notifications_enabled(&b) {
+        let _ = conn.execute("UPDATE users SET notifications_enabled = $1, notifications_checked_at = now() WHERE pocket_id_sub = $2", &[ParameterValue::Boolean(enabled), ParameterValue::Str(uid)]).await;
+    }
     json_response(200, &StatusResponse { status: "success".to_string(), message: "Heartbeat received".to_string() })
 }
 
@@ -743,12 +751,22 @@ async fn load_gate_inputs(conn: &Connection, uid: &str, now: chrono::DateTime<ch
 /// and the daily cap, so a failing channel cannot retry-storm (#364). `date` is the
 /// America/New_York date, as every other message_log writer stores it (the database
 /// clock is GMT, so CURRENT_DATE would be tomorrow every evening).
-async fn log_outbound(conn: &Connection, uid: &str, ty: &str, result: &Result<(), String>) {
+/// A sent row also keeps Twilio's SID and initial delivery status (#363), so the status
+/// callback can find it. Should that INSERT fail (a database without migrate_v10), the
+/// row is written without them: a lost row would let the gates send again.
+async fn log_outbound(conn: &Connection, uid: &str, ty: &str, result: &Result<events::SendReceipt, String>) {
     let (status, err) = match result {
-        Ok(()) => ("sent", ParameterValue::DbNull),
+        Ok(_) => ("sent", ParameterValue::DbNull),
         Err(e) => ("failed", match encrypt_token(&outcome::pii_free_error(e)).await { Ok(enc) => ParameterValue::Str(enc), Err(_) => ParameterValue::DbNull }),
     };
-    let _ = conn.execute("INSERT INTO message_log (date, user_id, type, sent_at, status, channel, error_msg) VALUES ((now() AT TIME ZONE 'America/New_York')::DATE, $1, $2, CURRENT_TIMESTAMP, $3, 'whatsapp', $4)", &[ParameterValue::Str(uid.to_string()), ParameterValue::Str(ty.to_string()), ParameterValue::Str(status.to_string()), err]).await;
+    let base = [ParameterValue::Str(uid.to_string()), ParameterValue::Str(ty.to_string()), ParameterValue::Str(status.to_string()), err];
+    if let Ok(events::SendReceipt { sid: Some(sid), status: delivery }) = result {
+        let mut params = base.to_vec();
+        params.push(ParameterValue::Str(sid.clone()));
+        params.push(ParameterValue::Str(delivery.to_string()));
+        if conn.execute("INSERT INTO message_log (date, user_id, type, sent_at, status, channel, error_msg, message_sid, delivery_status, status_updated_at) VALUES ((now() AT TIME ZONE 'America/New_York')::DATE, $1, $2, CURRENT_TIMESTAMP, $3, 'whatsapp', $4, $5, $6, now())", params).await.is_ok() { return; }
+    }
+    let _ = conn.execute("INSERT INTO message_log (date, user_id, type, sent_at, status, channel, error_msg) VALUES ((now() AT TIME ZONE 'America/New_York')::DATE, $1, $2, CURRENT_TIMESTAMP, $3, 'whatsapp', $4)", &base).await;
 }
 
 /// The scheduler_election role this deployment reports as. Akamai is the only live cloud,
@@ -821,7 +839,7 @@ async fn handle_trigger_reminders(req: Request) -> anyhow::Result<Response<Strin
             Verdict::Skip => (gate, None),
             Verdict::Send => {
                 if twilio.is_none() { twilio = Some(load_twilio_cfg().await); }
-                let result: Result<(), String> = match twilio.as_ref() {
+                let result: Result<events::SendReceipt, String> = match twilio.as_ref() {
                     Some(Ok(cfg)) => match decrypt_token(&db_to_str(&r[2])).await {
                         Ok(ph) => send_twilio_whatsapp_template(&cfg.sid, &cfg.tok, &cfg.from, &ph, &cfg.template, &vars).await.map_err(|e| e.to_string()),
                         Err(_) => Err("phone_decrypt_failed".to_string()),
@@ -831,7 +849,7 @@ async fn handle_trigger_reminders(req: Request) -> anyhow::Result<Response<Strin
                 };
                 log_outbound(&conn, uid, "walk_reminder", &result).await;
                 match result {
-                    Ok(()) => { resp.sent += 1; (ReminderOutcome::Sent, None) }
+                    Ok(_) => { resp.sent += 1; (ReminderOutcome::Sent, None) }
                     Err(e) => { resp.failed += 1; (ReminderOutcome::SendFailed, Some(outcome::pii_free_error(&e))) }
                 }
             }
@@ -898,13 +916,13 @@ async fn handle_request_phone_verification_post(req: Request) -> anyhow::Result<
     let hash = hex::encode(Sha256::digest(code.as_bytes()));
     // The expiry is computed in SQL: Spin's driver refuses a text parameter cast to TIMESTAMPTZ.
     conn.execute("INSERT INTO phone_verifications (user_id, code_hash, expires_at) VALUES ($1, $2, now() + interval '15 minutes') ON CONFLICT (user_id) DO UPDATE SET code_hash = EXCLUDED.code_hash, expires_at = EXCLUDED.expires_at, attempts = 0", &[ParameterValue::Str(uid.clone()), ParameterValue::Str(hash)]).await?;
-    let sent: Result<(), String> = match load_twilio_cfg().await {
+    let sent: Result<events::SendReceipt, String> = match load_twilio_cfg().await {
         Ok(cfg) => send_twilio_whatsapp_template(&cfg.sid, &cfg.tok, &cfg.from, &phone, &cfg.template, &verification_variables(&code)).await.map_err(|e| e.to_string()),
         Err(code) => Err(code.to_string()),
     };
     log_outbound(&conn, &uid, "phone_verification", &sent).await;
     match sent {
-        Ok(()) => Ok(Response::builder().status(200).header("content-type", "application/json").body(verification_sent_body()?)?),
+        Ok(_) => Ok(Response::builder().status(200).header("content-type", "application/json").body(verification_sent_body()?)?),
         Err(_) => status_json(502, "error", "Verification code could not be sent"),
     }
 }
@@ -996,21 +1014,28 @@ fn is_walk_ack(form: &[(String, String)]) -> bool {
     form_value(form, "Body").map(|b| b.split(|c: char| !c.is_alphanumeric()).any(|w| w.eq_ignore_ascii_case("yes"))).unwrap_or(false)
 }
 
-async fn handle_twilio_webhook_post(req: Request) -> anyhow::Result<Response<String>> {
-    // Twilio signs the exact URL configured in its console. Prefer the configured
-    // value; fall back to the URL Spin saw for this request.
-    let configured_url = variables::get("twilio_webhook_url").await.unwrap_or_default();
+/// The body of a request Twilio signed, or the 403 to answer. Twilio signs the exact URL
+/// it was given (in its console, or as StatusCallback): the `url_var` Spin variable when
+/// set, else the URL Spin saw. Fails closed without an auth token or a URL, and counts
+/// every refusal in internal_refusals under `endpoint`.
+async fn twilio_verified_body(req: Request, url_var: &str, endpoint: &'static str) -> anyhow::Result<Result<String, Response<String>>> {
+    let configured_url = variables::get(url_var).await.unwrap_or_default();
     let url = if configured_url.is_empty() { req.headers().get("spin-full-url").and_then(|v| v.to_str().ok()).unwrap_or("").to_string() } else { configured_url };
     let signature = req.headers().get("x-twilio-signature").and_then(|v| v.to_str().ok()).map(|s| s.to_string());
     let tok = match variables::get("twilio_auth_token_encrypted").await { Ok(enc) if !enc.is_empty() => decrypt_token(&enc).await.unwrap_or_default(), _ => String::new() };
     let body = req.into_body().collect().await.map_err(|_| anyhow::anyhow!("body"))?.to_bytes();
     let body_str = std::str::from_utf8(&body).unwrap_or("");
     if !twilio_signature_ok(&tok, &url, body_str, signature.as_deref()) {
-        println!("twilio-webhook: rejected request (signature_present={})", signature.is_some());
-        record_refusal("twilio-webhook", outcome::Refusal::BadSignature).await;
-        return Ok(text_response(403, "Forbidden")?);
+        println!("{}: rejected request (signature_present={})", endpoint, signature.is_some());
+        record_refusal(endpoint, outcome::Refusal::BadSignature).await;
+        return Ok(Err(text_response(403, "Forbidden")?));
     }
-    let form = parse_form(body_str);
+    Ok(Ok(body_str.to_string()))
+}
+
+async fn handle_twilio_webhook_post(req: Request) -> anyhow::Result<Response<String>> {
+    let body_str = match twilio_verified_body(req, "twilio_webhook_url", "twilio-webhook").await? { Ok(b) => b, Err(refused) => return Ok(refused) };
+    let form = parse_form(&body_str);
     let from_num = form_value(&form, "From").unwrap_or("").to_string();
     let ack = is_walk_ack(&form);
     let channel = inbound_channel(&from_num).to_string();
@@ -1038,6 +1063,32 @@ async fn handle_twilio_webhook_post(req: Request) -> anyhow::Result<Response<Str
         let _ = conn.execute("INSERT INTO message_log (date, user_id, type, sent_at, status, channel) VALUES ((now() AT TIME ZONE 'America/New_York')::DATE, NULL, 'inbound', CURRENT_TIMESTAMP, 'received', $1)", &[ParameterValue::Str(channel)]).await;
     }
     Ok(Response::builder().status(200).header("content-type", "text/xml").body(r#"<?xml version="1.0" encoding="UTF-8"?><Response></Response>"#.to_string())?)
+}
+
+/// Twilio's StatusCallback for a WhatsApp send (#363). Signed like the webhook. Moves
+/// message_log.delivery_status forward only (events::status_advances), keeps a numeric
+/// ErrorCode, and records each status once per message in message_events, even one that
+/// arrives late (a 'sent' after 'read'). An unknown SID or an untracked status answers 200
+/// and changes nothing, so Twilio stops retrying.
+async fn handle_twilio_status_post(req: Request) -> anyhow::Result<Response<String>> {
+    let body_str = match twilio_verified_body(req, "twilio_status_callback_url", "twilio-status").await? { Ok(b) => b, Err(refused) => return Ok(refused) };
+    let cb = match events::parse_status_callback(&parse_form(&body_str)) { Ok(cb) => cb, Err(e) => return text_response(400, e) };
+    let conn = Connection::open(&db_url().await?).await?;
+    let rs = conn.query("SELECT id, delivery_status FROM message_log WHERE message_sid = $1", &[ParameterValue::Str(cb.sid.clone())]).await?.collect().await?;
+    let Some(row) = rs.first() else { return text_response(200, "") };
+    let id = db_to_i32(&row[0]);
+    let current = match &row[1] { DbValue::Str(s) => Some(s.clone()), _ => None };
+    if let Some(code) = cb.error_code {
+        conn.execute("UPDATE message_log SET delivery_error = $2::BIGINT WHERE id = $1", &[ParameterValue::Int32(id), ParameterValue::Int64(code)]).await?;
+    }
+    let Some(status) = cb.status else { return text_response(200, "") };
+    if events::status_advances(current.as_deref(), status) {
+        // Compare-and-set: a concurrent callback that moved the status first wins.
+        let cur = current.map(ParameterValue::Str).unwrap_or(ParameterValue::DbNull);
+        conn.execute("UPDATE message_log SET delivery_status = $2, status_updated_at = now() WHERE id = $1 AND delivery_status IS NOT DISTINCT FROM $3::TEXT", &[ParameterValue::Int32(id), ParameterValue::Str(status.to_string()), cur]).await?;
+    }
+    conn.execute("INSERT INTO message_events (message_log_id, user_id, event, at) SELECT m.id, m.user_id, $2, now() FROM message_log m WHERE m.id = $1 AND m.user_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM message_events e WHERE e.message_log_id = m.id AND e.event = $2) ON CONFLICT (message_log_id, event, at) DO NOTHING", &[ParameterValue::Int32(id), ParameterValue::Str(status.to_string())]).await?;
+    text_response(200, "")
 }
 
 // Parse reviewForecast array to extract tomorrow and next_7_days values
@@ -1273,17 +1324,20 @@ fn inbound_channel(from: &str) -> &'static str { if from.starts_with("whatsapp:"
 /// Send an approved WhatsApp template. SMS is disabled for this account, so there is no
 /// SMS fallback: a missing sender or template is an error, returned before any HTTP call.
 /// Errors carry only a fixed reason or twilio_failure_summary output (no PII).
-async fn send_twilio_whatsapp_template(sid: &str, tok: &str, from: &str, to: &str, content_sid: &str, vars: &[(String, String)]) -> anyhow::Result<()> {
+/// On success, the receipt holds Twilio's message SID and initial status (#363); with
+/// twilio_status_callback_url set, Twilio reports later statuses to /internal/twilio-status.
+async fn send_twilio_whatsapp_template(sid: &str, tok: &str, from: &str, to: &str, content_sid: &str, vars: &[(String, String)]) -> anyhow::Result<events::SendReceipt> {
     if let Some(reason) = whatsapp_config_error(from, content_sid) { return Err(anyhow::anyhow!(reason)); }
     let auth = base64::engine::general_purpose::STANDARD.encode(format!("{}:{}", sid, tok));
-    let body = twilio_template_form(from, to, content_sid, vars);
+    let callback = variables::get("twilio_status_callback_url").await.unwrap_or_default();
+    let body = events::with_status_callback(twilio_template_form(from, to, content_sid, vars), &callback);
     let res = spin_sdk::http::send(Request::builder().method(Method::POST).uri(format!("https://api.twilio.com/2010-04-01/Accounts/{}/Messages.json", sid)).header("Authorization", &format!("Basic {}", auth)).header("Content-Type", "application/x-www-form-urlencoded").body(body)?).await?;
     let status = res.status().as_u16();
+    let bytes = res.into_body().collect().await.map(|b| b.to_bytes()).unwrap_or_default();
     if !(200..300).contains(&status) {
-        let bytes = res.into_body().collect().await.map(|b| b.to_bytes()).unwrap_or_default();
         return Err(anyhow::anyhow!(twilio_failure_summary(status, &String::from_utf8_lossy(&bytes))));
     }
-    Ok(())
+    Ok(events::parse_send_receipt(&String::from_utf8_lossy(&bytes)))
 }
 
 async fn decrypt_token(enc_hex: &str) -> anyhow::Result<String> {
@@ -1378,14 +1432,52 @@ async fn handle_log_message_post(req: Request) -> anyhow::Result<Response<String
     let uid = match extract_user_id(req.headers().get("authorization")).await { Some(id) => id, None => return Ok(text_response(401, "Unauthorized")?) };
     let body = req.into_body().collect().await.map_err(|_| anyhow::anyhow!("body"))?.to_bytes();
     let msg = match validate_log_message(&body, chrono::Utc::now()) { Ok(m) => m, Err(e) => return status_json(400, "error", e) };
+    let client_ref = match events::log_message_client_ref(&body) { Ok(r) => r, Err(e) => return status_json(400, "error", e) };
     let conn = Connection::open(&db_url().await?).await?;
     // The time is computed in SQL from a whole-second age: Spin's driver refuses a text
     // parameter cast to TIMESTAMPTZ. `date` is the New York date of sent_at.
     let at = "(now() - ($2::BIGINT * interval '1 second'))";
-    let sql = format!("INSERT INTO message_log (date, user_id, type, sent_at, status, channel) SELECT ({at} AT TIME ZONE 'America/New_York')::DATE, u.pocket_id_sub, $3, {at}, 'shown', 'android_native' FROM users u WHERE u.pocket_id_sub = $1");
-    let n = conn.execute(sql, &[ParameterValue::Str(uid), ParameterValue::Int64(msg.age_secs), ParameterValue::Str(msg.ty.to_string())]).await?;
-    if n == 0 { return status_json(404, "error", "User not found"); }
+    let mut params = vec![ParameterValue::Str(uid.clone()), ParameterValue::Int64(msg.age_secs), ParameterValue::Str(msg.ty.to_string())];
+    // Without a client_ref (old clients) the INSERT is the one from before #363.
+    let sql = match &client_ref {
+        None => format!("INSERT INTO message_log (date, user_id, type, sent_at, status, channel) SELECT ({at} AT TIME ZONE 'America/New_York')::DATE, u.pocket_id_sub, $3, {at}, 'shown', 'android_native' FROM users u WHERE u.pocket_id_sub = $1"),
+        Some(r) => {
+            params.push(ParameterValue::Str(r.clone()));
+            format!("INSERT INTO message_log (date, user_id, type, sent_at, status, channel, client_ref) SELECT ({at} AT TIME ZONE 'America/New_York')::DATE, u.pocket_id_sub, $3, {at}, 'shown', 'android_native', $4 FROM users u WHERE u.pocket_id_sub = $1 ON CONFLICT (user_id, client_ref) WHERE client_ref IS NOT NULL DO NOTHING")
+        }
+    };
+    let n = conn.execute(sql, params).await?;
+    if n == 0 {
+        // A retried upload of a nag already logged is a success, not a new row.
+        if let Some(r) = client_ref {
+            let seen = conn.query("SELECT 1 FROM message_log WHERE user_id = $1 AND client_ref = $2", &[ParameterValue::Str(uid), ParameterValue::Str(r)]).await?.collect().await?;
+            if !seen.is_empty() { return status_json(200, "success", "Already logged"); }
+        }
+        return status_json(404, "error", "User not found");
+    }
     status_json(201, "success", "Nag logged")
+}
+
+/// What the person did with a shown nag (#363): one message_events row per (nag, event,
+/// time). The nag is found by the bearer's user and client_ref on channel android_native;
+/// the body never names a user. An `at` kept by events::validate_phone_event is stored to
+/// the millisecond (epoch milliseconds, since Spin's driver refuses a text parameter cast
+/// to TIMESTAMPTZ), so a retried upload lands on the same UNIQUE row and answers 200.
+async fn handle_log_message_event_post(req: Request) -> anyhow::Result<Response<String>> {
+    let uid = match extract_user_id(req.headers().get("authorization")).await { Some(id) => id, None => return Ok(text_response(401, "Unauthorized")?) };
+    let body = req.into_body().collect().await.map_err(|_| anyhow::anyhow!("body"))?.to_bytes();
+    let ev = match events::validate_phone_event(&body, chrono::Utc::now()) { Ok(e) => e, Err(e) => return status_json(400, "error", e) };
+    let conn = Connection::open(&db_url().await?).await?;
+    let nag = "FROM message_log m WHERE m.user_id = $1 AND m.client_ref = $2 AND m.channel = 'android_native'";
+    let mut params = vec![ParameterValue::Str(uid.clone()), ParameterValue::Str(ev.client_ref.clone()), ParameterValue::Str(ev.event.to_string())];
+    let at = match ev.at_ms {
+        Some(ms) => { params.push(ParameterValue::Int64(ms)); "to_timestamp($4::BIGINT / 1000.0)" }
+        None => "now()",
+    };
+    let sql = format!("INSERT INTO message_events (message_log_id, user_id, event, at) SELECT m.id, m.user_id, $3, {at} {nag} ON CONFLICT (message_log_id, event, at) DO NOTHING");
+    if conn.execute(sql, params).await? > 0 { return status_json(201, "success", "Event logged"); }
+    let found = conn.query(format!("SELECT 1 {nag}"), &[ParameterValue::Str(uid), ParameterValue::Str(ev.client_ref)]).await?.collect().await?;
+    if found.is_empty() { status_json(404, "error", "Unknown nag") } else { status_json(200, "success", "Already logged") }
 }
 
 #[derive(Serialize)]
@@ -1590,6 +1682,50 @@ mod tests {
             // log-message dates the row by when the nag was shown, not when it was posted.
             assert!(l.contains("VALUES ((now() AT TIME ZONE 'America/New_York')::DATE,") || l.contains("SELECT ({at} AT TIME ZONE 'America/New_York')::DATE,"), "no New York date: {}", l.trim());
         }
+    }
+
+    // --- #363 phase 1: see what happens ---
+    fn fn_body<'a>(src: &'a str, sig: &str) -> &'a str {
+        let start = src.find(sig).unwrap_or_else(|| panic!("{sig} exists"));
+        let body = &src[start..];
+        let end = ["\nasync fn ", "\nfn ", "\n#[cfg(test)]"].iter().filter_map(|m| body[1..].find(m)).min().map(|i| i + 1).unwrap_or(body.len());
+        &body[..end]
+    }
+
+    #[test]
+    fn test_phase1_routes_are_wired() {
+        let src = include_str!("lib.rs");
+        assert!(src.contains("(\"/internal/log-message-event\", &Method::POST) => handle_log_message_event_post(req)"));
+        assert!(src.contains("(\"/internal/twilio-status\", &Method::POST) => handle_twilio_status_post(req)"));
+    }
+
+    #[test]
+    fn test_twilio_routes_share_one_fail_closed_signature_check() {
+        let src = include_str!("lib.rs");
+        let check = fn_body(src, "async fn twilio_verified_body(");
+        assert!(check.contains("twilio_signature_ok("), "the shared check verifies the signature");
+        assert!(check.contains("record_refusal(endpoint, outcome::Refusal::BadSignature)"), "and counts refusals");
+        assert!(check.contains("text_response(403"), "and answers 403");
+        assert!(fn_body(src, "async fn handle_twilio_webhook_post(").contains("twilio_verified_body(req, \"twilio_webhook_url\", \"twilio-webhook\")"));
+        assert!(fn_body(src, "async fn handle_twilio_status_post(").contains("twilio_verified_body(req, \"twilio_status_callback_url\", \"twilio-status\")"));
+    }
+
+    #[test]
+    fn test_outbound_rows_store_the_sid() {
+        let src = include_str!("lib.rs");
+        let log = fn_body(src, "async fn log_outbound(");
+        assert!(log.contains("message_sid, delivery_status, status_updated_at"), "the outbound INSERT stores the SID and initial status");
+        let send = fn_body(src, "async fn send_twilio_whatsapp_template(");
+        assert!(send.contains("events::parse_send_receipt("), "the send reads Twilio's answer");
+        assert!(send.contains("events::with_status_callback("), "and adds StatusCallback when configured");
+    }
+
+    #[test]
+    fn test_heartbeat_stores_notifications_enabled() {
+        let src = include_str!("lib.rs");
+        let hb = fn_body(src, "async fn handle_heartbeat_post(");
+        assert!(hb.contains("events::heartbeat_notifications_enabled("));
+        assert!(hb.contains("notifications_checked_at = now()"));
     }
 
     // --- Internal endpoints: fail closed, no published key, callers that can actually authenticate ---

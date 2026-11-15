@@ -89,6 +89,27 @@ CREATE TABLE IF NOT EXISTS message_log (
     channel VARCHAR(50) DEFAULT 'whatsapp'
 );
 
+-- 5b. See what happens to every reminder (#363, contracts/message_events.json).
+-- No message text, phone numbers or names. (scripts/migrate_v10_message_events.py)
+ALTER TABLE message_log ADD COLUMN IF NOT EXISTS client_ref TEXT;              -- the phone's id for a shown nag
+ALTER TABLE message_log ADD COLUMN IF NOT EXISTS message_sid TEXT;             -- Twilio's SID for a WhatsApp send
+ALTER TABLE message_log ADD COLUMN IF NOT EXISTS delivery_status TEXT;         -- queued < sent < delivered < read; undelivered, failed
+ALTER TABLE message_log ADD COLUMN IF NOT EXISTS delivery_error INTEGER;       -- Twilio ErrorCode
+ALTER TABLE message_log ADD COLUMN IF NOT EXISTS status_updated_at TIMESTAMPTZ;
+CREATE UNIQUE INDEX IF NOT EXISTS message_log_user_client_ref_uniq ON message_log (user_id, client_ref) WHERE client_ref IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS message_log_message_sid_uniq ON message_log (message_sid) WHERE message_sid IS NOT NULL;
+CREATE TABLE IF NOT EXISTS message_events (
+    id SERIAL PRIMARY KEY,
+    message_log_id INTEGER NOT NULL REFERENCES message_log(id) ON DELETE CASCADE,
+    user_id VARCHAR(255) NOT NULL,
+    event TEXT NOT NULL,                 -- tapped, dismissed, action_later, action_start; or a Twilio status
+    at TIMESTAMPTZ NOT NULL,             -- when it happened on the device or at Twilio
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (message_log_id, event, at)
+);
+ALTER TABLE users ADD COLUMN IF NOT EXISTS notifications_enabled BOOLEAN;      -- from the phone's heartbeat
+ALTER TABLE users ADD COLUMN IF NOT EXISTS notifications_checked_at TIMESTAMPTZ;
+
 -- 6. Usage Sessions (LLM Cost Tracking)
 CREATE TABLE IF NOT EXISTS usage_sessions (
     id SERIAL PRIMARY KEY,
