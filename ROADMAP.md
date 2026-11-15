@@ -3,7 +3,7 @@
 > **Mission**: a personal accountability system that tells the truth about your goals, your budget and itself, and nags only when it should.
 
 ## Current Status
-- **Version**: v0.2.0 (2026-11-14)
+- **Version**: v0.3.0 (2026-11-14)
 - **Next release**: v0.3.0 (Android versionCode 41 + Spin API), tracked in [#360](https://github.com/kingdonb/mecris/issues/360)
 - **Claude**: Ultra plan, a subscription grant running to about 2027-05-13. Usage credits stay off.
 - **Cloud reminders**: the `trigger-reminders` cron is paused until v0.3.0 deploys (v0.2.0 sent WhatsApp walk reminders at the wrong hours, see [#369](https://github.com/kingdonb/mecris/issues/369)).
