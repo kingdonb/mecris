@@ -51,7 +51,7 @@ The Python MCP handles authentication via `Depends(get_current_user)`.
 
 - Antigravity stores session data in `.antigravitycli/` directories.
 - To load Mecris into Agy, ensure the MCP server is registered in the Agy global or project configuration.
-- Agy may require an SSE (Server-Sent Events) connection if stdio is restricted; `mcp_server.py` already supports this via `app.mount("/mcp", mcp.sse_app())`.
+- Mecris serves MCP over stdio only. The SSE mount at `/mcp` was removed in v0.3.0 because it exposed every tool to the network without credentials (#39), so register Agy with `mcp_server.py --stdio`.
 
 ---
 *Created on 2026-06-11 to support the transition to the Agy client.*

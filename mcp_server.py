@@ -59,9 +59,11 @@ dotenv_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '.env')
 load_dotenv(dotenv_path=dotenv_path)
 
 from mcp.server.fastmcp import FastMCP
-from fastapi import FastAPI, Depends, HTTPException, Security
+from fastapi import FastAPI, Depends, HTTPException, Request, Security
 from fastapi.middleware.cors import CORSMiddleware
-from services.auth_service import get_current_user, is_standalone_mode
+from fastapi.security import HTTPAuthorizationCredentials
+from services import auth_service
+from services.auth_service import get_current_user, is_standalone_mode, security as bearer_scheme
 
 from obsidian_client import ObsidianMCPClient
 from beeminder_client import BeeminderClient
@@ -144,32 +146,131 @@ mcp = FastMCP("mecris")
 # Create FastAPI app for HTTP endpoints
 app = FastAPI(title="Mecris API")
 
+# The local web UI (Vite dev server). Also the only browser Origin that may
+# use the standalone default-user fallback.
+LOCAL_WEB_ORIGINS = ("http://localhost:5173", "http://127.0.0.1:5173")
+
 # Add CORS middleware for Web UI development
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_origins=list(LOCAL_WEB_ORIGINS),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-async def get_authorized_user(user_id: Optional[str] = Depends(get_current_user)):
-    """FastAPI Dependency: Enforces authentication and resolves target user ID."""
-    mode = os.getenv("MECRIS_MODE", "standalone")
-    
-    # Cloud Cron Exception (Akamai/Fermyon): Special handling for unauthenticated triggers
-    # logic omitted here for brevity but handled in endpoint logic if needed
-    
-    if user_id:
-        return user_id
+DEFAULT_BRIDGE_HOST = "127.0.0.1"
+BRIDGE_PORT = 8080
 
-    if mode == "standalone":
-        # In standalone/trusted mode, we allow fallback to the local default user
+
+def bridge_host() -> str:
+    """Interface the HTTP bridge binds to (MECRIS_BRIDGE_HOST, default loopback)."""
+    return os.getenv("MECRIS_BRIDGE_HOST", "").strip() or DEFAULT_BRIDGE_HOST
+
+
+LOOPBACK_HOST_NAMES = frozenset({"localhost", "127.0.0.1", "::1"})
+
+
+def _is_loopback_client(request: Request) -> bool:
+    """True only when the TCP peer is a loopback address.
+
+    Uses the socket peer (request.client), so a LAN caller cannot claim to
+    be local by spoofing Host. On its own this does not stop a browser on
+    this machine; see _is_trusted_local_request.
+    """
+    import ipaddress
+    host = request.client.host if request.client else None
+    if not host:
+        return False
+    try:
+        addr = ipaddress.ip_address(host.split("%", 1)[0])
+    except ValueError:
+        return False
+    mapped = getattr(addr, "ipv4_mapped", None)
+    return addr.is_loopback or bool(mapped and mapped.is_loopback)
+
+
+def _host_header_name(request: Request) -> str:
+    """Host header without port or brackets, lower-cased ('' if absent)."""
+    raw = (request.headers.get("host") or "").strip().lower()
+    if raw.startswith("["):
+        return raw[1:].split("]", 1)[0]
+    return raw.rsplit(":", 1)[0] if raw.count(":") == 1 else raw
+
+
+def _is_trusted_local_request(request: Request) -> bool:
+    """True for a local process or the local web UI, not for a web page.
+
+    All of these must hold:
+    - the TCP peer is loopback (a LAN host cannot qualify);
+    - the Host header names loopback (defeats DNS rebinding, where the peer
+      is loopback but Host is the attacker's domain);
+    - Origin is absent or the local web UI, and Sec-Fetch-Site is not
+      cross-site (defeats cross-site simple requests, i.e. CSRF).
+    """
+    if not _is_loopback_client(request):
+        return False
+    if _host_header_name(request) not in LOOPBACK_HOST_NAMES:
+        return False
+    origin = request.headers.get("origin")
+    if origin is not None and origin not in LOCAL_WEB_ORIGINS:
+        return False
+    if (request.headers.get("sec-fetch-site") or "").lower() == "cross-site":
+        return False
+    return True
+
+
+def _verify_signed_token(token: str) -> Optional[str]:
+    """Return the sub of a JWKS-verified RS256 token from our issuer, else None.
+
+    Standalone verify_token (services/auth_service.py) skips the signature
+    check, so callers that are not trusted-local go through this instead.
+    """
+    import jwt
+    try:
+        signing_key = auth_service._get_jwks_client().get_signing_key_from_jwt(token)
+        payload = jwt.decode(
+            token, signing_key.key, algorithms=["RS256"], options={"verify_aud": False}
+        )
+    except Exception as e:
+        # Exception type only: messages can echo token contents.
+        print(f"AUTH FAILURE: bearer token failed verification ({type(e).__name__})", file=sys.stderr)
+        return None
+    if payload.get("iss") != os.getenv("OIDC_ISSUER", auth_service.POCKET_ID_URL):
+        print("AUTH FAILURE: bearer token issuer mismatch", file=sys.stderr)
+        return None
+    return payload.get("sub") or None
+
+
+async def get_authorized_user(
+    request: Request,
+    credentials: Optional[HTTPAuthorizationCredentials] = Security(bearer_scheme),
+    user_id: Optional[str] = Depends(get_current_user),
+):
+    """FastAPI Dependency: Enforces authentication and resolves target user ID.
+
+    Cloud mode: get_current_user has already verified the token signature.
+    Standalone mode: a trusted local request (see _is_trusted_local_request)
+    may use the default user or an unverified token, as before. Everyone else
+    needs a token that passes the JWKS signature check.
+    """
+    mode = os.getenv("MECRIS_MODE", "standalone")
+
+    if mode != "standalone":
+        if user_id:
+            return user_id
+    elif _is_trusted_local_request(request):
+        if user_id:
+            return user_id
         resolved_id = credentials_manager.resolve_user_id()
         if resolved_id:
             return resolved_id
-    
-    # In multi-tenant mode, or if no local user could be resolved: REJECT.
+    elif credentials and credentials.credentials:
+        verified_id = await asyncio.to_thread(_verify_signed_token, credentials.credentials)
+        if verified_id:
+            return verified_id
+
+    # No verified user, an untrusted caller, or no local user: REJECT.
     print(f"AUTH FAILURE: No valid user_id found (mode={mode})", file=sys.stderr)
     raise HTTPException(status_code=401, detail="Authentication Required")
 
@@ -554,10 +655,8 @@ async def log_message_endpoint(request: Dict[str, Any], user_id: str = Depends(g
 async def budget_status_endpoint(user_id: str = Depends(get_authorized_user)):
     return get_budget_status(user_id)
 
-# Mount the MCP server's ASGI app
-# This allows the same process to serve both the MCP protocol (via stdio or SSE) 
-# and custom HTTP endpoints.
-app.mount("/mcp", mcp.sse_app())
+# The MCP protocol is served over stdio only. The SSE app used to be mounted
+# at /mcp, which exposed every tool to the network without credentials (#39).
 
 from scheduler import MecrisScheduler, _global_walk_sync_job
 
@@ -2216,10 +2315,18 @@ def search_bookmarks(query: str, top_k: int = 3) -> Dict[str, Any]:
     return _search_bookmarks(query, top_k=top_k)
 
 
+def run_http_bridge():
+    """Run the Android/Web HTTP bridge (blocking). Binds loopback unless
+    MECRIS_BRIDGE_HOST says otherwise."""
+    import uvicorn
+    host = bridge_host()
+    logger.info(f"Starting Mecris Android Bridge on http://{host}:{BRIDGE_PORT}")
+    uvicorn.run(app, host=host, port=BRIDGE_PORT, log_level="error")
+
+
 if __name__ == "__main__":
     import sys
     import asyncio
-    import uvicorn
     import threading
     import os
     import stat
@@ -2236,8 +2343,7 @@ if __name__ == "__main__":
     def run_http_server():
         try:
             log("HTTP server thread starting")
-            logger.info("Starting Mecris Android Bridge on http://0.0.0.0:8080")
-            uvicorn.run(app, host="0.0.0.0", port=8080, log_level="error")
+            run_http_bridge()
             log("HTTP server thread exited (uvicorn returned)")
         except Exception as e:
             log(f"HTTP SERVER ERROR: {e}")
