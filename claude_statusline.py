@@ -168,13 +168,17 @@ def build_snapshot(payload: Any, previous: Any, now: Optional[datetime] = None) 
 
 
 def status_text(windows: List[Dict[str, Any]], now: Optional[datetime] = None) -> str:
-    """'5h 16% · wk 24%'. With `now`, windows that have already reset are left out."""
+    """'5h 16% · wk 24%'. With `now`, windows that have already reset are left out.
+
+    Halves round to even (22.5 -> 22, 23.5 -> 24), as claude_plan_usage.summarize,
+    Spin and Android do, so every arm shows the same number.
+    """
     by_kind = {}
     for w in windows:
         if now is not None and cpu._parse_dt(w["resets_at"]) <= now:
             continue
         by_kind[w["kind"]] = w
-    parts = [f"{label} {math.floor(by_kind[kind]['pct_used'] + 0.5)}%"
+    parts = [f"{label} {by_kind[kind]['pct_used']:.0f}%"
              for kind, label in LABELS if kind in by_kind]
     return " · ".join(parts) if parts else WAITING_TEXT
 

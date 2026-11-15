@@ -1312,7 +1312,13 @@ CLAUDE_SNAPSHOT_INGEST_SECONDS = 300
 
 
 async def _ingest_local_claude_reading() -> Dict[str, Any]:
-    """Store the status line snapshot if claude_statusline.should_record says so. Never raises."""
+    """Store the status line snapshot if claude_statusline.should_record says so. Never raises.
+
+    Every mcp_server process runs the loop (Claude Desktop starts several); only
+    the scheduler leader stores, checked on each tick so a handover is honoured.
+    """
+    if not scheduler.is_leader:
+        return {"recorded": False, "reason": "not the scheduler leader"}
     try:
         target_user_id = resolve_target_user(None)
         if not target_user_id:

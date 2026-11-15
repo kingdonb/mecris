@@ -76,6 +76,25 @@ dashboard can read it:
   a change of state (for example available to constrained) or a new week is
   stored at once. Stored readings feed the Beeminder graph the same way manual
   ones do.
+- Only the scheduler leader stores. Every MCP server process runs the
+  five-minute check (Claude Desktop alone starts several), but a standby process
+  skips it. Leadership is checked on each run, so after a handover the new
+  leader takes over. A process that has just started is not yet leader, so the
+  first store can come up to five minutes after startup.
+- A reading is not stored twice. The insert skips a reading whose user, source
+  and `observed_at` are already stored, in the same statement, and nothing is
+  pushed to Beeminder when it skips. There is no unique index on those columns,
+  so two inserts at the same instant (say, two leaders during a handover) could
+  still both land. The check narrows that race; only a unique index would close
+  it, and adding one needs any existing duplicates removed first.
+
+## Rounding
+
+Every display rounds a percentage to a whole number with round half to even:
+22.5 shows as 22 and 23.5 as 24. The status line (`f"{x:.0f}"`),
+`get_claude_plan_status` (`'{:.0f}'`), Spin (Rust `{:.0}`) and Android (Kotlin
+`HALF_EVEN`) all use this rule, so they show the same number. The stored and
+snapshot values keep their decimals.
 
 ## Limits
 
