@@ -107,6 +107,11 @@ class MainActivity : ComponentActivity() {
             errorReporter = errorReporter
         )
         intent?.let { pocketIdAuth.handleAuthorizationResponse(it) }
+        // #363: a nag tap or START arrives here directly (no trampoline). Record it,
+        // then show the dashboard as usual. Skipped on recreation (rotation).
+        if (savedInstanceState == null) {
+            com.mecris.go.sync.NagEventRecorder.handleActivityIntent(this, intent)
+        }
         healthConnectManager = HealthConnectManager(this)
         persistenceManager = PersistenceManager(this)
         
@@ -224,6 +229,7 @@ class MainActivity : ComponentActivity() {
         Log.i("MainActivity", "onNewIntent called with intent=$intent, data=${intent.data}, extras=${intent.extras}")
         setIntent(intent)
         pocketIdAuth.handleAuthorizationResponse(intent)
+        com.mecris.go.sync.NagEventRecorder.handleActivityIntent(this, intent)
     }
 
     private fun setupWorkManager() {
@@ -473,7 +479,11 @@ fun MecrisDashboard(
                             try {
                                 val hbResponse = syncApi.sendHeartbeat(
                                     "Bearer $token",
-                                    com.mecris.go.sync.HeartbeatRequestDto(role = "android_client", process_id = "com.mecris.go.ui")
+                                    com.mecris.go.sync.HeartbeatRequestDto(
+                                        role = "android_client",
+                                        process_id = "com.mecris.go.ui",
+                                        notifications_enabled = com.mecris.go.sync.NagNotificationManager.notificationsEnabled(context)
+                                    )
                                 )
                                 if (!hbResponse.isSuccessful) {
                                     Log.w("MecrisDashboard", "Heartbeat failed: ${hbResponse.code()}")

@@ -317,7 +317,12 @@ data class LogMessageRequestDto(
 
         /** The row for a nag the phone just showed. Never carries the message text. */
         fun shownNag(type: String, sentAt: java.time.Instant, clientRef: String? = null): LogMessageRequestDto =
-            LogMessageRequestDto(type = type, channel = CHANNEL_ANDROID_NATIVE, sent_at = sentAt.toString())
+            LogMessageRequestDto(
+                type = type,
+                channel = CHANNEL_ANDROID_NATIVE,
+                sent_at = sentAt.toString(),
+                client_ref = clientRef
+            )
     }
 }
 
@@ -330,7 +335,13 @@ data class MessageEventRequestDto(
 ) {
     companion object {
         fun of(clientRef: String, event: String, at: java.time.Instant): MessageEventRequestDto =
-            MessageEventRequestDto("", "", "")
+            // Millisecond precision: Postgres keeps microseconds, and a retried upload
+            // must send the identical 'at' for UNIQUE (message_log_id, event, at).
+            MessageEventRequestDto(
+                client_ref = clientRef,
+                event = event,
+                at = at.truncatedTo(java.time.temporal.ChronoUnit.MILLIS).toString()
+            )
     }
 }
 

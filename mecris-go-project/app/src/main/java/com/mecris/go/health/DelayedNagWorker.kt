@@ -9,6 +9,7 @@ import com.mecris.go.sync.SyncServiceApi
 import com.mecris.go.sync.NagNotificationManager
 import com.mecris.go.sync.AggregateStatusResponseDto
 import com.mecris.go.sync.LogMessageRequestDto
+import com.mecris.go.sync.NagEvents
 import com.mecris.go.sync.WeatherHeuristicResponseDto
 import com.mecris.go.profile.ProfilePreferencesManager
 import com.mecris.go.ai.SovereignBrain
@@ -95,7 +96,11 @@ class DelayedNagWorker @JvmOverloads constructor(
                 // both candidates.
                 var finalIntent = intent
                 var weather: WeatherHeuristicResponseDto? = null
-                if (intent.goal == GOAL_WALK) {
+                if (intent.goal == GOAL_WALK && isWalkSuppressed()) {
+                    // #363: LATER or START on an earlier walk nag. Greek may still go.
+                    Log.i("DelayedNagWorker", "Walk nag suppressed by LATER/START.")
+                    finalIntent = intent.toGreekFallback() ?: return Result.success()
+                } else if (intent.goal == GOAL_WALK) {
                     if (!isCooldownCleared(intent.prefKey, intent.cooldownMs) && !intent.greekEligible) {
                         Log.i("DelayedNagWorker", "Nag suppressed by cooldown (${intent.prefKey}); skipping weather/LLM.")
                         return Result.success()
@@ -152,7 +157,7 @@ class DelayedNagWorker @JvmOverloads constructor(
                 // #349: Arabic and Greek nags gain one pace line, whoever wrote the text.
                 val message = NagCopy.withPace(llmMessage ?: payload.message, finalIntent.goal, status.pace)
                 Log.i("DelayedNagWorker", "Firing Nag: ${payload.title} (LLM: ${llmMessage != null})")
-                nagManager.showNag(payload.title, message, payload.packageName, payload.nagType)
+                val clientRef = nagManager.showNag(payload.title, message, payload.packageName, payload.nagType)
                 phases.add("nag")
 
                 val nowMs = Instant.now().toEpochMilli()
@@ -160,13 +165,15 @@ class DelayedNagWorker @JvmOverloads constructor(
                     .putLong(finalIntent.prefKey, nowMs)
                     .putLong(PREF_GLOBAL_LAST_NAG, nowMs)
                     .apply()
-                logShownNag(token, payload.nagType, Instant.ofEpochMilli(nowMs), phases)
+                logShownNag(token, payload.nagType, Instant.ofEpochMilli(nowMs), clientRef, phases)
             } else {
                 // 3. SOVEREIGN FALLBACK: Basic local walk check
                 phases.add("fallback")
                 val localHourFallback = injectedHour ?: java.time.LocalDateTime.now().hour
                 val healthManager = injectedHealthManager ?: HealthConnectManager(applicationContext)
-                if (localHourFallback >= 8 && localHourFallback < 20 && healthManager.hasForegroundPermissions()) {
+                if (isWalkSuppressed()) {
+                    Log.i("DelayedNagWorker", "Sovereign Fallback suppressed by LATER/START")
+                } else if (localHourFallback >= 8 && localHourFallback < 20 && healthManager.hasForegroundPermissions()) {
                     phases.add("health_fallback")
                     val summary = healthManager.fetchRecentWalkData()
                     if (summary.totalSteps < 2000) {
@@ -183,12 +190,12 @@ class DelayedNagWorker @JvmOverloads constructor(
                             Log.i("DelayedNagWorker", "Firing Sovereign Fallback Nag: $fallbackTitle")
                             phases.add("nag")
                             val fallbackType = nagTypeFor(GOAL_WALK)
-                            nagManager.showNag(fallbackTitle, fallbackMsg, "com.google.android.apps.fitness", fallbackType)
+                            val clientRef = nagManager.showNag(fallbackTitle, fallbackMsg, "com.google.android.apps.fitness", fallbackType)
 
                             prefs.edit()
                                 .putLong(PREF_GLOBAL_LAST_NAG, nowMs)
                                 .apply()
-                            logShownNag(token, fallbackType, Instant.ofEpochMilli(nowMs), phases)
+                            logShownNag(token, fallbackType, Instant.ofEpochMilli(nowMs), clientRef, phases)
                         } else {
                             Log.i("DelayedNagWorker", "Sovereign Fallback suppressed by global cooldown")
                         }
@@ -237,12 +244,20 @@ class DelayedNagWorker @JvmOverloads constructor(
      * #213: one awaited audit row per shown nag (channel android_native, bearer
      * auth, no message text). Called after the cooldown write; any failure is
      * logged and swallowed, so it never blocks the nag or the cooldown.
+     * #363: carries the nag's client_ref, so later taps and actions find this row.
      */
-    private suspend fun logShownNag(token: String?, type: String, shownAt: Instant, phases: MutableList<String>) {
+    private suspend fun logShownNag(
+        token: String?,
+        type: String,
+        shownAt: Instant,
+        clientRef: String?,
+        phases: MutableList<String>
+    ) {
         if (token == null || type !in LogMessageRequestDto.NAG_TYPES) return
         phases.add("log")
+        val ref = clientRef?.takeIf { NagEvents.isValidClientRef(it) }
         try {
-            val resp = syncApi.logMessage("Bearer $token", LogMessageRequestDto.shownNag(type, shownAt))
+            val resp = syncApi.logMessage("Bearer $token", LogMessageRequestDto.shownNag(type, shownAt, ref))
             if (!resp.isSuccessful) {
                 Log.w("DelayedNagWorker", "Nag audit log refused: HTTP ${resp.code()}")
             }
@@ -265,6 +280,11 @@ class DelayedNagWorker @JvmOverloads constructor(
             }
         } ?: false
     }
+
+    private fun isWalkSuppressed(): Boolean = WalkSuppression.isSuppressed(
+        prefs.getLong(WalkSuppression.PREF_KEY, 0L),
+        Instant.now().toEpochMilli()
+    )
 
     private fun isCooldownCleared(prefKey: String, cooldownMs: Long): Boolean {
         val nowMs = Instant.now().toEpochMilli()

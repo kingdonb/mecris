@@ -64,7 +64,11 @@
             </intent-filter>
         </activity>
 
-
+        <!-- #363 phase 1: nag dismissals and the walk nag's LATER button. Not exported:
+             only this app's own PendingIntents reach it. -->
+        <receiver
+            android:name=".sync.NagActionReceiver"
+            android:exported="false" />
 
     </application>
 </manifest>
