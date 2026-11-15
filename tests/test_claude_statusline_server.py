@@ -38,6 +38,7 @@ def server():
     tracker = MagicMock()
     tracker.resolve_user_id.side_effect = lambda u: u
     with patch.object(mcp_server, "_claude_plan_store", store), \
+         patch.object(mcp_server.scheduler, "is_leader", True), \
          patch.object(mcp_server, "usage_tracker", tracker), \
          patch.object(mcp_server, "resolve_target_user", side_effect=lambda u: u or LOCAL_USER), \
          patch.object(mcp_server, "get_user_beeminder_client", return_value=AsyncMock()), \
@@ -131,3 +132,147 @@ class TestRecordTool:
         reset = (datetime.now(timezone.utc) + timedelta(days=2)).isoformat()
         result = await mcp_server.record_claude_plan_usage(50, reset, user_id=LOCAL_USER)
         assert result == {"recorded": False, "error": "boom"}
+
+
+class FakeNeon:
+    """Just enough of psycopg2 for ClaudePlanUsageStore, shared by every "process".
+
+    An INSERT stores a row unless its statement carries a WHERE NOT EXISTS guard
+    and a row with the same (user_id, source, observed_at) is already there.
+    """
+
+    def __init__(self):
+        self.rows = []
+        self.inserts = []
+
+    def connect(self, *_args, **_kwargs):
+        neon = self
+
+        class Cursor:
+            result = None
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc):
+                return False
+
+            def execute(self, sql, params=()):
+                text = " ".join(sql.split()).upper()
+                if text.startswith("INSERT"):
+                    neon.inserts.append(text)
+                    user, plan, _verified, windows, source, observed_at = params[:6]
+                    key = (user, source, observed_at)
+                    if "WHERE NOT EXISTS" in text and any(r["key"] == key for r in neon.rows):
+                        self.result = None
+                        return
+                    neon.rows.append({"id": len(neon.rows) + 1, "key": key, "plan": plan,
+                                      "windows": windows, "observed_at": observed_at})
+                    self.result = (len(neon.rows),)
+                elif text.startswith("SELECT ID, PLAN, WINDOWS, OBSERVED_AT"):
+                    self.result = [(r["id"], r["plan"], r["windows"], r["observed_at"])
+                                   for r in neon.rows if r["key"][0] == params[0]]
+
+            def fetchone(self):
+                return self.result
+
+            def fetchall(self):
+                return self.result
+
+        class Connection:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc):
+                return False
+
+            def cursor(self):
+                return Cursor()
+
+        return Connection()
+
+
+@pytest.fixture
+def neon(server):
+    """The server with a real ClaudePlanUsageStore over one FakeNeon, and a
+    counted Beeminder push. `latest` reads nothing, as when two processes look
+    before either has written."""
+    mcp_server, _ = server
+    fake = FakeNeon()
+    store = cpu.ClaudePlanUsageStore("postgres://fake")
+    push = AsyncMock(return_value={"pushed": True})
+    with patch("psycopg2.connect", side_effect=fake.connect), \
+         patch.object(store, "latest", return_value=None), \
+         patch.object(mcp_server, "_claude_plan_store", store), \
+         patch.object(mcp_server.claude_plan_usage, "sync_reading_to_beeminder", push), \
+         patch.dict(os.environ, {"CLAUDE_BEEMINDER_GOAL": "claude"}):
+        yield mcp_server, fake, push
+
+
+class TestOneIngestPerSnapshot:
+    """Every mcp_server process starts the ingest loop; Claude Desktop runs three
+    (kingdonb/mecris#344). One snapshot must give one row and one push."""
+
+    async def test_a_standby_process_does_not_ingest(self, server):
+        mcp_server, store = server
+        _write_snapshot(31.0, minutes_ago=1)
+        with patch.object(mcp_server.scheduler, "is_leader", False):
+            result = await mcp_server._ingest_local_claude_reading()
+        assert result == {"recorded": False, "reason": "not the scheduler leader"}
+        store.latest.assert_not_called()
+        store.record.assert_not_called()
+
+    async def test_standby_and_leader_store_the_snapshot_once(self, neon):
+        mcp_server, fake, push = neon
+        _write_snapshot(31.0, minutes_ago=1)
+        with patch.object(mcp_server.scheduler, "is_leader", False):
+            await mcp_server._ingest_local_claude_reading()
+        with patch.object(mcp_server.scheduler, "is_leader", True):
+            await mcp_server._ingest_local_claude_reading()
+        assert len(fake.rows) == 1
+        assert push.await_count == 1
+
+    async def test_leadership_is_checked_on_every_tick(self, server):
+        mcp_server, store = server
+        _write_snapshot(31.0, minutes_ago=1)
+        with patch.object(mcp_server.scheduler, "is_leader", False):
+            assert (await mcp_server._ingest_local_claude_reading())["recorded"] is False
+        with patch.object(mcp_server.scheduler, "is_leader", True):
+            assert (await mcp_server._ingest_local_claude_reading())["recorded"] is True
+        store.record.assert_called_once()
+
+    async def test_a_duplicate_snapshot_gives_one_row_and_one_push(self, neon):
+        # Two leaders across a handover, both reading before either writes.
+        mcp_server, fake, push = neon
+        _write_snapshot(31.0, minutes_ago=1)
+        first = await mcp_server._ingest_local_claude_reading()
+        second = await mcp_server._ingest_local_claude_reading()
+        assert first["recorded"] is True
+        assert second["recorded"] is False
+        assert second["beeminder"] == {"pushed": False, "reason": "reading not stored"}
+        assert len(fake.rows) == 1
+        assert push.await_count == 1
+
+
+class TestIdempotentRecord:
+    def test_same_user_source_and_time_is_stored_once_in_one_statement(self):
+        fake = FakeNeon()
+        store = cpu.ClaudePlanUsageStore("postgres://fake")
+        reading = _reading(31.0, minutes_ago=1, source="claude_code_cli")
+        with patch("psycopg2.connect", side_effect=fake.connect):
+            first = store.record(LOCAL_USER, reading)
+            second = store.record(LOCAL_USER, reading)
+        assert first == {"recorded": True, "id": 1}
+        assert second == {"recorded": False, "reason": "already stored"}
+        assert len(fake.inserts) == 2
+        assert all("SELECT" in sql and "WHERE NOT EXISTS" in sql for sql in fake.inserts)
+
+    def test_another_source_at_the_same_time_is_stored(self):
+        fake = FakeNeon()
+        store = cpu.ClaudePlanUsageStore("postgres://fake")
+        reading = _reading(31.0, minutes_ago=1, source="claude_code_cli")
+        with patch("psycopg2.connect", side_effect=fake.connect):
+            store.record(LOCAL_USER, reading)
+            other = store.record(LOCAL_USER, {**reading, "source": "manual"})
+        assert other["recorded"] is True
+        assert len(fake.rows) == 2

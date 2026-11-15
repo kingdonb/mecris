@@ -189,6 +189,14 @@ class TestStatusText:
     def test_nothing_known(self):
         assert cs.status_text([]) == "plan usage: waiting"
 
+    @pytest.mark.parametrize("pct, shown", [(22.5, "22"), (23.5, "24"), (80.5, "80")])
+    def test_halves_round_to_even_like_every_other_arm(self, pct, shown):
+        # summarize ('{:.0f}'), Spin ('{:.0}') and Android (HALF_EVEN) all round a
+        # half to the even neighbour; the status bar must show the same number.
+        window = {"kind": "weekly_all", "pct_used": pct, "resets_at": WEEK_RESET.isoformat()}
+        assert cs.status_text([window]) == f"wk {shown}%"
+        assert f"{shown}% weekly" in cpu.summarize(cpu.make_reading([window], observed_at=NOW.isoformat()), NOW)["summary_line"]
+
 
 class TestSnapshotFile:
     def test_roundtrip_gives_a_recordable_reading(self, tmp_path):
