@@ -31,8 +31,8 @@ def test_get_system_health_all_active(mock_neon_env):
         mock_connect.return_value.__enter__.return_value = mock_conn
         mock_conn.cursor.return_value.__enter__.return_value = mock_cur
         mock_cur.fetchall.return_value = [
-            ("android_client", "pid-xyz", recent, True),
-            ("mcp_server", "pid-abc", recent, True),
+            ("android_client", "pid-xyz", recent, 0.5),
+            ("leader", "pid-abc", recent, 0.5),
         ]
 
         checker = HealthChecker()
@@ -41,7 +41,7 @@ def test_get_system_health_all_active(mock_neon_env):
     assert result["overall_status"] == "healthy"
     assert len(result["processes"]) == 2
     roles = {p["role"] for p in result["processes"]}
-    assert roles == {"mcp_server", "android_client"}
+    assert roles == {"leader", "android_client"}
     assert all(p["is_active"] for p in result["processes"])
 
 
@@ -55,7 +55,7 @@ def test_get_system_health_stale_process(mock_neon_env):
         mock_connect.return_value.__enter__.return_value = mock_conn
         mock_conn.cursor.return_value.__enter__.return_value = mock_cur
         mock_cur.fetchall.return_value = [
-            ("mcp_server", "pid-abc", stale, False),
+            ("leader", "pid-abc", stale, 5.0),
         ]
 
         checker = HealthChecker()
@@ -98,7 +98,7 @@ def test_get_system_health_heartbeat_serialized(mock_neon_env):
         mock_connect.return_value.__enter__.return_value = mock_conn
         mock_conn.cursor.return_value.__enter__.return_value = mock_cur
         mock_cur.fetchall.return_value = [
-            ("spin_cloud", "pid-spin", ts, True),
+            ("akamai_functions", "pid-spin", ts, 10.0),
         ]
 
         checker = HealthChecker()
@@ -120,8 +120,8 @@ def test_get_system_health_mixed_active(mock_neon_env):
         mock_connect.return_value.__enter__.return_value = mock_conn
         mock_conn.cursor.return_value.__enter__.return_value = mock_cur
         mock_cur.fetchall.return_value = [
-            ("android_client", "pid-xyz", stale, False),
-            ("mcp_server", "pid-abc", recent, True),
+            ("android_client", "pid-xyz", stale, 300.0),
+            ("leader", "pid-abc", recent, 0.5),
         ]
 
         checker = HealthChecker()

@@ -8,6 +8,8 @@ Covers:
 
 Closes yebyen/mecris#189
 Updated: yebyen/mecris#282 (Observability Mandate Phase 1 — add last_status/last_error/intent)
+Updated: kingdonb/mecris#346 (status from contracts/pulse_roles.json, not a flat 90 s;
+rows are (role, process_id, heartbeat, minutes_since[, obs columns][, own]))
 """
 import sys
 import os
@@ -64,8 +66,8 @@ class TestGetProcessStatuses:
     def test_with_url_maps_rows_correctly(self):
         ts = datetime.datetime(2026, 4, 15, 10, 0, 0, tzinfo=datetime.timezone.utc)
         rows = [
-            ("mcp-server", "pid-111", ts, True),
-            ("spin-cloud", "pid-222", ts, False),
+            ("leader", "pid-111", ts, 1.0),
+            ("android_client", "pid-222", ts, 300.0),
         ]
         mock_conn, _ = _make_conn_mock(rows, obs_cols_present=False)
         with patch.dict(os.environ, {"NEON_DB_URL": FAKE_URL}):
@@ -74,17 +76,17 @@ class TestGetProcessStatuses:
                 result = checker.get_process_statuses(user_id=FAKE_UUID)
 
         assert len(result) == 2
-        assert result[0]["role"] == "mcp-server"
+        assert result[0]["role"] == "leader"
         assert result[0]["process_id"] == "pid-111"
         assert result[0]["last_heartbeat"] == ts.isoformat()
         assert result[0]["is_active"] is True
-        assert result[1]["role"] == "spin-cloud"
+        assert result[1]["role"] == "android_client"
         assert result[1]["is_active"] is False
 
     def test_pre_migration_obs_fields_are_none(self):
         """Without migration v8, last_status/last_error/intent must still be present but None."""
         ts = datetime.datetime(2026, 4, 15, 10, 0, 0, tzinfo=datetime.timezone.utc)
-        rows = [("mcp-server", "pid-111", ts, True)]
+        rows = [("leader", "pid-111", ts, 1.0)]
         mock_conn, _ = _make_conn_mock(rows, obs_cols_present=False)
         with patch.dict(os.environ, {"NEON_DB_URL": FAKE_URL}):
             with patch("psycopg2.connect", return_value=mock_conn):
@@ -96,7 +98,7 @@ class TestGetProcessStatuses:
         assert result[0]["intent"] is None
 
     def test_heartbeat_none_maps_to_none(self):
-        rows = [("android-client", "pid-333", None, False)]
+        rows = [("android_client", "pid-333", None, None)]
         mock_conn, _ = _make_conn_mock(rows, obs_cols_present=False)
         with patch.dict(os.environ, {"NEON_DB_URL": FAKE_URL}):
             with patch("psycopg2.connect", return_value=mock_conn):
@@ -121,8 +123,8 @@ class TestGetProcessStatusesWithObsColumns:
     def test_obs_columns_returned(self):
         ts = datetime.datetime(2026, 4, 26, 12, 0, 0, tzinfo=datetime.timezone.utc)
         rows = [
-            ("leader", "pid-abc", ts, True, "Heartbeat active", None, "maintain leadership"),
-            ("android_client", "pid-xyz", ts, False, None, "timeout", None),
+            ("leader", "pid-abc", ts, 1.0, "Heartbeat active", None, "maintain leadership"),
+            ("android_client", "pid-xyz", ts, 300.0, None, "timeout", None),
         ]
         mock_conn, _ = _make_conn_mock(rows, obs_cols_present=True)
         with patch.dict(os.environ, {"NEON_DB_URL": FAKE_URL}):
@@ -140,7 +142,7 @@ class TestGetProcessStatusesWithObsColumns:
     def test_obs_columns_all_fields_present(self):
         """All 7 expected fields are in every result dict when obs columns present."""
         ts = datetime.datetime(2026, 4, 26, 12, 0, 0, tzinfo=datetime.timezone.utc)
-        rows = [("leader", "pid-abc", ts, True, "Elected as leader", None, "claim leadership")]
+        rows = [("leader", "pid-abc", ts, 1.0, "Elected as leader", None, "claim leadership")]
         mock_conn, _ = _make_conn_mock(rows, obs_cols_present=True)
         with patch.dict(os.environ, {"NEON_DB_URL": FAKE_URL}):
             with patch("psycopg2.connect", return_value=mock_conn):
@@ -153,7 +155,7 @@ class TestGetProcessStatusesWithObsColumns:
 
     def test_obs_columns_heartbeat_isoformat(self):
         ts = datetime.datetime(2026, 4, 26, 12, 0, 0, tzinfo=datetime.timezone.utc)
-        rows = [("leader", "pid-abc", ts, True, "Heartbeat active", None, "maintain leadership")]
+        rows = [("leader", "pid-abc", ts, 1.0, "Heartbeat active", None, "maintain leadership")]
         mock_conn, _ = _make_conn_mock(rows, obs_cols_present=True)
         with patch.dict(os.environ, {"NEON_DB_URL": FAKE_URL}):
             with patch("psycopg2.connect", return_value=mock_conn):
@@ -182,8 +184,8 @@ class TestGetSystemHealth:
     def test_any_active_returns_healthy(self):
         ts = datetime.datetime(2026, 4, 15, 10, 0, 0, tzinfo=datetime.timezone.utc)
         rows = [
-            ("mcp-server", "pid-111", ts, True),
-            ("spin-cloud", "pid-222", ts, False),
+            ("leader", "pid-111", ts, 1.0),
+            ("android_client", "pid-222", ts, 300.0),
         ]
         mock_conn, _ = _make_conn_mock(rows, obs_cols_present=False)
         with patch.dict(os.environ, {"NEON_DB_URL": FAKE_URL}):
@@ -197,8 +199,8 @@ class TestGetSystemHealth:
     def test_all_inactive_returns_degraded(self):
         ts = datetime.datetime(2026, 4, 15, 8, 0, 0, tzinfo=datetime.timezone.utc)
         rows = [
-            ("mcp-server", "pid-111", ts, False),
-            ("spin-cloud", "pid-222", ts, False),
+            ("leader", "pid-111", ts, 10.0),
+            ("android_client", "pid-222", ts, 300.0),
         ]
         mock_conn, _ = _make_conn_mock(rows, obs_cols_present=False)
         with patch.dict(os.environ, {"NEON_DB_URL": FAKE_URL}):
@@ -234,3 +236,71 @@ class TestGetSystemHealth:
         assert "error" in result
         assert "neon timeout" in result["error"]
         assert result["processes"] == []
+
+
+# ---------------------------------------------------------------------------
+# contracts/pulse_roles.json replaces the flat 90-second rule (#346)
+# ---------------------------------------------------------------------------
+
+import json
+from pathlib import Path
+
+_PULSE = json.loads((Path(__file__).resolve().parents[1] / "contracts" / "pulse_roles.json").read_text())
+_TS = datetime.datetime(2026, 11, 14, 12, 0, 0, tzinfo=datetime.timezone.utc)
+
+
+def _statuses(rows, obs=False):
+    mock_conn, _ = _make_conn_mock(rows, obs_cols_present=obs)
+    with patch.dict(os.environ, {"NEON_DB_URL": FAKE_URL}):
+        os.environ.pop("MECRIS_GHOST_ENABLED", None)
+        with patch("psycopg2.connect", return_value=mock_conn):
+            return HealthChecker().get_process_statuses(user_id=FAKE_UUID)
+
+
+class TestPulseContract:
+    @pytest.mark.parametrize("case", _PULSE["cases"], ids=lambda c: f"{c['role']}-{c['minutes']}")
+    def test_contract_case(self, case):
+        result = _statuses([(case["role"], "pid", _TS, float(case["minutes"]))])
+        if not case["expect"]["visible"]:
+            assert result == []
+            return
+        assert len(result) == 1
+        assert result[0]["role"] == case["role"]
+        assert result[0]["display"] == case["expect"]["display"]
+        assert result[0]["status"] == case["expect"]["status"]
+        assert result[0]["minutes_since"] == case["minutes"]
+        assert result[0]["is_active"] is (case["expect"]["status"] == "healthy")
+
+    def test_android_at_42_minutes_is_active(self):
+        result = _statuses([("android_client", "pid", _TS, 42.0)])
+        assert result[0]["is_active"] is True
+
+    def test_newest_row_wins_and_own_row_breaks_ties(self):
+        rows = [
+            ("leader", "pid-global", _TS, 3.0, False),
+            ("leader", "pid-own", _TS, 3.0, True),
+            ("android_client", "pid-old", _TS, 300.0, True),
+            ("android_client", "pid-new", _TS, 5.0, False),
+        ]
+        result = _statuses(rows)
+        assert {r["role"]: r["process_id"] for r in result} == {"leader": "pid-own", "android_client": "pid-new"}
+
+    def test_system_health_names_the_database_leader(self):
+        rows = [
+            ("android_client", "pid-phone", _TS, 5.0, None, None, None, True),
+            ("leader", "dbleader1", _TS, 0.5, "Heartbeat active", None, "maintain leadership", True),
+        ]
+        mock_conn, _ = _make_conn_mock(rows, obs_cols_present=True)
+        with patch.dict(os.environ, {"NEON_DB_URL": FAKE_URL}):
+            with patch("psycopg2.connect", return_value=mock_conn):
+                result = HealthChecker().get_system_health(user_id=FAKE_UUID)
+        assert result["leader_process_id"] == "dbleader1"
+
+    def test_query_measures_minutes_not_a_90_second_window(self):
+        mock_conn, cur = _make_conn_mock([], obs_cols_present=True)
+        with patch.dict(os.environ, {"NEON_DB_URL": FAKE_URL}):
+            with patch("psycopg2.connect", return_value=mock_conn):
+                HealthChecker().get_process_statuses(user_id=FAKE_UUID)
+        sql = " ".join(str(c) for c in cur.execute.call_args_list)
+        assert "90 seconds" not in sql
+        assert "EXTRACT(EPOCH" in sql

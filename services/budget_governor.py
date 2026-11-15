@@ -1,15 +1,13 @@
 """
-WARNING: DEPRECATED LEGACY FILE
-
-This local logic has been vacuumed into the Fermyon Cloud.
-The single source of truth for the Budget Governor is now the WASM
-component located in `poc/wasm/budget-governor-py/`. 
-
-DO NOT MODIFY this file for logic updates. It is kept only for
-historical reference until the local MCP server finishes the transition.
-"""
-"""
 Budget Governor — Fiscal Intelligence layer for Mecris.
+
+This module is the live implementation. mcp_server.py uses NeonBudgetGovernor
+(Neon-backed spend log) for every budget_governor_* tool and for the gates on
+LLM-calling tools. BudgetGovernor is the in-memory original, kept for its
+tests. The Fermyon WASM copy (poc/wasm/budget-governor-py/) is retired.
+
+Deterministic tools (coaching insight, language sync, reminders) are not
+gated here (#351).
 
 Manages multi-bucket LLM quotas with:
 - 5%/5% Rate Envelope: In any rolling 39-minute window, no more than 5% of a

@@ -145,8 +145,8 @@ class TestWriteObsStatus:
         assert test_scheduler.is_leader is True
 
     @pytest.mark.asyncio
-    async def test_lost_leadership_path_writes_error(self, test_scheduler):
-        """When demoted, _attempt_leadership calls _write_obs_status with a non-None error."""
+    async def test_lost_leadership_path_writes_standby_without_error(self, test_scheduler):
+        """When demoted, the obs write says standby and names the leader, with no error (#346)."""
         mock_psycopg2 = MagicMock()
         mock_conn = MagicMock()
         mock_cur = MagicMock()
@@ -164,13 +164,13 @@ class TestWriteObsStatus:
 
             await test_scheduler._attempt_leadership()
 
-        # Find the UPDATE obs call that includes "Lost leadership"
+        # Find the UPDATE obs call that carries the standby label
         update_calls = [c for c in mock_cur.execute.call_args_list if "UPDATE" in str(c)]
-        lost_call = next((c for c in update_calls if "Lost leadership" in str(c)), None)
+        lost_call = next((c for c in update_calls if "standby (leader" in str(c)), None)
         assert lost_call is not None, "Expected _write_obs_status call for lost leadership"
         args = lost_call.args[1]
-        assert args[2] is not None, "error arg should be non-None on lost leadership"
-        assert "other_process_id" in args[2]
+        assert args[0] == "standby (leader other_process_id)"
+        assert args[2] is None, "standby is a state, not an error"
 
 
 # ---------------------------------------------------------------------------

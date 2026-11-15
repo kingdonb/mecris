@@ -143,9 +143,10 @@ class TestSMSMocked(unittest.TestCase):
             result = smart_send_message("Test message")
         
         # Verify test mode behavior
-        self.assertTrue(result['sent'])
+        # Console fallback is not a send, and stdout stays clean (#358)
+        self.assertFalse(result['sent'])
         self.assertEqual(result['method'], 'console')
-        mock_print.assert_called_with("[NARRATOR] Test message")
+        mock_print.assert_not_called()
     
     def test_smart_send_message_console_mode(self):
         """Test smart send message in console mode"""
@@ -156,9 +157,9 @@ class TestSMSMocked(unittest.TestCase):
             result = smart_send_message("Console test message")
         
         # Verify console mode behavior
-        self.assertTrue(result['sent'])
+        self.assertFalse(result['sent'])
         self.assertEqual(result['method'], 'console')
-        mock_print.assert_called_with("[NARRATOR] Console test message")
+        mock_print.assert_not_called()
     
     @unittest.skip("SMS delivery disabled")
     @patch('twilio_sender.send_sms')
@@ -220,9 +221,9 @@ class TestSMSMocked(unittest.TestCase):
             result = smart_send_message("Unknown method test")
         
         # Should fallback to console
-        self.assertTrue(result['sent'])
+        self.assertFalse(result['sent'])
         self.assertEqual(result['method'], 'console')
-        mock_print.assert_called_with("[NARRATOR] Unknown method test")
+        mock_print.assert_not_called()
 
 
 class TestIntegrationMocked(unittest.TestCase):
@@ -274,14 +275,12 @@ class TestIntegrationMocked(unittest.TestCase):
                 os.environ['REMINDER_DELIVERY_METHOD'] = method
                 os.environ['REMINDER_TEST_MODE'] = 'false'
 
-                if method == 'console':
-                    with patch('builtins.print') as mock_print:
-                        result = smart_send_message(message)
-                        mock_print.assert_called_with(f"[NARRATOR] {message}")
-                else:
+                with patch('builtins.print') as mock_print:
                     result = smart_send_message(message)
-                
-                self.assertTrue(result['sent'])
+                mock_print.assert_not_called()
+
+                # A console fallback is not a send (#358)
+                self.assertEqual(result['sent'], expected_method != 'console')
                 self.assertEqual(result['method'], expected_method)
 
 

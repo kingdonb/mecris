@@ -65,9 +65,9 @@ async def test_encryption_regression_message_log_content():
         assert log_call is not None
         sql_params = log_call[0][1]
         
-        # The params are (today, msg_type, now, target_user_id, status_val, error_val, encrypted_content)
-        # encrypted_content is index 6
-        captured_content = sql_params[6]
+        # The params are (msg_type, target_user_id, status_val, error_val, encrypted_content, channel);
+        # date and sent_at come from the database's NOW() (#349). encrypted_content is index 4.
+        captured_content = sql_params[4]
         
         assert captured_content != test_msg
         # Decrypt it back to verify it was indeed our message
