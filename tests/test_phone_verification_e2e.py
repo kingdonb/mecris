@@ -46,8 +46,8 @@ async def test_phone_verification_lifecycle():
     async with httpx.AsyncClient() as client:
         # 1. Request verification
         print("\n[1] Requesting verification...")
-        # Use a dummy number that matches Twilio Sandbox or just any valid format
-        req_payload = {"phone_number": "+15852378622"}
+        # Twilio magic test number; never commit a personal number here (#358)
+        req_payload = {"phone_number": "+15005550006"}
         response = await client.post(f"{BASE_URL}/internal/request-phone-verification", 
                                     json=req_payload, headers=AUTH_HEADER, timeout=30.0)
         

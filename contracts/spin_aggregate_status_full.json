@@ -1,0 +1,47 @@
+{
+  "score": "1/3",
+  "goals_met": 1,
+  "total_goals": 3,
+  "satisfied_count": 1,
+  "total_count": 3,
+  "all_clear": false,
+  "components": {"walk": true, "arabic": false, "greek": false},
+  "budget_remaining": 0.0,
+  "today_distance_miles": 1.42,
+  "today_steps": 4210,
+  "vacation_mode_until": null,
+  "phone_verified": false,
+  "modalities": [
+    {"role": "ANDROID CLIENT", "status": "healthy", "last_seen": "2026-11-14 19:18:02.41+00", "minutes_since": 42, "last_status": null},
+    {"role": "AKAMAI FUNCTIONS", "status": "healthy", "last_seen": "2026-11-14 19:00:01.07+00", "minutes_since": 60, "last_status": "ok"},
+    {"role": "MCP SERVER", "status": "offline", "last_seen": "2026-11-14 12:02:44.9+00", "minutes_since": 477, "last_status": null},
+    {"role": "GHOST", "status": "paused", "last_seen": "2026-10-30 03:12:10+00", "minutes_since": 22367, "last_status": null}
+  ],
+  "system_pulse": {
+    "modalities": [
+      {"role": "ANDROID CLIENT", "status": "healthy", "last_seen": "2026-11-14 19:18:02.41+00", "minutes_since": 42, "last_status": null},
+      {"role": "AKAMAI FUNCTIONS", "status": "healthy", "last_seen": "2026-11-14 19:00:01.07+00", "minutes_since": 60, "last_status": "ok"},
+      {"role": "MCP SERVER", "status": "offline", "last_seen": "2026-11-14 12:02:44.9+00", "minutes_since": 477, "last_status": null},
+      {"role": "GHOST", "status": "paused", "last_seen": "2026-10-30 03:12:10+00", "minutes_since": 22367, "last_status": null}
+    ]
+  },
+  "claude_plan": {
+    "state": "available",
+    "reason": "weekly_all at 62%",
+    "stale": false,
+    "summary_line": "Claude: available (62% weekly, resets Mon 4:00 AM)",
+    "plan": "ultra",
+    "verified": false,
+    "source": "manual",
+    "observed_at": "2026-11-14T19:00:00+00:00",
+    "age_minutes": 60,
+    "windows": [
+      {"kind": "weekly_all", "pct_used": 62.4, "resets_at": "2026-11-16T09:00:00+00:00", "fresh": true},
+      {"kind": "session", "pct_used": 20.0, "resets_at": "2026-11-14T23:00:00+00:00", "fresh": true}
+    ]
+  },
+  "pace": [
+    {"goal": "ARABIC", "remaining": 42, "per_hour": 6.0, "clear_by": "2026-11-14T22:00:00-05:00", "due_today": 35},
+    {"goal": "GREEK", "remaining": 0, "per_hour": 0.0, "clear_by": "2026-11-14T22:00:00-05:00", "due_today": 0}
+  ]
+}

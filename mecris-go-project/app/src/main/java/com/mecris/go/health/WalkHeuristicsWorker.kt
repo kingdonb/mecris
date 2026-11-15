@@ -51,7 +51,6 @@ class WalkHeuristicsWorker @JvmOverloads constructor(
         // 1. Inertia Logic: Check if we already hit the "COMPLETED" state today
         val lastSyncedDay = prefs.getString("last_synced_day", "")
         val lastStepCount = prefs.getLong("last_step_count", 0L)
-        val lastCloudSyncTrigger = prefs.getLong("last_cloud_sync_trigger", 0L)
         
         Log.d("WalkHeuristicsWorker", "Executing background check for $today (Last steps: $lastStepCount)")
         
@@ -99,28 +98,9 @@ class WalkHeuristicsWorker @JvmOverloads constructor(
                         }
                     }
 
-                    val twoHoursAgo = Instant.now().minusSeconds(7200).toEpochMilli()
-                    if (body?.mcp_server_active == false && lastCloudSyncTrigger < twoHoursAgo) {
-                        Log.w("WalkHeuristicsWorker", "MCP Server is DARK. Triggering Autonomous Cloud Sync + Reminders.")
-                        phases.add("cloudsync")
-                        val syncResponse = syncApi.triggerCloudSync("Bearer $token")
-                        if (!syncResponse.isSuccessful) {
-                            throw retrofit2.HttpException(syncResponse)
-                        }
-                        try {
-                            val remindersResponse = syncApi.triggerReminders("Bearer $token")
-                            if (!remindersResponse.isSuccessful) {
-                                Log.w("WalkHeuristicsWorker", "Reminders trigger returned: ${remindersResponse.code()}")
-                            } else {
-                                phases.add("reminders")
-                            }
-                        } catch (e: java.io.IOException) {
-                            Log.d("WalkHeuristicsWorker", "Reminders trigger skipped (offline): ${e.message}")
-                        } catch (e: Exception) {
-                            Log.e("WalkHeuristicsWorker", "Reminders trigger failed: ${e.message}")
-                        }
-                        prefs.edit().putLong("last_cloud_sync_trigger", Instant.now().toEpochMilli()).apply()
-                    }
+                    // #368: the cloud cron owns trigger-reminders and periodic
+                    // language sync (failover-sync). A phone that can reach Spin is
+                    // alive and nags locally, so it never asks the cloud to nag.
                 } else {
                     Log.w("WalkHeuristicsWorker", "Heartbeat failed with code: ${hbResponse.code()}")
                 }

@@ -40,6 +40,69 @@ def _walk_status_text(walk_status: Dict[str, Any]) -> tuple[str, str]:
     return status.capitalize(), "white"
 
 
+_GRANT_COLORS = {"GOOD": "green", "ENDING": "bold yellow", "ENDED": "bold red"}
+
+
+def _budget_text(budget_status: Dict[str, Any]) -> str:
+    """Budget panel body, by source_type (kingdonb/mecris#345)."""
+    source_type = budget_status.get("source_type") or "api_credit"
+    if source_type == "subscription":
+        plan = (budget_status.get("plan") or "subscription").strip()
+        plan = plan[:1].upper() + plan[1:]
+        health = budget_status.get("budget_health", "unknown")
+        color = _GRANT_COLORS.get(health, "white")
+        end = budget_status.get("grant_end") or budget_status.get("period_end", "?")
+        verb = "ended" if health == "ENDED" else "until"
+        return (
+            f"[{color}]Claude {plan}[/{color}]\n"
+            f"{verb} {end}  |  {budget_status.get('days_to_grant_end', '?')} days left"
+        )
+    if source_type == "retired":
+        return "[dim]retired (no dollar budget)[/dim]"
+
+    remaining = budget_status.get("remaining_budget", 0.0)
+    total = budget_status.get("total_budget", 1.0)
+    days = budget_status.get("days_remaining", 0.0)
+    pct_used = 1.0 - (remaining / total) if total else 0.0
+    b_color = _budget_color(pct_used)
+    if budget_status.get("period_expired"):
+        days_line = f"[yellow]period ended {budget_status.get('period_end', '?')}[/yellow]"
+    else:
+        days_line = f"{days:.1f} days left"
+    return (
+        f"[{b_color}]${remaining:.2f} remaining[/{b_color}]\n"
+        f"{pct_used * 100:.0f}% used  |  {days_line}"
+    )
+
+
+def _role_state_text(system_pulse: Dict[str, Any]) -> str:
+    """Leader / standby as a state (#346). Standby is normal failover, not an error."""
+    state = system_pulse.get("state")
+    if state is None:
+        state = "leader" if system_pulse.get("is_leader") else "unknown"
+    if state == "leader":
+        return "[bold]LEADER[/bold]"
+    if state == "standby":
+        return f"[dim]standby (leader {system_pulse.get('leader_process_id') or 'unknown'})[/dim]"
+    return f"[dim]{state}[/dim]"
+
+
+def _heartbeat_text(system_pulse: Dict[str, Any], daily_agg: Dict[str, Any]) -> str:
+    running = system_pulse.get("running", False)
+    pid = system_pulse.get("process_id", "?")
+    sched_color = "green" if running else "red"
+    agg_score = daily_agg.get("score", "?")
+    agg_color = "green" if daily_agg.get("all_clear", False) else "yellow"
+    lines = [
+        f"Scheduler: [{sched_color}]{'UP' if running else 'DOWN'}[/{sched_color}] {_role_state_text(system_pulse)}",
+        f"PID: {pid}",
+    ]
+    if system_pulse.get("last_error"):
+        lines.append(f"[red]Error: {system_pulse['last_error']}[/red]")
+    lines.append(f"Daily goals: [{agg_color}]{agg_score}[/{agg_color}]")
+    return "\n".join(lines)
+
+
 def render_pulse(context: Dict[str, Any]) -> None:
     """Render the full pulse dashboard using rich."""
     from rich.console import Console
@@ -86,20 +149,7 @@ def render_pulse(context: Dict[str, Any]) -> None:
     panels = []
 
     # Budget panel
-    remaining = budget_status.get("remaining_budget", 0.0)
-    total = budget_status.get("total_budget", 1.0)
-    days = budget_status.get("days_remaining", 0.0)
-    pct_used = 1.0 - (remaining / total) if total else 0.0
-    b_color = _budget_color(pct_used)
-    if budget_status.get("period_expired"):
-        days_line = f"[yellow]period ended {budget_status.get('period_end', '?')}[/yellow]"
-    else:
-        days_line = f"{days:.1f} days left"
-    budget_text = (
-        f"[{b_color}]${remaining:.2f} remaining[/{b_color}]\n"
-        f"{pct_used * 100:.0f}% used  |  {days_line}"
-    )
-    panels.append(Panel(budget_text, title="Budget", border_style="cyan"))
+    panels.append(Panel(_budget_text(budget_status), title="Budget", border_style="cyan"))
 
     # Walk panel
     walk_label, walk_color = _walk_status_text(daily_walk)
@@ -112,20 +162,7 @@ def render_pulse(context: Dict[str, Any]) -> None:
     ))
 
     # System heartbeat panel
-    running = system_pulse.get("running", False)
-    is_leader = system_pulse.get("is_leader", False)
-    pid = system_pulse.get("process_id", "?")
-    sched_color = "green" if running else "red"
-    leader_tag = " [bold]LEADER[/bold]" if is_leader else ""
-    agg_score = daily_agg.get("score", "?")
-    agg_all_clear = daily_agg.get("all_clear", False)
-    agg_color = "green" if agg_all_clear else "yellow"
-    heartbeat_text = (
-        f"Scheduler: [{sched_color}]{'UP' if running else 'DOWN'}[/{sched_color}]{leader_tag}\n"
-        f"PID: {pid}\n"
-        f"Daily goals: [{agg_color}]{agg_score}[/{agg_color}]"
-    )
-    panels.append(Panel(heartbeat_text, title="Heartbeat", border_style="cyan"))
+    panels.append(Panel(_heartbeat_text(system_pulse, daily_agg), title="Heartbeat", border_style="cyan"))
 
     console.print(Columns(panels, equal=True))
 

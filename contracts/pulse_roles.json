@@ -1,0 +1,51 @@
+{
+  "_doc": "System pulse registry (#346). One entry per scheduler_election role. A role's status is 'healthy' while minutes_since < healthy_under, 'degraded' while < degraded_under, else 'offline'. Lifecycles: expected = always shown with a timed status; paused = shown once as status 'paused' whatever its age; retired = never shown; transient = any role not listed here, shown with status 'unknown' only while minutes_since < unlisted_roles.show_under. Display names for unlisted roles are the role upper-cased with '_' as ' '. Each role is shown at most once: readers select rows for the user and rows with user_id NULL, so a role can have several rows; the row with the newest heartbeat wins, and on an equal heartbeat the user's own row wins. Visibility and status come from the winning row only. In duplicate_cases, 'own' marks the user's own row and equal minutes stand for equal heartbeats.",
+  "version": 1,
+  "roles": {
+    "leader": {"display": "MCP SERVER", "lifecycle": "expected", "healthy_under": 2, "degraded_under": 5},
+    "android_client": {"display": "ANDROID CLIENT", "lifecycle": "expected", "healthy_under": 90, "degraded_under": 240},
+    "akamai_functions": {"display": "AKAMAI FUNCTIONS", "lifecycle": "expected", "healthy_under": 135, "degraded_under": 250},
+    "active_ghost": {"display": "GHOST", "lifecycle": "paused"},
+    "fermyon_cloud": {"display": "FERMYON CLOUD", "lifecycle": "retired"},
+    "unknown_cloud": {"display": "UNKNOWN CLOUD", "lifecycle": "retired"}
+  },
+  "unlisted_roles": {"lifecycle": "transient", "status": "unknown", "show_under": 1440},
+  "cases": [
+    {"role": "leader", "minutes": 1, "expect": {"visible": true, "display": "MCP SERVER", "status": "healthy"}},
+    {"role": "leader", "minutes": 2, "expect": {"visible": true, "display": "MCP SERVER", "status": "degraded"}},
+    {"role": "leader", "minutes": 4, "expect": {"visible": true, "display": "MCP SERVER", "status": "degraded"}},
+    {"role": "leader", "minutes": 5, "expect": {"visible": true, "display": "MCP SERVER", "status": "offline"}},
+    {"role": "android_client", "minutes": 42, "expect": {"visible": true, "display": "ANDROID CLIENT", "status": "healthy"}},
+    {"role": "android_client", "minutes": 89, "expect": {"visible": true, "display": "ANDROID CLIENT", "status": "healthy"}},
+    {"role": "android_client", "minutes": 90, "expect": {"visible": true, "display": "ANDROID CLIENT", "status": "degraded"}},
+    {"role": "android_client", "minutes": 239, "expect": {"visible": true, "display": "ANDROID CLIENT", "status": "degraded"}},
+    {"role": "android_client", "minutes": 240, "expect": {"visible": true, "display": "ANDROID CLIENT", "status": "offline"}},
+    {"role": "android_client", "minutes": 100000, "expect": {"visible": true, "display": "ANDROID CLIENT", "status": "offline"}},
+    {"role": "akamai_functions", "minutes": 134, "expect": {"visible": true, "display": "AKAMAI FUNCTIONS", "status": "healthy"}},
+    {"role": "akamai_functions", "minutes": 135, "expect": {"visible": true, "display": "AKAMAI FUNCTIONS", "status": "degraded"}},
+    {"role": "akamai_functions", "minutes": 249, "expect": {"visible": true, "display": "AKAMAI FUNCTIONS", "status": "degraded"}},
+    {"role": "akamai_functions", "minutes": 250, "expect": {"visible": true, "display": "AKAMAI FUNCTIONS", "status": "offline"}},
+    {"role": "active_ghost", "minutes": 3, "expect": {"visible": true, "display": "GHOST", "status": "paused"}},
+    {"role": "active_ghost", "minutes": 50000, "expect": {"visible": true, "display": "GHOST", "status": "paused"}},
+    {"role": "fermyon_cloud", "minutes": 1, "expect": {"visible": false}},
+    {"role": "unknown_cloud", "minutes": 1, "expect": {"visible": false}},
+    {"role": "unknown", "minutes": 30, "expect": {"visible": true, "display": "UNKNOWN", "status": "unknown"}},
+    {"role": "unknown", "minutes": 1439, "expect": {"visible": true, "display": "UNKNOWN", "status": "unknown"}},
+    {"role": "unknown", "minutes": 1440, "expect": {"visible": false}},
+    {"role": "some_new_role", "minutes": 10, "expect": {"visible": true, "display": "SOME NEW ROLE", "status": "unknown"}}
+  ],
+  "duplicate_cases": [
+    {"name": "own_row_newer_wins", "rows": [{"role": "android_client", "own": true, "minutes": 10}, {"role": "android_client", "own": false, "minutes": 300}],
+     "expect": [{"display": "ANDROID CLIENT", "status": "healthy", "own": true, "minutes": 10}]},
+    {"name": "global_row_newer_wins", "rows": [{"role": "android_client", "own": true, "minutes": 100}, {"role": "android_client", "own": false, "minutes": 5}],
+     "expect": [{"display": "ANDROID CLIENT", "status": "healthy", "own": false, "minutes": 5}]},
+    {"name": "equal_heartbeat_prefers_own_row", "rows": [{"role": "leader", "own": false, "minutes": 3}, {"role": "leader", "own": true, "minutes": 3}],
+     "expect": [{"display": "MCP SERVER", "status": "degraded", "own": true, "minutes": 3}]},
+    {"name": "two_global_rows_newest_wins", "rows": [{"role": "leader", "own": false, "minutes": 9}, {"role": "leader", "own": false, "minutes": 1}],
+     "expect": [{"display": "MCP SERVER", "status": "healthy", "own": false, "minutes": 1}]},
+    {"name": "newest_row_decides_visibility", "rows": [{"role": "some_new_role", "own": true, "minutes": 2000}, {"role": "some_new_role", "own": false, "minutes": 30}],
+     "expect": [{"display": "SOME NEW ROLE", "status": "unknown", "own": false, "minutes": 30}]},
+    {"name": "newest_row_hidden_hides_role", "rows": [{"role": "unknown", "own": false, "minutes": 1500}, {"role": "unknown", "own": true, "minutes": 3000}],
+     "expect": []}
+  ]
+}

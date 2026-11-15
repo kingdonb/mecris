@@ -239,19 +239,26 @@ def smart_send_message(message: str, to_number: Optional[str] = None, user_id: O
             variables = {"1": v1, "2": v2, "3": v3, "4": v4, "5": v5}
         
         success = send_whatsapp_template(content_sid, variables, to_number)
+        result["attempts"].append({"method": "whatsapp_template", "success": bool(success)})
         if success:
             result.update({"sent": True, "method": "whatsapp_template", "template_sid": content_sid})
             return result
 
     # Fallback to freeform (works if window is open)
     if delivery_method in ['whatsapp', 'both']:
-        if send_message(message, to_number):
+        success = send_message(message, to_number)
+        result["attempts"].append({"method": "whatsapp_freeform", "success": bool(success)})
+        if success:
             result.update({"sent": True, "method": "whatsapp_freeform"})
             return result
 
-    # Final fallback: Console
-    print(f"[NARRATOR] {message}")
-    result.update({"sent": True, "method": "console"})
+    # Final fallback: console. Nothing was delivered, so this is not a send.
+    # result["attempts"] still says whether WhatsApp was tried; a failed
+    # WhatsApp attempt is logged by the caller as whatsapp/failed.
+    # Never print: stdout is the MCP stdio channel. The body stays out of the
+    # log too (it can carry personal context); only its length is recorded.
+    logger.info("Console fallback: message not delivered (%d chars)", len(message or ""))
+    result.update({"sent": False, "method": "console"})
     return result
 
 if __name__ == "__main__":
