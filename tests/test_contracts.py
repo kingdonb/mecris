@@ -9,7 +9,7 @@ These tests keep the tables well formed and self-consistent:
 
 import json
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -147,6 +147,31 @@ class TestClaudePlanCases:
     def test_states_covered(self):
         states = {c["expect"]["state"] for c in CLAUDE_CASES}
         assert states == {"available", "constrained", "exhausted", "unknown"}
+
+    def test_status_line_readings_covered(self):
+        """Status line readings (#383): source claude_code_cli, UTC offsets, fractional percentages."""
+        cli = [c for c in CLAUDE_CASES if c["reading"] and c["reading"]["source"] == "claude_code_cli"]
+        assert cli
+        windows = [w for c in cli for w in c["reading"]["windows"]]
+        assert all(w["resets_at"].endswith("+00:00") for w in windows)
+        assert not any(w["kind"] == "weekly_fable" for w in windows)
+        assert {23.5, 80.5} <= {w["pct_used"] for w in windows}
+        session_reset = [c for c in cli if any(w["kind"] == "session" and ts(w["resets_at"]) <= ts(c["now"])
+                                               for w in c["reading"]["windows"])]
+        assert session_reset
+        assert any(ts(c["now"]) - ts(c["reading"]["observed_at"]) == timedelta(minutes=7) for c in cli)
+
+    @pytest.mark.parametrize("case", [c for c in CLAUDE_CASES if "same_instant_as" in c], ids=lambda c: c["name"])
+    def test_same_instants_in_another_offset_give_the_same_answer(self, case):
+        twin = next(c for c in CLAUDE_CASES if c["name"] == case["same_instant_as"])
+        assert ts(case["now"]) == ts(twin["now"])
+        a, b = case["reading"], twin["reading"]
+        assert ts(a["observed_at"]) == ts(b["observed_at"])
+        assert len(a["windows"]) == len(b["windows"])
+        for wa, wb in zip(a["windows"], b["windows"]):
+            assert (wa["kind"], wa["pct_used"], ts(wa["resets_at"])) == (wb["kind"], wb["pct_used"], ts(wb["resets_at"]))
+            assert wa["resets_at"][-6:] != wb["resets_at"][-6:]  # written in different offsets
+        assert case["expect"] == twin["expect"]
 
     @pytest.mark.parametrize("case", CLAUDE_CASES, ids=lambda c: c["name"])
     def test_derive_state(self, case):

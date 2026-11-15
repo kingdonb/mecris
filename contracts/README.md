@@ -58,6 +58,25 @@ Each case is a reading (or `null`) plus `now`; `expect` holds `state`, `reason`,
 `stale`, `summary_line` and `fresh_window_kinds`, exactly as
 `claude_plan_usage.derive_state` / `summarize` produce them today.
 
+A reading has two writers, and readers must accept both shapes:
+
+| | manual (`record_claude_plan_usage`) | status line (`source = claude_code_cli`, #383) |
+|---|---|---|
+| `pct_used` | a number, usually whole (`23.0`) | a number, often fractional (`26.0`, `23.5`) |
+| `resets_at` | `-05:00` offset (`2026-11-16T04:00:00-05:00`) | UTC (`2026-11-16T09:00:00+00:00`) |
+| `observed_at` | when typed in | when Claude Code last answered, with microseconds |
+| windows | `weekly_all`, `session`, `weekly_fable` (any subset) | `weekly_all` and `session` (either may be missing); never `weekly_fable` |
+| how often | hours apart | while Claude Code is in use, a changed reading every 15 minutes at most (at once on a state change or a new week), so the newest is usually minutes old |
+
+- Parse `pct_used` as a float. The state compares the unrounded value (80.5 is constrained);
+  printed values round half to even (80.5 prints as 80, 23.5 as 24), as Python's
+  `f"{x:.0f}"`, Rust's `{:.0}` and Kotlin's `BigDecimal(x).setScale(0, HALF_EVEN)` do.
+- Compare timestamps as instants, never as text; a case pins that (`offsets_compare_as_instants_not_text`).
+  Cases with `same_instant_as` restate another case's instants in a different offset and expect the same result.
+- Judge only the newest reading. A missing `weekly_fable` is not an error, and a reader must
+  not borrow one from an older manual reading.
+- `note` keys in a case are comments.
+
 ## nag_damping_cases.json (#368, #349)
 
 Inputs for a case are `base` with the case's `given` keys replacing base keys whole.
