@@ -57,6 +57,48 @@ class ClaudePlanStateTest {
     }
 
     @Test
+    fun `same_instant_as twins derive the same view in any offset`() {
+        val cases = JsonParser.parseString(contract("claude_plan_cases.json")).asJsonObject
+            .getAsJsonArray("cases").map { it.asJsonObject }
+        val byName = cases.associateBy { it.get("name").asString }
+        val twins = cases.filter { it.has("same_instant_as") }
+        assertTrue("contract has at least one same_instant_as twin", twins.isNotEmpty())
+        for (twin in twins) {
+            val other = byName.getValue(twin.get("same_instant_as").asString)
+            fun view(c: JsonObject) = ClaudePlanState.derive(
+                gson.fromJson(c.get("reading"), ClaudePlanDto::class.java), Instant.parse(c.get("now").asString)
+            )
+            assertEquals(twin.get("name").asString, view(other), view(twin))
+        }
+    }
+
+    @Test
+    fun `status line row in aggregate-status parses with float pct, UTC resets, claude_code_cli and a minutes-old age`() {
+        // Live row #5 as Spin's ?full=true passes it through; 23.5 stands in for a fractional reading.
+        val json = """
+            {"goals_met": 0, "total_goals": 0, "all_clear": false, "components": {},
+             "claude_plan": {"state": "available", "plan": "ultra", "verified": false, "source": "claude_code_cli",
+               "observed_at": "2026-11-15T00:23:00.123456+00:00",
+               "windows": [{"kind": "weekly_all", "pct_used": 23.5, "resets_at": "2026-11-16T09:00:00+00:00", "fresh": true},
+                           {"kind": "session", "pct_used": 30.0, "resets_at": "2026-11-15T00:50:00+00:00", "fresh": true}]}}
+        """.trimIndent()
+        val agg = gson.fromJson(json, AggregateStatusResponseDto::class.java)
+        val plan = agg.claude_plan!!
+        assertEquals("claude_code_cli", plan.source)
+        assertEquals(23.5, plan.windows!![0].pct_used!!, 0.0)
+
+        val view = ClaudePlanState.derive(plan, Instant.parse("2026-11-15T00:30:00Z"))
+        assertEquals("available", view.state)
+        assertFalse(view.stale)
+        assertEquals(23.5, view.weeklyPct!!, 0.0)
+        assertEquals("24", formatPct0(view.weeklyPct!!))
+        assertEquals("Mon 4:00 AM", view.weeklyResetsLabel)
+        assertEquals(listOf("weekly_all", "session"), view.freshWindowKinds)
+        assertEquals(6L, view.ageMinutes) // 6m 59.88s, floored
+        assertEquals("6m ago", formatAge(view.ageMinutes))
+    }
+
+    @Test
     fun `available reading shows weekly percent, New York reset time and age`() {
         val view = ClaudePlanState.derive(reading("2026-11-14T19:00:00Z", weekly(62.4), session(20.0)), now)
         assertEquals("available", view.state)
