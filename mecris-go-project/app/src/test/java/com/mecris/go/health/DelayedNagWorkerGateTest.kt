@@ -191,6 +191,78 @@ class DelayedNagWorkerGateTest {
         coVerify(exactly = 1) { syncApi.logMessage("Bearer fake_token", loggedAs("walk_reminder")) }
         }
 
+    // --- #363 phase 1: client_ref on the shown row; LATER/START suppress walk nags ---
+
+        @Test
+        fun `shown row carries the client_ref the notification was built with`() = runBlocking {
+        stubAggregate(arabic = false, walk = true, greek = true)
+        val ref = "3f2b8c1e-7a4d-4e0b-9c55-2b1f0d6a9e11"
+        every { nagManager.showNag(any(), any(), any(), any()) } returns ref
+
+        worker(hour = 10).doWork()
+
+        coVerify(exactly = 1) {
+            syncApi.logMessage("Bearer fake_token", match { it.type == "arabic_pressure" && it.client_ref == ref })
+        }
+        }
+
+        @Test
+        fun `an invalid client_ref is never sent`() = runBlocking {
+        stubAggregate(arabic = false, walk = true, greek = true)
+        every { nagManager.showNag(any(), any(), any(), any()) } returns ""
+
+        worker(hour = 10).doWork()
+
+        coVerify(exactly = 1) { syncApi.logMessage("Bearer fake_token", match { it.client_ref == null }) }
+        }
+
+        @Test
+        fun `suppressed walk nag does not fire and spends no weather`() = runBlocking {
+        stubAggregate(arabic = true, walk = false, greek = true)
+        every { sharedPrefs.getLong(WalkSuppression.PREF_KEY, 0L) } returns System.currentTimeMillis() + 60_000L
+
+        worker(hour = 12).doWork()
+
+        verify(exactly = 0) { nagManager.showNag(any(), any(), any(), any()) }
+        coVerify(exactly = 0) { syncApi.getWeatherHeuristic(any(), any()) }
+        coVerify(exactly = 0) { syncApi.logMessage(any(), any()) }
+        }
+
+        @Test
+        fun `suppressed walk still lets an eligible greek nag through`() = runBlocking {
+        stubAggregate(arabic = true, walk = false, greek = false)
+        every { sharedPrefs.getLong(WalkSuppression.PREF_KEY, 0L) } returns System.currentTimeMillis() + 60_000L
+
+        worker(hour = 18).doWork()
+
+        verify(exactly = 1) { nagManager.showNag(eq("GREEK ISLAND TIME 🏝️"), any(), "com.clozemaster.v2", "greek_reminder") }
+        coVerify(exactly = 0) { syncApi.getWeatherHeuristic(any(), any()) }
+        }
+
+        @Test
+        fun `expired suppression lets the walk nag fire`() = runBlocking {
+        stubAggregate(arabic = true, walk = false, greek = true)
+        every { sharedPrefs.getLong(WalkSuppression.PREF_KEY, 0L) } returns System.currentTimeMillis() - 1L
+        coEvery { syncApi.getWeatherHeuristic(any(), any()) } returns retrofit2.Response.success(sunny())
+
+        worker(hour = 12).doWork()
+
+        verify(exactly = 1) { nagManager.showNag("PHYSICAL GOAL", any(), "com.google.android.apps.fitness", "walk_reminder") }
+        }
+
+        @Test
+        fun `suppressed walk also silences the sovereign fallback nag`() = runBlocking {
+        coEvery { syncApi.getAggregateStatus(any()) } returns retrofit2.Response.error(
+            503, "{}".toResponseBody("application/json".toMediaType())
+        )
+        coEvery { healthManager.hasForegroundPermissions() } returns true
+        every { sharedPrefs.getLong(WalkSuppression.PREF_KEY, 0L) } returns System.currentTimeMillis() + 60_000L
+
+        worker(hour = 10).doWork()
+
+        verify(exactly = 0) { nagManager.showNag(any(), any(), any(), any()) }
+        }
+
     // --- #349: pace line on local Arabic and Greek nags ---
 
         @Test

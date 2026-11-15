@@ -23,6 +23,9 @@ class NagNotificationManager(
         private const val CHANNEL_ID = "mecris_nag_channel"
         private const val CHANNEL_NAME = "Mecris Accountability Nag"
         private const val NOTIFICATION_ID = 1001
+
+        /** #363 heartbeat: app notifications on AND the nag channel not silenced. */
+        fun notificationsEnabled(appEnabled: Boolean, channelImportance: Int?): Boolean = true
     }
 
     init {
@@ -43,7 +46,7 @@ class NagNotificationManager(
     }
 
     /** [type] is the message_log type the caller logs this nag under. */
-    fun showNag(title: String, message: String, packageToLaunch: String? = null, type: String = "unknown") {
+    fun showNag(title: String, message: String, packageToLaunch: String? = null, type: String = "unknown"): String {
         val dashboardIntent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
         }
@@ -79,5 +82,6 @@ class NagNotificationManager(
         val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         notificationManager.notify(NOTIFICATION_ID, builder.build())
         Log.d("NagNotificationManager", "Nag shown: $type")
+        return ""
     }
 }
