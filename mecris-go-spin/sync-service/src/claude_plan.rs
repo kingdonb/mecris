@@ -83,6 +83,12 @@ fn parse_ts(s: &str) -> Option<DateTime<Utc>> {
         .or_else(|| chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S%.f").ok().map(|n| n.and_utc()))
 }
 
+/// Whole minutes from `observed` to `now`: the handler's SQL
+/// `FLOOR(EXTRACT(EPOCH FROM now() - observed_at) / 60)`, ported as it stands.
+pub fn age_minutes(now: DateTime<Utc>, observed: DateTime<Utc>) -> i64 {
+    ((now - observed).num_microseconds().unwrap_or(i64::MAX) as f64 / 60_000_000.0).floor() as i64
+}
+
 /// Python's `%a %-I:%M %p` in America/New_York, e.g. "Mon 4:00 AM".
 fn fmt_reset(t: &DateTime<Utc>) -> String {
     t.with_timezone(&chrono_tz::America::New_York).format("%a %-I:%M %p").to_string()
@@ -234,6 +240,25 @@ mod tests {
         assert_eq!(got["windows"][0]["pct_used"].as_f64(), Some(23.5));
         assert_eq!(got["observed_at"], "2026-11-14T19:58:41.123456+00:00", "microseconds survive");
         assert_eq!(got["age_minutes"], 1);
+    }
+
+    #[test]
+    fn age_minutes_of_a_minutes_old_reading() {
+        // Status line readings (#383) are minutes old, and observed_at carries microseconds.
+        let now = ts("2026-11-15T00:30:00.000000Z");
+        assert_eq!(age_minutes(now, ts("2026-11-15T00:23:00+00:00")), 7);
+        assert_eq!(age_minutes(now, ts("2026-11-15T00:22:00.000001+00:00")), 7, "whole minutes, rounded down");
+        assert_eq!(age_minutes(now, ts("2026-11-14T18:30:00-05:00")), 60, "the offset does not matter");
+        assert_eq!(age_minutes(now, now), 0);
+    }
+
+    #[test]
+    fn a_reading_from_a_clock_slightly_ahead_is_zero_minutes_old_not_negative() {
+        // observed_at is the writer's clock (the Mac running Claude Code); now is Neon's.
+        // A just-stored snapshot from a clock a fraction of a second ahead must not read -1.
+        let now = ts("2026-11-15T00:30:00.000000Z");
+        assert_eq!(age_minutes(now, ts("2026-11-15T00:30:00.400000+00:00")), 0);
+        assert_eq!(age_minutes(now, ts("2026-11-15T00:30:59+00:00")), 0);
     }
 
     #[test]
