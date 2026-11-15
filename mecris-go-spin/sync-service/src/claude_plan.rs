@@ -83,10 +83,11 @@ fn parse_ts(s: &str) -> Option<DateTime<Utc>> {
         .or_else(|| chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S%.f").ok().map(|n| n.and_utc()))
 }
 
-/// Whole minutes from `observed` to `now`: the handler's SQL
-/// `FLOOR(EXTRACT(EPOCH FROM now() - observed_at) / 60)`, ported as it stands.
+/// Whole minutes from `observed` to `now`, rounded down, and never below 0: `now` is the
+/// database clock, while a status line reading's observed_at is the writer's clock, which
+/// may run a moment ahead.
 pub fn age_minutes(now: DateTime<Utc>, observed: DateTime<Utc>) -> i64 {
-    ((now - observed).num_microseconds().unwrap_or(i64::MAX) as f64 / 60_000_000.0).floor() as i64
+    ((now - observed).num_seconds() / 60).max(0)
 }
 
 /// Python's `%a %-I:%M %p` in America/New_York, e.g. "Mon 4:00 AM".

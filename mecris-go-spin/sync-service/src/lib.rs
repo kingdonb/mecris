@@ -198,10 +198,10 @@ const PULSE_NO_HEARTBEAT_MINUTES: i64 = 9999;
 
 /// The caller's Claude plan state from their newest claude_plan_usage_readings row (#344),
 /// or None when there is no row, no table, or the row cannot be read. Never reads the
-/// plaintext notes column. Ages and `now` come from the database clock.
+/// plaintext notes column. `now` is the database clock; the age is computed from it in Rust.
 async fn claude_plan_for(conn: &Connection, uid: &str) -> Option<claude_plan::PlanStatus> {
     let iso = "'YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"'";
-    let sql = format!("SELECT plan, verified, windows::TEXT, source, TO_CHAR(observed_at AT TIME ZONE 'UTC', {iso}), FLOOR(EXTRACT(EPOCH FROM now() - observed_at) / 60)::BIGINT, TO_CHAR(now() AT TIME ZONE 'UTC', {iso}) FROM claude_plan_usage_readings WHERE user_id = $1 ORDER BY observed_at DESC LIMIT 1");
+    let sql = format!("SELECT plan, verified, windows::TEXT, source, TO_CHAR(observed_at AT TIME ZONE 'UTC', {iso}), TO_CHAR(now() AT TIME ZONE 'UTC', {iso}) FROM claude_plan_usage_readings WHERE user_id = $1 ORDER BY observed_at DESC LIMIT 1");
     let rows = conn.query(sql, &[ParameterValue::Str(uid.to_string())]).await.ok()?.collect().await.ok()?;
     let r = rows.first()?;
     let ts = |v: &DbValue| chrono::DateTime::parse_from_rfc3339(&db_to_str(v)).ok().map(|t| t.with_timezone(&chrono::Utc));
@@ -213,7 +213,10 @@ async fn claude_plan_for(conn: &Connection, uid: &str) -> Option<claude_plan::Pl
         source: opt_str(&r[3]),
         observed_at: ts(&r[4])?,
     };
-    Some(claude_plan::summarize(Some(&reading), ts(&r[6])?, gates::db_i64(&r[5])))
+    let now = ts(&r[5])?;
+    // In Rust, not SQL: observed_at may be from a clock a moment ahead of the database's.
+    let age = claude_plan::age_minutes(now, reading.observed_at);
+    Some(claude_plan::summarize(Some(&reading), now, Some(age)))
 }
 
 /// GET /claude-plan: the same object aggregate-status carries, for the bearer's user. With
