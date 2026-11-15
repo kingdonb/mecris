@@ -7,6 +7,7 @@ All notable changes to Mecris are documented here.
 ### Added
 
 - **Claude plan usage from the Claude Code status line** (#344). `scripts/claude_statusline.py` is a status line command: it reads the `rate_limits` that Claude Code passes to it (the five-hour and weekly windows), writes them to `~/.claude/usage.json`, and prints `5h 16% · wk 24%`. The MCP server reads that file, so `get_claude_plan_status` and the narrator are current without anyone typing in a reading, and stores a `claude_code_cli` reading when the numbers have moved. Only the scheduler leader stores it, and a reading already stored is skipped. Percentages round half to even, as in every other arm. See `docs/CLAUDE_PLAN_USAGE.md`.
+- **One stored Claude reading per user, source and time** (#344). `scripts/migrate_v9_claude_readings_unique.py` (`--dry-run` to preview) removes duplicate readings, keeping the lowest id, and adds a unique index (PostgreSQL 15+); the insert now also has `ON CONFLICT DO NOTHING`, so two leaders storing the same reading at once store it once and push it to Beeminder once.
 
 ## [0.2.0] — 2026-11-14 — The cloud arm works
 

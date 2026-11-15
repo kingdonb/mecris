@@ -271,9 +271,13 @@ class ClaudePlanUsageStore:
         """Store a reading, unless one with the same user, source and observed_at
         is already stored (kingdonb/mecris#344).
 
-        The check and the insert are one statement. Without a unique index, two
-        transactions that run it at the same instant can still both insert; this
-        narrows that race, it does not close it.
+        The check and the insert are one statement. Two transactions that run it
+        at the same instant can both pass the NOT EXISTS check. Once
+        scripts/migrate_v9_claude_readings_unique.py has added the unique index on
+        (user_id, source, observed_at), the second one waits for the first and
+        then inserts nothing (ON CONFLICT DO NOTHING), so it is reported as
+        already stored, not as an error. ON CONFLICT has no target, so the
+        statement works the same before the index exists.
         """
         if not self.neon_url:
             return {"recorded": False, "reason": "NEON_DB_URL not configured"}
@@ -287,7 +291,9 @@ class ClaudePlanUsageStore:
                        WHERE NOT EXISTS (
                            SELECT 1 FROM claude_plan_usage_readings
                            WHERE user_id = %s AND source = %s AND observed_at = %s::timestamptz
-                       ) RETURNING id""",
+                       )
+                       ON CONFLICT DO NOTHING
+                       RETURNING id""",
                     (user_id, reading["plan"], reading["verified"], json.dumps(reading["windows"]),
                      reading["source"], reading["observed_at"], reading.get("notes", ""),
                      user_id, reading["source"], reading["observed_at"]),

@@ -95,10 +95,32 @@ dashboard can read it:
   that never stores can be told apart from one with nothing new to store.
 - A reading is not stored twice. The insert skips a reading whose user, source
   and `observed_at` are already stored, in the same statement, and nothing is
-  pushed to Beeminder when it skips. There is no unique index on those columns,
-  so two inserts at the same instant (say, two leaders during a handover) could
-  still both land. The check narrows that race; only a unique index would close
-  it, and adding one needs any existing duplicates removed first.
+  pushed to Beeminder when it skips. The unique index from the migration below
+  covers two inserts at the same instant (say, two leaders during a handover):
+  the second waits for the first, inserts nothing, and is treated as already
+  stored, not as an error. Once the index exists, the race is closed.
+
+## Migration: one reading per user, source and time
+
+Run this once per database, after the MCP server has created
+`claude_plan_usage_readings` (it does so on first use):
+
+```sh
+python scripts/migrate_v9_claude_readings_unique.py --dry-run   # counts only, changes nothing
+python scripts/migrate_v9_claude_readings_unique.py
+```
+
+It reads `NEON_DB_URL` like the other `migrate_v9_*` scripts, and needs
+PostgreSQL 15 or later (it stops with a clear message on an older server). In
+one transaction it locks the table against writes, deletes duplicate readings
+(same user, source and `observed_at`, NULL user ids counted as equal) keeping
+the lowest id, and creates the unique index
+`claude_plan_usage_readings_user_source_observed_uniq` with `NULLS NOT
+DISTINCT`. It prints only the number of rows deleted and the index name.
+Running it again deletes nothing. Order relative to the other migrations and
+to the deploy does not matter: the insert behaves as before until the index
+exists. Until it has been run, two inserts at the same instant can still both
+land.
 
 ## Rounding
 
