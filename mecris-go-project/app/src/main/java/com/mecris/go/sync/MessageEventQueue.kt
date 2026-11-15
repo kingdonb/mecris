@@ -18,13 +18,24 @@ class MessageEventQueue(private val store: Store, private val cap: Int = DEFAULT
         fun write(json: String)
     }
 
-    enum class Outcome { DROP, RETRY }
+    enum class Outcome { DONE, DROP, RETRY }
 
     fun enqueue(event: MessageEventRequestDto) = synchronized(LOCK) {
         save((load() + event).takeLast(cap))
     }
 
+    fun enqueueShown(shown: LogMessageRequestDto) {}
+
     fun pending(): List<MessageEventRequestDto> = synchronized(LOCK) { load() }
+
+    fun pendingEvents(): List<MessageEventRequestDto> = pending()
+
+    fun pendingShown(): List<LogMessageRequestDto> = emptyList()
+
+    suspend fun drain(
+        sendShown: suspend (LogMessageRequestDto) -> Int,
+        sendEvent: suspend (MessageEventRequestDto) -> Int
+    ): Boolean = drain(sendEvent)
 
     /**
      * Sends a snapshot of the queue in order. [send] returns the HTTP code or throws

@@ -24,7 +24,8 @@ class DelayedNagWorker @JvmOverloads constructor(
     private val injectedBrain: SovereignBrain? = null,
     private val injectedNagManager: NagNotificationManager? = null,
     private val injectedHealthManager: HealthConnectManager? = null,
-    private val injectedHour: Int? = null
+    private val injectedHour: Int? = null,
+    private val injectedShownLog: ((LogMessageRequestDto) -> Unit)? = null
 ) : CoroutineWorker(appContext, workerParams) {
 
     private val pocketIdAuth = injectedAuth ?: PocketIdAuthRepository.getInstance(applicationContext)
