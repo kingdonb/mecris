@@ -187,6 +187,55 @@ mod tests {
         }
     }
 
+    fn case(name: &str) -> Value {
+        let cases: Value = serde_json::from_str(CASES).unwrap();
+        cases["cases"].as_array().unwrap().iter().find(|c| c["name"] == name).unwrap_or_else(|| panic!("no case {name}")).clone()
+    }
+
+    fn summarize_case(c: &Value) -> PlanStatus {
+        let now = ts(c["now"].as_str().unwrap());
+        let r = reading_of(&c["reading"]).unwrap();
+        let age = (now - r.observed_at).num_minutes();
+        summarize(Some(&r), now, Some(age))
+    }
+
+    #[test]
+    fn same_instant_twins_give_the_same_answer() {
+        // A status line reading (+00:00) and a manual one (-05:00) for the same instants.
+        let cases: Value = serde_json::from_str(CASES).unwrap();
+        let twins: Vec<&Value> = cases["cases"].as_array().unwrap().iter().filter(|c| c.get("same_instant_as").is_some()).collect();
+        assert!(!twins.is_empty(), "the contract pins at least one offset twin");
+        for twin in twins {
+            let a = summarize_case(twin);
+            let b = summarize_case(&case(twin["same_instant_as"].as_str().unwrap()));
+            let name = twin["name"].as_str().unwrap();
+            assert_eq!((a.state, &a.reason, a.stale, &a.summary_line, a.age_minutes, &a.observed_at),
+                       (b.state, &b.reason, b.stale, &b.summary_line, b.age_minutes, &b.observed_at), "{name}");
+            let fresh = |p: &PlanStatus| p.windows.iter().map(|w| (w.kind.clone(), w.fresh)).collect::<Vec<_>>();
+            assert_eq!(fresh(&a), fresh(&b), "{name}: windows[].fresh");
+        }
+    }
+
+    #[test]
+    fn a_status_line_reading_serializes_as_stored() {
+        // Live row #5's shape (#383): source passes through, pct_used stays a float, resets_at
+        // is the stored text, and there is no weekly_fable window to report.
+        let got = serde_json::to_value(summarize_case(&case("status_line_7_minutes_old"))).unwrap();
+        assert_eq!(got["source"], "claude_code_cli");
+        assert_eq!(got["age_minutes"], 7);
+        assert_eq!(got["observed_at"], "2026-11-15T00:23:00+00:00");
+        assert_eq!(got["windows"], serde_json::json!([
+            {"kind": "weekly_all", "pct_used": 26.0, "resets_at": "2026-11-16T09:00:00+00:00", "fresh": true},
+            {"kind": "session", "pct_used": 30.0, "resets_at": "2026-11-15T00:50:00+00:00", "fresh": true},
+        ]));
+        assert!(got["windows"][0]["pct_used"].is_f64(), "pct_used is a float, never an integer");
+
+        let got = serde_json::to_value(summarize_case(&case("status_line_fractional_pct"))).unwrap();
+        assert_eq!(got["windows"][0]["pct_used"].as_f64(), Some(23.5));
+        assert_eq!(got["observed_at"], "2026-11-14T19:58:41.123456+00:00", "microseconds survive");
+        assert_eq!(got["age_minutes"], 1);
+    }
+
     #[test]
     fn a_stale_reading_reports_no_fresh_window() {
         let cases: Value = serde_json::from_str(CASES).unwrap();

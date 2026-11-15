@@ -2092,6 +2092,27 @@ mod tests {
         assert!(got["pace"].is_array());
     }
 
+    #[test]
+    fn test_aggregate_full_carries_a_status_line_reading_unchanged() {
+        // #383: a claude_code_cli reading, minutes old, UTC resets, fractional pct, no weekly_fable.
+        let now = utc("2026-11-14T20:00:00Z");
+        let reading = claude_plan::Reading {
+            plan: Some("ultra".into()), verified: Some(false), source: Some("claude_code_cli".into()), observed_at: utc("2026-11-14T19:53:00.5Z"),
+            windows: claude_plan::parse_windows(r#"[{"kind":"weekly_all","pct_used":23.5,"resets_at":"2026-11-16T09:00:00+00:00"},{"kind":"session","pct_used":30.0,"resets_at":"2026-11-14T19:50:00-05:00"}]"#),
+        };
+        let mut input = contract_input(true);
+        input.full.as_mut().unwrap().claude_plan = Some(claude_plan::summarize(Some(&reading), now, Some(6)));
+        let got = serde_json::to_value(build_aggregate(input)).unwrap();
+        let cp = &got["claude_plan"];
+        assert_eq!(cp["source"], "claude_code_cli");
+        assert_eq!(cp["age_minutes"], 6);
+        assert_eq!(cp["state"], "available");
+        assert_eq!(cp["summary_line"], "Claude: available (24% weekly, resets Mon 4:00 AM)");
+        assert_eq!(cp["windows"][0]["pct_used"].as_f64(), Some(23.5));
+        assert_eq!(cp["windows"][1]["resets_at"], "2026-11-14T19:50:00-05:00", "resets_at is passed through as stored");
+        assert_eq!(cp["windows"][1]["fresh"], true, "19:50 New York is 00:50 UTC, after now");
+    }
+
     // --- #349: the phone's nag workers make the light call, so pace is on both paths ---
     #[test]
     fn test_aggregate_light_still_carries_pace() {
