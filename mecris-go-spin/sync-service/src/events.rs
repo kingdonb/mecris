@@ -18,15 +18,24 @@ pub const CLIENT_REF_MAX: usize = 64;
 
 /// client_ref_rule: 1-64 characters from [A-Za-z0-9-].
 pub fn valid_client_ref(s: &str) -> bool {
-    let _ = s;
-    todo!("#363")
+    (1..=CLIENT_REF_MAX).contains(&s.len()) && s.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-')
+}
+
+fn json_object(body: &[u8]) -> Result<serde_json::Map<String, serde_json::Value>, &'static str> {
+    match serde_json::from_slice::<serde_json::Value>(body) {
+        Ok(serde_json::Value::Object(o)) => Ok(o),
+        _ => Err("body must be a JSON object"),
+    }
 }
 
 /// The optional `client_ref` of a log-message body. Absent or JSON null is None (old
 /// clients); anything else must be a string matching client_ref_rule.
 pub fn log_message_client_ref(body: &[u8]) -> Result<Option<String>, &'static str> {
-    let _ = body;
-    todo!("#363")
+    match json_object(body)?.get("client_ref") {
+        None | Some(serde_json::Value::Null) => Ok(None),
+        Some(serde_json::Value::String(s)) if valid_client_ref(s) => Ok(Some(s.clone())),
+        Some(_) => Err("client_ref must be 1-64 characters from A-Z, a-z, 0-9 and -"),
+    }
 }
 
 /// A validated POST /internal/log-message-event body. `at_ms` is the event time in epoch
@@ -35,29 +44,45 @@ pub fn log_message_client_ref(body: &[u8]) -> Result<Option<String>, &'static st
 pub struct PhoneEvent { pub client_ref: String, pub event: &'static str, pub at_ms: Option<i64> }
 
 pub fn validate_phone_event(body: &[u8], now: DateTime<Utc>) -> Result<PhoneEvent, &'static str> {
-    let _ = (body, now);
-    todo!("#363")
+    let obj = json_object(body)?;
+    let client_ref = match obj.get("client_ref") {
+        Some(serde_json::Value::String(s)) if valid_client_ref(s) => s.clone(),
+        Some(_) => return Err("client_ref must be 1-64 characters from A-Z, a-z, 0-9 and -"),
+        None => return Err("client_ref is required"),
+    };
+    let event = obj.get("event").and_then(|e| e.as_str()).ok_or("event is required")?;
+    let event = PHONE_EVENTS.iter().copied().find(|e| *e == event).ok_or("event is not a phone event")?;
+    let at_ms = obj.get("at").and_then(|a| a.as_str())
+        .and_then(|s| DateTime::parse_from_rfc3339(s.trim()).ok())
+        .map(|t| t.with_timezone(&Utc))
+        .filter(|t| (0..=EVENT_MAX_AGE_SECS * 1000).contains(&(now - *t).num_milliseconds()))
+        .map(|t| t.timestamp_millis());
+    Ok(PhoneEvent { client_ref, event, at_ms })
 }
 
 /// The vocabulary word for a Twilio status, or None for one we do not track
 /// (accepted, sending, scheduled, ...).
 pub fn whatsapp_status(s: &str) -> Option<&'static str> {
-    let _ = s;
-    todo!("#363")
+    WHATSAPP_STATUSES.iter().copied().find(|w| *w == s)
+}
+
+/// Position in the forward order; both terminal statuses share the top rank.
+fn rank(s: &str) -> Option<u8> {
+    match s { "queued" => Some(0), "sent" => Some(1), "delivered" => Some(2), "read" => Some(3), "undelivered" | "failed" => Some(4), _ => None }
 }
 
 /// Whether `new` may replace `current` in message_log.delivery_status: forward only,
 /// queued < sent < delivered < read; undelivered and failed are terminal and replace
 /// anything below them. An unknown or missing current status accepts any known one.
 pub fn status_advances(current: Option<&str>, new: &str) -> bool {
-    let _ = (current, new);
-    todo!("#363")
+    let Some(new_rank) = rank(new) else { return false };
+    match current.and_then(rank) { None => true, Some(cur) => new_rank > cur }
 }
 
 /// A Twilio message SID: two capital letters and 32 hex digits (SM..., MM...).
 pub fn valid_message_sid(s: &str) -> bool {
-    let _ = s;
-    todo!("#363")
+    let b = s.as_bytes();
+    b.len() == 34 && b[..2].iter().all(|c| c.is_ascii_uppercase()) && b[2..].iter().all(|c| c.is_ascii_hexdigit())
 }
 
 /// A signature-verified Twilio status callback. `status` is None for a status we do not
@@ -66,8 +91,11 @@ pub fn valid_message_sid(s: &str) -> bool {
 pub struct StatusCallback { pub sid: String, pub status: Option<&'static str>, pub error_code: Option<i64> }
 
 pub fn parse_status_callback(form: &[(String, String)]) -> Result<StatusCallback, &'static str> {
-    let _ = form;
-    todo!("#363")
+    let field = |k: &str| form.iter().find(|(key, _)| key == k).map(|(_, v)| v.trim());
+    let sid = field("MessageSid").filter(|s| valid_message_sid(s)).ok_or("MessageSid is required")?;
+    let status = field("MessageStatus").filter(|s| !s.is_empty()).ok_or("MessageStatus is required")?;
+    let error_code = field("ErrorCode").and_then(|c| c.parse::<i64>().ok());
+    Ok(StatusCallback { sid: sid.to_string(), status: whatsapp_status(status), error_code })
 }
 
 /// What Spin keeps from Twilio's answer to a send: the SID (when it looks like one) and
@@ -76,21 +104,26 @@ pub fn parse_status_callback(form: &[(String, String)]) -> Result<StatusCallback
 pub struct SendReceipt { pub sid: Option<String>, pub status: &'static str }
 
 pub fn parse_send_receipt(body: &str) -> SendReceipt {
-    let _ = body;
-    todo!("#363")
+    let v = serde_json::from_str::<serde_json::Value>(body).unwrap_or_default();
+    let sid = v.get("sid").and_then(|s| s.as_str()).filter(|s| valid_message_sid(s)).map(str::to_string);
+    let status = v.get("status").and_then(|s| s.as_str()).and_then(whatsapp_status).unwrap_or("queued");
+    SendReceipt { sid, status }
 }
 
 /// A Twilio Messages form with `StatusCallback` appended when `callback_url` is set.
 /// An empty or blank URL sends no StatusCallback at all.
-pub fn with_status_callback(form: String, callback_url: &str) -> String {
-    let _ = callback_url;
+pub fn with_status_callback(mut form: String, callback_url: &str) -> String {
+    let url = callback_url.trim();
+    if !url.is_empty() {
+        form.push_str("&StatusCallback=");
+        form.push_str(&urlencoding::encode(url));
+    }
     form
 }
 
 /// `notifications_enabled` from a heartbeat body: Some only when present and boolean.
 pub fn heartbeat_notifications_enabled(body: &serde_json::Value) -> Option<bool> {
-    let _ = body;
-    todo!("#363")
+    body.get("notifications_enabled").and_then(|v| v.as_bool())
 }
 
 #[cfg(test)]

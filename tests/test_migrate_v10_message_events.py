@@ -104,8 +104,10 @@ def test_migration_is_additive_and_idempotent():
     _load().migrate(conn)
     for stmt in conn.sql:
         assert "IF NOT EXISTS" in stmt, stmt
+        # The foreign key's ON DELETE CASCADE is a clause, not a delete.
+        verbs = stmt.upper().replace("ON DELETE CASCADE", "")
         for verb in ("DROP", "DELETE", "TRUNCATE", "UPDATE", "INSERT"):
-            assert not re.search(rf"\b{verb}\b", stmt.upper()), f"the migration must not {verb}: {stmt}"
+            assert not re.search(rf"\b{verb}\b", verbs), f"the migration must not {verb}: {stmt}"
 
 
 def test_migration_rolls_back_on_error():
