@@ -1,4 +1,3 @@
-use spin_cron_sdk::cron_component;
 use serde::{Deserialize, Serialize};
 use spin_sdk::{
     http::{Request, Response, Method},
@@ -11,38 +10,46 @@ use sha2::{Sha256, Digest};
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use jwt_simple::prelude::*;
 use aes_gcm::{aead::{Aead, KeyInit}, Aes256Gcm, Nonce};
-use chrono::{Timelike, TimeZone};
+use chrono::TimeZone;
+use std::collections::BTreeMap;
 
-#[derive(Deserialize, Default)] struct NotificationPrefs { #[allow(dead_code)] sms_opted_in: Option<bool> }
-/// The key that was committed to the public deploy scripts. It can never authorize again.
-const BURNED_INTERNAL_KEY: &str = "test-internal-key";
+mod gates;
+mod outcome;
 
-/// Compare two secrets without an early exit on the first differing byte.
-fn secret_eq(a: &str, b: &str) -> bool {
-    a.len() == b.len() && a.bytes().zip(b.bytes()).fold(0u8, |acc, (x, y)| acc | (x ^ y)) == 0
-}
+use gates::Verdict;
+use outcome::{ReminderOutcome, SyncOutcome};
 
 fn query_param(query: Option<&str>, key: &str) -> Option<String> {
     parse_form(query?).into_iter().find(|(k, _)| k == key).map(|(_, v)| v)
 }
 
-/// Who may call the `/internal/*` trigger endpoints:
-/// - a signed-in user (the Android app sends its bearer token), or
-/// - a caller presenting the configured key, in the `x-internal-api-key` header or,
-///   for platform cron which can only set path and query, the `key` query parameter.
+/// Who may call the `/internal/*` cron endpoints: only a caller presenting the configured
+/// key, in the `x-internal-api-key` header or, for platform cron which can only set path
+/// and query, the `key` query parameter. A signed-in user's bearer is not enough (v0.3.0).
 /// An unset key authorizes nobody. So does the key that was once published.
-fn internal_caller_ok(cfg: &str, header_key: Option<&str>, query_key: Option<&str>, signed_in_user: bool) -> bool {
-    if signed_in_user { return true; }
-    if cfg.is_empty() || cfg == BURNED_INTERNAL_KEY { return false; }
-    header_key.map(|h| secret_eq(h, cfg)).unwrap_or(false) || query_key.map(|q| secret_eq(q, cfg)).unwrap_or(false)
-}
-
-async fn internal_request_ok(req: &Request) -> bool {
+async fn internal_request_check(req: &Request) -> Result<(), outcome::Refusal> {
     let cfg = variables::get("internal_api_key").await.unwrap_or_default();
     let header_key = req.headers().get("x-internal-api-key").and_then(|v| v.to_str().ok());
     let query_key = query_param(req.uri().query(), "key");
-    let signed_in = extract_user_id(req.headers().get("authorization")).await.is_some();
-    internal_caller_ok(&cfg, header_key, query_key.as_deref(), signed_in)
+    outcome::check_internal_key(&cfg, header_key, query_key.as_deref())
+}
+
+async fn db_url() -> anyhow::Result<String> {
+    match variables::get("db_url").await { Ok(v) if !v.is_empty() => Ok(v), _ => Ok(variables::get("neon_db_url").await?) }
+}
+
+/// Count a refused caller: one row per New York day, endpoint and reason, so scanners
+/// cannot grow the table. Best-effort: a missing table or DB never changes the answer.
+async fn record_refusal(endpoint: &'static str, reason: outcome::Refusal) {
+    println!("internal: refused {} ({})", endpoint, reason.code());
+    let Ok(db) = db_url().await else { return };
+    let Ok(conn) = Connection::open(&db).await else { return };
+    let _ = conn.execute("INSERT INTO internal_refusals (day, endpoint, reason, count, last_at) VALUES ((now() AT TIME ZONE 'America/New_York')::DATE, $1, $2, 1, now()) ON CONFLICT (day, endpoint, reason) DO UPDATE SET count = internal_refusals.count + 1, last_at = EXCLUDED.last_at", &[ParameterValue::Str(endpoint.to_string()), ParameterValue::Str(reason.code().to_string())]).await;
+}
+
+async fn refuse_internal(endpoint: &'static str, reason: outcome::Refusal) -> anyhow::Result<Response<String>> {
+    record_refusal(endpoint, reason).await;
+    text_response(401, "Unauthorized")
 }
 
 fn db_to_i32(v: &DbValue) -> i32 { 
@@ -68,13 +75,6 @@ fn db_to_bool(v: &DbValue) -> bool { match v { DbValue::Boolean(b) => *b, _ => f
 fn json_response<T: Serialize>(s: u16, d: &T) -> anyhow::Result<Response<String>> { Ok(Response::builder().status(s).header("content-type", "application/json").header("access-control-allow-origin", "*").body(serde_json::to_string(d)?)?) }
 fn text_response(s: u16, t: &str) -> anyhow::Result<Response<String>> { Ok(Response::builder().status(s).header("access-control-allow-origin", "*").body(t.to_string())?) }
 fn add_cors(mut r: Response<String>) -> Response<String> { r.headers_mut().insert("access-control-allow-origin", spin_sdk::http::HeaderValue::from_static("*")); r }
-
-#[cron_component]
-async fn handle_cron(_m: spin_cron_sdk::Metadata) -> anyhow::Result<()> {
-    let db = match variables::get("db_url").await { Ok(v) if !v.is_empty() => v, _ => variables::get("neon_db_url").await? };
-    let _ = run_clozemaster_scraper(&db, "c0a81a4b-115a-4eb6-bc2c-40908c58bf64").await;
-    Ok(())
-}
 
 #[http_service]
 async fn handle_sync_service(req: Request) -> anyhow::Result<Response<String>> {
@@ -102,11 +102,13 @@ async fn handle_sync_service(req: Request) -> anyhow::Result<Response<String>> {
         ("/aggregate-status", &Method::GET) => handle_aggregate_status_get(req).await?,
         ("/profile", &Method::POST) => handle_profile_post(req).await?,
         ("/profile", &Method::GET) => handle_profile_get(req).await?,
-        ("/internal/trigger-reminders", _) => {
-            if !internal_request_ok(&req).await { text_response(401, "Unauthorized")? } else { handle_trigger_reminders_post(req).await? }
+        ("/internal/trigger-reminders", _) => match internal_request_check(&req).await {
+            Ok(()) => handle_trigger_reminders(req).await?,
+            Err(r) => refuse_internal("trigger-reminders", r).await?,
         },
-        ("/internal/failover-sync", _) => {
-            if !internal_request_ok(&req).await { text_response(401, "Unauthorized")? } else { handle_failover_sync_post(req).await? }
+        ("/internal/failover-sync", _) => match internal_request_check(&req).await {
+            Ok(()) => handle_failover_sync(req).await?,
+            Err(r) => refuse_internal("failover-sync", r).await?,
         },
         ("/internal/weather-heuristic", &Method::GET) => handle_weather_heuristic_get(req).await?,
         ("/internal/request-phone-verification", &Method::POST) => handle_request_phone_verification_post(req).await?,
@@ -365,6 +367,20 @@ fn effective_targets(cur: i32, tom: i32, mult: f64, done: i32, beeminder_due: i3
     (done + remaining, remaining, pump_met && due == 0)
 }
 
+/// Whether a profile save carries the number already stored (decrypted), compared by its
+/// digits: "+1 (585) 555-0100" and "+15855550100" are the same number. Ciphertexts differ
+/// on every write, so only plaintexts can be compared.
+fn same_phone_number(stored: Option<&str>, requested: &str) -> bool {
+    let digits = |s: &str| s.chars().filter(|c| c.is_ascii_digit()).collect::<String>();
+    match stored {
+        None => false,
+        Some(old) => {
+            let (a, b) = (digits(old), digits(requested));
+            if a.is_empty() && b.is_empty() { old.trim() == requested.trim() } else { a == b }
+        }
+    }
+}
+
 async fn handle_profile_post(req: Request) -> anyhow::Result<Response<String>> {
     let uid = match extract_user_id(req.headers().get("authorization")).await { Some(id) => id, None => return Ok(text_response(401, "Unauthorized")?) };
     let body = req.into_body().collect().await.map_err(|e| anyhow::anyhow!("Body: {:?}", e))?.to_bytes();
@@ -372,11 +388,26 @@ async fn handle_profile_post(req: Request) -> anyhow::Result<Response<String>> {
     let pr: ProfReq = serde_json::from_slice(&body)?;
     let db = match variables::get("db_url").await { Ok(v) if !v.is_empty() => v, _ => variables::get("neon_db_url").await? };
     let conn = Connection::open(&db).await?;
-    if let Some(p) = &pr.phone_number { let enc = encrypt_token(p).await?; conn.execute("UPDATE users SET phone_number_encrypted = $1, phone_verified = FALSE WHERE pocket_id_sub = $2", &[ParameterValue::Str(enc), ParameterValue::Str(uid.clone())]).await?; }
+    if let Some(p) = &pr.phone_number {
+        // Android's Save always sends the number. Only a different number un-verifies the
+        // phone (and with it the cloud WhatsApp fallback) and drops a pending code.
+        let rs = conn.query("SELECT phone_number_encrypted FROM users WHERE pocket_id_sub = $1", &[ParameterValue::Str(uid.clone())]).await?.collect().await?;
+        let stored = match rs.first().map(|r| &r[0]) {
+            Some(DbValue::Str(s)) if !s.is_empty() => decrypt_token(s).await.ok(),
+            Some(DbValue::Str(_)) => Some(String::new()),
+            _ => None,
+        };
+        if !same_phone_number(stored.as_deref(), p) {
+            let enc = encrypt_token(p).await?;
+            conn.execute("UPDATE users SET phone_number_encrypted = $1, phone_verified = FALSE WHERE pocket_id_sub = $2", &[ParameterValue::Str(enc), ParameterValue::Str(uid.clone())]).await?;
+            // A pending code was sent to the old number; it must not verify the new one.
+            conn.execute("DELETE FROM phone_verifications WHERE user_id = $1", &[ParameterValue::Str(uid.clone())]).await?;
+        }
+    }
     if let Some(bu) = &pr.beeminder_user { let enc = encrypt_token(bu).await?; conn.execute("UPDATE users SET beeminder_user_encrypted = $1 WHERE pocket_id_sub = $2", &[ParameterValue::Str(enc), ParameterValue::Str(uid.clone())]).await?; }
     if let Some(lat) = pr.latitude { conn.execute("UPDATE users SET location_lat = $1 WHERE pocket_id_sub = $2", &[ParameterValue::Floating64(lat), ParameterValue::Str(uid.clone())]).await?; }
     if let Some(lon) = pr.longitude { conn.execute("UPDATE users SET location_lon = $1 WHERE pocket_id_sub = $2", &[ParameterValue::Floating64(lon), ParameterValue::Str(uid.clone())]).await?; }
-    if let Some(vac) = pr.vacation_mode { if !vac { conn.execute("UPDATE users SET vacation_mode_until = NULL WHERE pocket_id_sub = $1", &[ParameterValue::Str(uid.clone())]).await?; } else { let u = (chrono::Utc::now() + chrono::Duration::days(1)).to_rfc3339(); conn.execute("UPDATE users SET vacation_mode_until = $1::TIMESTAMPTZ WHERE pocket_id_sub = $2", &[ParameterValue::Str(u), ParameterValue::Str(uid.clone())]).await?; } }
+    if let Some(vac) = pr.vacation_mode { if !vac { conn.execute("UPDATE users SET vacation_mode_until = NULL WHERE pocket_id_sub = $1", &[ParameterValue::Str(uid.clone())]).await?; } else { conn.execute("UPDATE users SET vacation_mode_until = now() + interval '1 day' WHERE pocket_id_sub = $1", &[ParameterValue::Str(uid.clone())]).await?; } }
     if let Some(sync) = pr.autonomous_sync_enabled { conn.execute("UPDATE users SET autonomous_sync_enabled = $1 WHERE pocket_id_sub = $2", &[ParameterValue::Boolean(sync), ParameterValue::Str(uid.clone())]).await?; }
     if let Some(pref) = &pr.notification_prefs { conn.execute("UPDATE users SET notification_prefs = $1::JSONB WHERE pocket_id_sub = $2", &[ParameterValue::Str(serde_json::to_string(pref)?), ParameterValue::Str(uid.clone())]).await?; }
     json_response(200, &StatusResponse { status: "success".to_string(), message: "Profile updated".to_string() })
@@ -402,12 +433,15 @@ async fn handle_cloud_sync(req: Request) -> anyhow::Result<Response<String>> {
     json_response(200, &StatusResponse { status: "success".to_string(), message: "Sync initiated".to_string() })
 }
 
-#[derive(Serialize)] struct VersionResp { version: String, cloud_provider: String }
+/// `dry_run` promises that GET /internal/trigger-reminders?dry_run=1 sends and writes
+/// nothing. v0.2 had no such field and ignored the query, so verify_spin_deploy.sh sends
+/// no keyed request to a service that does not make the promise.
+#[derive(Serialize)] struct VersionResp { version: String, cloud_provider: String, dry_run: bool }
 
 /// What is deployed. Public on purpose: it carries nothing secret, and it lets a deploy be
 /// confirmed from outside without a user token or platform logs.
 fn version_info(cloud_provider: &str) -> VersionResp {
-    VersionResp { version: env!("CARGO_PKG_VERSION").to_string(), cloud_provider: cloud_provider.to_string() }
+    VersionResp { version: env!("CARGO_PKG_VERSION").to_string(), cloud_provider: cloud_provider.to_string(), dry_run: true }
 }
 
 async fn handle_health_get(req: Request) -> anyhow::Result<Response<String>> {
@@ -616,97 +650,277 @@ async fn handle_walks_post(req: Request) -> anyhow::Result<Response<String>> {
     json_response(201, &StatusResponse { status: "success".to_string(), message: "Walk ingested".to_string() })
 }
 
-async fn handle_trigger_reminders_post(_req: Request) -> anyhow::Result<Response<String>> {
-    let sid = variables::get("twilio_account_sid").await?;
-    let _tok = decrypt_token(&variables::get("twilio_auth_token_encrypted").await?).await?;
-    let from = variables::get("twilio_whatsapp_from").await.unwrap_or_default();
-    let template = variables::get("twilio_status_template_sid").await.unwrap_or_default();
-    let db = match variables::get("db_url").await { Ok(v) if !v.is_empty() => v, _ => variables::get("neon_db_url").await? };
-    let conn = Connection::open(&db).await?;
-    let rs = conn.query("SELECT pocket_id_sub, phone_number_encrypted, COALESCE(timezone, 'UTC'), COALESCE(notification_prefs::TEXT, '{}') FROM users WHERE phone_number_encrypted IS NOT NULL AND phone_number_encrypted != '' AND autonomous_sync_enabled = true", &[]).await?.collect().await?;
-    let (mut sent, mut errors, now) = (0, 0, chrono::Utc::now());
-    let (today, epoch) = (now.format("%Y-%m-%d").to_string(), now.timestamp() as u64);
-    for r in &rs {
-        let (uid, ph_enc, tz, pref_j) = (match &r[0] { DbValue::Str(s) => s.clone(), _ => continue }, match &r[1] { DbValue::Str(s) => s.clone(), _ => continue }, match &r[2] { DbValue::Str(s) => s.clone(), _ => "UTC".to_string() }, match &r[3] { DbValue::Str(s) => s.clone(), _ => "{}".to_string() });
-        let pref: NotificationPrefs = serde_json::from_str(&pref_j).unwrap_or_default();
-        let s_rs = conn.query("SELECT step_count FROM walk_inferences WHERE user_id = $1 AND start_time >= $2 ORDER BY start_time ASC", &[ParameterValue::Str(uid.clone()), ParameterValue::Str(today.clone())]).await?.collect().await?;
-        let steps = aggregate_step_count(&s_rs);
-        let m_rs = conn.query("SELECT sent_at::TEXT FROM message_log WHERE user_id = $1 AND type = 'walk_reminder' ORDER BY sent_at DESC LIMIT 1", &[ParameterValue::Str(uid.clone())]).await?.collect().await?;
-        let ms = m_rs.first().and_then(|mr| match &mr[0] { DbValue::Str(s) if !s.is_empty() => Some(s.as_str()), _ => None });
-        let mins = ms.and_then(|s| chrono::DateTime::parse_from_rfc3339(s).or_else(|_| chrono::DateTime::parse_from_str(s, "%Y-%m-%d %H:%M:%S%.f%z")).ok().map(|dt| epoch.saturating_sub(dt.timestamp() as u64) / 60));
-        if !should_dispatch(local_hour_from_timezone(&tz, &now), steps, mins, &pref) { continue; }
-        let hb_rs = conn.query("SELECT EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - heartbeat)) / 60 FROM scheduler_election WHERE user_id = $1 AND role = 'android_client' ORDER BY heartbeat DESC LIMIT 1", &[ParameterValue::Str(uid.clone())]).await?.collect().await?;
-        if hb_rs.first().and_then(|hr| match &hr[0] { DbValue::Floating64(f) => Some(*f as u64), _ => None }).map_or(false, |m| m < 240) { continue; }
-        let ph = decrypt_token(&ph_enc).await?;
-        match send_twilio_whatsapp_template(&sid, &_tok, &from, &ph, &template, &walk_reminder_variables(&local_time_label(&tz, &now))).await {
-            // Every attempt is logged for compliance (kingdonb/mecris#167). Failed attempts also
-            // count toward the walk_reminder cooldown above, so a failing channel cannot retry-storm.
-            // error_msg holds only twilio_failure_summary output, encrypted like the Python logger.
-            Ok(_) => { let _ = conn.execute("INSERT INTO message_log (date, user_id, type, sent_at, status, channel) VALUES (CURRENT_DATE, $1, 'walk_reminder', CURRENT_TIMESTAMP, 'sent', 'whatsapp')", &[ParameterValue::Str(uid.clone())]).await; sent += 1; }
-            Err(e) => {
-                let err_param = match encrypt_token(&e.to_string()).await { Ok(enc) => ParameterValue::Str(enc), Err(_) => ParameterValue::DbNull };
-                let _ = conn.execute("INSERT INTO message_log (date, user_id, type, sent_at, status, channel, error_msg) VALUES (CURRENT_DATE, $1, 'walk_reminder', CURRENT_TIMESTAMP, 'failed', 'whatsapp', $2)", &[ParameterValue::Str(uid.clone()), err_param]).await;
-                errors += 1;
-            }
-        }
-    }
-    json_response(200, &format!("Sent {} reminders, {} errors", sent, errors))
+/// One user's dry-run line: what each gate saw and decided. Names the user by
+/// familiar_id only, never by phone number or OIDC subject.
+#[derive(Serialize)]
+struct DryRunUser {
+    familiar_id: Option<String>,
+    ny_time: String,
+    steps: i64,
+    minutes_since_last_nag: Option<i64>,
+    nags_today: i64,
+    phone_heartbeat_minutes: Option<i64>,
+    verdict: &'static str,
+    reason: &'static str,
+    variables: BTreeMap<String, String>,
 }
 
-async fn handle_failover_sync_post(_req: Request) -> anyhow::Result<Response<String>> {
-    let db = match variables::get("db_url").await { Ok(v) if !v.is_empty() => v, _ => variables::get("neon_db_url").await? };
-    let conn = Connection::open(&db).await?;
-    let rs = conn.query("SELECT pocket_id_sub, EXTRACT(EPOCH FROM CURRENT_TIMESTAMP - COALESCE(last_autonomous_sync, '1970-01-01'::TIMESTAMPTZ))/60 FROM users WHERE autonomous_sync_enabled = true", &[]).await?.collect().await?;
-    let mut success = 0;
+#[derive(Serialize, Default)]
+struct TriggerResp {
+    sent: u32,
+    failed: u32,
+    stood_down: u32,
+    /// Reason code (gates::Reason, or "error") to number of users.
+    reasons: BTreeMap<&'static str, u32>,
+    dry_run: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    users: Option<Vec<DryRunUser>>,
+}
+
+struct TwilioCfg { sid: String, tok: String, from: String, template: String }
+
+/// Twilio secrets, loaded only once a send is actually due. Errors are fixed PII-free codes.
+async fn load_twilio_cfg() -> Result<TwilioCfg, &'static str> {
+    let sid = variables::get("twilio_account_sid").await.unwrap_or_default();
+    let enc = variables::get("twilio_auth_token_encrypted").await.unwrap_or_default();
+    if sid.trim().is_empty() || enc.trim().is_empty() { return Err("twilio_not_configured"); }
+    let tok = decrypt_token(&enc).await.map_err(|_| "twilio_not_configured")?;
+    let from = variables::get("twilio_whatsapp_from").await.unwrap_or_default();
+    let template = variables::get("twilio_status_template_sid").await.unwrap_or_default();
+    Ok(TwilioCfg { sid, tok, from, template })
+}
+
+/// Every gate input for one user, ages and counts computed in SQL as BIGINT
+/// (FLOOR(EXTRACT(EPOCH ...) / 60)::BIGINT, COUNT(*)). Nothing is parsed from timestamp text.
+async fn load_gate_inputs(conn: &Connection, uid: &str, now: chrono::DateTime<chrono::Utc>, standdown_minutes: i64) -> anyhow::Result<gates::GateInputs> {
+    let ny_today = "(now() AT TIME ZONE 'America/New_York')::DATE";
+    let sql = format!(
+        "SELECT COALESCE(u.phone_verified, FALSE), COALESCE(u.vacation_mode_until > now(), FALSE), COALESCE(u.notification_prefs::TEXT, '{{}}'), \
+         (SELECT COALESCE(MAX(FLOOR(CAST(w.step_count AS NUMERIC))), 0)::BIGINT FROM walk_inferences w WHERE w.user_id = u.pocket_id_sub AND (w.start_time::TIMESTAMPTZ AT TIME ZONE 'America/New_York')::DATE = {ny_today}), \
+         (SELECT FLOOR(EXTRACT(EPOCH FROM now() - MAX(s.heartbeat)) / 60)::BIGINT FROM scheduler_election s WHERE s.user_id = u.pocket_id_sub AND s.role = 'android_client'), \
+         (SELECT FLOOR(EXTRACT(EPOCH FROM now() - MAX(m.sent_at)) / 60)::BIGINT FROM message_log m WHERE m.user_id = u.pocket_id_sub AND {damping}), \
+         (SELECT COUNT(*) FROM message_log m WHERE m.user_id = u.pocket_id_sub AND {cap} AND (m.sent_at AT TIME ZONE 'America/New_York')::DATE = {ny_today}) \
+         FROM users u WHERE u.pocket_id_sub = $1",
+        damping = gates::DAMPING_ROWS_SQL, cap = gates::CAP_ROWS_SQL);
+    let rs = conn.query(sql, &[ParameterValue::Str(uid.to_string())]).await?.collect().await?;
+    let r = rs.first().ok_or_else(|| anyhow::anyhow!("user row vanished"))?;
+    Ok(gates::GateInputs {
+        now,
+        prefs: gates::Prefs::from_json(&db_to_str(&r[2])),
+        phone_verified: db_to_bool(&r[0]),
+        vacation_until_future: db_to_bool(&r[1]),
+        steps_today: gates::db_i64(&r[3]).unwrap_or(0),
+        phone_heartbeat_minutes: gates::db_i64(&r[4]),
+        standdown_minutes,
+        minutes_since_last_nag: gates::db_i64(&r[5]),
+        nags_today: gates::db_i64(&r[6]).unwrap_or(0),
+    })
+}
+
+/// One outbound message_log row, sent or failed, never with content. error_msg holds a
+/// PII-free code, encrypted like the Python logger. Failed rows count toward the damping
+/// and the daily cap, so a failing channel cannot retry-storm (#364). `date` is the
+/// America/New_York date, as every other message_log writer stores it (the database
+/// clock is GMT, so CURRENT_DATE would be tomorrow every evening).
+async fn log_outbound(conn: &Connection, uid: &str, ty: &str, result: &Result<(), String>) {
+    let (status, err) = match result {
+        Ok(()) => ("sent", ParameterValue::DbNull),
+        Err(e) => ("failed", match encrypt_token(&outcome::pii_free_error(e)).await { Ok(enc) => ParameterValue::Str(enc), Err(_) => ParameterValue::DbNull }),
+    };
+    let _ = conn.execute("INSERT INTO message_log (date, user_id, type, sent_at, status, channel, error_msg) VALUES ((now() AT TIME ZONE 'America/New_York')::DATE, $1, $2, CURRENT_TIMESTAMP, $3, 'whatsapp', $4)", &[ParameterValue::Str(uid.to_string()), ParameterValue::Str(ty.to_string()), ParameterValue::Str(status.to_string()), err]).await;
+}
+
+/// The scheduler_election role this deployment reports as.
+fn cloud_role(provider: &str) -> &'static str {
+    match provider { "akamai" => "akamai_functions", "fermyon" => "fermyon_cloud", _ => "unknown" }
+}
+
+/// Upsert this user's cloud row after a cron job: heartbeat now, intent 'cron', this job's
+/// segment merged into last_status beside the other job's, and a PII-free last_error.
+/// Stand-downs go here, never to message_log (whose cooldown readers ignore status).
+async fn record_cron_outcome(conn: &Connection, uid: &str, job: &str, text: &str, last_error: Option<&str>, at: &chrono::DateTime<chrono::Utc>) {
+    let provider = variables::get("cloud_provider").await.unwrap_or_default();
+    let role = cloud_role(&provider);
+    let existing = match conn.query("SELECT last_status FROM scheduler_election WHERE user_id = $1 AND role = $2", &[ParameterValue::Str(uid.to_string()), ParameterValue::Str(role.to_string())]).await {
+        Ok(q) => q.collect().await.unwrap_or_default(),
+        Err(_) => Vec::new(),
+    };
+    let existing = existing.first().and_then(|r| match &r[0] { DbValue::Str(s) => Some(s.clone()), _ => None });
+    let merged = outcome::merge_last_status(existing.as_deref(), &outcome::segment(job, at, text));
+    let err = last_error.map(|e| ParameterValue::Str(e.to_string())).unwrap_or(ParameterValue::DbNull);
+    let process = if provider.is_empty() { "cron".to_string() } else { provider.clone() };
+    let _ = conn.execute("INSERT INTO scheduler_election (user_id, role, process_id, heartbeat, intent, last_status, last_error) VALUES ($1, $2, $3, CURRENT_TIMESTAMP, 'cron', $4, $5) ON CONFLICT (user_id, role) DO UPDATE SET heartbeat = EXCLUDED.heartbeat, process_id = EXCLUDED.process_id, intent = EXCLUDED.intent, last_status = EXCLUDED.last_status, last_error = EXCLUDED.last_error", &[ParameterValue::Str(uid.to_string()), ParameterValue::Str(role.to_string()), ParameterValue::Str(process), ParameterValue::Str(merged), err]).await;
+}
+
+/// Cloud walk reminders (cron key only). WhatsApp is the fallback channel: the gates in
+/// gates.rs stand down while the phone is alive, damp across channels and cap per New York
+/// day. `?dry_run=1` reports each user's inputs and verdict and sends and writes nothing.
+async fn handle_trigger_reminders(req: Request) -> anyhow::Result<Response<String>> {
+    let dry_run = matches!(query_param(req.uri().query(), "dry_run").as_deref(), Some("1") | Some("true"));
+    let standdown = gates::standdown_minutes_from_var(&variables::get("reminder_standdown_minutes").await.unwrap_or_default());
+    let conn = Connection::open(&db_url().await?).await?;
+    let now = chrono::Utc::now();
+    let rs = conn.query("SELECT pocket_id_sub, familiar_id, phone_number_encrypted FROM users WHERE phone_number_encrypted IS NOT NULL AND phone_number_encrypted <> '' AND autonomous_sync_enabled = true ORDER BY pocket_id_sub", &[]).await?.collect().await?;
+    let vars = walk_reminder_variables(&gates::ny_time_label(&now));
+    let mut resp = TriggerResp { dry_run, users: dry_run.then(Vec::new), ..Default::default() };
+    let mut twilio: Option<Result<TwilioCfg, &'static str>> = None;
     for r in &rs {
-        let uid = match &r[0] { DbValue::Str(s) => s.clone(), _ => continue };
-        let mins = match &r[1] { DbValue::Floating64(f) => *f, _ => 0.0 };
-        if mins > 1440.0 { if let Ok(_) = run_clozemaster_scraper(&db, &uid).await { success += 1; } }
+        let DbValue::Str(uid) = &r[0] else { continue };
+        let inputs = match load_gate_inputs(&conn, uid, now, standdown).await {
+            Ok(i) => i,
+            Err(_) => {
+                resp.failed += 1;
+                *resp.reasons.entry("error").or_default() += 1;
+                if !dry_run { record_cron_outcome(&conn, uid, "reminders", &outcome::reminder_text(&ReminderOutcome::Error), Some("gate_query_failed"), &now).await; }
+                continue;
+            }
+        };
+        let reason = gates::decide(&inputs);
+        *resp.reasons.entry(reason.code()).or_default() += 1;
+        if let Some(list) = resp.users.as_mut() {
+            list.push(DryRunUser {
+                familiar_id: match &r[1] { DbValue::Str(s) if !s.is_empty() => Some(s.clone()), _ => None },
+                ny_time: gates::ny_clock(&now),
+                steps: inputs.steps_today,
+                minutes_since_last_nag: inputs.minutes_since_last_nag,
+                nags_today: inputs.nags_today,
+                phone_heartbeat_minutes: inputs.phone_heartbeat_minutes,
+                verdict: reason.verdict().code(),
+                reason: reason.code(),
+                variables: vars.iter().cloned().collect(),
+            });
+            if reason.verdict() == Verdict::StandDown { resp.stood_down += 1; }
+            continue;
+        }
+        let gate = ReminderOutcome::Gate { reason, phone_minutes: inputs.phone_heartbeat_minutes, nag_minutes: inputs.minutes_since_last_nag, nags_today: inputs.nags_today, cap: inputs.prefs.max_per_day };
+        let (out, err) = match reason.verdict() {
+            Verdict::StandDown => { resp.stood_down += 1; (gate, None) }
+            Verdict::Skip => (gate, None),
+            Verdict::Send => {
+                if twilio.is_none() { twilio = Some(load_twilio_cfg().await); }
+                let result: Result<(), String> = match twilio.as_ref() {
+                    Some(Ok(cfg)) => match decrypt_token(&db_to_str(&r[2])).await {
+                        Ok(ph) => send_twilio_whatsapp_template(&cfg.sid, &cfg.tok, &cfg.from, &ph, &cfg.template, &vars).await.map_err(|e| e.to_string()),
+                        Err(_) => Err("phone_decrypt_failed".to_string()),
+                    },
+                    Some(Err(code)) => Err(code.to_string()),
+                    None => Err("twilio_not_configured".to_string()),
+                };
+                log_outbound(&conn, uid, "walk_reminder", &result).await;
+                match result {
+                    Ok(()) => { resp.sent += 1; (ReminderOutcome::Sent, None) }
+                    Err(e) => { resp.failed += 1; (ReminderOutcome::SendFailed, Some(outcome::pii_free_error(&e))) }
+                }
+            }
+        };
+        record_cron_outcome(&conn, uid, "reminders", &outcome::reminder_text(&out), err.as_deref(), &now).await;
     }
-    json_response(200, &format!("Failover sync: {} success", success))
+    json_response(200, &resp)
+}
+
+/// Cloud-owned periodic language sync (cron key only). Scrapes Clozemaster for each
+/// consenting user whose language_stats are FAILOVER_FRESH_MINUTES old or older, else
+/// stands down as 'fresh N m'. Every user's outcome lands in scheduler_election.
+async fn handle_failover_sync(_req: Request) -> anyhow::Result<Response<String>> {
+    let db = db_url().await?;
+    let conn = Connection::open(&db).await?;
+    let now = chrono::Utc::now();
+    let rs = conn.query("SELECT u.pocket_id_sub, (SELECT FLOOR(EXTRACT(EPOCH FROM now() - MAX(l.last_updated)) / 60)::BIGINT FROM language_stats l WHERE l.user_id = u.pocket_id_sub) FROM users u WHERE u.autonomous_sync_enabled = true ORDER BY u.pocket_id_sub", &[]).await?.collect().await?;
+    #[derive(Serialize)] struct FailoverResp { status: &'static str, scraped: u32, failed: u32, fresh: u32 }
+    let mut resp = FailoverResp { status: "success", scraped: 0, failed: 0, fresh: 0 };
+    for r in &rs {
+        let DbValue::Str(uid) = &r[0] else { continue };
+        let (out, err) = match gates::failover_decision(gates::db_i64(&r[1])) {
+            gates::FailoverDecision::Fresh(m) => { resp.fresh += 1; (SyncOutcome::Fresh(m), None) }
+            gates::FailoverDecision::Scrape => match run_clozemaster_scraper(&db, uid).await {
+                Ok(()) => {
+                    let _ = conn.execute("UPDATE users SET last_autonomous_sync = now() WHERE pocket_id_sub = $1", &[ParameterValue::Str(uid.clone())]).await;
+                    resp.scraped += 1;
+                    (SyncOutcome::Scraped, None)
+                }
+                Err(_) => { resp.failed += 1; (SyncOutcome::ScrapeFailed, Some("scrape_failed")) }
+            },
+        };
+        record_cron_outcome(&conn, uid, "sync", &outcome::sync_text(&out), err, &now).await;
+    }
+    json_response(200, &resp)
 }
 
 async fn handle_request_phone_verification_post(req: Request) -> anyhow::Result<Response<String>> {
     let uid = match extract_user_id(req.headers().get("authorization")).await { Some(id) => id, None => return Ok(text_response(401, "Unauthorized")?) };
     let body = req.into_body().collect().await.map_err(|_| anyhow::anyhow!("body"))?.to_bytes();
     #[derive(Deserialize)] struct Req { phone_number: String }
-    let vr: Req = serde_json::from_slice(&body)?;
-    let db = match variables::get("db_url").await { Ok(v) if !v.is_empty() => v, _ => variables::get("neon_db_url").await? };
-    let conn = Connection::open(&db).await?;
+    let phone = match serde_json::from_slice::<Req>(&body) {
+        Ok(r) if !r.phone_number.trim().is_empty() => r.phone_number.trim().to_string(),
+        _ => return status_json(400, "error", "phone_number is required"),
+    };
+    let conn = Connection::open(&db_url().await?).await?;
+    // Each request is a WhatsApp send and resets the guess counter: throttle it per caller,
+    // from message_log, before anything changes. Ages and counts are BIGINT in SQL; the day
+    // is the New York date of sent_at.
+    let rs = conn.query("SELECT FLOOR(EXTRACT(EPOCH FROM now() - MAX(m.sent_at)))::BIGINT, \
+        COUNT(*) FILTER (WHERE (m.sent_at AT TIME ZONE 'America/New_York')::DATE = (now() AT TIME ZONE 'America/New_York')::DATE)::BIGINT \
+        FROM message_log m WHERE m.user_id = $1 AND m.type = 'phone_verification'", &[ParameterValue::Str(uid.clone())]).await?.collect().await?;
+    let (last_age, today) = rs.first().map(|r| (gates::db_i64(&r[0]), gates::db_i64(&r[1]).unwrap_or(0))).unwrap_or((None, 0));
+    if !gates::verification_allowed(last_age, today) {
+        return status_json(429, "error", "Too many verification requests; try again later");
+    }
+    // Bind the number: store the requested number on the caller's own row, unverified, so
+    // confirm verifies exactly the number that received the code.
+    let enc = match encrypt_token(&phone).await { Ok(e) => e, Err(_) => return status_json(500, "error", "The number could not be stored") };
+    let bound = conn.execute("UPDATE users SET phone_number_encrypted = $1, phone_verified = FALSE WHERE pocket_id_sub = $2", &[ParameterValue::Str(enc), ParameterValue::Str(uid.clone())]).await?;
+    if bound == 0 { return status_json(404, "error", "User not found"); }
     let mut rb = [0u8; 4]; getrandom::fill(&mut rb).map_err(|e| anyhow::anyhow!("getrandom: {}", e))?;
     let code = format!("{:06}", (u32::from_be_bytes(rb) % 1000000));
     let hash = hex::encode(Sha256::digest(code.as_bytes()));
-    let exp = (chrono::Utc::now() + chrono::Duration::minutes(15)).to_rfc3339();
-    conn.execute("INSERT INTO phone_verifications (user_id, code_hash, expires_at) VALUES ($1, $2, $3::TIMESTAMPTZ) ON CONFLICT (user_id) DO UPDATE SET code_hash = EXCLUDED.code_hash, expires_at = EXCLUDED.expires_at, attempts = 0", &[ParameterValue::Str(uid.clone()), ParameterValue::Str(hash), ParameterValue::Str(exp)]).await?;
-    let sid = variables::get("twilio_account_sid").await?;
-    let auth = decrypt_token(&variables::get("twilio_auth_token_encrypted").await?).await?;
-    let from = variables::get("twilio_whatsapp_from").await.unwrap_or_default();
-    let template = variables::get("twilio_status_template_sid").await.unwrap_or_default();
-    send_twilio_whatsapp_template(&sid, &auth, &from, &vr.phone_number, &template, &verification_variables(&code)).await?;
-    json_response(200, &"Verification code sent")
+    // The expiry is computed in SQL: Spin's driver refuses a text parameter cast to TIMESTAMPTZ.
+    conn.execute("INSERT INTO phone_verifications (user_id, code_hash, expires_at) VALUES ($1, $2, now() + interval '15 minutes') ON CONFLICT (user_id) DO UPDATE SET code_hash = EXCLUDED.code_hash, expires_at = EXCLUDED.expires_at, attempts = 0", &[ParameterValue::Str(uid.clone()), ParameterValue::Str(hash)]).await?;
+    let sent: Result<(), String> = match load_twilio_cfg().await {
+        Ok(cfg) => send_twilio_whatsapp_template(&cfg.sid, &cfg.tok, &cfg.from, &phone, &cfg.template, &verification_variables(&code)).await.map_err(|e| e.to_string()),
+        Err(code) => Err(code.to_string()),
+    };
+    log_outbound(&conn, &uid, "phone_verification", &sent).await;
+    match sent {
+        Ok(()) => Ok(Response::builder().status(200).header("content-type", "application/json").body(verification_sent_body()?)?),
+        Err(_) => status_json(502, "error", "Verification code could not be sent"),
+    }
+}
+
+/// A {status, message} JSON response: the only shape Android's SyncResponse parses.
+fn status_json(code: u16, status: &str, message: &str) -> anyhow::Result<Response<String>> {
+    json_response(code, &StatusResponse { status: status.to_string(), message: message.to_string() })
+}
+
+/// Body of a successful verification request. Android parses it as SyncResponse.
+fn verification_sent_body() -> anyhow::Result<String> { status_body("success", "Verification code sent") }
+/// Body of a successful confirmation.
+fn phone_verified_body() -> anyhow::Result<String> { status_body("success", "Phone verified") }
+
+fn status_body(status: &str, message: &str) -> anyhow::Result<String> {
+    Ok(serde_json::to_string(&StatusResponse { status: status.to_string(), message: message.to_string() })?)
 }
 
 async fn handle_confirm_phone_verification_post(req: Request) -> anyhow::Result<Response<String>> {
     let uid = match extract_user_id(req.headers().get("authorization")).await { Some(id) => id, None => return Ok(text_response(401, "Unauthorized")?) };
     let body = req.into_body().collect().await.map_err(|_| anyhow::anyhow!("body"))?.to_bytes();
     #[derive(Deserialize)] struct Conf { code: String }
-    let cr: Conf = serde_json::from_slice(&body)?;
-    let db = match variables::get("db_url").await { Ok(v) if !v.is_empty() => v, _ => variables::get("neon_db_url").await? };
-    let conn = Connection::open(&db).await?;
+    let Ok(cr) = serde_json::from_slice::<Conf>(&body) else { return status_json(400, "error", "code is required") };
+    let conn = Connection::open(&db_url().await?).await?;
     let rs = conn.query("SELECT code_hash, CAST(EXTRACT(EPOCH FROM expires_at) AS BIGINT), attempts FROM phone_verifications WHERE user_id = $1", &[ParameterValue::Str(uid.clone())]).await?.collect().await?;
-    if rs.is_empty() { return Ok(text_response(400, "No request")?); }
+    if rs.is_empty() { return status_json(400, "error", "No request"); }
     let db_hash = match &rs[0][0] { DbValue::Str(s) => s, _ => "" };
     let exp = match &rs[0][1] { DbValue::Int64(i) => *i as u64, _ => 0 };
     let att = match &rs[0][2] { DbValue::Int32(i) => *i, _ => 0 };
-    if att >= 5 { return Ok(text_response(429, "Too many attempts")?); }
-    if chrono::Utc::now().timestamp() as u64 > exp { return Ok(text_response(400, "Expired")?); }
+    if att >= 5 { return status_json(429, "error", "Too many attempts"); }
+    if chrono::Utc::now().timestamp() as u64 > exp { return status_json(400, "error", "Expired"); }
     if hex::encode(Sha256::digest(cr.code.as_bytes())) == db_hash {
+        // The request stored the number that received this code on the caller's row.
         conn.execute("UPDATE users SET phone_verified = true WHERE pocket_id_sub = $1", &[ParameterValue::Str(uid.clone())]).await?;
         conn.execute("DELETE FROM phone_verifications WHERE user_id = $1", &[ParameterValue::Str(uid.clone())]).await?;
-        json_response(200, &"Phone verified")
+        Ok(Response::builder().status(200).header("content-type", "application/json").body(phone_verified_body()?)?)
     } else {
         conn.execute("UPDATE phone_verifications SET attempts = attempts + 1 WHERE user_id = $1", &[ParameterValue::Str(uid.clone())]).await?;
-        text_response(400, "Invalid code")
+        status_json(400, "error", "Invalid code")
     }
 }
 
@@ -753,9 +967,10 @@ fn twilio_signature_ok(auth_token: &str, url: &str, body: &str, header: Option<&
     twilio_mac(auth_token, url, &parse_form(body)).verify_slice(&sig).is_ok()
 }
 
-/// A walk acknowledgement is a message whose text (the `Body` field only) says yes.
+/// A walk acknowledgement is a message whose text (the `Body` field only) has YES as a
+/// whole word, in any case: "Yes!" counts, "yesterday" and "eyes" do not.
 fn is_walk_ack(form: &[(String, String)]) -> bool {
-    form_value(form, "Body").map(|b| b.to_uppercase().contains("YES")).unwrap_or(false)
+    form_value(form, "Body").map(|b| b.split(|c: char| !c.is_alphanumeric()).any(|w| w.eq_ignore_ascii_case("yes"))).unwrap_or(false)
 }
 
 async fn handle_twilio_webhook_post(req: Request) -> anyhow::Result<Response<String>> {
@@ -769,25 +984,35 @@ async fn handle_twilio_webhook_post(req: Request) -> anyhow::Result<Response<Str
     let body_str = std::str::from_utf8(&body).unwrap_or("");
     if !twilio_signature_ok(&tok, &url, body_str, signature.as_deref()) {
         println!("twilio-webhook: rejected request (signature_present={})", signature.is_some());
+        record_refusal("twilio-webhook", outcome::Refusal::BadSignature).await;
         return Ok(text_response(403, "Forbidden")?);
     }
     let form = parse_form(body_str);
     let from_num = form_value(&form, "From").unwrap_or("").to_string();
-    if is_walk_ack(&form) {
-        let db = match variables::get("db_url").await { Ok(v) if !v.is_empty() => v, _ => variables::get("neon_db_url").await? };
-        let conn = Connection::open(&db).await?;
-        let rs = conn.query("SELECT pocket_id_sub, phone_number_encrypted, beeminder_goal FROM users WHERE phone_number_encrypted IS NOT NULL", &[]).await?.collect().await?;
-        for r in &rs {
-            let (uid, ph_enc, goal) = (match &r[0] { DbValue::Str(s) => s.clone(), _ => continue }, match &r[1] { DbValue::Str(s) => s.clone(), _ => continue }, match &r[2] { DbValue::Str(s) => s.clone(), _ => "bike".to_string() });
-            if let Ok(ph) = decrypt_token(&ph_enc).await {
-                let clean = |s: &str| s.chars().filter(|c| c.is_digit(10)).collect::<String>();
-                if !ph.is_empty() && clean(&ph) == clean(&from_num) {
+    let ack = is_walk_ack(&form);
+    let channel = inbound_channel(&from_num).to_string();
+    // Every signature-verified inbound message leaves a 'received' row without content,
+    // so a reply test leaves a trace. A YES from a known number also logs the walk.
+    let conn = Connection::open(&db_url().await?).await?;
+    let rs = conn.query("SELECT pocket_id_sub, phone_number_encrypted, beeminder_goal FROM users WHERE phone_number_encrypted IS NOT NULL AND phone_number_encrypted <> ''", &[]).await?.collect().await?;
+    let mut matched = false;
+    for r in &rs {
+        let (uid, ph_enc, goal) = (match &r[0] { DbValue::Str(s) => s.clone(), _ => continue }, match &r[1] { DbValue::Str(s) => s.clone(), _ => continue }, match &r[2] { DbValue::Str(s) => s.clone(), _ => "bike".to_string() });
+        if let Ok(ph) = decrypt_token(&ph_enc).await {
+            let clean = |s: &str| s.chars().filter(|c| c.is_digit(10)).collect::<String>();
+            if !ph.is_empty() && clean(&ph) == clean(&from_num) {
+                matched = true;
+                if ack {
                     let requestid = format!("{}-{}-{}-sms", uid, goal, chrono::Utc::now().format("%Y-%m-%d"));
                     let _ = push_to_beeminder_idempotent(&uid, &goal, 1.0, "Walk logged via SMS", &requestid, &conn).await;
-                    let _ = conn.execute("INSERT INTO message_log (date, user_id, type, sent_at, status, channel) VALUES (CURRENT_DATE, $1, 'walk_ack', CURRENT_TIMESTAMP, 'received', $2)", &[ParameterValue::Str(uid), ParameterValue::Str(inbound_channel(&from_num).to_string())]).await;
                 }
+                let ty = if ack { "walk_ack" } else { "inbound" };
+                let _ = conn.execute("INSERT INTO message_log (date, user_id, type, sent_at, status, channel) VALUES ((now() AT TIME ZONE 'America/New_York')::DATE, $1, $2, CURRENT_TIMESTAMP, 'received', $3)", &[ParameterValue::Str(uid), ParameterValue::Str(ty.to_string()), ParameterValue::Str(channel.clone())]).await;
             }
         }
+    }
+    if !matched {
+        let _ = conn.execute("INSERT INTO message_log (date, user_id, type, sent_at, status, channel) VALUES ((now() AT TIME ZONE 'America/New_York')::DATE, NULL, 'inbound', CURRENT_TIMESTAMP, 'received', $1)", &[ParameterValue::Str(channel)]).await;
     }
     Ok(Response::builder().status(200).header("content-type", "text/xml").body(r#"<?xml version="1.0" encoding="UTF-8"?><Response></Response>"#.to_string())?)
 }
@@ -803,6 +1028,12 @@ fn parse_review_forecast(forecast: &serde_json::Value) -> (i32, i32) {
     let tom = parse(&f[0]);
     let n7 = f.iter().take(7).map(parse).sum();
     (tom, n7)
+}
+
+/// The dashboard's `data-react-props` attribute, HTML-unescaped and parsed as JSON.
+fn decode_react_props(html: &str) -> anyhow::Result<serde_json::Value> {
+    let escaped = regex::Regex::new(r#"data-react-props="([^"]*)""#)?.captures(html).and_then(|cap| cap.get(1)).map(|m| m.as_str()).ok_or_else(|| anyhow::anyhow!("Props"))?;
+    Ok(serde_json::from_str(&html_escape::decode_html_entities(escaped))?)
 }
 
 async fn run_clozemaster_scraper(db: &str, uid: &str) -> anyhow::Result<()> {
@@ -822,9 +1053,8 @@ async fn run_clozemaster_scraper(db: &str, uid: &str) -> anyhow::Result<()> {
     let mut res = spin_sdk::http::send(Request::builder().method(Method::GET).uri("https://www.clozemaster.com/dashboard").header("User-Agent", ua).header("Cookie", &sess).body(String::new())?).await?;
     if res.status().as_u16() == 302 { if let Some(loc) = res.headers().get("location").and_then(|v| v.to_str().ok()) { let url = if loc.starts_with('/') { format!("https://www.clozemaster.com{}", loc) } else { loc.to_string() }; res = spin_sdk::http::send(Request::builder().method(Method::GET).uri(url).header("User-Agent", ua).header("Cookie", &sess).body(String::new())?).await?; } }
     let body = String::from_utf8(res.into_body().collect().await.map_err(|_| anyhow::anyhow!("body"))?.to_bytes().to_vec())?;
-    let props_escaped = regex::Regex::new(r#"data-react-props="([^"]*)""#)?.captures(&body).and_then(|cap| cap.get(1)).map(|m| m.as_str()).ok_or_else(|| anyhow::anyhow!("Props"))?;
+    let props = decode_react_props(&body)?;
     let fresh_csrf = regex::Regex::new(r#"<meta name="csrf-token" content="([^"]*)""#)?.captures(&body).and_then(|cap| cap.get(1)).map(|m| m.as_str()).unwrap_or(csrf);
-    let props: serde_json::Value = serde_json::from_str(&html_escape::decode_html_entities(props_escaped))?;
     if let Some(pairings) = props.get("languagePairings").and_then(|l| l.as_array()) {
         for p in pairings {
             let id = p.get("id").and_then(|v| v.as_i64().or_else(|| v.as_str().and_then(|s| s.parse::<i64>().ok()))).unwrap_or(0);
@@ -1008,11 +1238,6 @@ fn slots(values: [&str; 5]) -> Vec<(String, String)> {
 fn walk_reminder_variables(local_time: &str) -> Vec<(String, String)> { slots(["Daily Walk", "NOT FOUND", "Boris & Fiona", "EXPECTANT", local_time]) }
 fn verification_variables(code: &str) -> Vec<(String, String)> { slots(["Identity", "PENDING", "Code", code, "Account"]) }
 
-fn local_time_label(tz_name: &str, now: &chrono::DateTime<chrono::Utc>) -> String {
-    let tz: chrono_tz::Tz = tz_name.parse().unwrap_or(chrono_tz::UTC);
-    now.with_timezone(&tz).format("%I:%M %p").to_string()
-}
-
 /// Why a WhatsApp template cannot be sent with this configuration, if it cannot.
 fn whatsapp_config_error(from: &str, content_sid: &str) -> Option<&'static str> {
     if from.trim().is_empty() { Some("whatsapp_sender_not_configured") }
@@ -1037,10 +1262,6 @@ async fn send_twilio_whatsapp_template(sid: &str, tok: &str, from: &str, to: &st
     }
     Ok(())
 }
-
-fn local_hour_from_timezone(tz_name: &str, now: &chrono::DateTime<chrono::Utc>) -> u32 { let tz: chrono_tz::Tz = tz_name.parse().unwrap_or(chrono_tz::UTC); now.with_timezone(&tz).hour() }
-fn aggregate_step_count(rs: &Vec<spin_sdk::pg::Row>) -> i32 { rs.iter().filter_map(|r| match &r[0] { DbValue::Str(s) => s.parse::<i32>().ok(), _ => None }).max().unwrap_or(0) }
-fn should_dispatch(h: u32, s: i32, m: Option<u64>, _p: &NotificationPrefs) -> bool { if h < 9 || h >= 21 || s >= 2000 { false } else { m.map_or(true, |v| v >= 120) } }
 
 async fn decrypt_token(enc_hex: &str) -> anyhow::Result<String> {
     let key_str = variables::get("master_encryption_key").await?;
@@ -1098,7 +1319,7 @@ async fn extract_user_id(auth: Option<&spin_sdk::http::HeaderValue>) -> Option<S
 
 async fn register_cloud_heartbeat(conn: &Connection, uid: &str) -> anyhow::Result<()> {
     let prov = variables::get("cloud_provider").await.unwrap_or_else(|_| "unknown".to_string());
-    let role = match prov.as_str() { "akamai" => "akamai_functions", "fermyon" => "fermyon_cloud", _ => "unknown" };
+    let role = cloud_role(&prov);
     conn.execute("INSERT INTO scheduler_election (user_id, role, process_id, heartbeat) VALUES ($1, $2, $3, CURRENT_TIMESTAMP) ON CONFLICT (user_id, role) DO UPDATE SET heartbeat = EXCLUDED.heartbeat, process_id = EXCLUDED.process_id", &[ParameterValue::Str(uid.to_string()), ParameterValue::Str(role.to_string()), ParameterValue::Str(prov)]).await?;
     Ok(())
 }
@@ -1139,7 +1360,18 @@ mod tests {
     #[test]
     fn test_version_info_reports_package_version_and_provider() {
         let v = serde_json::to_value(version_info("akamai")).unwrap();
-        assert_eq!(v, json!({"version": env!("CARGO_PKG_VERSION"), "cloud_provider": "akamai"}));
+        assert_eq!(v, json!({"version": env!("CARGO_PKG_VERSION"), "cloud_provider": "akamai", "dry_run": true}));
+    }
+
+    #[test]
+    fn test_same_phone_number_compares_digits_of_plaintexts() {
+        assert!(same_phone_number(Some("+15855550100"), "+15855550100"));
+        assert!(same_phone_number(Some("+1 (585) 555-0100"), " +15855550100 "), "formatting is not a new number");
+        assert!(!same_phone_number(Some("+15855550100"), "+15855550101"), "a different number");
+        assert!(!same_phone_number(None, "+15855550100"), "no stored number (or one that does not decrypt)");
+        assert!(!same_phone_number(Some(""), "+15855550100"));
+        assert!(!same_phone_number(Some("+15855550100"), ""), "clearing the number is a change");
+        assert!(same_phone_number(Some(""), ""), "still no number");
     }
 
     #[test]
@@ -1181,13 +1413,6 @@ mod tests {
     }
 
     #[test]
-    fn test_local_time_label_uses_the_users_timezone() {
-        let now = chrono::Utc.with_ymd_and_hms(2026, 11, 13, 20, 15, 0).unwrap();
-        assert_eq!(local_time_label("America/New_York", &now), "03:15 PM");
-        assert_eq!(local_time_label("not/a-zone", &now), "08:15 PM");
-    }
-
-    #[test]
     fn test_whatsapp_config_error_names_what_is_missing() {
         assert_eq!(whatsapp_config_error("whatsapp:+15005550001", STATUS_TEMPLATE), None);
         assert_eq!(whatsapp_config_error("", STATUS_TEMPLATE), Some("whatsapp_sender_not_configured"));
@@ -1209,7 +1434,27 @@ mod tests {
         assert!(!src.contains(&needle), "send_twilio_sms must be removed, not kept as a fallback");
     }
 
+    #[test]
+    fn test_message_log_rows_carry_the_new_york_date() {
+        // Python and log-message write message_log.date as the America/New_York date; the
+        // database clock is GMT, so CURRENT_DATE is tomorrow from 19:00/20:00 New York time.
+        let src = include_str!("lib.rs");
+        let insert = ["INSERT INTO ", "message_log"].concat();
+        let lines: Vec<&str> = src.lines().filter(|l| l.contains(&insert)).collect();
+        assert!(lines.len() >= 3, "outbound, walk_ack/inbound and unknown-sender rows: {}", lines.len());
+        for l in lines {
+            assert!(!l.contains("CURRENT_DATE"), "GMT date in a message_log row: {}", l.trim());
+            assert!(l.contains("VALUES ((now() AT TIME ZONE 'America/New_York')::DATE,"), "no New York date: {}", l.trim());
+        }
+    }
+
     // --- Internal endpoints: fail closed, no published key, callers that can actually authenticate ---
+    /// The router's decision for a caller. `signed_in_user` is kept to show it no longer matters:
+    /// internal_request_check never looks at the bearer.
+    fn internal_caller_ok(cfg: &str, header_key: Option<&str>, query_key: Option<&str>, _signed_in_user: bool) -> bool {
+        outcome::check_internal_key(cfg, header_key, query_key).is_ok()
+    }
+
     #[test]
     fn test_internal_caller_unconfigured_key_fails_closed() {
         assert!(!internal_caller_ok("", None, None, false));
@@ -1240,10 +1485,13 @@ mod tests {
     }
 
     #[test]
-    fn test_internal_caller_signed_in_user_is_allowed() {
-        // The Android app triggers reminders with the user's own bearer token.
-        assert!(internal_caller_ok("", None, None, true));
-        assert!(internal_caller_ok("s3cret-value", Some("wrong"), None, true));
+    fn test_internal_caller_signed_in_user_without_key_is_refused() {
+        // v0.3.0: the cron endpoints take the cron key only. The phone no longer calls
+        // them, and a signed-in user's bearer must not start the all-users loop.
+        assert!(!internal_caller_ok("", None, None, true));
+        assert!(!internal_caller_ok("s3cret-value", None, None, true));
+        assert!(!internal_caller_ok("s3cret-value", Some("wrong"), None, true));
+        assert!(internal_caller_ok("s3cret-value", Some("s3cret-value"), None, true));
     }
 
     #[test]
@@ -1312,6 +1560,34 @@ mod tests {
         assert!(!is_walk_ack(&parse_form("From=%2B15005550006")));
     }
 
+    #[test]
+    fn test_walk_ack_needs_yes_as_a_whole_word() {
+        // A match pushes +1 to the walk goal, so 'yesterday' must not count (#369).
+        assert!(is_walk_ack(&parse_form("Body=yes")));
+        assert!(is_walk_ack(&parse_form("Body=Yes%21")));
+        assert!(is_walk_ack(&parse_form("Body=ok+YES+done")));
+        assert!(!is_walk_ack(&parse_form("Body=yesterday")));
+        assert!(!is_walk_ack(&parse_form("Body=eyes")));
+        assert!(!is_walk_ack(&parse_form("Body=YESSS")));
+        assert!(!is_walk_ack(&parse_form("Body=ok")));
+    }
+
+    // --- #358 slice: Android parses every verification response as a SyncResponse object ---
+    const STATUS_CONTRACT: &str = include_str!("../../../contracts/spin_status_response.json");
+
+    #[test]
+    fn test_verification_sent_body_matches_the_status_contract() {
+        let want: serde_json::Value = serde_json::from_str(STATUS_CONTRACT).unwrap();
+        let got: serde_json::Value = serde_json::from_str(&verification_sent_body().unwrap()).unwrap();
+        assert_eq!(got, want);
+    }
+
+    #[test]
+    fn test_phone_verified_body_is_a_status_object() {
+        let got: serde_json::Value = serde_json::from_str(&phone_verified_body().unwrap()).unwrap();
+        assert_eq!(got, json!({"status": "success", "message": "Phone verified"}));
+    }
+
     // --- kingdonb/mecris#167: Twilio failures are summarized without PII ---
     const TWILIO_21211: &str = r#"{"code": 21211, "message": "The 'To' number +15551234567 is not a valid phone number.", "more_info": "https://www.twilio.com/docs/errors/21211", "status": 400}"#;
 
@@ -1334,6 +1610,20 @@ mod tests {
     #[test]
     fn test_twilio_failure_summary_string_code_is_dropped() {
         assert_eq!(twilio_failure_summary(400, r#"{"code": "21211 +15551234567"}"#), "twilio_http_400");
+    }
+
+    // --- kingdonb/mecris#337: html-escape 0.3 still decodes the Clozemaster dashboard props ---
+    #[test]
+    fn test_clozemaster_react_props_sample_decodes() {
+        let html = r#"<div id="app" data-react-props="{&quot;languagePairings&quot;:[{&quot;id&quot;:123,&quot;slug&quot;:&quot;ara-eng&quot;,&quot;numReadyForReview&quot;:42,&quot;score&quot;:1000,&quot;numPointsToday&quot;:32},{&quot;id&quot;:&quot;456&quot;,&quot;slug&quot;:&quot;ell-eng&quot;,&quot;numReadyForReview&quot;:0}],&quot;title&quot;:&quot;Fluent &amp; Friends &#39;24 &lt;3&quot;}"></div><meta name="csrf-token" content="abc">"#;
+        let props = decode_react_props(html).expect("props decode");
+        let pairings = props["languagePairings"].as_array().unwrap();
+        assert_eq!(pairings.len(), 2);
+        assert_eq!(pairings[0]["slug"], "ara-eng");
+        assert_eq!(pairings[0]["numReadyForReview"], 42);
+        assert_eq!(pairings[1]["id"], "456");
+        assert_eq!(props["title"], "Fluent & Friends '24 <3");
+        assert!(decode_react_props("<html>no props here</html>").is_err());
     }
 
     #[test]

@@ -143,8 +143,42 @@ CREATE TABLE IF NOT EXISTS scheduler_election (
     role VARCHAR(50) NOT NULL,  -- 'leader', 'android_client'
     process_id VARCHAR(50) NOT NULL,
     heartbeat TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    last_status VARCHAR(255),   -- one line per cron job, e.g. 'reminders 20:00Z: ...; sync 20:05Z: fresh 40m' (#183)
+    last_error TEXT,            -- PII-free code or NULL
+    intent VARCHAR(255),        -- e.g. 'cron'
     UNIQUE (user_id, role)
 );
+-- Live tables predate these columns (migrate_v8_observability.py).
+ALTER TABLE scheduler_election ADD COLUMN IF NOT EXISTS last_status VARCHAR(255);
+ALTER TABLE scheduler_election ADD COLUMN IF NOT EXISTS last_error TEXT;
+ALTER TABLE scheduler_election ADD COLUMN IF NOT EXISTS intent VARCHAR(255);
+
+-- 9b. Refused callers of the cron endpoints and the Twilio webhook (#183), counted per
+-- America/New_York day, endpoint and reason so scanners cannot grow the table.
+-- Reasons: no_key, bad_key, burned_key, bad_signature. (migrate_v9_cloud_observability.py)
+CREATE TABLE IF NOT EXISTS internal_refusals (
+    day DATE NOT NULL,
+    endpoint VARCHAR(50) NOT NULL,
+    reason VARCHAR(50) NOT NULL,
+    count BIGINT NOT NULL DEFAULT 0,
+    last_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (day, endpoint, reason)
+);
+
+-- 9c. Claude plan usage readings (#344). Created lazily by claude_plan_usage.py; listed here
+-- so the schema matches what is live.
+CREATE TABLE IF NOT EXISTS claude_plan_usage_readings (
+    id SERIAL PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES users(pocket_id_sub) ON DELETE CASCADE,
+    plan TEXT NOT NULL,
+    verified BOOLEAN,
+    windows JSONB NOT NULL,
+    source TEXT NOT NULL,
+    observed_at TIMESTAMPTZ NOT NULL,
+    notes TEXT DEFAULT '',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_claude_plan_usage_user_observed ON claude_plan_usage_readings (user_id, observed_at DESC);
 
 -- 10. Phone Verifications (SMS 6-digit code flow)
 CREATE TABLE IF NOT EXISTS phone_verifications (
