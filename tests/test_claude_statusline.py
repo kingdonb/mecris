@@ -133,6 +133,29 @@ class TestBuildSnapshot:
         again = cs.build_snapshot(_payload(seven=24.1), first, later)
         assert again["observed_at"] == later.isoformat()
 
+    def test_idle_session_rerun_does_not_restamp_another_sessions_reading(self):
+        # Sessions a and b both wrote; a then idles and re-renders the same numbers.
+        first = cs.build_snapshot(_payload(session_id="a", api_ms=100), None, NOW)
+        second = cs.build_snapshot(_payload(session_id="b", api_ms=50), first, NOW + timedelta(minutes=1))
+        later = NOW + timedelta(hours=2)
+        again = cs.build_snapshot(_payload(session_id="a", api_ms=100), second, later)
+        assert again["observed_at"] == second["observed_at"]
+
+    def test_new_response_with_lower_numbers_is_believed(self):
+        # If Anthropic lowers a figure mid-window, a real response wins.
+        first = cs.build_snapshot(_payload(seven=40.0, api_ms=100), None, NOW)
+        later = NOW + timedelta(minutes=5)
+        again = cs.build_snapshot(_payload(seven=10.0, api_ms=200), first, later)
+        assert again["windows"][0]["pct_used"] == 10.0
+        assert again["observed_at"] == later.isoformat()
+
+    def test_remembers_a_bounded_number_of_sessions(self):
+        snap = None
+        for i in range(cs.MAX_SESSIONS + 5):
+            snap = cs.build_snapshot(_payload(session_id=f"s{i}"), snap, NOW)
+        assert len(snap["sessions"]) == cs.MAX_SESSIONS
+        assert f"s{cs.MAX_SESSIONS + 4}" in snap["sessions"]
+
     def test_stale_tab_does_not_overwrite_a_newer_reading(self):
         # Two sessions share one file. An idle one re-rendering old numbers
         # must not replace what the active one wrote. Usage only goes up
@@ -240,40 +263,40 @@ class TestShouldRecord:
         return _stored(**kw)
 
     def test_nothing_local(self):
-        assert cs.should_record(None, _stored()) is False
+        assert cs.should_record(None, _stored(), now=NOW) is False
 
     def test_first_reading_ever(self):
-        assert cs.should_record(self._local(), None) is True
+        assert cs.should_record(self._local(), None, now=NOW) is True
 
     def test_local_not_newer_than_stored(self):
         stored = _stored(observed=NOW)
-        assert cs.should_record(self._local(observed=NOW - timedelta(minutes=1)), stored) is False
-        assert cs.should_record(self._local(observed=NOW), stored) is False
+        assert cs.should_record(self._local(observed=NOW - timedelta(minutes=1)), stored, now=NOW) is False
+        assert cs.should_record(self._local(observed=NOW), stored, now=NOW) is False
 
     def test_same_numbers_are_not_recorded_again(self):
         stored = _stored(weekly=23.5, session=16.4, observed=NOW - timedelta(hours=5))
-        assert cs.should_record(self._local(weekly=23.5, session=16.4), stored) is False
+        assert cs.should_record(self._local(weekly=23.5, session=16.4), stored, now=NOW) is False
 
     def test_sub_point_wobble_is_not_a_change(self):
         stored = _stored(weekly=23.4, session=16.0, observed=NOW - timedelta(hours=5))
-        assert cs.should_record(self._local(weekly=23.6, session=16.3), stored) is False
+        assert cs.should_record(self._local(weekly=23.6, session=16.3), stored, now=NOW) is False
 
     def test_changed_numbers_wait_out_the_throttle(self):
         stored = _stored(weekly=23, observed=NOW - timedelta(minutes=5))
-        assert cs.should_record(self._local(weekly=26), stored) is False
+        assert cs.should_record(self._local(weekly=26), stored, now=NOW) is False
 
     def test_changed_numbers_after_the_throttle(self):
         stored = _stored(weekly=23, observed=NOW - timedelta(minutes=16))
-        assert cs.should_record(self._local(weekly=26), stored) is True
+        assert cs.should_record(self._local(weekly=26), stored, now=NOW) is True
 
     def test_state_change_skips_the_throttle(self):
         stored = _stored(weekly=79, observed=NOW - timedelta(minutes=1))
-        assert cs.should_record(self._local(weekly=85), stored) is True
+        assert cs.should_record(self._local(weekly=85), stored, now=NOW) is True
 
     def test_new_week_skips_the_throttle(self):
         stored = _stored(weekly=97, session=None, observed=NOW - timedelta(minutes=1))
         local = self._local(weekly=1, session=None, week_reset=WEEK_RESET + timedelta(days=7))
-        assert cs.should_record(local, stored) is True
+        assert cs.should_record(local, stored, now=NOW) is True
 
     def test_already_expired_local_reading_is_not_recorded(self):
         # The laptop was closed all week: the file is from before the reset.

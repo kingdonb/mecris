@@ -2,6 +2,12 @@
 
 All notable changes to Mecris are documented here.
 
+## [Unreleased]
+
+### Added
+
+- **Claude plan usage from the Claude Code status line** (#344). `scripts/claude_statusline.py` is a status line command: it reads the `rate_limits` that Claude Code passes to it (the five-hour and weekly windows), writes them to `~/.claude/usage.json`, and prints `5h 16% · wk 24%`. The MCP server reads that file, so `get_claude_plan_status` and the narrator are current without anyone typing in a reading, and stores a `claude_code_cli` reading when the numbers have moved. See `docs/CLAUDE_PLAN_USAGE.md`.
+
 ## [0.2.0] — 2026-11-14 — The cloud arm works
 
 The Akamai cron jobs that drive cloud reminders and the nightly failover sync were
