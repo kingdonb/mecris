@@ -13,8 +13,12 @@ use aes_gcm::{aead::{Aead, KeyInit}, Aes256Gcm, Nonce};
 use chrono::TimeZone;
 use std::collections::BTreeMap;
 
+mod claude_plan;
 mod gates;
 mod outcome;
+mod pace;
+mod pulse;
+mod solar;
 
 use gates::Verdict;
 use outcome::{ReminderOutcome, SyncOutcome};
@@ -100,6 +104,8 @@ async fn handle_sync_service(req: Request) -> anyhow::Result<Response<String>> {
         ("/helix-balance/request", &Method::POST) => handle_helix_balance_request_post(req).await?,
         ("/internal/cloud-sync", &Method::POST) => handle_cloud_sync(req).await?,
         ("/aggregate-status", &Method::GET) => handle_aggregate_status_get(req).await?,
+        ("/claude-plan", &Method::GET) => handle_claude_plan_get(req).await?,
+        ("/internal/log-message", &Method::POST) => handle_log_message_post(req).await?,
         ("/profile", &Method::POST) => handle_profile_post(req).await?,
         ("/profile", &Method::GET) => handle_profile_get(req).await?,
         ("/internal/trigger-reminders", _) => match internal_request_check(&req).await {
@@ -127,17 +133,21 @@ async fn handle_aggregate_status_get(req: Request) -> anyhow::Result<Response<St
     let walk_rs = conn.query("SELECT COUNT(*) FROM walk_inferences WHERE (start_time::TIMESTAMPTZ AT TIME ZONE 'America/New_York')::DATE = (CURRENT_TIMESTAMP AT TIME ZONE 'America/New_York')::DATE AND CAST(step_count AS INTEGER) >= 2000 AND user_id = $1", &[ParameterValue::Str(uid.clone())]).await?.collect().await?;
     let walked = !walk_rs.is_empty() && (db_to_i32(&walk_rs[0][0]) > 0);
     let lang_rows = conn.query("SELECT language_name, current_reviews, tomorrow_reviews, pump_multiplier::FLOAT8, daily_completions, beeminder_due_today FROM language_stats WHERE user_id = $1", &[ParameterValue::Str(uid.clone())]).await?.collect().await?;
-    let user_rows = conn.query("SELECT vacation_mode_until::TEXT, phone_verified FROM users WHERE pocket_id_sub = $1", &[ParameterValue::Str(uid.clone())]).await?.collect().await?;
-    let (vaca, phone) = if !user_rows.is_empty() { (match &user_rows[0][0] { DbValue::Str(s) if !s.is_empty() => Some(s.clone()), _ => None }, db_to_bool(&user_rows[0][1])) } else { (None, false) };
+    // A past vacation_mode_until is not a vacation: the comparison is made in SQL.
+    let user_rows = conn.query("SELECT vacation_mode_until::TEXT, phone_verified, COALESCE(vacation_mode_until > now(), FALSE) FROM users WHERE pocket_id_sub = $1", &[ParameterValue::Str(uid.clone())]).await?.collect().await?;
+    let (vaca, phone, vacation_active) = if !user_rows.is_empty() { (match &user_rows[0][0] { DbValue::Str(s) if !s.is_empty() => Some(s.clone()), _ => None }, db_to_bool(&user_rows[0][1]), db_to_bool(&user_rows[0][2])) } else { (None, false, false) };
     let mut total_goals = 1; let mut goals_met = if walked { 1 } else { 0 };
     let (mut arabic_met, mut greek_met) = (false, false);
+    let mut pace_rows: Vec<(String, i32, i32)> = Vec::new();
     for r in &lang_rows {
         let n = db_to_str(&r[0]);
         let (cur, tom, mult, done) = (db_to_i32(&r[1]), db_to_i32(&r[2]), db_to_f64(&r[3]), db_to_i32(&r[4]));
+        let due = db_to_i32(&r[5]).max(0);
         // Task 000617: aggregate component verdicts honor the Beeminder due-today too.
-        let (_, _, met) = effective_targets(cur, tom, mult, done, db_to_i32(&r[5]).max(0));
+        let (_, remaining, met) = effective_targets(cur, tom, mult, done, due);
         if n == "ARABIC" { total_goals += 1; arabic_met = met; if met { goals_met += 1; } }
         else if n == "GREEK" { total_goals += 1; greek_met = met; if met { goals_met += 1; } }
+        pace_rows.push((n, remaining, due));
     }
     let walk_detail_rs = conn.query("SELECT distance_meters, step_count FROM walk_inferences WHERE user_id = $1 AND (start_time::TIMESTAMPTZ AT TIME ZONE 'America/New_York')::DATE = (CURRENT_TIMESTAMP AT TIME ZONE 'America/New_York')::DATE ORDER BY start_time DESC LIMIT 1", &[ParameterValue::Str(uid.clone())]).await?.collect().await?;
     let (today_distance_miles, today_steps) = if !walk_detail_rs.is_empty() {
@@ -160,55 +170,65 @@ async fn handle_aggregate_status_get(req: Request) -> anyhow::Result<Response<St
     let budget_rs = conn.query("SELECT remaining_budget FROM budget_tracking WHERE user_id = $1 LIMIT 1", &[ParameterValue::Str(uid.clone())]).await?.collect().await?;
     let budget_remaining = if !budget_rs.is_empty() { db_to_f64(&budget_rs[0][0]) } else { 0.0 };
 
-    #[derive(Serialize)] struct Comp { walk: bool, arabic: bool, greek: bool }
-    #[derive(Serialize, Clone)] struct Mod { role: String, status: String, last_seen: String, minutes_since: u64 }
-    #[derive(Serialize)] struct Pulse { modalities: Vec<Mod> }
-    #[derive(Serialize)] struct AggResp { 
-        score: String, 
-        goals_met: i32, 
-        total_goals: i32, 
-        satisfied_count: i32,
-        total_count: i32,
-        all_clear: bool, 
-        components: Comp, 
-        budget_remaining: f64,
-        today_distance_miles: f64,
-        today_steps: i32,
-        vacation_mode_until: Option<String>, 
-        phone_verified: bool, 
-        modalities: Option<Vec<Mod>>,
-        system_pulse: Option<Pulse>
-    }
-    let mut mods = None;
-    let mut pulse = None;
-    if full {
-        let p_rows = conn.query("SELECT role, heartbeat::TEXT, CAST(EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - heartbeat)) / 60 AS BIGINT) AS mins FROM scheduler_election WHERE user_id = $1 OR user_id IS NULL ORDER BY heartbeat DESC", &[ParameterValue::Str(uid.clone())]).await?.collect().await?;
-        let mut ms = Vec::new();
-        for r in &p_rows {
-            let role = db_to_str(&r[0]);
-            let display = match role.as_str() { "leader" => "MCP SERVER", "android_client" => "ANDROID", "akamai_functions" => "AKAMAI", "fermyon_cloud" => "FERMYON", _ => &role };
-            let mins = match &r[2] { DbValue::Int64(i) => *i as u64, _ => 9999 };
-            ms.push(Mod { role: display.to_string(), status: get_modality_status(&role, mins).to_string(), last_seen: db_to_str(&r[1]), minutes_since: mins });
-        }
-        pulse = Some(Pulse { modalities: ms.clone() });
-        mods = Some(ms);
-    }
-    json_response(200, &AggResp { 
-        score: format!("{}/{}", goals_met, total_goals), 
-        goals_met, 
-        total_goals, 
-        satisfied_count: goals_met,
-        total_count: total_goals,
-        all_clear: vaca.is_some() || goals_met >= total_goals, 
-        components: Comp { walk: walked, arabic: arabic_met, greek: greek_met }, 
-        budget_remaining,
-        today_distance_miles,
-        today_steps,
-        vacation_mode_until: vaca, 
-        phone_verified: phone, 
-        modalities: mods,
-        system_pulse: pulse
-    })
+    let full = if full {
+        // Pulse (#346): every row for the user or for no user; pulse.rs picks one per role.
+        let p_rows = conn.query("SELECT role, COALESCE(heartbeat::TEXT, ''), FLOOR(EXTRACT(EPOCH FROM now() - heartbeat) / 60)::BIGINT, last_status, (user_id IS NOT NULL) FROM scheduler_election WHERE user_id = $1 OR user_id IS NULL ORDER BY heartbeat DESC NULLS LAST", &[ParameterValue::Str(uid.clone())]).await?.collect().await?;
+        let rows: Vec<pulse::Row> = p_rows.iter().map(|r| pulse::Row {
+            role: db_to_str(&r[0]),
+            own: db_to_bool(&r[4]),
+            // A row with no heartbeat at all reads as long gone.
+            minutes: gates::db_i64(&r[2]).unwrap_or(PULSE_NO_HEARTBEAT_MINUTES),
+            last_seen: db_to_str(&r[1]),
+            last_status: match &r[3] { DbValue::Str(s) if !s.is_empty() => Some(s.clone()), _ => None },
+        }).collect();
+        Some(FullStatus { modalities: pulse::modalities(&rows), claude_plan: claude_plan_for(&conn, &uid).await })
+    } else { None };
+    json_response(200, &build_aggregate(AggInput {
+        walked, arabic_met, greek_met, goals_met, total_goals,
+        budget_remaining, today_distance_miles, today_steps,
+        vacation_mode_until: vaca, vacation_active, phone_verified: phone,
+        // On both paths (#349): the phone's nag workers make the light call.
+        pace: pace::pace_for_goals(&pace_rows, chrono::Utc::now()),
+        full,
+    }))
+}
+
+/// Minutes reported for a scheduler_election row whose heartbeat is NULL.
+const PULSE_NO_HEARTBEAT_MINUTES: i64 = 9999;
+
+/// The caller's Claude plan state from their newest claude_plan_usage_readings row (#344),
+/// or None when there is no row, no table, or the row cannot be read. Never reads the
+/// plaintext notes column. `now` is the database clock; the age is computed from it in Rust.
+async fn claude_plan_for(conn: &Connection, uid: &str) -> Option<claude_plan::PlanStatus> {
+    let iso = "'YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"'";
+    let sql = format!("SELECT plan, verified, windows::TEXT, source, TO_CHAR(observed_at AT TIME ZONE 'UTC', {iso}), TO_CHAR(now() AT TIME ZONE 'UTC', {iso}) FROM claude_plan_usage_readings WHERE user_id = $1 ORDER BY observed_at DESC LIMIT 1");
+    let rows = conn.query(sql, &[ParameterValue::Str(uid.to_string())]).await.ok()?.collect().await.ok()?;
+    let r = rows.first()?;
+    let ts = |v: &DbValue| chrono::DateTime::parse_from_rfc3339(&db_to_str(v)).ok().map(|t| t.with_timezone(&chrono::Utc));
+    let opt_str = |v: &DbValue| match v { DbValue::Str(s) => Some(s.clone()), _ => None };
+    let reading = claude_plan::Reading {
+        plan: opt_str(&r[0]),
+        verified: match &r[1] { DbValue::Boolean(b) => Some(*b), _ => None },
+        windows: claude_plan::parse_windows(&db_to_str(&r[2])),
+        source: opt_str(&r[3]),
+        observed_at: ts(&r[4])?,
+    };
+    let now = ts(&r[5])?;
+    // In Rust, not SQL: observed_at may be from a clock a moment ahead of the database's.
+    let age = claude_plan::age_minutes(now, reading.observed_at);
+    Some(claude_plan::summarize(Some(&reading), now, Some(age)))
+}
+
+/// GET /claude-plan: the same object aggregate-status carries, for the bearer's user. With
+/// no reading (or no table) it is the 'unknown, no reading recorded' state, not an error.
+async fn handle_claude_plan_get(req: Request) -> anyhow::Result<Response<String>> {
+    let uid = match extract_user_id(req.headers().get("authorization")).await { Some(id) => id, None => return Ok(text_response(401, "Unauthorized")?) };
+    let conn = Connection::open(&db_url().await?).await?;
+    let plan = match claude_plan_for(&conn, &uid).await {
+        Some(p) => p,
+        None => claude_plan::summarize(None, chrono::Utc::now(), None),
+    };
+    json_response(200, &plan)
 }
 
 fn clearance_days(mult: f64) -> Option<u32> {
@@ -448,7 +468,8 @@ async fn handle_health_get(req: Request) -> anyhow::Result<Response<String>> {
     let uid = match extract_user_id(req.headers().get("authorization")).await { Some(id) => id, None => return Ok(text_response(401, "Unauthorized")?) };
     let db = match variables::get("db_url").await { Ok(v) if !v.is_empty() => v, _ => variables::get("neon_db_url").await? };
     let conn = Connection::open(&db).await?;
-    let _ = register_cloud_heartbeat(&conn, &uid).await;
+    // Writes no pulse row (#346): only a cron run stamps the cloud role, so an offline
+    // AKAMAI FUNCTIONS card means the cron stopped, not that nobody opened a dashboard.
     #[derive(Serialize)] struct HealthResp { status: String, home_server_active: bool, leader_pid: String, last_seen: String }
     let mut active = false; let mut pid = "none".to_string(); let mut last = "never".to_string();
     let rs = conn.query("SELECT (heartbeat > CURRENT_TIMESTAMP - INTERVAL '90 seconds') as is_fresh, heartbeat::TEXT, process_id FROM scheduler_election WHERE user_id = $1 AND role = 'leader'", &[ParameterValue::Str(uid)]).await?.collect().await?;
@@ -730,9 +751,11 @@ async fn log_outbound(conn: &Connection, uid: &str, ty: &str, result: &Result<()
     let _ = conn.execute("INSERT INTO message_log (date, user_id, type, sent_at, status, channel, error_msg) VALUES ((now() AT TIME ZONE 'America/New_York')::DATE, $1, $2, CURRENT_TIMESTAMP, $3, 'whatsapp', $4)", &[ParameterValue::Str(uid.to_string()), ParameterValue::Str(ty.to_string()), ParameterValue::Str(status.to_string()), err]).await;
 }
 
-/// The scheduler_election role this deployment reports as.
+/// The scheduler_election role this deployment reports as. Akamai is the only live cloud,
+/// so an unset or unrecognised cloud_provider reports as akamai_functions; the 'unknown'
+/// role is no longer written (#346).
 fn cloud_role(provider: &str) -> &'static str {
-    match provider { "akamai" => "akamai_functions", "fermyon" => "fermyon_cloud", _ => "unknown" }
+    match provider { "fermyon" => "fermyon_cloud", _ => "akamai_functions" }
 }
 
 /// Upsert this user's cloud row after a cron job: heartbeat now, intent 'cron', this job's
@@ -1317,32 +1340,143 @@ async fn extract_user_id(auth: Option<&spin_sdk::http::HeaderValue>) -> Option<S
     } else { None }
 }
 
-async fn register_cloud_heartbeat(conn: &Connection, uid: &str) -> anyhow::Result<()> {
-    let prov = variables::get("cloud_provider").await.unwrap_or_else(|_| "unknown".to_string());
-    let role = cloud_role(&prov);
-    conn.execute("INSERT INTO scheduler_election (user_id, role, process_id, heartbeat) VALUES ($1, $2, $3, CURRENT_TIMESTAMP) ON CONFLICT (user_id, role) DO UPDATE SET heartbeat = EXCLUDED.heartbeat, process_id = EXCLUDED.process_id", &[ParameterValue::Str(uid.to_string()), ParameterValue::Str(role.to_string()), ParameterValue::Str(prov)]).await?;
-    Ok(())
+/// GET /internal/weather-heuristic?lat=..&lon=.. (#188). Public, like before: it reads no
+/// user data. Missing or invalid coordinates fall back to the phone's New York default.
+async fn handle_weather_heuristic_get(req: Request) -> anyhow::Result<Response<String>> {
+    let q = req.uri().query();
+    let (lat, lon) = solar::coords_or_default(query_param(q, "lat").as_deref(), query_param(q, "lon").as_deref());
+    json_response(200, &weather_report(chrono::Utc::now(), lat, lon))
 }
 
-fn get_modality_status(role: &str, mins: u64) -> &'static str {
-    match role { "leader" => if mins < 2 { "healthy" } else if mins < 5 { "degraded" } else { "offline" }, "android_client" => if mins < 20 { "healthy" } else if mins < 60 { "degraded" } else { "offline" }, "akamai_functions" => if mins < 135 { "healthy" } else if mins < 250 { "degraded" } else { "offline" }, "fermyon_cloud" => if mins < 5 { "healthy" } else if mins < 15 { "degraded" } else { "offline" }, _ => "unknown" }
+/// Nag types the phone may log (#213).
+const LOG_MESSAGE_TYPES: [&str; 3] = ["walk_reminder", "arabic_pressure", "greek_reminder"];
+/// A phone-reported sent_at older than this is not trusted; the row is stamped now.
+const LOG_MESSAGE_MAX_AGE_SECS: i64 = 24 * 60 * 60;
+
+/// A validated POST /internal/log-message body: the nag type, and how many seconds ago
+/// it was shown (0 = now). Channel, status and content are never taken from the body.
+#[derive(Debug, PartialEq)]
+struct LogMessage { ty: &'static str, age_secs: i64 }
+
+fn validate_log_message(body: &[u8], now: chrono::DateTime<chrono::Utc>) -> Result<LogMessage, &'static str> {
+    let v: serde_json::Value = serde_json::from_slice(body).map_err(|_| "body must be a JSON object")?;
+    let obj = v.as_object().ok_or("body must be a JSON object")?;
+    let ty = obj.get("type").and_then(|t| t.as_str()).ok_or("type is required")?;
+    let ty = LOG_MESSAGE_TYPES.iter().copied().find(|t| *t == ty).ok_or("type is not a phone nag")?;
+    let age_secs = obj.get("sent_at").and_then(|s| s.as_str())
+        .and_then(|s| chrono::DateTime::parse_from_rfc3339(s.trim()).ok())
+        .map(|t| (now - t.with_timezone(&chrono::Utc)).num_seconds())
+        .filter(|age| (0..=LOG_MESSAGE_MAX_AGE_SECS).contains(age))
+        .unwrap_or(0);
+    Ok(LogMessage { ty, age_secs })
 }
 
-async fn handle_weather_heuristic_get(_r: Request) -> anyhow::Result<Response<String>> {
-    #[derive(Serialize)] struct WeatherResp { is_walk_appropriate: bool, conditions: String, description: String, temperature: f64, sunrise: i64, sunset: i64, is_dark: bool, now_epoch: i64, data_ts: i64, recommendation: String }
-    json_response(200, &WeatherResp {
+/// A local phone nag was shown (#213): one message_log row on channel android_native with
+/// status 'shown' and no content, for the bearer's user. These rows count toward the
+/// reminder gates' 4-hour damping, never toward the WhatsApp daily cap (gates.rs).
+async fn handle_log_message_post(req: Request) -> anyhow::Result<Response<String>> {
+    let uid = match extract_user_id(req.headers().get("authorization")).await { Some(id) => id, None => return Ok(text_response(401, "Unauthorized")?) };
+    let body = req.into_body().collect().await.map_err(|_| anyhow::anyhow!("body"))?.to_bytes();
+    let msg = match validate_log_message(&body, chrono::Utc::now()) { Ok(m) => m, Err(e) => return status_json(400, "error", e) };
+    let conn = Connection::open(&db_url().await?).await?;
+    // The time is computed in SQL from a whole-second age: Spin's driver refuses a text
+    // parameter cast to TIMESTAMPTZ. `date` is the New York date of sent_at.
+    let at = "(now() - ($2::BIGINT * interval '1 second'))";
+    let sql = format!("INSERT INTO message_log (date, user_id, type, sent_at, status, channel) SELECT ({at} AT TIME ZONE 'America/New_York')::DATE, u.pocket_id_sub, $3, {at}, 'shown', 'android_native' FROM users u WHERE u.pocket_id_sub = $1");
+    let n = conn.execute(sql, &[ParameterValue::Str(uid), ParameterValue::Int64(msg.age_secs), ParameterValue::Str(msg.ty.to_string())]).await?;
+    if n == 0 { return status_json(404, "error", "User not found"); }
+    status_json(201, "success", "Nag logged")
+}
+
+#[derive(Serialize)]
+struct WeatherResp { is_walk_appropriate: bool, conditions: String, description: String, temperature: Option<f64>, sunrise: i64, sunset: i64, is_dark: bool, now_epoch: i64, data_ts: i64, recommendation: String }
+
+/// What /internal/weather-heuristic reports at `now` for lat/lon: real sun times and
+/// darkness; weather itself is not checked yet, so conditions are 'unknown' (#188).
+fn weather_report(now: chrono::DateTime<chrono::Utc>, lat: f64, lon: f64) -> WeatherResp {
+    let sun = solar::solar_day(now, lat, lon);
+    let recommendation = if sun.is_dark { "It is dark out: no walk now." } else { "Daylight: a walk is fine. Weather is not checked." };
+    WeatherResp {
         is_walk_appropriate: true,
-        conditions: "Clear".to_string(),
-        description: "sunny".to_string(),
-        temperature: 25.0,
-        sunrise: 1717650000,
-        sunset: 1717700000,
-        is_dark: false,
-        now_epoch: 1717680000,
-        data_ts: 1717680000,
-        recommendation: "Great day for a walk!".to_string()
-    })
+        conditions: "unknown".to_string(),
+        description: "weather not checked".to_string(),
+        temperature: None,
+        sunrise: sun.sunrise,
+        sunset: sun.sunset,
+        is_dark: sun.is_dark,
+        now_epoch: now.timestamp(),
+        data_ts: now.timestamp(),
+        recommendation: recommendation.to_string(),
+    }
 }
+
+#[derive(Serialize)] struct Comp { walk: bool, arabic: bool, greek: bool }
+#[derive(Serialize)] struct Pulse { modalities: Vec<pulse::Modality> }
+#[derive(Serialize)] struct AggResp {
+    score: String,
+    goals_met: i32,
+    total_goals: i32,
+    satisfied_count: i32,
+    total_count: i32,
+    all_clear: bool,
+    components: Comp,
+    budget_remaining: f64,
+    today_distance_miles: f64,
+    today_steps: i32,
+    vacation_mode_until: Option<String>,
+    phone_verified: bool,
+    modalities: Option<Vec<pulse::Modality>>,
+    system_pulse: Option<Pulse>,
+    claude_plan: Option<claude_plan::PlanStatus>,
+    pace: Vec<pace::Pace>,
+}
+
+/// The ?full=true extras.
+struct FullStatus { modalities: Vec<pulse::Modality>, claude_plan: Option<claude_plan::PlanStatus> }
+
+struct AggInput {
+    walked: bool,
+    arabic_met: bool,
+    greek_met: bool,
+    goals_met: i32,
+    total_goals: i32,
+    budget_remaining: f64,
+    today_distance_miles: f64,
+    today_steps: i32,
+    vacation_mode_until: Option<String>,
+    /// vacation_mode_until is after now (computed in SQL). A past date is not a vacation.
+    vacation_active: bool,
+    phone_verified: bool,
+    /// Review pace (#349), on the light call and the full one.
+    pace: Vec<pace::Pace>,
+    full: Option<FullStatus>,
+}
+
+fn build_aggregate(i: AggInput) -> AggResp {
+    let (modalities, system_pulse, claude_plan) = match i.full {
+        Some(f) => (Some(f.modalities.clone()), Some(Pulse { modalities: f.modalities }), f.claude_plan),
+        None => (None, None, None),
+    };
+    AggResp {
+        score: format!("{}/{}", i.goals_met, i.total_goals),
+        goals_met: i.goals_met,
+        total_goals: i.total_goals,
+        satisfied_count: i.goals_met,
+        total_count: i.total_goals,
+        all_clear: i.vacation_active || i.goals_met >= i.total_goals,
+        components: Comp { walk: i.walked, arabic: i.arabic_met, greek: i.greek_met },
+        budget_remaining: i.budget_remaining,
+        today_distance_miles: i.today_distance_miles,
+        today_steps: i.today_steps,
+        vacation_mode_until: i.vacation_mode_until,
+        phone_verified: i.phone_verified,
+        modalities,
+        system_pulse,
+        claude_plan,
+        pace: i.pace,
+    }
+}
+
 #[derive(Serialize)] struct StatusResponse { status: String, message: String }
 #[derive(Deserialize, Serialize, Debug)] struct Jwks { keys: Vec<JwKey> }
 #[derive(Deserialize, Serialize, Debug)] struct JwKey { kid: String, kty: String, alg: String, n: String, e: String }
@@ -1361,6 +1495,15 @@ mod tests {
     fn test_version_info_reports_package_version_and_provider() {
         let v = serde_json::to_value(version_info("akamai")).unwrap();
         assert_eq!(v, json!({"version": env!("CARGO_PKG_VERSION"), "cloud_provider": "akamai", "dry_run": true}));
+    }
+
+    #[test]
+    fn test_cron_outcomes_never_write_the_unknown_role() {
+        assert_eq!(cloud_role("akamai"), "akamai_functions");
+        assert_eq!(cloud_role("fermyon"), "fermyon_cloud");
+        for unrecognised in ["", "unknown_cloud", "local", "something_else"] {
+            assert_eq!(cloud_role(unrecognised), "akamai_functions", "{unrecognised:?}");
+        }
     }
 
     #[test]
@@ -1444,7 +1587,8 @@ mod tests {
         assert!(lines.len() >= 3, "outbound, walk_ack/inbound and unknown-sender rows: {}", lines.len());
         for l in lines {
             assert!(!l.contains("CURRENT_DATE"), "GMT date in a message_log row: {}", l.trim());
-            assert!(l.contains("VALUES ((now() AT TIME ZONE 'America/New_York')::DATE,"), "no New York date: {}", l.trim());
+            // log-message dates the row by when the nag was shown, not when it was posted.
+            assert!(l.contains("VALUES ((now() AT TIME ZONE 'America/New_York')::DATE,") || l.contains("SELECT ({at} AT TIME ZONE 'America/New_York')::DATE,"), "no New York date: {}", l.trim());
         }
     }
 
@@ -1829,5 +1973,184 @@ mod tests {
         assert!(!met_debt);
         let (_, _, met_clear) = effective_targets(0, 0, 1.0, 0, 0);
         assert!(met_clear); // vacuous success
+    }
+
+    // --- #213: POST /internal/log-message ---
+    fn utc(s: &str) -> chrono::DateTime<chrono::Utc> { chrono::DateTime::parse_from_rfc3339(s).unwrap().with_timezone(&chrono::Utc) }
+
+    #[test]
+    fn test_log_message_accepts_the_three_nag_types() {
+        let now = utc("2026-11-14T20:00:00Z");
+        for ty in ["walk_reminder", "arabic_pressure", "greek_reminder"] {
+            let body = json!({"type": ty, "channel": "android_native"}).to_string();
+            assert_eq!(validate_log_message(body.as_bytes(), now), Ok(LogMessage { ty, age_secs: 0 }), "{ty}");
+        }
+    }
+
+    #[test]
+    fn test_log_message_refuses_other_types_and_bad_bodies() {
+        let now = utc("2026-11-14T20:00:00Z");
+        for body in [
+            json!({"type": "phone_verification", "channel": "android_native"}).to_string(),
+            json!({"type": "walk_ack"}).to_string(),
+            json!({"type": "WALK_REMINDER"}).to_string(),
+            json!({"type": 3}).to_string(),
+            json!({"channel": "android_native"}).to_string(),
+            json!(["walk_reminder"]).to_string(),
+            "type=walk_reminder".to_string(),
+            String::new(),
+        ] {
+            assert!(validate_log_message(body.as_bytes(), now).is_err(), "{body}");
+        }
+    }
+
+    #[test]
+    fn test_log_message_clamps_sent_at_to_the_last_24_hours() {
+        let now = utc("2026-11-14T20:00:00Z");
+        let age = |sent_at: serde_json::Value| validate_log_message(json!({"type": "walk_reminder", "channel": "android_native", "sent_at": sent_at}).to_string().as_bytes(), now).map(|m| m.age_secs);
+        assert_eq!(age(json!("2026-11-14T19:58:30Z")), Ok(90));
+        assert_eq!(age(json!("2026-11-14T19:58:30.123456Z")), Ok(89), "whole seconds, rounded down");
+        assert_eq!(age(json!("2026-11-14T14:58:30-05:00")), Ok(90), "offsets are honoured");
+        assert_eq!(age(json!("2026-11-13T20:00:00Z")), Ok(86_400), "exactly 24 h old is kept");
+        assert_eq!(age(json!("2026-11-13T19:59:59Z")), Ok(0), "older than 24 h is stamped now");
+        assert_eq!(age(json!("2026-11-14T20:00:01Z")), Ok(0), "the future is stamped now");
+        assert_eq!(age(json!("yesterday")), Ok(0));
+        assert_eq!(age(json!(1731614400)), Ok(0));
+        assert_eq!(age(serde_json::Value::Null), Ok(0));
+    }
+
+    #[test]
+    fn test_log_message_ignores_channel_and_content() {
+        // The channel is fixed to android_native and nothing from the body is stored but the type.
+        let now = utc("2026-11-14T20:00:00Z");
+        let body = json!({"type": "greek_reminder", "channel": "whatsapp", "status": "sent", "content": "hello"}).to_string();
+        assert_eq!(validate_log_message(body.as_bytes(), now), Ok(LogMessage { ty: "greek_reminder", age_secs: 0 }));
+    }
+
+    // --- #188: real darkness, honest weather ---
+    #[test]
+    fn test_weather_report_is_honest_about_weather_and_real_about_the_sun() {
+        let now = utc("2026-11-14T22:30:00Z"); // 17:30 EST
+        let w = serde_json::to_value(weather_report(now, solar::DEFAULT_LAT, solar::DEFAULT_LON)).unwrap();
+        // Every field Android's WeatherHeuristicResponseDto reads, plus recommendation.
+        for k in ["is_walk_appropriate", "conditions", "description", "temperature", "sunrise", "sunset", "is_dark", "now_epoch", "data_ts", "recommendation"] {
+            assert!(w.get(k).is_some(), "missing {k}");
+        }
+        assert_eq!(w["conditions"], "unknown");
+        assert_eq!(w["is_walk_appropriate"], true);
+        assert_eq!(w["temperature"], serde_json::Value::Null, "no made-up temperature");
+        assert_eq!(w["is_dark"], true);
+        assert_eq!(w["now_epoch"], now.timestamp());
+        assert_eq!(w["data_ts"], now.timestamp());
+        let (rise, set) = solar::sun_times(chrono::NaiveDate::from_ymd_opt(2026, 11, 14).unwrap(), solar::DEFAULT_LAT, solar::DEFAULT_LON).unwrap();
+        assert_eq!((w["sunrise"].as_i64().unwrap(), w["sunset"].as_i64().unwrap()), (rise, set));
+        assert!(!w["recommendation"].as_str().unwrap().is_empty());
+
+        let noon = utc("2026-11-14T17:00:00Z");
+        let w = weather_report(noon, solar::DEFAULT_LAT, solar::DEFAULT_LON);
+        assert!(!w.is_dark);
+        assert_ne!(w.recommendation, weather_report(now, solar::DEFAULT_LAT, solar::DEFAULT_LON).recommendation, "dark and light read differently");
+    }
+
+    // --- #344 / #346: aggregate-status?full=true, the v0.3.0 shape ---
+    const AGG_CONTRACT: &str = include_str!("../../../contracts/spin_aggregate_status_full.json");
+
+    fn contract_input(full: bool) -> AggInput {
+        let m = |role: &str, status: &str, last_seen: &str, mins: u64, last_status: Option<&str>| pulse::Modality { role: role.into(), status: status.into(), last_seen: last_seen.into(), minutes_since: mins, last_status: last_status.map(String::from) };
+        let now = utc("2026-11-14T20:00:00Z");
+        let reading = claude_plan::Reading {
+            plan: Some("ultra".into()), verified: Some(false), source: Some("manual".into()), observed_at: utc("2026-11-14T19:00:00Z"),
+            windows: claude_plan::parse_windows(r#"[{"kind":"weekly_all","pct_used":62.4,"resets_at":"2026-11-16T09:00:00+00:00"},{"kind":"session","pct_used":20.0,"resets_at":"2026-11-14T23:00:00+00:00"}]"#),
+        };
+        AggInput {
+            walked: true, arabic_met: false, greek_met: false, goals_met: 1, total_goals: 3,
+            budget_remaining: 0.0, today_distance_miles: 1.42, today_steps: 4210,
+            vacation_mode_until: None, vacation_active: false, phone_verified: false,
+            pace: pace::pace_for_goals(&[("ARABIC".into(), 42, 35), ("GREEK".into(), 0, 0)], now),
+            full: full.then(|| FullStatus {
+                modalities: vec![
+                    m("ANDROID CLIENT", "healthy", "2026-11-14 19:18:02.41+00", 42, None),
+                    m("AKAMAI FUNCTIONS", "healthy", "2026-11-14 19:00:01.07+00", 60, Some("ok")),
+                    m("MCP SERVER", "offline", "2026-11-14 12:02:44.9+00", 477, None),
+                    m("GHOST", "paused", "2026-10-30 03:12:10+00", 22367, None),
+                ],
+                claude_plan: Some(claude_plan::summarize(Some(&reading), now, Some(60))),
+            }),
+        }
+    }
+
+    #[test]
+    fn test_aggregate_full_matches_the_contract() {
+        let want: serde_json::Value = serde_json::from_str(AGG_CONTRACT).unwrap();
+        let got = serde_json::to_value(build_aggregate(contract_input(true))).unwrap();
+        assert_eq!(got, want);
+    }
+
+    #[test]
+    fn test_aggregate_full_with_no_claude_reading_is_null_not_an_error() {
+        let mut input = contract_input(true);
+        input.full.as_mut().unwrap().claude_plan = None;
+        let got = serde_json::to_value(build_aggregate(input)).unwrap();
+        assert_eq!(got["claude_plan"], serde_json::Value::Null);
+        assert!(got["pace"].is_array());
+    }
+
+    #[test]
+    fn test_aggregate_full_carries_a_status_line_reading_unchanged() {
+        // #383: a claude_code_cli reading, minutes old, UTC resets, fractional pct, no weekly_fable.
+        let now = utc("2026-11-14T20:00:00Z");
+        let reading = claude_plan::Reading {
+            plan: Some("ultra".into()), verified: Some(false), source: Some("claude_code_cli".into()), observed_at: utc("2026-11-14T19:53:00.5Z"),
+            windows: claude_plan::parse_windows(r#"[{"kind":"weekly_all","pct_used":23.5,"resets_at":"2026-11-16T09:00:00+00:00"},{"kind":"session","pct_used":30.0,"resets_at":"2026-11-14T19:50:00-05:00"}]"#),
+        };
+        let mut input = contract_input(true);
+        input.full.as_mut().unwrap().claude_plan = Some(claude_plan::summarize(Some(&reading), now, Some(6)));
+        let got = serde_json::to_value(build_aggregate(input)).unwrap();
+        let cp = &got["claude_plan"];
+        assert_eq!(cp["source"], "claude_code_cli");
+        assert_eq!(cp["age_minutes"], 6);
+        assert_eq!(cp["state"], "available");
+        assert_eq!(cp["summary_line"], "Claude: available (24% weekly, resets Mon 4:00 AM)");
+        assert_eq!(cp["windows"][0]["pct_used"].as_f64(), Some(23.5));
+        assert_eq!(cp["windows"][1]["resets_at"], "2026-11-14T19:50:00-05:00", "resets_at is passed through as stored");
+        assert_eq!(cp["windows"][1]["fresh"], true, "19:50 New York is 00:50 UTC, after now");
+    }
+
+    // --- #349: the phone's nag workers make the light call, so pace is on both paths ---
+    #[test]
+    fn test_aggregate_light_still_carries_pace() {
+        let got = serde_json::to_value(build_aggregate(contract_input(false))).unwrap();
+        let want: serde_json::Value = serde_json::from_str(AGG_CONTRACT).unwrap();
+        assert_eq!(got["pace"], want["pace"], "pace without ?full=true");
+        for full_only in ["claude_plan", "modalities", "system_pulse"] {
+            assert_eq!(got[full_only], serde_json::Value::Null, "{full_only} stays full-only");
+        }
+    }
+
+    // --- #346: only a cron run stamps the cloud role, so 'offline' means the cron stopped ---
+    #[test]
+    fn test_health_check_writes_no_cloud_heartbeat() {
+        let src = include_str!("lib.rs");
+        let start = src.find("async fn handle_health_get(").expect("handle_health_get exists");
+        let body = &src[start..];
+        let body = &body[..body[1..].find("\nasync fn ").map(|i| i + 1).unwrap_or(body.len())];
+        assert!(!body.contains("register_cloud_heartbeat"), "GET /health must not bump the cloud heartbeat");
+        assert!(!body.contains("INSERT INTO scheduler_election"), "GET /health must not write scheduler_election");
+        assert!(!body.contains("UPDATE scheduler_election"), "GET /health must not write scheduler_election");
+    }
+
+    #[test]
+    fn test_aggregate_past_vacation_is_not_all_clear() {
+        let mut input = contract_input(false);
+        input.vacation_mode_until = Some("2026-11-01 12:00:00+00".into());
+        input.vacation_active = false;
+        let got = serde_json::to_value(build_aggregate(input)).unwrap();
+        assert_eq!(got["all_clear"], false, "an expired vacation does not clear the day");
+        assert_eq!(got["vacation_mode_until"], "2026-11-01 12:00:00+00", "the date is still reported");
+
+        let mut input = contract_input(false);
+        input.vacation_mode_until = Some("2026-11-20 12:00:00+00".into());
+        input.vacation_active = true;
+        assert_eq!(serde_json::to_value(build_aggregate(input)).unwrap()["all_clear"], true);
     }
 }

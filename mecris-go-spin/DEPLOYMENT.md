@@ -16,13 +16,10 @@ cd mecris-go-spin/sync-service
 ./deploy-akamai.sh
 ```
 
-### 2. Fermyon Cloud (Experimental / Inactive)
-```bash
-cd mecris-go-spin/sync-service
-./deploy-fermyon.sh
-```
+### 2. Fermyon Cloud (Inactive)
+Fermyon Cloud is inactive (see above), so there is nothing to deploy there. `deploy-akamai.sh` is the only deployment script to run. `deploy-fermyon.sh` is kept in the tree for reference only.
 
-Both deployment scripts:
+`deploy-akamai.sh`:
 1. Load secrets from the project root `.env` (gitignored, local only)
 2. Validate all required variables are present
 3. Encrypt the Twilio auth token using the master encryption key
@@ -55,6 +52,21 @@ Both deployment scripts:
 
 `GET /internal/trigger-reminders?dry_run=1&key=...` reports, per user (by `familiar_id`), the New York time, steps, minutes since the last nag, nags today, the phone heartbeat age, the verdict and reason, and the template variables. It sends nothing and writes nothing.
 
+### Status and nag routes (v0.3.0)
+All three need a signed-in user's bearer token and act only for that user. None takes the internal cron key.
+
+**`GET /claude-plan`** returns the caller's Claude plan state (#344), worked out from their newest `claude_plan_usage_readings` row. The plaintext `notes` column is never read. `age_minutes` is whole minutes against the database clock, never below 0 (a status line reading's `observed_at` comes from the writer's clock, which can run a moment ahead). The body is one object: `state`, `reason`, `stale`, `summary_line`, `plan`, `verified`, `source`, `observed_at`, `age_minutes`, and `windows[]` (`kind`, `pct_used`, `resets_at`, `fresh`). `source` is `manual` or `claude_code_cli` (the Claude Code status line, #383, usually minutes old and never with a `weekly_fable` window); `pct_used` is a float and may be fractional; `resets_at` is passed through as stored, with whatever UTC offset it was written in. The state comes from the fullest window that has not reset yet: `exhausted` at 100% used or more, `constrained` over 80%, otherwise `available`. A reading over 24 hours old, or one whose weekly reset has already passed, reads as `unknown`. With no reading (or no table) the answer is still 200, with the `unknown` "no reading recorded" object. The truth table is `contracts/claude_plan_cases.json`, shared with the Python and Kotlin arms.
+
+**`GET /aggregate-status`** now always carries `pace[]`, one entry per language goal (`goal`, `remaining`, `per_hour`, `clear_by`, `due_today`): the reviews left today and the hourly pace that clears them by 22:00 America/New_York. In the last hour before 22:00, and after it, `per_hour` equals `remaining`. Without `?full=true`, `claude_plan` is `null`. A past `vacation_mode_until` no longer counts as a vacation for `all_clear`. The phone's nag workers read pace from this light call (#349).
+
+**`GET /aggregate-status?full=true`** adds:
+- `claude_plan`: the same object as `GET /claude-plan`, or `null` when the caller has no reading;
+- `modalities[]` (also mirrored as `system_pulse.modalities`): the system pulse (#346), one line per `scheduler_election` role (`role`, `status`, `last_seen`, `minutes_since`, `last_status`). The registry is `contracts/pulse_roles.json`. `leader` is healthy under 2 minutes and degraded under 5. `android_client` is healthy under 90 and degraded under 240. `akamai_functions` is healthy under 135 and degraded under 250. Anything older is offline. `active_ghost` always shows as `paused`. `fermyon_cloud` and `unknown_cloud` are retired and never shown. Any other role shows as `unknown`, and only while it is under 24 hours old. Each role is shown once; the newest heartbeat wins. Only cron runs stamp `akamai_functions`, and `GET /health` writes no pulse row, so an offline AKAMAI FUNCTIONS line means the cron stopped. A cron run with an unset or unrecognised `cloud_provider` also reports as `akamai_functions`; the `unknown` role is no longer written.
+
+The full shape is pinned by `contracts/spin_aggregate_status_full.json`.
+
+**`POST /internal/log-message`** records that the phone showed a local nag (#213). Body: `{"type": "walk_reminder" | "arabic_pressure" | "greek_reminder", "sent_at": "<RFC 3339, optional>"}`. It writes one `message_log` row: channel `android_native`, status `shown`, no content, and `date` set to the New York date of `sent_at`. A `sent_at` that is missing, unparseable, in the future or over 24 hours old is replaced by now. Channel, status and content are never taken from the body. Answers: 201 `{status, message}`, 400 for a bad body or a type that is not a phone nag, 401 without a bearer, 404 when the user does not exist. These rows count toward the 4-hour damping below, but never toward the WhatsApp daily cap.
+
 ### Walk reminder gates (cloud WhatsApp is the fallback)
 All local times are America/New_York (hard-coded; `users.timezone` is not read). A cloud walk reminder goes out only when every gate passes (`src/gates.rs`, truth table `contracts/nag_damping_cases.json`):
 - `users.phone_verified` is true, and vacation is off (`notification_prefs.vacation_mode`, or `users.vacation_mode_until` in the future);
@@ -84,6 +96,8 @@ TOKEN=$(cat ~/.mecris/credentials.json | jq -r .access_token)
 curl -H "Authorization: Bearer $TOKEN" https://394b84e7-760c-4336-975b-653c17fdb446.fwf.app/health
 curl -H "Authorization: Bearer $TOKEN" https://394b84e7-760c-4336-975b-653c17fdb446.fwf.app/languages
 curl -H "Authorization: Bearer $TOKEN" https://394b84e7-760c-4336-975b-653c17fdb446.fwf.app/aggregate-status
+curl -H "Authorization: Bearer $TOKEN" "https://394b84e7-760c-4336-975b-653c17fdb446.fwf.app/aggregate-status?full=true"
+curl -H "Authorization: Bearer $TOKEN" https://394b84e7-760c-4336-975b-653c17fdb446.fwf.app/claude-plan
 curl -H "Authorization: Bearer $TOKEN" https://394b84e7-760c-4336-975b-653c17fdb446.fwf.app/budget
 curl -H "Authorization: Bearer $TOKEN" https://394b84e7-760c-4336-975b-653c17fdb446.fwf.app/profile
 
