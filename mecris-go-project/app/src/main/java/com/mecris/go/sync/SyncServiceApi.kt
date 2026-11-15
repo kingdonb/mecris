@@ -17,11 +17,6 @@ interface SyncServiceApi {
         @Body walkData: WalkDataSummaryDto
     ): retrofit2.Response<SyncResponse>
 
-    @GET("budget")
-    suspend fun getBudget(
-        @Header("Authorization") authHeader: String
-    ): retrofit2.Response<BudgetResponseDto>
-
     @GET("languages")
     suspend fun getLanguages(
         @Header("Authorization") authHeader: String
@@ -32,15 +27,8 @@ interface SyncServiceApi {
         @Header("Authorization") authHeader: String
     ): retrofit2.Response<HealthResponseDto>
 
-    @POST("internal/cloud-sync")
-    suspend fun triggerCloudSync(
-        @Header("Authorization") authHeader: String
-    ): retrofit2.Response<SyncResponse>
-
-    @POST("internal/trigger-reminders")
-    suspend fun triggerReminders(
-        @Header("Authorization") authHeader: String
-    ): retrofit2.Response<SyncResponse>
+    // #368: no trigger-reminders or cloud-sync here. The cloud cron owns both;
+    // SpinContractTest fails if either route comes back.
 
     @POST("heartbeat")
     suspend fun sendHeartbeat(
@@ -60,9 +48,14 @@ interface SyncServiceApi {
         @Body request: MultiplierRequestDto
     ): retrofit2.Response<Unit>
 
+    /**
+     * [full] = true adds the pulse modalities and claude_plan (the dashboard only).
+     * Workers leave it null, so Retrofit omits the query and their hourly calls stay light.
+     */
     @GET("aggregate-status")
     suspend fun getAggregateStatus(
-        @Header("Authorization") authHeader: String
+        @Header("Authorization") authHeader: String,
+        @Query("full") full: Boolean? = null
     ): retrofit2.Response<AggregateStatusResponseDto>
 
     @GET("internal/weather-heuristic")
@@ -83,8 +76,10 @@ interface SyncServiceApi {
         @Body request: PhoneVerificationConfirmRequestDto
     ): retrofit2.Response<SyncResponse>
 
+    /** #213: audit row for a shown local nag. Spin takes the user from the bearer. */
     @POST("internal/log-message")
     suspend fun logMessage(
+        @Header("Authorization") authHeader: String,
         @Body request: LogMessageRequestDto
     ): retrofit2.Response<Unit>
 
@@ -133,10 +128,6 @@ data class SyncResponse(
     val message: String
 )
 
-data class BudgetResponseDto(
-    val remaining_budget: Double
-)
-
 data class LanguageStatDto(
     val name: String,
     val current: Int,
@@ -172,7 +163,10 @@ data class HeartbeatRequestDto(
 
 data class HeartbeatResponseDto(
     val status: String,
-    val mcp_server_active: Boolean
+    // Spin's /heartbeat sends {status, message} only; null means "not reported",
+    // never "MCP is dark" (Gson would otherwise default a missing Boolean to false).
+    val mcp_server_active: Boolean? = null,
+    val message: String? = null
 )
 
 // Task 588 Android hook: response to POST helix-balance/request
@@ -201,20 +195,71 @@ data class AggregateStatusResponseDto(
     val all_clear: Boolean,
     val components: AggregateComponentsDto,
     val vacation_mode_until: String? = null,
-    val phone_verified: Boolean = false
+    val phone_verified: Boolean = false,
+    // v0.3.0 fields (contracts/spin_aggregate_status_full.json). All optional so the
+    // app degrades gracefully against an older Spin: Gson leaves a missing field null.
+    /** Only with ?full=true. */
+    val modalities: List<ModalityDto>? = null,
+    /** Only with ?full=true; null when no reading is recorded. */
+    val claude_plan: ClaudePlanDto? = null,
+    val pace: List<PaceDto>? = null
+)
+
+/** One system-pulse row; last_status is the cloud cron's latest outcome line. */
+data class ModalityDto(
+    val role: String? = null,
+    val status: String? = null,
+    val last_seen: String? = null,
+    val minutes_since: Long? = null,
+    val last_status: String? = null
+)
+
+/** Spin's derived Claude plan state (#344); the phone re-checks staleness against its clock. */
+data class ClaudePlanDto(
+    val state: String? = null,
+    val reason: String? = null,
+    val stale: Boolean? = null,
+    val summary_line: String? = null,
+    val plan: String? = null,
+    val verified: Boolean? = null,
+    val source: String? = null,
+    val observed_at: String? = null,
+    val age_minutes: Long? = null,
+    val windows: List<ClaudePlanWindowDto>? = null
+)
+
+data class ClaudePlanWindowDto(
+    val kind: String? = null,
+    val pct_used: Double? = null,
+    val resets_at: String? = null,
+    val fresh: Boolean? = null
+)
+
+/** Reviews left today for a goal and the hourly pace to clear them by 22:00 New York (#349). */
+data class PaceDto(
+    val goal: String? = null,
+    val remaining: Int? = null,
+    val per_hour: Double? = null,
+    val clear_by: String? = null,
+    val due_today: Int? = null
 )
 
 data class WeatherHeuristicResponseDto(
     val is_walk_appropriate: Boolean,
     val conditions: String,
     val description: String,
-    val temperature: Double,
+    /** Null since v0.3.0: Spin does not check the weather yet (#188). */
+    val temperature: Double? = null,
     val sunrise: Long,
     val sunset: Long,
     val is_dark: Boolean,
     val now_epoch: Long,
     val data_ts: Long
 )
+
+/** The dashboard's weather temperature line; "unknown" when Spin sends none (#188). */
+fun weatherTemperatureLine(temperature: Double?): String =
+    if (temperature == null) "Temp: unknown" else "Temp: ${temperature}°C"
 
 data class PhoneVerificationRequestDto(
     val phone_number: String
@@ -246,5 +291,16 @@ data class LogMessageRequestDto(
     val type: String,
     val channel: String,
     val sent_at: String? = null
-)
+) {
+    companion object {
+        const val CHANNEL_ANDROID_NATIVE = "android_native"
+
+        /** Spin's POST /internal/log-message type allowlist (#213). */
+        val NAG_TYPES = setOf("walk_reminder", "arabic_pressure", "greek_reminder")
+
+        /** The row for a nag the phone just showed. Never carries the message text. */
+        fun shownNag(type: String, sentAt: java.time.Instant): LogMessageRequestDto =
+            LogMessageRequestDto(type = type, channel = CHANNEL_ANDROID_NATIVE, sent_at = sentAt.toString())
+    }
+}
 

@@ -139,7 +139,7 @@ async def test_display_name_mapping():
 
     roles = [m["role"] for m in result["modalities"]]
     assert "AKAMAI FUNCTIONS" in roles
-    assert "FERMYON CLOUD" in roles
+    assert "FERMYON CLOUD" not in roles  # retired (#346)
     assert "ANDROID CLIENT" in roles
 
 
@@ -158,3 +158,158 @@ async def test_no_neon_url_returns_empty():
         result = await fetch_system_pulse("test-user")
 
     assert result == {"modalities": []}
+
+
+# ---------------------------------------------------------------------------
+# Role registry from contracts/pulse_roles.json (#346)
+# ---------------------------------------------------------------------------
+
+import json
+import os
+from pathlib import Path
+
+_PULSE = json.loads((Path(__file__).resolve().parents[1] / "contracts" / "pulse_roles.json").read_text())
+_ENV = {"NEON_DB_URL": "postgres://fake", "DEFAULT_USER_ID": "test-user"}
+
+
+async def _pulse(rows, ghost=None, refusals=None):
+    """Run fetch_system_pulse over rows; refusals is the (total, bad_key) row or None."""
+    sys.modules.pop("mcp_server", None)
+    conn, cur = _make_conn_mock(rows)
+    cur.fetchone.return_value = refusals
+    with patch.dict("os.environ", _ENV), patch("psycopg2.connect", return_value=conn):
+        os.environ.pop("MECRIS_GHOST_ENABLED", None)
+        if ghost is not None:
+            os.environ["MECRIS_GHOST_ENABLED"] = ghost
+        with patch("mcp_server.usage_tracker") as mock_tracker:
+            mock_tracker.resolve_user_id.return_value = "test-user"
+            from mcp_server import fetch_system_pulse
+            return await fetch_system_pulse("test-user")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("case", _PULSE["cases"], ids=lambda c: f"{c['role']}-{c['minutes']}")
+async def test_contract_role_cases(case):
+    result = await _pulse([(case["role"], _FAKE_HB, float(case["minutes"]), None, None, None)])
+    mods = result["modalities"]
+    if not case["expect"]["visible"]:
+        assert mods == []
+        return
+    assert len(mods) == 1
+    assert mods[0]["role"] == case["expect"]["display"]
+    assert mods[0]["status"] == case["expect"]["status"]
+    assert mods[0]["minutes_since"] == case["minutes"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("case", _PULSE["duplicate_cases"], ids=lambda c: c["name"])
+async def test_contract_duplicate_cases(case):
+    # The own flag is the seventh column; last_error marks which row won.
+    rows = [(r["role"], _FAKE_HB, float(r["minutes"]), None, None, "own" if r["own"] else "global", r["own"])
+            for r in case["rows"]]
+    result = await _pulse(rows)
+    got = [{"display": m["role"], "status": m["status"], "own": m["last_error"] == "own",
+            "minutes": m["minutes_since"]} for m in result["modalities"]]
+    assert got == case["expect"]
+
+
+@pytest.mark.asyncio
+async def test_android_at_42_minutes_is_healthy():
+    result = await _pulse([("android_client", _FAKE_HB, 42.0, None, None, None)])
+    assert result["modalities"][0]["status"] == "healthy"
+
+
+@pytest.mark.asyncio
+async def test_minutes_are_floored_not_rounded():
+    result = await _pulse([("android_client", _FAKE_HB, 89.99, None, None, None)])
+    assert result["modalities"][0]["minutes_since"] == 89
+    assert result["modalities"][0]["status"] == "healthy"
+
+
+@pytest.mark.asyncio
+async def test_retired_and_stale_unknown_rows_are_hidden_fresh_unknown_shown():
+    rows = [
+        ("fermyon_cloud", _FAKE_HB, 1.0, None, None, None),
+        ("unknown_cloud", _FAKE_HB, 1.0, None, None, None),
+        ("unknown", _FAKE_HB, 190000.0, None, None, None),
+        ("some_new_role", _FAKE_HB, 10.0, None, None, None),
+    ]
+    result = await _pulse(rows)
+    assert [(m["role"], m["status"]) for m in result["modalities"]] == [("SOME NEW ROLE", "unknown")]
+
+
+@pytest.mark.asyncio
+async def test_ghost_is_paused_once_while_flag_unset():
+    rows = [
+        ("active_ghost", _FAKE_HB, 98000.0, None, None, None, True),
+        ("active_ghost", _FAKE_HB, 99000.0, None, None, None, False),
+    ]
+    result = await _pulse(rows)
+    assert [(m["role"], m["status"]) for m in result["modalities"]] == [("GHOST", "paused")]
+
+
+@pytest.mark.asyncio
+async def test_ghost_gets_a_timed_status_when_enabled():
+    result = await _pulse([("active_ghost", _FAKE_HB, 30.0, None, None, None)], ghost="true")
+    assert [(m["role"], m["status"]) for m in result["modalities"]] == [("GHOST", "healthy")]
+
+
+@pytest.mark.asyncio
+async def test_akamai_carries_refusals_today():
+    result = await _pulse([("akamai_functions", _FAKE_HB, 30.0, "ok", "cron", None)], refusals=(4, 1))
+    akamai = result["modalities"][0]
+    assert akamai["refusals_today"] == 4
+    assert akamai["bad_key_refusals_today"] == 1
+
+
+@pytest.mark.asyncio
+async def test_missing_refusal_table_counts_as_zero():
+    sys.modules.pop("mcp_server", None)
+    conn, cur = _make_conn_mock([("akamai_functions", _FAKE_HB, 30.0, None, None, None)])
+
+    def execute(sql, *args, **kwargs):
+        if "internal_refusals" in sql:
+            raise Exception('relation "internal_refusals" does not exist')
+
+    cur.execute.side_effect = execute
+    with patch.dict("os.environ", _ENV), patch("psycopg2.connect", return_value=conn):
+        with patch("mcp_server.usage_tracker") as mock_tracker:
+            mock_tracker.resolve_user_id.return_value = "test-user"
+            from mcp_server import fetch_system_pulse
+            result = await fetch_system_pulse("test-user")
+    akamai = result["modalities"][0]
+    assert akamai["role"] == "AKAMAI FUNCTIONS"
+    assert akamai["refusals_today"] == 0
+    assert akamai["bad_key_refusals_today"] == 0
+
+
+def test_refusals_count_the_new_york_day_and_flag_bad_key_only():
+    sys.modules.pop("mcp_server", None)
+    with patch.dict("os.environ", _ENV), patch("psycopg2.connect"):
+        import mcp_server
+    sql = mcp_server.REFUSALS_TODAY_SQL
+    assert "America/New_York" in sql
+    assert "'bad_key'" in sql
+    assert "burned_key" not in sql
+
+
+# ---------------------------------------------------------------------------
+# Retired Fermyon endpoints (#346)
+# ---------------------------------------------------------------------------
+
+def test_server_no_longer_calls_fermyon():
+    source = (Path(__file__).resolve().parents[1] / "mcp_server.py").read_text()
+    assert "fermyon.app" not in source
+
+
+def test_budget_governor_status_makes_no_network_call():
+    sys.modules.pop("mcp_server", None)
+    with patch.dict("os.environ", _ENV), patch("psycopg2.connect"):
+        import mcp_server
+        local = {"buckets": {}, "source": "neon"}
+        with patch("httpx.post") as post, patch("httpx.Client") as client, \
+             patch.object(mcp_server._neon_budget_governor, "get_status", return_value=local):
+            result = mcp_server.get_budget_governor_status()
+    post.assert_not_called()
+    client.assert_not_called()
+    assert result == local

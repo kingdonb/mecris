@@ -40,6 +40,18 @@
       "automerge": false
     },
     {
+      "description": "Hold the pyenv Python (.python-version) below 3.15: uv.lock has no cp315 wheels and onnxruntime/ctranslate2 ship no sdist, so the local uv-run MCP server would not start (#338, #218)",
+      "matchManagers": ["pyenv"],
+      "matchDepNames": ["python"],
+      "allowedVersions": "<3.15"
+    },
+    {
+      "description": "Ignore mcp majors until the deliberate v2 migration (FastMCP -> MCPServer) lands with the mcp_server.py split (#319, #355)",
+      "matchPackageNames": ["mcp"],
+      "matchUpdateTypes": ["major"],
+      "enabled": false
+    },
+    {
       "description": "Flag major version bumps with extra label — require manual review",
       "matchUpdateTypes": ["major"],
       "automerge": false,

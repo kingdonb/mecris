@@ -5,7 +5,7 @@ we maintain local estimates and allow manual budget updates.
 """
 
 import json
-from datetime import datetime, timedelta, date
+from datetime import datetime, timedelta, date, timezone
 from typing import Dict, List, Optional, Tuple, Any
 from dataclasses import dataclass
 import os
@@ -27,14 +27,84 @@ class UsageSession:
     notes: str = ""
 
 
-def evaluate_budget(total: float, remaining: float, period_end: date, today: date,
-                    today_spend: float = 0.0, week_spend: float = 0.0) -> Dict:
-    """Derive budget health from a stored dollar budget (kingdonb/mecris#345).
+SOURCE_TYPES = ("api_credit", "subscription", "retired")
+GRANT_ENDING_DAYS = 14
 
-    A period whose end date has passed is *expired*, not exhausted: the row
-    simply hasn't been updated. It reports STALE / PERIOD_EXPIRED, days_remaining
-    is clamped to 0 (never negative "days left"), and no spend-pressure alerts fire.
+
+def _evaluate_subscription(total: float, remaining: float, period_end: date, today: date,
+                           today_spend: float, plan: Optional[str],
+                           monthly_price_usd: Optional[float]) -> Dict:
+    """A plan grant (e.g. Claude Ultra): no dollars are spent from it, only its end matters."""
+    raw_days = (period_end - today).days
+    ended = raw_days < 0
+    if ended:
+        health, alerts = "ENDED", ["GRANT_ENDED"]
+    elif raw_days <= GRANT_ENDING_DAYS:
+        health, alerts = "ENDING", ["GRANT_ENDING"]
+    else:
+        health, alerts = "GOOD", []
+    days_left = max(raw_days, 0)
+    return {
+        "source_type": "subscription",
+        "plan": plan,
+        "monthly_price_usd": monthly_price_usd,
+        "total_budget": total,
+        "remaining_budget": remaining,
+        "used_budget": round(total - remaining, 2),
+        "days_remaining": days_left,
+        "days_to_grant_end": days_left,
+        "days_since_grant_end": -raw_days if ended else 0,
+        "grant_end": period_end.isoformat(),
+        "grant_ended": ended,
+        "period_expired": False,
+        "days_since_period_end": 0,
+        "today_spend": round(today_spend, 4),
+        "daily_burn_rate": 0.0,
+        "projected_spend": 0.0,
+        "alerts": alerts,
+        "budget_health": health,
+    }
+
+
+def evaluate_budget(total: float, remaining: float, period_end: date, today: date,
+                    today_spend: float = 0.0, week_spend: float = 0.0,
+                    source_type: str = "api_credit", plan: Optional[str] = None,
+                    monthly_price_usd: Optional[float] = None) -> Dict:
+    """Derive budget health from a stored budget row (kingdonb/mecris#345).
+
+    api_credit (default): a dollar budget. A period whose end date has passed
+    is *expired*, not exhausted: the row simply hasn't been updated. It reports
+    STALE / PERIOD_EXPIRED, days_remaining is clamped to 0 (never negative
+    "days left"), and no spend-pressure alerts fire.
+
+    subscription: a plan grant whose window is the period columns. GOOD while
+    it runs, ENDING within GRANT_ENDING_DAYS of its end, ENDED after it. Spend
+    never moves it.
+
+    retired: no budget is tracked any more. RETIRED, no alerts.
+    Dollar fields stay numeric in every branch for the Rust and web readers.
     """
+    if source_type == "subscription":
+        return _evaluate_subscription(total, remaining, period_end, today, today_spend,
+                                      plan, monthly_price_usd)
+    if source_type == "retired":
+        return {
+            "source_type": "retired",
+            "plan": plan,
+            "monthly_price_usd": monthly_price_usd,
+            "total_budget": total,
+            "remaining_budget": remaining,
+            "used_budget": round(total - remaining, 2),
+            "days_remaining": 0,
+            "period_expired": False,
+            "days_since_period_end": 0,
+            "today_spend": round(today_spend, 4),
+            "daily_burn_rate": 0.0,
+            "projected_spend": 0.0,
+            "alerts": [],
+            "budget_health": "RETIRED",
+        }
+
     raw_days = (period_end - today).days
     expired = raw_days < 0
     days_remaining = max(raw_days, 0)
@@ -53,6 +123,7 @@ def evaluate_budget(total: float, remaining: float, period_end: date, today: dat
         health = "GOOD" if not alerts else "WARNING" if len(alerts) < 3 else "CRITICAL"
 
     return {
+        "source_type": "api_credit",
         "total_budget": total,
         "remaining_budget": remaining,
         "used_budget": round(total - remaining, 2),
@@ -220,17 +291,8 @@ class UsageTracker:
                         last_refill TIMESTAMPTZ NOT NULL DEFAULT NOW()
                     )
                 """)
-                
-                # Initialize budget if not exists
-                if self.user_id:
-                    cur.execute("SELECT COUNT(*) FROM budget_tracking WHERE user_id = %s", (self.user_id,))
-                    row = cur.fetchone()
-                    if row and row[0] == 0:
-                        cur.execute("""
-                            INSERT INTO budget_tracking 
-                            (user_id, total_budget, remaining_budget, budget_period_start, budget_period_end, last_updated)
-                            VALUES (%s, 24.96, 24.95, '2025-08-06', '2025-09-30', %s)
-                        """, (self.user_id, datetime.now()))
+                # No budget row is seeded: a missing row reads as "Budget: unknown",
+                # and update_budget creates one (kingdonb/mecris#345).
 
     def resolve_user_id(self, user_id: str) -> str:
         """Resolve familiar_id to pocket_id_sub."""
@@ -288,12 +350,24 @@ class UsageTracker:
                             VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                         """, (now, model, input_tokens, output_tokens, cost, session_type, stored_notes, target_user_id))
                         
-                        # Update remaining budget
-                        cur.execute("""
-                            UPDATE budget_tracking 
-                            SET remaining_budget = remaining_budget - %s, last_updated = %s
-                            WHERE user_id = %s
-                        """, (cost, now, target_user_id))
+                        # Decrement only a dollar (api_credit) budget; a subscription
+                        # grant is not spent per token (kingdonb/mecris#345). Before the
+                        # v9 migration the column is absent and every row is api_credit.
+                        cur.execute("SAVEPOINT budget_decrement")
+                        try:
+                            cur.execute("""
+                                UPDATE budget_tracking
+                                SET remaining_budget = remaining_budget - %s, last_updated = %s
+                                WHERE user_id = %s AND COALESCE(source_type, 'api_credit') = 'api_credit'
+                            """, (cost, now, target_user_id))
+                            cur.execute("RELEASE SAVEPOINT budget_decrement")
+                        except psycopg2.errors.UndefinedColumn:
+                            cur.execute("ROLLBACK TO SAVEPOINT budget_decrement")
+                            cur.execute("""
+                                UPDATE budget_tracking
+                                SET remaining_budget = remaining_budget - %s, last_updated = %s
+                                WHERE user_id = %s
+                            """, (cost, now, target_user_id))
                 return cost
             except Exception as e:
                 logger.error(f"UsageTracker: Neon record_session failed: {e}")
@@ -334,8 +408,13 @@ class UsageTracker:
                         cur.execute("SELECT SUM(estimated_cost) FROM usage_sessions WHERE user_id = %s AND timestamp > NOW() - INTERVAL '7 days'", (target_user_id,))
                         week_spend = cur.fetchone()['sum'] or 0
                         
+                        # Rows from before the v9 migration have no source_type: api_credit.
+                        source_type = budget_info.get('source_type') or 'api_credit'
                         return {
-                            **evaluate_budget(total, remaining, period_end.date(), date.today(), today_spend, week_spend),
+                            **evaluate_budget(total, remaining, period_end.date(), date.today(), today_spend, week_spend,
+                                              source_type=source_type, plan=budget_info.get('plan'),
+                                              monthly_price_usd=budget_info.get('monthly_price_usd')),
+                            "period_start": str(budget_info.get('budget_period_start')),
                             "period_end": str(budget_info['budget_period_end']),
                         }
             except Exception as e:
@@ -381,31 +460,64 @@ class UsageTracker:
 
         raise RuntimeError("UsageTracker: Neon connection not active. Cannot get recent sessions.")
 
-    def update_budget(self, remaining_budget: float, total_budget: Optional[float] = None, 
-                     period_end: Optional[str] = None, user_id: str = None) -> Dict:
-        """Manually update budget information."""
+    def update_budget(self, remaining_budget: Optional[float] = None, total_budget: Optional[float] = None,
+                     period_end: Optional[str] = None, user_id: str = None, *,
+                     period_start: Optional[str] = None, source_type: Optional[str] = None,
+                     plan: Optional[str] = None, monthly_price_usd: Optional[float] = None) -> Dict:
+        """Manually update budget information (kingdonb/mecris#345).
+
+        Every argument is optional; only the fields given are written. source_type
+        is api_credit (a dollar budget), subscription (a plan grant whose window is
+        period_start..period_end) or retired. source_type, plan and
+        monthly_price_usd need scripts/migrate_v9_subscription_budget.py. When the
+        user has no row yet, one is created (period_end is then required).
+        """
+        if source_type is not None and source_type not in SOURCE_TYPES:
+            return {"error": f"source_type must be one of {', '.join(SOURCE_TYPES)}"}
+        if monthly_price_usd is not None and monthly_price_usd < 0:
+            return {"error": "monthly_price_usd must not be negative"}
+        fields = [
+            ("total_budget", total_budget),
+            ("remaining_budget", remaining_budget),
+            ("budget_period_start", period_start),
+            ("budget_period_end", period_end),
+            ("source_type", source_type),
+            ("plan", plan),
+            ("monthly_price_usd", monthly_price_usd),
+        ]
+        fields = [(column, value) for column, value in fields if value is not None]
+        if not fields:
+            return {"error": "Nothing to update: give at least one budget field"}
+
         target_user_id = self.resolve_user_id(user_id)
-        now = datetime.now()
-        
+        now = datetime.now(timezone.utc)
+
         if self.use_neon:
             try:
                 import psycopg2
                 from psycopg2.extras import RealDictCursor
                 with psycopg2.connect(self.neon_url) as conn:
                     with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                        if total_budget and period_end:
-                            cur.execute("""
-                                UPDATE budget_tracking 
-                                SET total_budget = %s, remaining_budget = %s, budget_period_end = %s, last_updated = %s
-                                WHERE user_id = %s
-                            """, (total_budget, remaining_budget, period_end, now, target_user_id))
-                        else:
-                            cur.execute("""
-                                UPDATE budget_tracking 
-                                SET remaining_budget = %s, last_updated = %s
-                                WHERE user_id = %s
-                            """, (remaining_budget, now, target_user_id))
-                        
+                        assignments = ", ".join(f"{column} = %s" for column, _ in fields)
+                        cur.execute(
+                            f"UPDATE budget_tracking SET {assignments}, last_updated = %s WHERE user_id = %s",
+                            tuple(value for _, value in fields) + (now, target_user_id),
+                        )
+                        if cur.rowcount == 0:
+                            if period_end is None:
+                                return {"error": "No budget row yet: give period_end to create one"}
+                            values = dict(fields)
+                            total = values.get("total_budget", remaining_budget or 0.0)
+                            values.setdefault("total_budget", total)
+                            values.setdefault("remaining_budget", total)
+                            values.setdefault("budget_period_start", date.today().isoformat())
+                            columns = list(values)
+                            cur.execute(
+                                f"INSERT INTO budget_tracking (user_id, {', '.join(columns)}, last_updated) "
+                                f"VALUES (%s, {', '.join(['%s'] * len(columns))}, %s)",
+                                (target_user_id, *values.values(), now),
+                            )
+
                         cur.execute("SELECT * FROM budget_tracking WHERE user_id = %s", (target_user_id,))
                         budget_info = cur.fetchone()
                         return {
@@ -413,6 +525,9 @@ class UsageTracker:
                             "remaining": budget_info['remaining_budget'],
                             "period_start": budget_info['budget_period_start'],
                             "period_end": budget_info['budget_period_end'],
+                            "source_type": budget_info.get('source_type') or 'api_credit',
+                            "plan": budget_info.get('plan'),
+                            "monthly_price_usd": budget_info.get('monthly_price_usd'),
                             "last_updated": str(budget_info['last_updated'])
                         }
             except Exception as e:

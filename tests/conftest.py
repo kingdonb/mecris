@@ -1,7 +1,66 @@
 import os
+
+# Keep the test session off live services. This must run before any project
+# import: beeminder_client, twilio_sender and others call a bare load_dotenv()
+# at import, which walks up from the module's directory. A worktree under the
+# user's checkout then found the checkout's real .env, and importing
+# mcp_server ran DDL against live Neon. dotenv is made a no-op and live
+# credentials are stripped from the environment. MECRIS_TESTS_USE_ENV=1 opts
+# back in for deliberate live runs.
+#
+# One exception: a NEON_DB_URL / DATABASE_URL on a loopback host is kept, so
+# CI's Postgres service on localhost still backs the _NEON_REQUIRED tests.
+# Anything that could send libpq elsewhere (another host, a multi-host list,
+# a host/hostaddr/service query parameter, a key=value DSN) is stripped.
+from urllib.parse import urlsplit as _urlsplit
+
+_LIVE_KEYS = ("NEON_DB_URL", "DATABASE_URL", "CLAUDE_API_KEY")
+_LIVE_PREFIXES = ("TWILIO_", "BEEMINDER_", "ANTHROPIC_", "OPENROUTER_", "GROQ_")
+_LOCAL_DB_KEYS = ("NEON_DB_URL", "DATABASE_URL")
+_LOOPBACK_HOSTS = ("localhost", "127.0.0.1", "::1")
+
+
+def _is_loopback_db_url(value):
+    try:
+        parsed = _urlsplit(value)
+        host = parsed.hostname
+    except ValueError:
+        return False
+    return (
+        parsed.scheme in ("postgres", "postgresql")
+        and host in _LOOPBACK_HOSTS
+        and not parsed.query
+    )
+
+
+def _strip_live_key(key, value):
+    if key in _LOCAL_DB_KEYS:
+        return not _is_loopback_db_url(value)
+    return key in _LIVE_KEYS or key.startswith(_LIVE_PREFIXES)
+
+
+if os.environ.get("MECRIS_TESTS_USE_ENV") != "1":
+    import dotenv
+    import dotenv.main
+
+    def _dotenv_disabled(*args, **kwargs):
+        return False
+
+    dotenv.load_dotenv = _dotenv_disabled
+    dotenv.main.load_dotenv = _dotenv_disabled
+    for _key in [k for k, v in os.environ.items() if _strip_live_key(k, v)]:
+        del os.environ[_key]
+
+import tempfile
 import pytest
 import types
 import requests
+
+# mcp_server attaches a file handler at import. Point it at a per-run temp file
+# so the test session never writes into the production logs/mecris_server.log.
+os.environ["MECRIS_LOG_FILE"] = os.path.join(
+    tempfile.mkdtemp(prefix="mecris-pytest-logs-"), "mecris_server.log"
+)
 
 # Pre-load real packages into sys.modules so that later test files using
 # sys.modules.setdefault("psycopg2", MagicMock()) are no-ops and don't

@@ -8,6 +8,7 @@ import com.mecris.go.auth.PocketIdAuthRepository
 import com.mecris.go.sync.SyncServiceApi
 import com.mecris.go.sync.NagNotificationManager
 import com.mecris.go.sync.AggregateStatusResponseDto
+import com.mecris.go.sync.LogMessageRequestDto
 import com.mecris.go.sync.WeatherHeuristicResponseDto
 import com.mecris.go.profile.ProfilePreferencesManager
 import com.mecris.go.ai.SovereignBrain
@@ -48,7 +49,7 @@ class DelayedNagWorker @JvmOverloads constructor(
 
     private suspend fun runNagCheck(phases: MutableList<String>): Result {
         val token = pocketIdAuth.getAccessTokenSuspend()
-        val nagManager = injectedNagManager ?: NagNotificationManager(applicationContext, syncApi)
+        val nagManager = injectedNagManager ?: NagNotificationManager(applicationContext)
 
         try {
             var status: AggregateStatusResponseDto? = null
@@ -148,8 +149,10 @@ class DelayedNagWorker @JvmOverloads constructor(
                 }
 
                 val payload = nagPayload(finalIntent, hasPartialWalk, isSensitive, hour)
+                // #349: Arabic and Greek nags gain one pace line, whoever wrote the text.
+                val message = NagCopy.withPace(llmMessage ?: payload.message, finalIntent.goal, status.pace)
                 Log.i("DelayedNagWorker", "Firing Nag: ${payload.title} (LLM: ${llmMessage != null})")
-                nagManager.showNag(payload.title, llmMessage ?: payload.message, payload.packageName, payload.nagType)
+                nagManager.showNag(payload.title, message, payload.packageName, payload.nagType)
                 phases.add("nag")
 
                 val nowMs = Instant.now().toEpochMilli()
@@ -157,10 +160,11 @@ class DelayedNagWorker @JvmOverloads constructor(
                     .putLong(finalIntent.prefKey, nowMs)
                     .putLong(PREF_GLOBAL_LAST_NAG, nowMs)
                     .apply()
+                logShownNag(token, payload.nagType, Instant.ofEpochMilli(nowMs), phases)
             } else {
                 // 3. SOVEREIGN FALLBACK: Basic local walk check
                 phases.add("fallback")
-                val localHourFallback = java.time.LocalDateTime.now().hour
+                val localHourFallback = injectedHour ?: java.time.LocalDateTime.now().hour
                 val healthManager = injectedHealthManager ?: HealthConnectManager(applicationContext)
                 if (localHourFallback >= 8 && localHourFallback < 20 && healthManager.hasForegroundPermissions()) {
                     phases.add("health_fallback")
@@ -178,11 +182,13 @@ class DelayedNagWorker @JvmOverloads constructor(
 
                             Log.i("DelayedNagWorker", "Firing Sovereign Fallback Nag: $fallbackTitle")
                             phases.add("nag")
-                            nagManager.showNag(fallbackTitle, fallbackMsg, "com.google.android.apps.fitness", "walk_reminder")
+                            val fallbackType = nagTypeFor(GOAL_WALK)
+                            nagManager.showNag(fallbackTitle, fallbackMsg, "com.google.android.apps.fitness", fallbackType)
 
                             prefs.edit()
                                 .putLong(PREF_GLOBAL_LAST_NAG, nowMs)
                                 .apply()
+                            logShownNag(token, fallbackType, Instant.ofEpochMilli(nowMs), phases)
                         } else {
                             Log.i("DelayedNagWorker", "Sovereign Fallback suppressed by global cooldown")
                         }
@@ -204,7 +210,7 @@ class DelayedNagWorker @JvmOverloads constructor(
                 "ARABIC PRESSURE",
                 "Your neural goal is in debt. Clear the cards. 📈",
                 "com.clozemaster.v2",
-                "arabic_pressure"
+                nagTypeFor(GOAL_ARABIC)
             )
             GOAL_WALK -> NagPayload(
                 if (hasPartialWalk) "MAJESTY CAKE 🍰" else "PHYSICAL GOAL",
@@ -216,16 +222,38 @@ class DelayedNagWorker @JvmOverloads constructor(
                     "Boris and Fiona are ready! 🐕 Time for a walk."
                 },
                 "com.google.android.apps.fitness",
-                "walk_reminder"
+                nagTypeFor(GOAL_WALK)
             )
             GOAL_GREEK -> NagPayload(
                 "GREEK ISLAND TIME 🏝️",
                 greekNagMessage(arabicCleared = intent.arabicDone, isArabicHour = hour < 20),
                 "com.clozemaster.v2",
-                "greek_reminder"
+                nagTypeFor(GOAL_GREEK)
             )
-            else -> NagPayload("GOAL REMINDER", "Your goal is waiting. Time to make progress.", null, "unknown")
+            else -> NagPayload("GOAL REMINDER", "Your goal is waiting. Time to make progress.", null, nagTypeFor(intent.goal))
         }
+
+    /**
+     * #213: one awaited audit row per shown nag (channel android_native, bearer
+     * auth, no message text). Called after the cooldown write; any failure is
+     * logged and swallowed, so it never blocks the nag or the cooldown.
+     */
+    private suspend fun logShownNag(token: String?, type: String, shownAt: Instant, phases: MutableList<String>) {
+        if (token == null || type !in LogMessageRequestDto.NAG_TYPES) return
+        phases.add("log")
+        try {
+            val resp = syncApi.logMessage("Bearer $token", LogMessageRequestDto.shownNag(type, shownAt))
+            if (!resp.isSuccessful) {
+                Log.w("DelayedNagWorker", "Nag audit log refused: HTTP ${resp.code()}")
+            }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: java.io.IOException) {
+            Log.d("DelayedNagWorker", "Nag audit log skipped (offline)")
+        } catch (e: Exception) {
+            Log.w("DelayedNagWorker", "Nag audit log failed: ${e.javaClass.simpleName}")
+        }
+    }
 
     private fun isSensitiveMode(status: AggregateStatusResponseDto): Boolean {
         return status.vacation_mode_until?.let {
@@ -276,6 +304,14 @@ class DelayedNagWorker @JvmOverloads constructor(
         const val GREEK_COOLDOWN_MS = 5_400_000L
 
         const val PREF_GLOBAL_LAST_NAG = "global_last_nag_timestamp"
+
+        /** message_log type for a goal's local nag (#213). */
+        fun nagTypeFor(goal: String): String = when (goal) {
+            GOAL_ARABIC -> "arabic_pressure"
+            GOAL_WALK -> "walk_reminder"
+            GOAL_GREEK -> "greek_reminder"
+            else -> "unknown"
+        }
 
         fun greekNagMessage(arabicCleared: Boolean, isArabicHour: Boolean = true): String {
             return if (arabicCleared || !isArabicHour) {
