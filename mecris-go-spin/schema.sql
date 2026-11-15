@@ -179,6 +179,9 @@ CREATE TABLE IF NOT EXISTS claude_plan_usage_readings (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_claude_plan_usage_user_observed ON claude_plan_usage_readings (user_id, observed_at DESC);
+-- One reading per user, source and observed_at (#344); live gets it from
+-- scripts/migrate_v9_claude_readings_unique.py. NULLS NOT DISTINCT needs PostgreSQL 15+.
+CREATE UNIQUE INDEX IF NOT EXISTS claude_plan_usage_readings_user_source_observed_uniq ON claude_plan_usage_readings (user_id, source, observed_at) NULLS NOT DISTINCT;
 
 -- 10. Phone Verifications (SMS 6-digit code flow)
 CREATE TABLE IF NOT EXISTS phone_verifications (

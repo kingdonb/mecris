@@ -268,6 +268,17 @@ class ClaudePlanUsageStore:
         self._initialized = True
 
     def record(self, user_id: str, reading: Dict[str, Any]) -> Dict[str, Any]:
+        """Store a reading, unless one with the same user, source and observed_at
+        is already stored (kingdonb/mecris#344).
+
+        The check and the insert are one statement. Two transactions that run it
+        at the same instant can both pass the NOT EXISTS check. Once
+        scripts/migrate_v9_claude_readings_unique.py has added the unique index on
+        (user_id, source, observed_at), the second one waits for the first and
+        then inserts nothing (ON CONFLICT DO NOTHING), so it is reported as
+        already stored, not as an error. ON CONFLICT has no target, so the
+        statement works the same before the index exists.
+        """
         if not self.neon_url:
             return {"recorded": False, "reason": "NEON_DB_URL not configured"}
         self.init_database()
@@ -276,12 +287,21 @@ class ClaudePlanUsageStore:
                 cur.execute(
                     """INSERT INTO claude_plan_usage_readings
                        (user_id, plan, verified, windows, source, observed_at, notes)
-                       VALUES (%s, %s, %s, %s, %s, %s, %s) RETURNING id""",
+                       SELECT %s::text, %s::text, %s::boolean, %s::jsonb, %s::text, %s::timestamptz, %s::text
+                       WHERE NOT EXISTS (
+                           SELECT 1 FROM claude_plan_usage_readings
+                           WHERE user_id = %s AND source = %s AND observed_at = %s::timestamptz
+                       )
+                       ON CONFLICT DO NOTHING
+                       RETURNING id""",
                     (user_id, reading["plan"], reading["verified"], json.dumps(reading["windows"]),
-                     reading["source"], reading["observed_at"], reading.get("notes", "")),
+                     reading["source"], reading["observed_at"], reading.get("notes", ""),
+                     user_id, reading["source"], reading["observed_at"]),
                 )
-                row_id = cur.fetchone()[0]
-        return {"recorded": True, "id": row_id}
+                row = cur.fetchone()
+        if row is None:
+            return {"recorded": False, "reason": "already stored"}
+        return {"recorded": True, "id": row[0]}
 
     def history(self, user_id: str) -> List[Dict[str, Any]]:
         """Every stored reading for the user (id, plan, windows, observed_at), oldest first."""

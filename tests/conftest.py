@@ -151,3 +151,13 @@ def mock_usage_tracker_init(monkeypatch):
         import usage_tracker as _ut
         monkeypatch.setattr(_ut, "_tracker_instance", None)
         monkeypatch.setattr(_ut.UsageTracker, "init_database", lambda self: None)
+
+
+@pytest.fixture(autouse=True)
+def isolate_claude_usage_snapshot(monkeypatch, tmp_path):
+    """Keep tests away from the real ~/.claude/usage.json (kingdonb/mecris#344).
+
+    The MCP server reads that file for the local user; a developer's live plan
+    usage must not leak into a test run or be stored by one.
+    """
+    monkeypatch.setenv("CLAUDE_USAGE_SNAPSHOT", str(tmp_path / "no-claude-usage.json"))

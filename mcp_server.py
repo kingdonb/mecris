@@ -112,6 +112,7 @@ from virtual_budget_manager import VirtualBudgetManager
 from billing_reconciliation import BillingReconciliation
 from groq_odometer_tracker import get_groq_context_for_narrator, get_groq_reminder_status, record_groq_reading as record_groq_reading_from_tracker
 import claude_plan_usage
+import claude_statusline
 from twilio_sender import smart_send_message, send_sms, send_message
 from scripts.anthropic_cost_tracker import AnthropicCostTracker
 from scripts.clozemaster_scraper import sync_clozemaster_to_beeminder
@@ -1513,9 +1514,100 @@ def get_groq_context(user_id: str = None) -> Dict[str, Any]:
 _claude_plan_store = claude_plan_usage.ClaudePlanUsageStore()
 
 
+def _is_local_user(target_user_id: Optional[str]) -> bool:
+    """Is this the user whose machine the server runs on? ~/.claude belongs to them only."""
+    return bool(target_user_id) and target_user_id == resolve_target_user(None)
+
+
 def _get_claude_plan_status_sync(target_user_id: str) -> Dict[str, Any]:
+    """Status from the newest reading: the stored one, or the Claude Code status
+    line snapshot on this machine when that is more recent (kingdonb/mecris#344)."""
     owner = usage_tracker.resolve_user_id(target_user_id)
-    return claude_plan_usage.summarize(_claude_plan_store.latest(owner))
+    reading = _claude_plan_store.latest(owner)
+    if _is_local_user(target_user_id):
+        reading = claude_statusline.freshest(
+            claude_statusline.load_reading(claude_statusline.snapshot_path()), reading)
+    return claude_plan_usage.summarize(reading)
+
+
+async def _store_claude_reading(target_user_id: str, reading: Dict[str, Any]) -> Dict[str, Any]:
+    """Store a reading, then push it to the Beeminder graph if one is configured."""
+    resolved_user_id = usage_tracker.resolve_user_id(target_user_id)
+    try:
+        result = await asyncio.to_thread(_claude_plan_store.record, resolved_user_id, reading)
+    except Exception as e:
+        logger.error(f"Storing Claude plan reading failed: {e}")
+        return {"recorded": False, "error": str(e)}
+    beeminder = {"pushed": False, "reason": "reading not stored"}
+    if result.get("recorded"):
+        # The Beeminder graph (kingdonb/mecris#371). The reading is already stored;
+        # nothing here may turn that into a failure.
+        try:
+            goal = os.getenv("CLAUDE_BEEMINDER_GOAL", "").strip() or None
+            history = await asyncio.to_thread(_claude_plan_store.history, resolved_user_id) if goal else []
+            beeminder = await claude_plan_usage.sync_reading_to_beeminder(
+                get_user_beeminder_client(target_user_id) if goal else None, goal, history, result.get("id"))
+        except Exception as e:
+            logger.error(f"Claude plan Beeminder push failed: {type(e).__name__}")
+            beeminder = {"pushed": False, "error": type(e).__name__}
+    return {**result, "beeminder": beeminder}
+
+
+# The status line writes ~/.claude/usage.json on every Claude Code response.
+# Readers get it straight from the file; this copies it into Neon (for Spin,
+# Android and the Beeminder graph) when it has changed enough to be worth a row.
+CLAUDE_SNAPSHOT_INGEST_SECONDS = 300
+
+
+async def _ingest_local_claude_reading() -> Dict[str, Any]:
+    """Store the status line snapshot if claude_statusline.should_record says so. Never raises.
+
+    Every process that starts the scheduler runs the loop (Claude Desktop starts
+    several); only the scheduler leader stores, checked on each tick so a
+    handover is honoured.
+    """
+    if not scheduler.is_leader:
+        return {"recorded": False, "reason": "not the scheduler leader"}
+    try:
+        target_user_id = resolve_target_user(None)
+        if not target_user_id:
+            return {"recorded": False, "reason": "no local user"}
+        reading = claude_statusline.load_reading(claude_statusline.snapshot_path())
+        if reading is None:
+            return {"recorded": False, "reason": "no status line snapshot"}
+        owner = usage_tracker.resolve_user_id(target_user_id)
+        stored = await asyncio.to_thread(_claude_plan_store.latest, owner)
+        if not claude_statusline.should_record(reading, stored):
+            return {"recorded": False, "reason": "nothing new"}
+        return await _store_claude_reading(target_user_id, reading)
+    except Exception as e:
+        logger.error(f"Claude status line ingest failed: {type(e).__name__}")
+        return {"recorded": False, "error": type(e).__name__}
+
+
+def _claude_ingest_outcome(result: Dict[str, Any]) -> str:
+    if result.get("recorded"):
+        return "stored a reading"
+    if result.get("error"):
+        return "failed"  # the error itself is logged where it happens
+    return str(result.get("reason", "not stored"))
+
+
+async def _claude_snapshot_ingest_loop() -> None:
+    # Log each change of outcome, so a process that never stores (a standby, or
+    # a leader with no snapshot file) shows up in the log without a line per tick.
+    last = None
+    while True:
+        outcome = _claude_ingest_outcome(await _ingest_local_claude_reading())
+        if outcome != last:
+            logger.info(f"Claude snapshot ingest: {outcome}")
+            last = outcome
+        await asyncio.sleep(CLAUDE_SNAPSHOT_INGEST_SECONDS)
+
+
+def start_claude_snapshot_ingest() -> "asyncio.Task":
+    """Start the periodic ingest on the running event loop."""
+    return asyncio.create_task(_claude_snapshot_ingest_loop())
 
 
 @mcp.tool(description=(
@@ -1549,25 +1641,10 @@ async def record_claude_plan_usage(
         reading = claude_plan_usage.make_reading(windows, plan, verified, source, observed_at, notes)
     except ValueError as e:
         return {"recorded": False, "error": str(e)}
-    resolved_user_id = usage_tracker.resolve_user_id(target_user_id)
-    try:
-        result = _claude_plan_store.record(resolved_user_id, reading)
-    except Exception as e:
-        logger.error(f"record_claude_plan_usage failed: {e}")
-        return {"recorded": False, "error": str(e)}
-    beeminder = {"pushed": False, "reason": "reading not stored"}
-    if result.get("recorded"):
-        # The Beeminder graph (kingdonb/mecris#371). The reading is already stored;
-        # nothing here may turn that into a failure.
-        try:
-            goal = os.getenv("CLAUDE_BEEMINDER_GOAL", "").strip() or None
-            history = _claude_plan_store.history(resolved_user_id) if goal else []
-            beeminder = await claude_plan_usage.sync_reading_to_beeminder(
-                get_user_beeminder_client(target_user_id) if goal else None, goal, history, result.get("id"))
-        except Exception as e:
-            logger.error(f"Claude plan Beeminder push failed: {type(e).__name__}")
-            beeminder = {"pushed": False, "error": type(e).__name__}
-    return {**result, "status": claude_plan_usage.summarize(reading), "beeminder": beeminder}
+    result = await _store_claude_reading(target_user_id, reading)
+    if "error" in result:
+        return result
+    return {**result, "status": claude_plan_usage.summarize(reading)}
 
 
 @mcp.tool(description="Is Claude plan usage available right now? Returns available/constrained/exhausted/unknown from the latest reading (stale readings are unknown).")
@@ -2703,6 +2780,7 @@ if __name__ == "__main__":
         async def run_stdio_with_scheduler():
             log("Starting scheduler")
             scheduler.start()
+            start_claude_snapshot_ingest()
             # Start walk cache listener (pg_notify invalidation)
             try:
                 from services.walk_cache_listener import start_walk_cache_listener, set_cache_reference
@@ -2737,6 +2815,7 @@ if __name__ == "__main__":
         async def run_with_scheduler():
             log("Starting scheduler")
             scheduler.start()
+            start_claude_snapshot_ingest()
             # Start walk cache listener (pg_notify invalidation)
             try:
                 from services.walk_cache_listener import start_walk_cache_listener, set_cache_reference
