@@ -57,7 +57,8 @@
 | Open source harness | ❌ | ❌ | ❌ | ✅ (ours) | ✅ |
 
 **Note on the port-8080 choice:** the other CLIs launch `mcp_server.py --stdio`, which
-*also* starts the FastAPI Android bridge on `0.0.0.0:8080`. Running two of them at once
+*also* starts the FastAPI Android bridge on port 8080 (`127.0.0.1:8080` by default since
+v0.3.0; set `MECRIS_BRIDGE_HOST=0.0.0.0` to reach it from the LAN). Running two of them at once
 hard-fails on the bound port (see the "port conflict" fix in `session_log.md`). The Pi
 bridge deliberately follows `py_harness` and launches `mcp_stdio_server.py` (scheduler +
 stdio, **no** HTTP bridge), so it coexists with any other running harness.

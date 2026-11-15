@@ -76,6 +76,12 @@ htmlcov/
 /data/*.json
 !/data/.gitkeep
 
+# Generated at runtime (claude_monitor.py, tests/test_mecris.py) and local databases (#348).
+# Neon is the only live store; attic/ keeps its historical .db files tracked.
+claude_usage.json
+/mecris_test_report_*.json
+*.db
+
 # Router backups
 /scripts/mikrotik-backup/*.json
 !/scripts/mikrotik-backup/.gitkeep
@@ -93,7 +99,9 @@ tools/talktype/talktype_whisper_server.pid
 # Large Models
 .models/
 *.wasm
-mecris-core/target/
+
+# Rust build output, in every crate (#348)
+**/target/
 
 # Stale nested git repos (submodules removed from tracking)
 tools/cozystack-moon-and-back/

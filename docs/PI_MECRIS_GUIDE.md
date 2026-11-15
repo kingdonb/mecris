@@ -211,7 +211,24 @@ encryption keys) exactly as it does for every other harness. The bridge passes
 
 **Important design decision:** the Claude Code / Gemini / Antigravity configs
 all launch `mcp_server.py --stdio`, which *also* binds the FastAPI Android
-bridge on `0.0.0.0:8080`. Two of those at once fail on the bound port.
+bridge on port 8080. Two of those at once fail on the bound port.
+
+Since v0.3.0 the bridge listens on `127.0.0.1:8080` by default, so only this
+machine can reach it. `MECRIS_BRIDGE_HOST` (in `.env`) picks the interface:
+
+| `MECRIS_BRIDGE_HOST` | Who can reach the bridge |
+|---|---|
+| unset or `127.0.0.1` (default) | This machine only: the CLI, the local web UI on `http://localhost:5173`, other local processes |
+| `0.0.0.0` | Also the LAN. Needed only when a phone uses the Android app's **"Local (Python: 8080)"** backend |
+
+Even with `0.0.0.0`, only local callers (loopback peer, a `localhost` /
+`127.0.0.1` / `[::1]` Host, and no browser Origin other than the local web
+UI) get the standalone default user without a token. Every other caller,
+including the phone, must send a Pocket ID token whose signature verifies
+against `OIDC_JWKS_URI` (default: Pocket ID's `/.well-known/jwks.json`) with
+issuer `OIDC_ISSUER`, so the machine running the bridge must be able to reach
+Pocket ID. The MCP protocol itself is stdio-only: there is no `/mcp` SSE
+endpoint on the bridge.
 
 The Pi bridge instead launches **`mcp_stdio_server.py`** (scheduler + stdio,
 no HTTP bridge), matching the native `py_harness`. Consequences:
@@ -223,7 +240,9 @@ no HTTP bridge), matching the native `py_harness`. Consequences:
   leader nags at a time.
 - ⚠️ A Pi-spawned server does **not** serve the Android app. If you want
   the phone to sync through your machine, keep a `mcp_server.py` instance (or
-  another harness) running for port 8080.
+  another harness) running for port 8080, start it with
+  `MECRIS_BRIDGE_HOST=0.0.0.0`, and pick the **"Local (Python: 8080)"**
+  backend in the app (Settings → Backend).
 
 Each Pi session spawns its **own** server subprocess, and it exits with the
 session. State lives in Neon, so concurrent instances see the same reality.

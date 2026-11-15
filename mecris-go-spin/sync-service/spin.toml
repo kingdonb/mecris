@@ -31,6 +31,9 @@ twilio_whatsapp_template_sid = { required = false, default = "" }
 helix_api_base_url = { required = false, default = "https://app.helix.ml" }
 helix_billing_org_id = { required = false, default = "mecris" }
 cloud_provider = { required = false, default = "unknown_cloud" }
+# Cloud WhatsApp walk reminders stand down while the phone's android_client heartbeat is
+# younger than this many minutes (the phone nags locally). 0 turns the stand-down off.
+reminder_standdown_minutes = { required = false, default = "240" }
 
 [[trigger.http]]
 route = "/internal/review-pump-status"
@@ -88,6 +91,7 @@ twilio_whatsapp_template_sid = "{{ twilio_whatsapp_template_sid }}"
 helix_api_base_url = "{{ helix_api_base_url }}"
 helix_billing_org_id = "{{ helix_billing_org_id }}"
 cloud_provider = "{{ cloud_provider }}"
+reminder_standdown_minutes = "{{ reminder_standdown_minutes }}"
 [component.sync-service.build]
 command = "cargo build --target wasm32-wasip1 --release"
 watch = ["src/**/*.rs", "Cargo.toml"]
