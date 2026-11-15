@@ -69,6 +69,10 @@ import com.mecris.go.sync.SyncServiceApi
 import com.mecris.go.sync.WalkDataSummaryDto
 import com.mecris.go.sync.PersistenceManager
 import com.mecris.go.sync.DashboardCache
+import com.mecris.go.model.ClaudePlanState
+import com.mecris.go.model.SystemPulse
+import com.mecris.go.ui.ClaudePlanCard
+import com.mecris.go.ui.SystemPulseCard
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.delay
@@ -281,12 +285,11 @@ fun MecrisDashboard(
     val manager = remember { ProfilePreferencesManager(context) }
     
     var walkData by remember { mutableStateOf<WalkDataSummary?>(cache?.walkData) }
-    var budgetAmount by remember { mutableStateOf<Double?>(cache?.budgetAmount) }
     var languageStats by remember { mutableStateOf<List<com.mecris.go.sync.LanguageStatDto>>(cache?.languageStats ?: emptyList()) }
     var aggregateStatus by remember { mutableStateOf<com.mecris.go.sync.AggregateStatusResponseDto?>(cache?.aggregateStatus) }
     var homeServerActive by remember { mutableStateOf<Boolean?>(cache?.homeServerActive) }
     var isLoading by remember { mutableStateOf(false) }
-    var isFetching by remember { mutableStateOf(cache?.languageStats.isNullOrEmpty() && cache?.budgetAmount == null) }
+    var isFetching by remember { mutableStateOf(cache?.languageStats.isNullOrEmpty() && cache?.aggregateStatus == null) }
     var surgicalUpdateInProgress by remember { mutableStateOf(false) }
 
     var fetchError by remember { mutableStateOf<String?>(null) }
@@ -538,7 +541,7 @@ fun MecrisDashboard(
         }
 
         // Only show full-screen "FETCHING..." if we have no cached data at all
-        isFetching = languageStats.isEmpty() && budgetAmount == null
+        isFetching = languageStats.isEmpty() && aggregateStatus == null
         isLoading = true
         syncStatus = "Fetching..."
         fetchError = null
@@ -547,23 +550,18 @@ fun MecrisDashboard(
             val token = auth.getAccessTokenSuspend()
             if (token != null) {
                 try {
-                    val budgetResponse = syncApi.getBudget("Bearer $token")
-                    if (budgetResponse.isSuccessful) {
-                        budgetAmount = budgetResponse.body()?.remaining_budget
-                    }
-
                     val healthResponse = syncApi.getHealth("Bearer $token")
                     if (healthResponse.isSuccessful) {
                         homeServerActive = healthResponse.body()?.home_server_active == true
                     }
 
-                    val aggregateResponse = syncApi.getAggregateStatus("Bearer $token")
+                    // full=true: pulse modalities + claude_plan for the dashboard cards
+                    val aggregateResponse = syncApi.getAggregateStatus("Bearer $token", full = true)
                     if (aggregateResponse.isSuccessful) {
                         aggregateStatus = aggregateResponse.body()
                     }
                     
-                    // 1. QUICK FETCH: Get currently known languages first
-                    var langResponse = syncApi.getLanguages("Bearer $token")
+                    val langResponse = syncApi.getLanguages("Bearer $token")
                     if (langResponse.isSuccessful && !surgicalUpdateInProgress) {
                         languageStats = langResponse.body()?.languages ?: emptyList()
                     }
@@ -571,45 +569,15 @@ fun MecrisDashboard(
                     // We have DB data, so release the UI block immediately
                     isFetching = false
 
-                    // 2. SLOW SYNC: Proactively trigger cloud sync (Spin will skip if Home is active)
-                    try {
-                        val syncResponse = syncApi.triggerCloudSync("Bearer $token")
-                        if (!syncResponse.isSuccessful) {
-                            throw retrofit2.HttpException(syncResponse)
-                        }
-                        
-                        // 3. FRESH FETCH: Grab the updated stats after the sync completes
-                        langResponse = syncApi.getLanguages("Bearer $token")
-                        if (langResponse.isSuccessful && !surgicalUpdateInProgress) {
-                            languageStats = langResponse.body()?.languages ?: emptyList()
-                        }
-                        
-                        val freshAggregateResponse = syncApi.getAggregateStatus("Bearer $token")
-                        if (freshAggregateResponse.isSuccessful) {
-                            aggregateStatus = freshAggregateResponse.body()
-                        }
-                    } catch (se: retrofit2.HttpException) {
-                        val errorBody = se.response()?.errorBody()?.string()
-                        val detail = try {
-                            com.google.gson.Gson().fromJson(errorBody, com.mecris.go.sync.SyncResponse::class.java).message
-                        } catch (e: Exception) {
-                            errorBody ?: se.message()
-                        }
-                        Log.e("MecrisDashboard", "Cloud sync trigger failed ($detail)")
-                        fetchError = "Sync Failed: $detail"
-                        syncStatus = "Error"
-                    } catch (se: Exception) {
-                        Log.e("MecrisDashboard", "Cloud sync trigger skipped/failed: ${se.message}")
-                        fetchError = "Sync Error: ${se.message}"
-                        syncStatus = "Error"
-                    }
+                    // #368: no cloud-sync trigger from the phone. The cloud cron
+                    // (failover-sync) keeps language stats fresh; the web app keeps
+                    // its own manual cloud-sync button.
 
                     // Save to cache
                     val now = LocalDateTime.now().format(DateTimeFormatter.ofPattern("HH:mm"))
                     lastSyncTime = now
                     persistenceManager.saveDashboard(DashboardCache(
                         walkData = walkData,
-                        budgetAmount = budgetAmount,
                         languageStats = languageStats,
                         aggregateStatus = aggregateStatus,
                         homeServerActive = homeServerActive,
@@ -756,7 +724,6 @@ fun MecrisDashboard(
             } else {
                 MainNeuralDashboard(
                     walkData = walkData,
-                    budgetAmount = budgetAmount,
                     languageStats = languageStats,
                     aggregateStatus = aggregateStatus,
                     homeServerActive = homeServerActive,
@@ -805,7 +772,6 @@ fun MecrisDashboard(
                                     // Save the optimistic state to cache on success
                                     persistenceManager.saveDashboard(DashboardCache(
                                         walkData = walkData,
-                                        budgetAmount = budgetAmount,
                                         languageStats = languageStats,
                                         aggregateStatus = aggregateStatus,
                                         homeServerActive = homeServerActive,
@@ -839,7 +805,6 @@ fun MecrisDashboard(
 @Composable
 fun MainNeuralDashboard(
     walkData: WalkDataSummary?,
-    budgetAmount: Double?,
     languageStats: List<com.mecris.go.sync.LanguageStatDto>,
     aggregateStatus: com.mecris.go.sync.AggregateStatusResponseDto?,
     homeServerActive: Boolean?,
@@ -881,7 +846,7 @@ fun MainNeuralDashboard(
                     letterSpacing = 1.sp
                 )
                 Text(
-                    "Establish OIDC identity to synchronize cloud goals and virtual budget.", 
+                    "Establish OIDC identity to synchronize cloud goals and Claude plan status.", 
                     style = MaterialTheme.typography.bodySmall, 
                     color = Color.LightGray,
                     modifier = Modifier.padding(top = 8.dp),
@@ -1080,11 +1045,10 @@ fun MainNeuralDashboard(
         }
     }
 
-    OdometerView(
-        value = budgetAmount ?: 0.0,
-        label = if (budgetAmount != null) "VIRTUAL BUDGET" else "VIRTUAL BUDGET (FETCHING...)",
-        digitColor = Color(0xFFFFD600)
-    )
+    // #344: the Claude plan card replaces the API-era VIRTUAL BUDGET odometer.
+    // Re-derived against the clock on every composition, so cached data ages honestly.
+    ClaudePlanCard(view = ClaudePlanState.derive(aggregateStatus?.claude_plan, Instant.now()))
+    SystemPulseCard(rows = SystemPulse.rows(aggregateStatus))
 
     Spacer(modifier = Modifier.height(8.dp))
     val miles = (walkData?.totalDistanceMeters ?: 0.0) / 1609.34
@@ -2493,7 +2457,7 @@ fun SovereignLabScreen(
             Column(modifier = Modifier.padding(12.dp)) {
                 if (weatherData != null) {
                     Text("Condition: ${weatherData!!.conditions} (${weatherData!!.description})", color = Color.White)
-                    Text("Temp: ${weatherData!!.temperature}°C", color = Color.White)
+                    Text(com.mecris.go.sync.weatherTemperatureLine(weatherData!!.temperature), color = Color.White)
                     Text("Dark: ${weatherData!!.is_dark}", color = Color.White)
                     Text("Safe to Walk: ${weatherData!!.is_walk_appropriate}", color = Color.White)
                     
