@@ -1,7 +1,12 @@
 """The MCP server's use of the Claude Code status line snapshot (kingdonb/mecris#344)."""
 
+import asyncio
+import logging
 import os
+import re
+import sys
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -252,6 +257,63 @@ class TestOneIngestPerSnapshot:
         assert second["beeminder"] == {"pushed": False, "reason": "reading not stored"}
         assert len(fake.rows) == 1
         assert push.await_count == 1
+
+
+class TestTheLeaderIngests:
+    """Leadership is shared by every process that starts the scheduler, so each
+    of them must also run the ingest; a leader that never ingests leaves Neon,
+    Spin, Android and Beeminder stale (kingdonb/mecris#344)."""
+
+    def test_the_stdio_entrypoint_starts_the_ingest(self, server, monkeypatch, tmp_path):
+        mcp_server, _ = server
+        monkeypatch.setenv("MCP_STDIO_LOG_FILE", str(tmp_path / "stdio.log"))
+        monkeypatch.delitem(sys.modules, "mcp_stdio_server", raising=False)
+        with patch("logging.basicConfig"):
+            import mcp_stdio_server
+        started = []
+        with patch.object(mcp_server.scheduler, "start", side_effect=lambda: started.append("scheduler")), \
+             patch.object(mcp_server.scheduler, "shutdown"), \
+             patch.object(mcp_server, "start_claude_snapshot_ingest", side_effect=lambda: started.append("ingest")), \
+             patch.object(mcp_server.mcp, "run_stdio_async", AsyncMock()):
+            mcp_stdio_server.main()
+        assert started == ["scheduler", "ingest"]
+
+    def test_every_entrypoint_that_starts_the_scheduler_starts_the_ingest(self):
+        root = Path(__file__).resolve().parent.parent
+        scheduler_start = re.compile(r"^\s*scheduler\.start\(\)", re.MULTILINE)
+        ingest_start = re.compile(r"^\s*start_claude_snapshot_ingest\(\)", re.MULTILINE)
+        missing = sorted(
+            p.name for p in root.glob("*.py")
+            if not p.name.startswith("test_")
+            and len(scheduler_start.findall(p.read_text())) > len(ingest_start.findall(p.read_text()))
+        )
+        assert missing == []
+
+    async def test_a_leader_without_a_snapshot_says_so_without_a_query(self, server):
+        mcp_server, store = server
+        result = await mcp_server._ingest_local_claude_reading()
+        assert result == {"recorded": False, "reason": "no status line snapshot"}
+        store.latest.assert_not_called()
+
+    async def test_the_loop_logs_each_change_of_outcome(self, server, monkeypatch, caplog):
+        mcp_server, _ = server
+        monkeypatch.setattr(mcp_server, "CLAUDE_SNAPSHOT_INGEST_SECONDS", 0)
+        standby = {"recorded": False, "reason": "not the scheduler leader"}
+        ingest = AsyncMock(side_effect=[
+            standby, standby, standby,
+            {"recorded": True, "id": 7, "beeminder": {"pushed": False}},
+            {"recorded": False, "reason": "nothing new"},
+            {"recorded": False, "reason": "nothing new"},
+            asyncio.CancelledError(),
+        ])
+        monkeypatch.setattr(mcp_server, "_ingest_local_claude_reading", ingest)
+        with caplog.at_level(logging.INFO, logger="mecris"), pytest.raises(asyncio.CancelledError):
+            await mcp_server._claude_snapshot_ingest_loop()
+        lines = [r.getMessage() for r in caplog.records if r.getMessage().startswith("Claude snapshot ingest")]
+        assert len(lines) == 3
+        assert "not the scheduler leader" in lines[0]
+        assert "stored" in lines[1]
+        assert "nothing new" in lines[2]
 
 
 class TestIdempotentRecord:
