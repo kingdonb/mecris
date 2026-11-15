@@ -26,6 +26,16 @@ object NagEventRecorder {
         Log.i(TAG, "Nag event queued: $event")
     }
 
+    /**
+     * Queue a nag's shown row (POST /internal/log-message) so the uploader sends it
+     * before any of that nag's events. The only path that logs a shown nag.
+     */
+    fun recordShown(context: Context, shown: LogMessageRequestDto) {
+        MessageEventQueue.forContext(context).enqueueShown(shown)
+        MessageEventUploadWorker.schedule(context)
+        Log.i(TAG, "Nag shown row queued: ${shown.type}")
+    }
+
     /** Suppress walk nags until [untilMs], never shortening an existing suppression. */
     fun suppressWalkUntil(context: Context, untilMs: Long) {
         val prefs = context.applicationContext.getSharedPreferences(WORKER_PREFS, Context.MODE_PRIVATE)

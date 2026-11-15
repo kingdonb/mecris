@@ -9,6 +9,7 @@ import com.mecris.go.sync.SyncServiceApi
 import com.mecris.go.sync.NagNotificationManager
 import com.mecris.go.sync.AggregateStatusResponseDto
 import com.mecris.go.sync.LogMessageRequestDto
+import com.mecris.go.sync.NagEventRecorder
 import com.mecris.go.sync.NagEvents
 import com.mecris.go.sync.WeatherHeuristicResponseDto
 import com.mecris.go.profile.ProfilePreferencesManager
@@ -166,7 +167,7 @@ class DelayedNagWorker @JvmOverloads constructor(
                     .putLong(finalIntent.prefKey, nowMs)
                     .putLong(PREF_GLOBAL_LAST_NAG, nowMs)
                     .apply()
-                logShownNag(token, payload.nagType, Instant.ofEpochMilli(nowMs), clientRef, phases)
+                logShownNag(payload.nagType, Instant.ofEpochMilli(nowMs), clientRef, phases)
             } else {
                 // 3. SOVEREIGN FALLBACK: Basic local walk check
                 phases.add("fallback")
@@ -196,7 +197,7 @@ class DelayedNagWorker @JvmOverloads constructor(
                             prefs.edit()
                                 .putLong(PREF_GLOBAL_LAST_NAG, nowMs)
                                 .apply()
-                            logShownNag(token, fallbackType, Instant.ofEpochMilli(nowMs), clientRef, phases)
+                            logShownNag(fallbackType, Instant.ofEpochMilli(nowMs), clientRef, phases)
                         } else {
                             Log.i("DelayedNagWorker", "Sovereign Fallback suppressed by global cooldown")
                         }
@@ -242,33 +243,27 @@ class DelayedNagWorker @JvmOverloads constructor(
         }
 
     /**
-     * #213: one awaited audit row per shown nag (channel android_native, bearer
-     * auth, no message text). Called after the cooldown write; any failure is
-     * logged and swallowed, so it never blocks the nag or the cooldown.
-     * #363: carries the nag's client_ref, so later taps and actions find this row.
+     * #213: one audit row per shown nag (channel android_native, no message text).
+     * #363: carries the nag's client_ref and goes through the durable queue, which
+     * sends it (with the bearer) before any of that nag's taps or actions, since
+     * Spin answers 404 to an event for a nag it hasn't logged. This is the only
+     * path that logs a shown nag, so it is never logged twice. Called after the
+     * cooldown write; a failure is logged and swallowed, so it never blocks the nag.
      */
-    private suspend fun logShownNag(
-        token: String?,
-        type: String,
-        shownAt: Instant,
-        clientRef: String?,
-        phases: MutableList<String>
-    ) {
-        if (token == null || type !in LogMessageRequestDto.NAG_TYPES) return
+    private fun logShownNag(type: String, shownAt: Instant, clientRef: String?, phases: MutableList<String>) {
+        if (type !in LogMessageRequestDto.NAG_TYPES) return
         phases.add("log")
         val ref = clientRef?.takeIf { NagEvents.isValidClientRef(it) }
         try {
-            val resp = syncApi.logMessage("Bearer $token", LogMessageRequestDto.shownNag(type, shownAt, ref))
-            if (!resp.isSuccessful) {
-                Log.w("DelayedNagWorker", "Nag audit log refused: HTTP ${resp.code()}")
-            }
-        } catch (e: kotlinx.coroutines.CancellationException) {
-            throw e
-        } catch (e: java.io.IOException) {
-            Log.d("DelayedNagWorker", "Nag audit log skipped (offline)")
+            shownLog(LogMessageRequestDto.shownNag(type, shownAt, ref))
         } catch (e: Exception) {
-            Log.w("DelayedNagWorker", "Nag audit log failed: ${e.javaClass.simpleName}")
+            Log.w("DelayedNagWorker", "Nag audit row not queued: ${e.javaClass.simpleName}")
         }
+    }
+
+    private fun shownLog(shown: LogMessageRequestDto) {
+        val sink = injectedShownLog
+        if (sink != null) sink(shown) else NagEventRecorder.recordShown(applicationContext, shown)
     }
 
     private fun isSensitiveMode(status: AggregateStatusResponseDto): Boolean {
