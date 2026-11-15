@@ -14,6 +14,7 @@ use chrono::TimeZone;
 use std::collections::BTreeMap;
 
 mod claude_plan;
+mod events;
 mod gates;
 mod outcome;
 mod pace;
@@ -1590,6 +1591,50 @@ mod tests {
             // log-message dates the row by when the nag was shown, not when it was posted.
             assert!(l.contains("VALUES ((now() AT TIME ZONE 'America/New_York')::DATE,") || l.contains("SELECT ({at} AT TIME ZONE 'America/New_York')::DATE,"), "no New York date: {}", l.trim());
         }
+    }
+
+    // --- #363 phase 1: see what happens ---
+    fn fn_body<'a>(src: &'a str, sig: &str) -> &'a str {
+        let start = src.find(sig).unwrap_or_else(|| panic!("{sig} exists"));
+        let body = &src[start..];
+        let end = ["\nasync fn ", "\nfn ", "\n#[cfg(test)]"].iter().filter_map(|m| body[1..].find(m)).min().map(|i| i + 1).unwrap_or(body.len());
+        &body[..end]
+    }
+
+    #[test]
+    fn test_phase1_routes_are_wired() {
+        let src = include_str!("lib.rs");
+        assert!(src.contains("(\"/internal/log-message-event\", &Method::POST) => handle_log_message_event_post(req)"));
+        assert!(src.contains("(\"/internal/twilio-status\", &Method::POST) => handle_twilio_status_post(req)"));
+    }
+
+    #[test]
+    fn test_twilio_routes_share_one_fail_closed_signature_check() {
+        let src = include_str!("lib.rs");
+        let check = fn_body(src, "async fn twilio_verified_body(");
+        assert!(check.contains("twilio_signature_ok("), "the shared check verifies the signature");
+        assert!(check.contains("record_refusal(endpoint, outcome::Refusal::BadSignature)"), "and counts refusals");
+        assert!(check.contains("text_response(403"), "and answers 403");
+        assert!(fn_body(src, "async fn handle_twilio_webhook_post(").contains("twilio_verified_body(req, \"twilio_webhook_url\", \"twilio-webhook\")"));
+        assert!(fn_body(src, "async fn handle_twilio_status_post(").contains("twilio_verified_body(req, \"twilio_status_callback_url\", \"twilio-status\")"));
+    }
+
+    #[test]
+    fn test_outbound_rows_store_the_sid() {
+        let src = include_str!("lib.rs");
+        let log = fn_body(src, "async fn log_outbound(");
+        assert!(log.contains("message_sid, delivery_status, status_updated_at"), "the outbound INSERT stores the SID and initial status");
+        let send = fn_body(src, "async fn send_twilio_whatsapp_template(");
+        assert!(send.contains("events::parse_send_receipt("), "the send reads Twilio's answer");
+        assert!(send.contains("events::with_status_callback("), "and adds StatusCallback when configured");
+    }
+
+    #[test]
+    fn test_heartbeat_stores_notifications_enabled() {
+        let src = include_str!("lib.rs");
+        let hb = fn_body(src, "async fn handle_heartbeat_post(");
+        assert!(hb.contains("events::heartbeat_notifications_enabled("));
+        assert!(hb.contains("notifications_checked_at = now()"));
     }
 
     // --- Internal endpoints: fail closed, no published key, callers that can actually authenticate ---
