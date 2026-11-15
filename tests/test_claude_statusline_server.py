@@ -328,6 +328,8 @@ class TestIdempotentRecord:
         assert second == {"recorded": False, "reason": "already stored"}
         assert len(fake.inserts) == 2
         assert all("SELECT" in sql and "WHERE NOT EXISTS" in sql for sql in fake.inserts)
+        # With the v9 unique index in place, a concurrent twin is skipped, not an error.
+        assert all("ON CONFLICT DO NOTHING RETURNING ID" in sql for sql in fake.inserts)
 
     def test_another_source_at_the_same_time_is_stored(self):
         fake = FakeNeon()
