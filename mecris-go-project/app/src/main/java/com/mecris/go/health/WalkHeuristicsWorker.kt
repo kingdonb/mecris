@@ -63,7 +63,12 @@ class WalkHeuristicsWorker @JvmOverloads constructor(
                 phases.add("hb")
                 val hbResponse = syncApi.sendHeartbeat(
                     "Bearer $token",
-                    com.mecris.go.sync.HeartbeatRequestDto(role = "android_client", process_id = "com.mecris.go")
+                    com.mecris.go.sync.HeartbeatRequestDto(
+                        role = "android_client",
+                        process_id = "com.mecris.go",
+                        // #363: notifications on AND the nag channel not silenced.
+                        notifications_enabled = com.mecris.go.sync.NagNotificationManager.notificationsEnabled(applicationContext)
+                    )
                 )
                 
                 if (hbResponse.isSuccessful) {

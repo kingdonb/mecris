@@ -81,9 +81,13 @@ class DelayedNagWorkerGateTest {
             pace = pace
         )
 
+    /** #363: shown rows go to the durable queue; the test captures them here. */
+    private val shownLogs = mutableListOf<LogMessageRequestDto>()
+
     private fun worker(hour: Int) = DelayedNagWorker(
         context, workerParams, pocketIdAuth, syncApi, brain, nagManager,
-        injectedHealthManager = healthManager, injectedHour = hour
+        injectedHealthManager = healthManager, injectedHour = hour,
+        injectedShownLog = { shownLogs.add(it) }
     )
 
     private fun stubAggregate(arabic: Boolean, walk: Boolean, greek: Boolean, pace: List<PaceDto>? = null) {
@@ -102,39 +106,51 @@ class DelayedNagWorkerGateTest {
         sunrise = 0L, sunset = 0L, is_dark = false, now_epoch = 0L, data_ts = 0L
     )
 
-    // --- #213: every shown nag leaves an android_native message_log row ---
+    // --- #213 + #363: every shown nag leaves one android_native message_log row,
+    // queued durably (the uploader sends it before any of that nag's events) ---
 
-    private fun MockKMatcherScope.loggedAs(type: String) = match<LogMessageRequestDto> {
-        it.type == type && it.channel == "android_native" && it.sent_at != null
+    private fun assertShownOnce(type: String) {
+        assertEquals("one shown row per nag", 1, shownLogs.size)
+        val row = shownLogs.single()
+        assertEquals(type, row.type)
+        assertEquals("android_native", row.channel)
+        assertNotNull(row.sent_at)
     }
 
-    private fun httpError(code: Int): retrofit2.Response<Unit> =
-        retrofit2.Response.error(code, "{\"status\":\"error\"}".toResponseBody("application/json".toMediaType()))
-
         @Test
-        fun `fired nag logs exactly once with the bearer and its type`() = runBlocking {
+        fun `fired nag queues exactly one shown row with its type`() = runBlocking {
         stubAggregate(arabic = false, walk = true, greek = true)
 
         worker(hour = 10).doWork()
 
-        coVerify(exactly = 1) { syncApi.logMessage(any(), any()) }
-        coVerify(exactly = 1) { syncApi.logMessage("Bearer fake_token", loggedAs("arabic_pressure")) }
+        assertShownOnce("arabic_pressure")
         }
 
         @Test
-        fun `walk and greek nags log their own types`() = runBlocking {
+        fun `the worker never calls log-message itself, so a nag is never logged twice`() = runBlocking {
+        stubAggregate(arabic = false, walk = true, greek = true)
+
+        worker(hour = 10).doWork()
+
+        coVerify(exactly = 0) { syncApi.logMessage(any(), any()) }
+        assertEquals(1, shownLogs.size)
+        }
+
+        @Test
+        fun `walk and greek nags queue their own types`() = runBlocking {
         stubAggregate(arabic = true, walk = false, greek = true)
         coEvery { syncApi.getWeatherHeuristic(any(), any()) } returns retrofit2.Response.success(sunny())
         worker(hour = 12).doWork()
-        coVerify(exactly = 1) { syncApi.logMessage("Bearer fake_token", loggedAs("walk_reminder")) }
+        assertShownOnce("walk_reminder")
 
+        shownLogs.clear()
         stubAggregate(arabic = true, walk = true, greek = false)
         worker(hour = 18).doWork()
-        coVerify(exactly = 1) { syncApi.logMessage("Bearer fake_token", loggedAs("greek_reminder")) }
+        assertShownOnce("greek_reminder")
         }
 
         @Test
-        fun `nag suppressed by cooldown logs nothing`() = runBlocking {
+        fun `nag suppressed by cooldown queues nothing`() = runBlocking {
         stubAggregate(arabic = false, walk = true, greek = true)
         val nowMs = System.currentTimeMillis()
         every { sharedPrefs.getLong("last_arabic_nag_timestamp", 0L) } returns nowMs
@@ -142,38 +158,24 @@ class DelayedNagWorkerGateTest {
 
         worker(hour = 10).doWork()
 
-        coVerify(exactly = 0) { syncApi.logMessage(any(), any()) }
+        assertEquals(0, shownLogs.size)
         }
 
         @Test
-        fun `log IOException still shows the nag and writes the cooldown`() = runBlocking {
+        fun `a failing queue still shows the nag and writes the cooldown`() = runBlocking {
         stubAggregate(arabic = false, walk = true, greek = true)
-        coEvery { syncApi.logMessage(any(), any()) } throws java.io.IOException("offline")
+        val failing = DelayedNagWorker(
+            context, workerParams, pocketIdAuth, syncApi, brain, nagManager,
+            injectedHealthManager = healthManager, injectedHour = 10,
+            injectedShownLog = { throw IllegalStateException("disk full") }
+        )
 
-        val result = worker(hour = 10).doWork()
+        val result = failing.doWork()
 
         assertEquals(androidx.work.ListenableWorker.Result.success(), result)
-        coVerify(exactly = 1) { syncApi.logMessage(any(), any()) }
         verify(exactly = 1) { nagManager.showNag("ARABIC PRESSURE", any(), any(), "arabic_pressure") }
         verify { prefsEditor.putLong("last_arabic_nag_timestamp", any()) }
         verify { prefsEditor.putLong("global_last_nag_timestamp", any()) }
-        }
-
-        @Test
-        fun `log 401 or 404 still shows the nag and writes the cooldown`() = runBlocking {
-        for (code in listOf(401, 404)) {
-            clearMocks(nagManager, prefsEditor, answers = false)
-            stubAggregate(arabic = false, walk = true, greek = true)
-            coEvery { syncApi.logMessage(any(), any()) } returns httpError(code)
-
-            val result = worker(hour = 10).doWork()
-
-            assertEquals("HTTP $code", androidx.work.ListenableWorker.Result.success(), result)
-            verify(exactly = 1) { nagManager.showNag("ARABIC PRESSURE", any(), any(), "arabic_pressure") }
-            verify { prefsEditor.putLong("last_arabic_nag_timestamp", any()) }
-            verify { prefsEditor.putLong("global_last_nag_timestamp", any()) }
-        }
-        coVerify(exactly = 2) { syncApi.logMessage(any(), any()) }
         }
 
         @Test
@@ -188,7 +190,90 @@ class DelayedNagWorkerGateTest {
 
         verify(exactly = 1) { nagManager.showNag(any(), any(), "com.google.android.apps.fitness", "walk_reminder") }
         verify { prefsEditor.putLong("global_last_nag_timestamp", any()) }
-        coVerify(exactly = 1) { syncApi.logMessage("Bearer fake_token", loggedAs("walk_reminder")) }
+        assertShownOnce("walk_reminder")
+        }
+
+        @Test
+        fun `fallback nag is queued even with no token yet`() = runBlocking {
+        coEvery { pocketIdAuth.getAccessTokenSuspend() } returns null
+        coEvery { healthManager.hasForegroundPermissions() } returns true
+
+        worker(hour = 10).doWork()
+
+        verify(exactly = 1) { nagManager.showNag(any(), any(), "com.google.android.apps.fitness", "walk_reminder") }
+        assertShownOnce("walk_reminder")
+        }
+
+    // --- #363 phase 1: client_ref on the shown row; LATER/START suppress walk nags ---
+
+        @Test
+        fun `shown row carries the client_ref the notification was built with`() = runBlocking {
+        stubAggregate(arabic = false, walk = true, greek = true)
+        val ref = "3f2b8c1e-7a4d-4e0b-9c55-2b1f0d6a9e11"
+        every { nagManager.showNag(any(), any(), any(), any()) } returns ref
+
+        worker(hour = 10).doWork()
+
+        assertShownOnce("arabic_pressure")
+        assertEquals(ref, shownLogs.single().client_ref)
+        }
+
+        @Test
+        fun `an invalid client_ref is never sent`() = runBlocking {
+        stubAggregate(arabic = false, walk = true, greek = true)
+        every { nagManager.showNag(any(), any(), any(), any()) } returns ""
+
+        worker(hour = 10).doWork()
+
+        assertShownOnce("arabic_pressure")
+        assertNull(shownLogs.single().client_ref)
+        }
+
+        @Test
+        fun `suppressed walk nag does not fire and spends no weather`() = runBlocking {
+        stubAggregate(arabic = true, walk = false, greek = true)
+        every { sharedPrefs.getLong(WalkSuppression.PREF_KEY, 0L) } returns System.currentTimeMillis() + 60_000L
+
+        worker(hour = 12).doWork()
+
+        verify(exactly = 0) { nagManager.showNag(any(), any(), any(), any()) }
+        coVerify(exactly = 0) { syncApi.getWeatherHeuristic(any(), any()) }
+        coVerify(exactly = 0) { syncApi.logMessage(any(), any()) }
+        }
+
+        @Test
+        fun `suppressed walk still lets an eligible greek nag through`() = runBlocking {
+        stubAggregate(arabic = true, walk = false, greek = false)
+        every { sharedPrefs.getLong(WalkSuppression.PREF_KEY, 0L) } returns System.currentTimeMillis() + 60_000L
+
+        worker(hour = 18).doWork()
+
+        verify(exactly = 1) { nagManager.showNag(eq("GREEK ISLAND TIME 🏝️"), any(), "com.clozemaster.v2", "greek_reminder") }
+        coVerify(exactly = 0) { syncApi.getWeatherHeuristic(any(), any()) }
+        }
+
+        @Test
+        fun `expired suppression lets the walk nag fire`() = runBlocking {
+        stubAggregate(arabic = true, walk = false, greek = true)
+        every { sharedPrefs.getLong(WalkSuppression.PREF_KEY, 0L) } returns System.currentTimeMillis() - 1L
+        coEvery { syncApi.getWeatherHeuristic(any(), any()) } returns retrofit2.Response.success(sunny())
+
+        worker(hour = 12).doWork()
+
+        verify(exactly = 1) { nagManager.showNag("PHYSICAL GOAL", any(), "com.google.android.apps.fitness", "walk_reminder") }
+        }
+
+        @Test
+        fun `suppressed walk also silences the sovereign fallback nag`() = runBlocking {
+        coEvery { syncApi.getAggregateStatus(any()) } returns retrofit2.Response.error(
+            503, "{}".toResponseBody("application/json".toMediaType())
+        )
+        coEvery { healthManager.hasForegroundPermissions() } returns true
+        every { sharedPrefs.getLong(WalkSuppression.PREF_KEY, 0L) } returns System.currentTimeMillis() + 60_000L
+
+        worker(hour = 10).doWork()
+
+        verify(exactly = 0) { nagManager.showNag(any(), any(), any(), any()) }
         }
 
     // --- #349: pace line on local Arabic and Greek nags ---
