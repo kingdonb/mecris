@@ -3,7 +3,6 @@
 **Date:** 2026-11-15
 **Author:** Claude (Opus 5.5) & Kingdon
 **Tags:** [mecris, akamai, spin, twilio, whatsapp, postgres, workflows, testing]
-**Status:** draft
 **Summary:** v0.2.0 let the cloud cron in, and the checks behind the door were broken. Twilio accepted five walk reminders at the wrong hours, and one was delivered. Then Meta disabled the WhatsApp business account, and we still don't know why. v0.3.0 rebuilt the checks, and WhatsApp is switched off while we design something better.
 
 ---
@@ -93,9 +92,9 @@ Before writing this post, we asked Twilio what had happened to the messages, not
 | 4:59 AM | delivered |
 | 7:00, 9:00, 10:59 AM and 12:59 PM | undelivered, error 63051 |
 
-Error 63051 means the WhatsApp sender or its account is locked. Twilio's sender API was more specific. The sender was offline, with reason 63112: *the Meta and/or WhatsApp Business Accounts connected to this Sender were disabled by Meta*. Meta's own notice said the business and its WhatsApp accounts had been disabled on November 14 for a breach of the Terms of Acceptable Use, with the duration given as permanent. Kingdon has requested a review.
+Error 63051 means the WhatsApp sender or its account is locked. Twilio's sender API was more specific. The sender was offline, with reason 63112: *the Meta and/or WhatsApp Business Accounts connected to this Sender were disabled by Meta*. Meta's own notice said the business and its WhatsApp accounts had been disabled on November 14 for a breach of the Terms of Acceptable Use, with the duration given as permanent. Kingdon has requested a review, which Meta says can take about 48 hours. As this goes up, we're still waiting.
 
-There were three more sends on November 15, at 4:54, 9:57 and 12:00, all undelivered with the same error. The cron was deleted by then. The likeliest sender is the phone running a v0.2.0 build, whose authenticated reminder call the 0.2.0 API still accepted. v0.3.0 closed that path.
+There were three more sends on November 15, at 4:54, 9:57 and 12:00, all undelivered with the same error. The cron was deleted by then. The sender was the phone: Kingdon had a v0.2.0 build installed for a while, and the 0.2.0 API still accepted its authenticated reminder call. v0.3.0 closed that path.
 
 So Kingdon wasn't nagged five times. He got one message at 4:59 AM, and every message after that was refused. `message_log` called all of them `sent`, because Twilio had accepted the request. Accepted is not delivered.
 
