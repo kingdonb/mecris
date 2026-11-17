@@ -194,7 +194,13 @@ class BeeminderClient:
             
             if response.status_code != 200:
                 msg = f"Beeminder API call failed: {response.status_code} - {response.text}"
-                logger.error(msg)
+                if response.status_code == 422 and "Duplicate request" in response.text:
+                    # A resent requestid: the datapoint is already in. Callers decide
+                    # what that means, so it still raises, but it is not an error (#392).
+                    logger.info("Beeminder: duplicate request, already recorded")
+                else:
+                    # The status only: the response body stays out of the log (#392, #358).
+                    logger.error(f"Beeminder API call failed: {response.status_code}")
                 raise BeeminderAPIError(msg, status_code=response.status_code)
             
             return response.json()

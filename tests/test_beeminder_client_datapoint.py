@@ -127,3 +127,50 @@ async def test_add_datapoint_posts_to_correct_endpoint():
 
     assert captured["endpoint"] == "users/testuser/goals/groqspend/datapoints.json"
     assert captured["method"] == "POST"
+
+
+# --- #392: a duplicate request is an expected answer, not an error ----------
+
+class _Resp:
+    def __init__(self, status_code, text):
+        self.status_code, self.text = status_code, text
+
+    def json(self):
+        return {}
+
+
+async def _post_answering(status_code, text, caplog):
+    import logging
+    from beeminder_client import BeeminderAPIError
+    client = _make_client()
+    client.client = AsyncMock()
+    client.client.post = AsyncMock(return_value=_Resp(status_code, text))
+    with caplog.at_level(logging.DEBUG, logger="mecris.beeminder"):
+        with pytest.raises(BeeminderAPIError) as err:
+            await client.add_datapoint("claude", 0, comment="@TARE", requestid="claude-tare-2026-11-16")
+    return err.value
+
+
+@pytest.mark.asyncio
+async def test_duplicate_request_is_not_logged_as_an_error(caplog):
+    import logging
+    err = await _post_answering(422, '{"errors":"Duplicate request"}', caplog)
+    assert err.status_code == 422  # callers still see it and decide
+    assert not [r for r in caplog.records if r.name == "mecris.beeminder" and r.levelno >= logging.WARNING]
+
+
+@pytest.mark.asyncio
+async def test_other_failures_are_still_errors_without_the_response_body(caplog):
+    import logging
+    err = await _post_answering(500, '{"secret":"body with details"}', caplog)
+    assert err.status_code == 500
+    errors = [r for r in caplog.records if r.name == "mecris.beeminder" and r.levelno >= logging.ERROR]
+    assert errors and "500" in errors[0].getMessage()
+    assert "details" not in errors[0].getMessage()
+
+
+@pytest.mark.asyncio
+async def test_a_422_that_is_not_a_duplicate_is_still_an_error(caplog):
+    import logging
+    await _post_answering(422, '{"errors":"value is not a number"}', caplog)
+    assert [r for r in caplog.records if r.name == "mecris.beeminder" and r.levelno >= logging.ERROR]
