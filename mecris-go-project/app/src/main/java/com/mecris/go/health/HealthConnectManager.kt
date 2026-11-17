@@ -48,6 +48,9 @@ class HealthConnectManager(private val context: Context) {
         checkAvailability()
     }
 
+    /** Re-check Health Connect itself, e.g. after the user installs or updates it (#62). */
+    fun refreshAvailability() = checkAvailability()
+
     private fun checkAvailability() {
         val availability = HealthConnectClient.getSdkStatus(context)
         _isSupported.value = availability == HealthConnectClient.SDK_AVAILABLE
