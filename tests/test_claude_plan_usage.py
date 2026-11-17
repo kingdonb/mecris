@@ -164,68 +164,91 @@ def _hist(*rows):
     return [{**_reading(pct, weekly_reset=reset), "id": rid} for rid, pct, reset in rows]
 
 
-class TestCumulativeWeeklyPct:
-    def test_empty_history_is_zero(self):
-        assert cpu.cumulative_weekly_pct([]) == 0
+class TestBeeminderDatapoints:
+    """An odometer goal: the week's percentage goes in as it is, and a 0 @TARE
+    datapoint at the weekly reset tells Beeminder the odometer started over (#390)."""
 
-    def test_one_week_counts_its_highest_reading(self):
-        h = _hist((1, 10, MON_4AM_ET), (2, 62, MON_4AM_ET), (3, 40, MON_4AM_ET))
-        assert cpu.cumulative_weekly_pct(h) == 62
+    def test_first_reading_ever_is_pushed_raw_with_no_tare(self):
+        dps = cpu.beeminder_datapoints(_hist((7, 12, MON_4AM_ET)), reading_id=7)
+        assert len(dps) == 1
+        assert dps[0]["value"] == 12
+        assert dps[0]["requestid"] == "claude-plan-7"
+        assert "12% of this week" in dps[0]["comment"] and "ultra" in dps[0]["comment"]
+        assert "running total" not in dps[0]["comment"]
+        assert "timestamp" not in dps[0]
 
-    def test_weeks_add_up_across_the_reset(self):
-        h = _hist((1, 62, MON_4AM_ET), (2, 3, NEXT_MON_4AM_ET))
-        assert cpu.cumulative_weekly_pct(h) == 65
+    def test_higher_reading_in_the_same_week_is_pushed_raw(self):
+        dps = cpu.beeminder_datapoints(_hist((1, 10, MON_4AM_ET), (2, 20, MON_4AM_ET)), reading_id=2)
+        assert [d["value"] for d in dps] == [20]
 
-    def test_same_week_with_slightly_different_reset_time_is_one_week(self):
-        h = _hist((1, 20, MON_4AM_ET), (2, 30, "2026-11-16T04:01:00-05:00"))
-        assert cpu.cumulative_weekly_pct(h) == 30
-
-    def test_order_does_not_matter(self):
-        h = _hist((2, 3, NEXT_MON_4AM_ET), (1, 62, MON_4AM_ET))
-        assert cpu.cumulative_weekly_pct(h) == 65
-
-    def test_reading_without_weekly_window_is_ignored(self):
-        broken = {"id": 9, "windows": [{"kind": "session", "pct_used": 50, "resets_at": TONIGHT_8PM_ET}]}
-        assert cpu.cumulative_weekly_pct(_hist((1, 10, MON_4AM_ET)) + [broken]) == 10
-
-
-class TestBeeminderDatapoint:
-    def test_first_reading_pushes_its_value(self):
-        dp = cpu.beeminder_datapoint(_hist((7, 12, MON_4AM_ET)), reading_id=7)
-        assert dp["value"] == 12
-        assert dp["requestid"] == "claude-plan-7"
-        assert "12% of this week" in dp["comment"] and "ultra" in dp["comment"]
-
-    def test_unchanged_total_is_not_pushed(self):
+    def test_unchanged_reading_is_not_pushed(self):
         h = _hist((1, 62, MON_4AM_ET), (2, 62, MON_4AM_ET))
-        assert cpu.beeminder_datapoint(h, reading_id=2) is None
+        assert cpu.beeminder_datapoints(h, reading_id=2) == []
 
     def test_lower_correction_in_same_week_is_not_pushed(self):
         h = _hist((1, 62, MON_4AM_ET), (2, 50, MON_4AM_ET))
-        assert cpu.beeminder_datapoint(h, reading_id=2) is None
+        assert cpu.beeminder_datapoints(h, reading_id=2) == []
 
-    def test_new_week_keeps_the_line_climbing(self):
+    def test_new_week_sends_a_tare_then_the_raw_reading(self):
         h = _hist((1, 62, MON_4AM_ET), (2, 3, NEXT_MON_4AM_ET))
-        dp = cpu.beeminder_datapoint(h, reading_id=2)
-        assert dp["value"] == 65  # never drops at the weekly reset
-        assert "3% of this week" in dp["comment"]
+        tare, reading = cpu.beeminder_datapoints(h, reading_id=2)
+        assert tare["value"] == 0
+        assert "@TARE" in tare["comment"]
+        assert tare["requestid"] == "claude-tare-2026-11-16"
+        # Dated at the reset itself (Mon 4:00 AM ET), however late the first reading comes.
+        assert tare["timestamp"] == int(datetime(2026, 11, 16, 9, 0, tzinfo=timezone.utc).timestamp())
+        assert reading["value"] == 3  # not 65: no running total
+        assert reading["requestid"] == "claude-plan-2"
+        assert "3% of this week" in reading["comment"]
 
-    def test_requestid_is_stable_for_the_same_reading(self):
-        h = _hist((1, 10, MON_4AM_ET), (2, 20, MON_4AM_ET))
-        assert cpu.beeminder_datapoint(h, 2)["requestid"] == cpu.beeminder_datapoint(list(reversed(h)), 2)["requestid"]
+    def test_later_readings_of_the_week_repeat_the_same_tare(self):
+        """The tare goes with every push of the week. Its request id makes the
+        repeats no-ops, and a tare that failed the first time gets another chance."""
+        h = _hist((1, 62, MON_4AM_ET), (2, 3, NEXT_MON_4AM_ET), (3, 9, NEXT_MON_4AM_ET))
+        tare, reading = cpu.beeminder_datapoints(h, reading_id=3)
+        assert tare["requestid"] == "claude-tare-2026-11-16" and tare["value"] == 0
+        assert reading["value"] == 9
+
+    def test_a_skipped_week_still_gets_one_tare(self):
+        h = _hist((1, 62, MON_4AM_ET), (2, 5, "2026-11-30T04:00:00-05:00"))
+        tare, reading = cpu.beeminder_datapoints(h, reading_id=2)
+        assert tare["requestid"] == "claude-tare-2026-11-23"
+        assert reading["value"] == 5
+
+    def test_old_reading_filed_after_a_newer_week_is_not_pushed(self):
+        h = _hist((1, 62, MON_4AM_ET), (2, 3, NEXT_MON_4AM_ET), (3, 70, MON_4AM_ET))
+        assert cpu.beeminder_datapoints(h, reading_id=3) == []
+
+    def test_same_week_with_slightly_different_reset_time_is_one_week(self):
+        h = _hist((1, 20, MON_4AM_ET), (2, 30, "2026-11-16T04:01:00-05:00"))
+        assert [d["value"] for d in cpu.beeminder_datapoints(h, reading_id=2)] == [30]
+
+    def test_order_of_history_does_not_matter(self):
+        h = _hist((1, 62, MON_4AM_ET), (2, 3, NEXT_MON_4AM_ET))
+        assert cpu.beeminder_datapoints(h, 2) == cpu.beeminder_datapoints(list(reversed(h)), 2)
+
+    def test_reading_without_weekly_window_is_ignored(self):
+        broken = {"id": 9, "windows": [{"kind": "session", "pct_used": 50, "resets_at": TONIGHT_8PM_ET}]}
+        h = _hist((1, 10, MON_4AM_ET)) + [broken]
+        assert cpu.beeminder_datapoints(h, reading_id=9) == []
+        assert cpu.beeminder_datapoints(h, reading_id=1)[0]["value"] == 10
 
     def test_unknown_reading_id_is_not_pushed(self):
-        assert cpu.beeminder_datapoint(_hist((1, 10, MON_4AM_ET)), reading_id=99) is None
+        assert cpu.beeminder_datapoints(_hist((1, 10, MON_4AM_ET)), reading_id=99) == []
 
 
 class _FakeBeeminder:
-    def __init__(self, error=None):
-        self.calls, self.error = [], error
+    """Records calls. `errors` maps a request id to the exception that call raises."""
 
-    async def add_datapoint(self, goal_slug, value, comment="", requestid=None, daystamp=None):
+    def __init__(self, error=None, errors=None):
+        self.calls, self.error, self.errors = [], error, errors or {}
+
+    async def add_datapoint(self, goal_slug, value, comment="", requestid=None, daystamp=None, timestamp=None):
         self.calls.append((goal_slug, value, comment, requestid))
-        if self.error:
-            raise self.error
+        self.timestamps = getattr(self, "timestamps", []) + [timestamp]
+        error = self.errors.get(requestid, self.error)
+        if error:
+            raise error
         return True
 
 
@@ -244,18 +267,46 @@ class TestSyncReadingToBeeminder:
         assert "CLAUDE_BEEMINDER_GOAL" in out["reason"]
 
     @pytest.mark.asyncio
-    async def test_pushes_changed_total(self):
+    async def test_pushes_a_changed_reading(self):
         client = _FakeBeeminder()
         out = await cpu.sync_reading_to_beeminder(client, "claude-usage", _hist((1, 10, MON_4AM_ET)), 1)
         assert out == {"pushed": True, "goal": "claude-usage", "value": 10, "requestid": "claude-plan-1"}
         assert client.calls[0][:2] == ("claude-usage", 10) and client.calls[0][3] == "claude-plan-1"
 
     @pytest.mark.asyncio
-    async def test_unchanged_total_makes_no_call(self):
+    async def test_unchanged_reading_makes_no_call(self):
         client = _FakeBeeminder()
         h = _hist((1, 10, MON_4AM_ET), (2, 10, MON_4AM_ET))
         out = await cpu.sync_reading_to_beeminder(client, "claude-usage", h, 2)
         assert out["pushed"] is False and client.calls == []
+        assert out["reason"] == "reading unchanged"
+
+    @pytest.mark.asyncio
+    async def test_new_week_sends_the_tare_before_the_reading(self):
+        client = _FakeBeeminder()
+        h = _hist((1, 62, MON_4AM_ET), (2, 3, NEXT_MON_4AM_ET))
+        out = await cpu.sync_reading_to_beeminder(client, "claude-usage", h, 2)
+        assert [(c[1], c[3]) for c in client.calls] == [(0, "claude-tare-2026-11-16"), (3, "claude-plan-2")]
+        assert client.timestamps[0] is not None and client.timestamps[1] is None
+        assert out == {"pushed": True, "goal": "claude-usage", "value": 3, "requestid": "claude-plan-2",
+                       "tare": "claude-tare-2026-11-16"}
+
+    @pytest.mark.asyncio
+    async def test_tare_already_in_still_sends_the_reading(self):
+        client = _FakeBeeminder(errors={"claude-tare-2026-11-16": _ApiError(422)})
+        h = _hist((1, 62, MON_4AM_ET), (2, 3, NEXT_MON_4AM_ET))
+        out = await cpu.sync_reading_to_beeminder(client, "claude-usage", h, 2)
+        assert [c[3] for c in client.calls] == ["claude-tare-2026-11-16", "claude-plan-2"]
+        assert out["pushed"] is True and out["value"] == 3
+
+    @pytest.mark.asyncio
+    async def test_failed_tare_holds_the_reading_back(self):
+        """A raw 3 after last week's 62 with no tare would read as going backwards."""
+        client = _FakeBeeminder(errors={"claude-tare-2026-11-16": _ApiError(500)})
+        h = _hist((1, 62, MON_4AM_ET), (2, 3, NEXT_MON_4AM_ET))
+        out = await cpu.sync_reading_to_beeminder(client, "claude-usage", h, 2)
+        assert [c[3] for c in client.calls] == ["claude-tare-2026-11-16"]
+        assert out["pushed"] is False and out["error"] == "_ApiError status=500"
 
     @pytest.mark.asyncio
     async def test_duplicate_requestid_counts_as_already_in(self):
@@ -321,20 +372,19 @@ class TestStatusLineRows:
         assert status["reason"] == "weekly_all at 82%"
 
     def test_manual_and_status_line_readings_of_one_week_are_one_week(self):
-        """A manual 23 at -05:00, then a status line 26.0 at +00:00 for the same reset: the total is 26, not 49."""
+        """A manual 23 at -05:00, then a status line 26.0 at +00:00 for the same reset: one week, no tare."""
         history = _hist((4, 23, MON_4AM_ET)) + [{**_status_line_row(26.0), "id": 5}]
-        assert cpu.cumulative_weekly_pct(history) == 26
-        dp = cpu.beeminder_datapoint(history, reading_id=5)
+        (dp,) = cpu.beeminder_datapoints(history, reading_id=5)
         assert dp["value"] == 26
         assert "26% of this week" in dp["comment"] and "resets Mon 4:00 AM" in dp["comment"]
         assert dp["requestid"] == "claude-plan-5"
 
     def test_fractional_status_line_pct_reaches_the_graph_unrounded(self):
         history = _hist((4, 23, MON_4AM_ET)) + [{**_status_line_row(23.5), "id": 5}]
-        dp = cpu.beeminder_datapoint(history, reading_id=5)
+        (dp,) = cpu.beeminder_datapoints(history, reading_id=5)
         assert dp["value"] == 23.5
         assert "23.5% of this week" in dp["comment"]
 
     def test_status_line_reading_below_the_manual_peak_is_not_pushed(self):
         history = _hist((4, 23, MON_4AM_ET)) + [{**_status_line_row(22.5), "id": 5}]
-        assert cpu.beeminder_datapoint(history, reading_id=5) is None
+        assert cpu.beeminder_datapoints(history, reading_id=5) == []

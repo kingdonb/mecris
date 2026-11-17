@@ -329,8 +329,13 @@ async def _record_reading(goal_env, add_datapoint):
     env = _base_env()
     if goal_env is not None:
         env["CLAUDE_BEEMINDER_GOAL"] = goal_env
-    stored = [{"id": 5, "plan": "ultra", "observed_at": "2026-11-13T20:00:00+00:00",
-               "windows": [{"kind": "weekly_all", "pct_used": 12, "resets_at": "2026-11-16T04:00:00-05:00"}]}]
+    # The reset has to be ahead of the real clock: the tool reports the reading's
+    # state, and a reading whose week has already ended is "unknown".
+    from datetime import datetime, timedelta, timezone
+    now = datetime.now(timezone.utc)
+    resets_at = (now + timedelta(days=3)).isoformat()
+    stored = [{"id": 5, "plan": "ultra", "observed_at": now.isoformat(),
+               "windows": [{"kind": "weekly_all", "pct_used": 12, "resets_at": resets_at}]}]
     client = MagicMock()
     client.add_datapoint = add_datapoint
     with patch.dict("os.environ", env, clear=False), patch("psycopg2.connect"):
@@ -343,7 +348,7 @@ async def _record_reading(goal_env, add_datapoint):
              patch.object(mcp_server._claude_plan_store, "record", return_value={"recorded": True, "id": 5}), \
              patch.object(mcp_server._claude_plan_store, "history", return_value=stored) as history, \
              patch("mcp_server.get_user_beeminder_client", return_value=client):
-            result = await mcp_server.record_claude_plan_usage(12, "2026-11-16T04:00:00-05:00")
+            result = await mcp_server.record_claude_plan_usage(12, resets_at)
     return result, history
 
 
@@ -358,7 +363,7 @@ async def test_record_reading_without_goal_makes_no_beeminder_call():
 
 
 @pytest.mark.asyncio
-async def test_record_reading_pushes_running_total_to_configured_goal():
+async def test_record_reading_pushes_the_weekly_percentage_to_configured_goal():
     add = AsyncMock(return_value=True)
     result, _ = await _record_reading("claude-usage", add)
     assert result["beeminder"] == {"pushed": True, "goal": "claude-usage", "value": 12, "requestid": "claude-plan-5"}
