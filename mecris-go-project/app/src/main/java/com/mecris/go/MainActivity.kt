@@ -63,7 +63,9 @@ import com.mecris.go.auth.PocketIdAuthRepository
 import net.openid.appauth.AuthState as AppAuthAuthState
 import com.mecris.go.health.DataQualityReport
 import com.mecris.go.health.HealthConnectManager
+import com.mecris.go.health.TelemetryBanner
 import com.mecris.go.health.WalkDataSummary
+import com.mecris.go.health.WalkTransparency
 import com.mecris.go.health.WalkHeuristicsWorker
 import com.mecris.go.sync.SyncServiceApi
 import com.mecris.go.sync.WalkDataSummaryDto
@@ -359,7 +361,9 @@ fun MecrisDashboard(
 
     // Proactive permission check for dashboard warning
     var hasForegroundPermission by remember { mutableStateOf(true) }
+    val healthConnectAvailable by healthManager.isSupported.collectAsState()
     LaunchedEffect(refreshTrigger) {
+        healthManager.refreshAvailability()
         hasForegroundPermission = healthManager.hasForegroundPermissions()
     }
     
@@ -745,6 +749,7 @@ fun MecrisDashboard(
                     collectDistance = collectDistance,
                     collectGpsRoutes = collectGpsRoutes,
                     hasForegroundPermission = hasForegroundPermission,
+                    healthConnectAvailable = healthConnectAvailable,
                     onForceSync = { forceSync() },
                     onOpenSystemHealth = { showSystemHealth = true },
                     onRequestRoute = onRequestRoute,
@@ -826,6 +831,7 @@ fun MainNeuralDashboard(
     collectDistance: Boolean,
     collectGpsRoutes: Boolean,
     hasForegroundPermission: Boolean,
+    healthConnectAvailable: Boolean,
     onForceSync: () -> Unit,
     onOpenSystemHealth: () -> Unit,
     onRequestRoute: (String) -> Unit,
@@ -873,7 +879,8 @@ fun MainNeuralDashboard(
         }
     }
 
-    if (!hasForegroundPermission) {
+    val telemetryBanner = TelemetryBanner.of(healthConnectAvailable, hasForegroundPermission)
+    if (telemetryBanner != TelemetryBanner.NONE) {
         Surface(
             onClick = onOpenSystemHealth,
             color = Color(0xFF330000), // Deep red
@@ -888,13 +895,13 @@ fun MainNeuralDashboard(
                 Spacer(modifier = Modifier.width(16.dp))
                 Column {
                     Text(
-                        "HEALTH TELEMETRY OFFLINE", 
+                        if (telemetryBanner == TelemetryBanner.HEALTH_CONNECT_UNAVAILABLE) "HEALTH CONNECT UNAVAILABLE" else "HEALTH TELEMETRY OFFLINE",
                         style = MaterialTheme.typography.labelMedium, 
                         color = Color(0xFFFF1744), 
                         fontWeight = FontWeight.Bold
                     )
                     Text(
-                        "Permission required to read steps. Tap to resolve.", 
+                        telemetryBanner.message,
                         style = MaterialTheme.typography.bodySmall, 
                         color = Color.White
                     )
@@ -930,11 +937,18 @@ fun MainNeuralDashboard(
                 fontWeight = FontWeight.ExtraBold,
                 letterSpacing = 2.sp
             )
-            if ((walkData?.walkingSessionsCount ?: 0) > 0) {
+            // #62: where today's numbers came from.
+            walkData?.let { WalkTransparency.of(it) }?.let { t ->
                 Text(
-                    text = "${walkData?.walkingSessionsCount} SESSIONS DETECTED",
+                    text = "${t.sessionsLabel} · ${t.routeLabel}",
                     style = MaterialTheme.typography.labelSmall,
                     color = Color(0xFF00E5FF),
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    text = if (collectDistance) t.distanceLabel else "DISTANCE: OPTED OUT",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (t.isEstimated && collectDistance) Color(0xFFFFD600) else Color.LightGray,
                     fontWeight = FontWeight.Bold
                 )
             }
