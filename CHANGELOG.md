@@ -2,6 +2,16 @@
 
 All notable changes to Mecris are documented here.
 
+## [Unreleased]
+
+### Changed
+
+- **The Claude Beeminder goal uses the odometer's own reset** (#390). Each reading is pushed as that week's percentage, as Claude reports it. At a weekly reset a `0` datapoint with `@TARE` in the comment goes first, timestamped at the reset, which is how Beeminder odometer goals start over. Before this, Mecris kept its own running total (each week's peak, added up) and pushed that. The tare is sent with every push of the week under one request id, so a tare that failed is retried, and a reading is held back if its tare cannot be sent. `BeeminderClient.add_datapoint` takes an optional `timestamp`.
+
+### Fixed
+
+- A record-tool test had a weekly reset date written in, and began failing once that date passed.
+
 ## [0.3.0] — 2026-11-14 — Reminders only when they should
 
 0.2.0 let the Akamai cron reach the reminder endpoint. The checks behind that endpoint were broken, and on 2026-11-14 the cloud sent five WhatsApp walk reminders between 04:59 and 12:59 New York time. The `trigger-reminders` cron job was deleted at 19:40 UTC that day and stays off until this release is deployed. This release rebuilds the reminder gates, records every cron run and every refused cron or webhook request, moves periodic language sync to the cloud, fixes phone verification, and stops the phone from triggering cloud work. Claude plan usage now comes from the Claude Code status line instead of hand-entered readings. The Python server, the Spin API and the Android app are now tested against the same rules, kept in a new `contracts/` directory.

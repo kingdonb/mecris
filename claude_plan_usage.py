@@ -152,24 +152,33 @@ def summarize(reading: Optional[Dict[str, Any]], now: Optional[datetime] = None)
     }
 
 
-# --- Beeminder graph (kingdonb/mecris#371) -----------------------------------
+# --- Beeminder graph (kingdonb/mecris#371, #390) ------------------------------
 #
-# The goal is a do-more odometer of plan usage. Weekly usage resets to 0 every
-# week, so the datapoint is a running total instead: each week's highest
-# reading, added up. 100 means one full week's allowance. The total never
-# drops, whatever Beeminder does with resets.
+# The goal is a do-more odometer of plan usage, and the datapoint is the week's
+# percentage exactly as Claude reports it. Weekly usage goes back to 0 at the
+# reset, which Beeminder handles itself: a 0 datapoint with @TARE in the comment
+# restarts the odometer, and the graph keeps climbing from where it was.
+# https://help.beeminder.com/article/68-odometer-goals
 
-def _weekly_point(reading: Dict[str, Any]) -> Optional[tuple]:
-    """(week key, percent used) for a reading's weekly_all window, if it has one."""
+def _weekly_window(reading: Dict[str, Any]) -> Optional[tuple]:
+    """(reset time in UTC, percent used) for a reading's weekly_all window, if it has one."""
     for w in reading.get("windows") or []:
         if w.get("kind") == "weekly_all":
             resets = _parse_dt(w.get("resets_at"))
             if resets is None or w.get("pct_used") is None:
                 return None
-            # Weekly resets are 7 days apart, so the UTC date identifies the week
-            # even when the same reset time is typed in slightly differently.
-            return resets.astimezone(timezone.utc).date().isoformat(), float(w["pct_used"])
+            return resets.astimezone(timezone.utc), float(w["pct_used"])
     return None
+
+
+def _weekly_point(reading: Dict[str, Any]) -> Optional[tuple]:
+    """(week key, percent used) for a reading's weekly_all window, if it has one."""
+    window = _weekly_window(reading)
+    if window is None:
+        return None
+    # Weekly resets are 7 days apart, so the UTC date identifies the week
+    # even when the same reset time is typed in slightly differently.
+    return window[0].date().isoformat(), window[1]
 
 
 def _tidy(value: float) -> float:
@@ -177,58 +186,79 @@ def _tidy(value: float) -> float:
     return int(rounded) if rounded == int(rounded) else rounded
 
 
-def cumulative_weekly_pct(readings: List[Dict[str, Any]]) -> float:
-    """Running total of plan usage: the highest weekly_all reading of each week, summed."""
-    peak_by_week: Dict[str, float] = {}
-    for reading in readings:
-        point = _weekly_point(reading)
-        if point:
-            week, pct = point
-            peak_by_week[week] = max(peak_by_week.get(week, 0.0), pct)
-    return _tidy(sum(peak_by_week.values()))
+def _tare_datapoint(week_ends: datetime, tz_name: str = "America/New_York") -> Dict[str, Any]:
+    """The 0 @TARE datapoint for the reset that opened the week ending at `week_ends`.
+
+    It is timestamped at the reset itself, so it sorts after the old week's last
+    reading and before the new week's first one, however late that one arrives.
+    The request id names the reset day, so sending it again changes nothing.
+    """
+    from zoneinfo import ZoneInfo
+    reset = week_ends - timedelta(days=7)
+    day = reset.astimezone(ZoneInfo(tz_name)).date().isoformat()
+    return {"value": 0, "comment": f"@TARE Claude weekly reset {day}",
+            "requestid": f"claude-tare-{day}", "timestamp": int(reset.timestamp())}
 
 
-def beeminder_datapoint(history: List[Dict[str, Any]], reading_id: Any) -> Optional[Dict[str, Any]]:
-    """Datapoint to push for the reading `reading_id`, or None if it changes nothing.
+def beeminder_datapoints(history: List[Dict[str, Any]], reading_id: Any) -> List[Dict[str, Any]]:
+    """Datapoints to push for the reading `reading_id`, in order. Empty if it adds nothing.
 
-    `history` is every stored reading for the user, each with an "id". The request
-    id comes from the reading id, so retrying the same reading cannot duplicate it.
+    `history` is every stored reading for the user, each with an "id". The reading
+    goes in as its own weekly percentage, and only when it is the highest of its
+    week so far. If an earlier week is on record, the tare for this week's reset
+    goes first: with every push, not only the first of the week, so a tare that
+    failed once is retried and a reading never lands without it.
     """
     current = next((r for r in history if r.get("id") == reading_id), None)
     if current is None:
-        return None
-    point = _weekly_point(current)
-    if point is None:
-        return None
-    total = cumulative_weekly_pct(history)
-    before = cumulative_weekly_pct([r for r in history if r.get("id") != reading_id])
-    if total == before:
-        return None
+        return []
+    window, point = _weekly_window(current), _weekly_point(current)
+    if window is None:
+        return []
+    week, pct = point
+    others = [p for p in (_weekly_point(r) for r in history if r.get("id") != reading_id) if p]
+    if any(w > week for w, _ in others):
+        return []  # an old reading filed late: its week is closed on the graph
+    if any(w == week and other_pct >= pct for w, other_pct in others):
+        return []
     weekly = next(w for w in current["windows"] if w.get("kind") == "weekly_all")
-    comment = (f"Claude {current.get('plan', 'plan')}: {_tidy(point[1])}% of this week used, "
-               f"resets {_fmt_reset(weekly['resets_at'])} (running total {total})")
-    return {"value": total, "comment": comment, "requestid": f"claude-plan-{reading_id}"}
+    comment = (f"Claude {current.get('plan', 'plan')}: {_tidy(pct)}% of this week used, "
+               f"resets {_fmt_reset(weekly['resets_at'])}")
+    datapoints = [{"value": _tidy(pct), "comment": comment, "requestid": f"claude-plan-{reading_id}"}]
+    if any(w < week for w, _ in others):
+        datapoints.insert(0, _tare_datapoint(window[0]))
+    return datapoints
 
 
 async def sync_reading_to_beeminder(client: Any, goal: Optional[str], history: List[Dict[str, Any]],
                                     reading_id: Any) -> Dict[str, Any]:
-    """Push the reading's datapoint to `goal`. Never raises: a Beeminder problem is
+    """Push the reading's datapoints to `goal`. Never raises: a Beeminder problem is
     reported in the result and must not fail the recording of the reading itself."""
     if not goal:
         return {"pushed": False, "reason": "CLAUDE_BEEMINDER_GOAL not set"}
-    datapoint = beeminder_datapoint(history, reading_id)
-    if datapoint is None:
-        return {"pushed": False, "reason": "running total unchanged"}
-    result = {"pushed": True, "goal": goal, "value": datapoint["value"], "requestid": datapoint["requestid"]}
-    try:
-        await client.add_datapoint(goal, datapoint["value"], comment=datapoint["comment"],
-                                   requestid=datapoint["requestid"])
-    except Exception as e:
-        status = getattr(e, "status_code", None)
-        if status == 422:  # Beeminder's duplicate-requestid answer: this reading is already in
-            return {**result, "note": "already recorded"}
-        # Type and status only; the response body is not echoed.
-        return {"pushed": False, "goal": goal, "error": f"{type(e).__name__} status={status}"}
+    datapoints = beeminder_datapoints(history, reading_id)
+    if not datapoints:
+        return {"pushed": False, "reason": "reading unchanged"}
+    reading = datapoints[-1]
+    result = {"pushed": True, "goal": goal, "value": reading["value"], "requestid": reading["requestid"]}
+    for datapoint in datapoints:
+        is_tare = datapoint is not reading
+        kwargs = {"comment": datapoint["comment"], "requestid": datapoint["requestid"]}
+        if "timestamp" in datapoint:
+            kwargs["timestamp"] = datapoint["timestamp"]
+        try:
+            await client.add_datapoint(goal, datapoint["value"], **kwargs)
+        except Exception as e:
+            status = getattr(e, "status_code", None)
+            if status == 422:  # Beeminder's duplicate-requestid answer: this one is already in
+                if not is_tare:
+                    result["note"] = "already recorded"
+            else:
+                # A failed tare stops here: the reading after it would look like a drop.
+                # Type and status only; the response body is not echoed.
+                return {"pushed": False, "goal": goal, "error": f"{type(e).__name__} status={status}"}
+        if is_tare:
+            result["tare"] = datapoint["requestid"]
     return result
 
 

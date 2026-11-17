@@ -1614,7 +1614,8 @@ def start_claude_snapshot_ingest() -> "asyncio.Task":
     "Record a Claude subscription plan usage reading (kingdonb/mecris#344). Percentages are 0-100; "
     "resets_at values are ISO-8601 with offset (naive = UTC). Omit session_* once the account is verified. "
     "This reads plan limits only; it never touches usage credits. "
-    "If CLAUDE_BEEMINDER_GOAL is set, the running total is also pushed to that Beeminder goal."
+    "If CLAUDE_BEEMINDER_GOAL is set, the weekly percentage is also pushed to that Beeminder odometer goal, "
+    "with a 0 @TARE datapoint at each weekly reset."
 ))
 async def record_claude_plan_usage(
     weekly_all_pct: float,
