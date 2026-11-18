@@ -27,7 +27,7 @@ class UsageSession:
     notes: str = ""
 
 
-SOURCE_TYPES = ("api_credit", "subscription", "retired")
+SOURCE_TYPES = ("api_credit", "subscription", "retired", "helix_grant")
 GRANT_ENDING_DAYS = 14
 
 
@@ -136,6 +136,56 @@ def evaluate_budget(total: float, remaining: float, period_end: date, today: dat
         "alerts": alerts,
         "budget_health": health,
     }
+
+def _add_months(d: date, months: int) -> date:
+    import calendar
+    y, m = divmod(d.month - 1 + months, 12)
+    y, m = d.year + y, m + 1
+    return date(y, m, min(d.day, calendar.monthrange(y, m)[1]))
+
+
+def evaluate_helix_grant(grant: float, period_start: datetime, period_end: datetime,
+                         burned: Optional[float], balance: Optional[float], now: datetime,
+                         target_balance: Optional[float] = None,
+                         target_date: Optional[date] = None) -> Dict:
+    """The budget as the Helix monthly grant (kingdonb/mecris#393).
+
+    The period is the wallet's own, so it rolls over by itself and is never
+    stale. Used is what the balance dropped since the period started (inflows
+    excluded); spending past the grant is allowed and raises nothing: this
+    tracks, it does not ration. With a target (balance by date), the pace is
+    what has to be spent per day to get there, counting the grants still due.
+    """
+    import math
+    days_remaining = max(0, math.ceil((period_end - now).total_seconds() / 86400))
+    known = burned is not None and balance is not None
+    used = round(burned, 2) if burned is not None else None
+    target = pace = None
+    if target_balance is not None and target_date is not None and target_date > now.date():
+        grants_before, k = 0, 0
+        while _add_months(period_end.date(), k) <= target_date:
+            grants_before, k = grants_before + 1, k + 1
+        target = {"balance": target_balance, "date": target_date.isoformat(), "grants_before": grants_before}
+        if balance is not None:
+            days = (target_date - now.date()).days
+            pace = round(max(0.0, (balance + grants_before * grant - target_balance) / days), 2)
+    return {
+        "source_type": "helix_grant",
+        "total_budget": grant,
+        "remaining_budget": round(max(0.0, grant - burned), 2) if burned is not None else None,
+        "used_budget": used,
+        "days_remaining": days_remaining,
+        "period_start": period_start.date().isoformat(),
+        "period_end": period_end.date().isoformat(),
+        "period_expired": False,
+        "days_since_period_end": 0,
+        "helix_balance": round(balance, 2) if balance is not None else None,
+        "target": target,
+        "target_pace_per_day": pace,
+        "alerts": [],
+        "budget_health": "GOOD" if known else "UNKNOWN",
+    }
+
 
 class UsageTracker:
     def __init__(self, user_id: str = None):
@@ -390,6 +440,9 @@ class UsageTracker:
                         if not budget_info:
                             return {"error": f"No budget information found for {target_user_id} in Neon"}
                         
+                        if (budget_info.get('source_type') or 'api_credit') == 'helix_grant':
+                            return self._helix_grant_status(target_user_id, float(budget_info['total_budget']))
+
                         total, remaining = budget_info['total_budget'], budget_info['remaining_budget']
                         period_end_val = budget_info['budget_period_end']
                         if isinstance(period_end_val, str):
@@ -422,6 +475,35 @@ class UsageTracker:
                 raise
 
         raise RuntimeError("UsageTracker: Neon connection not active. Cannot get budget status.")
+
+    def _helix_grant_status(self, target_user_id: str, grant: float) -> Dict:
+        """#393: the Helix grant budget, from the wallet's period and the balance log.
+        The stored period columns are not used, so the budget never goes stale.
+        HELIX_TARGET_BALANCE / HELIX_TARGET_DATE (YYYY-MM-DD) set an optional target."""
+        from scripts import helix_billing, helix_balance_scraper
+        now = datetime.now(timezone.utc)
+        wallet = helix_billing.get_wallet()
+        target_balance = target_date = None
+        try:
+            if os.getenv("HELIX_TARGET_DATE"):
+                target_date = date.fromisoformat(os.getenv("HELIX_TARGET_DATE"))
+                target_balance = float(os.getenv("HELIX_TARGET_BALANCE", "0"))
+        except ValueError:
+            logger.warning("HELIX_TARGET_DATE / HELIX_TARGET_BALANCE not understood; no target")
+            target_balance = target_date = None
+        if not wallet or not wallet.get("period_start") or not wallet.get("period_end"):
+            return {
+                "source_type": "helix_grant", "total_budget": grant, "remaining_budget": None,
+                "used_budget": None, "days_remaining": None, "period_start": None, "period_end": None,
+                "period_expired": False, "days_since_period_end": 0, "helix_balance": None,
+                "target": None, "target_pace_per_day": None, "alerts": [], "budget_health": "UNKNOWN",
+            }
+        start = datetime.fromtimestamp(float(wallet["period_start"]), timezone.utc)
+        end = datetime.fromtimestamp(float(wallet["period_end"]), timezone.utc)
+        balance = float(wallet["balance"]) if wallet.get("balance") is not None else None
+        burned = helix_balance_scraper.burned_since(target_user_id, start)
+        return evaluate_helix_grant(grant, start, end, burned, balance, now,
+                                    target_balance=target_balance, target_date=target_date)
 
     def get_recent_sessions(self, limit: int = 10, user_id: str = None) -> List[Dict]:
         """Get the most recent usage sessions."""

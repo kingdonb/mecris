@@ -59,6 +59,16 @@ def _budget_text(budget_status: Dict[str, Any]) -> str:
         )
     if source_type == "retired":
         return "[dim]retired (no dollar budget)[/dim]"
+    if source_type == "helix_grant":  # #393
+        used, balance = budget_status.get("used_budget"), budget_status.get("helix_balance")
+        if used is None or balance is None:
+            return "[dim]Helix grant (wallet unavailable)[/dim]"
+        line = (f"[cyan]Helix ${used:.2f} of ${budget_status.get('total_budget', 100):.0f}[/cyan] this period\n"
+                f"balance ${balance:.2f}  |  {budget_status.get('days_remaining', '?')} days to the next grant")
+        pace, target = budget_status.get("target_pace_per_day"), budget_status.get("target")
+        if pace is not None and target:
+            line += f"\n${pace:.2f}/day to ${target['balance']:.0f} by {target['date']}"
+        return line
 
     remaining = budget_status.get("remaining_budget", 0.0)
     total = budget_status.get("total_budget", 1.0)
