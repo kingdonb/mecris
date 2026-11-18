@@ -24,6 +24,7 @@ FILES = [
     "claude_plan_cases.json",
     "nag_damping_cases.json",
     "spin_heartbeat_response.json",
+    "spin_heartbeat_request.json",
     "spin_status_response.json",
     "spin_aggregate_status_full.json",
 ]
@@ -309,6 +310,33 @@ def test_spin_heartbeat_response():
     body = load("spin_heartbeat_response.json")
     assert set(body) == {"status", "message"}
     assert "mcp_server_active" not in body  # Spin never sends it; Android must read null
+
+
+class TestSpinHeartbeatRequest:
+    """#395: the table is consistent with its own rule (trim, cut to max_chars,
+    blank or non-string is absent, write only when last_status is present)."""
+    body = load("spin_heartbeat_request.json")
+
+    @staticmethod
+    def _clean(value, limit):
+        if not isinstance(value, str) or not value.strip():
+            return None
+        return value.strip()[:limit]
+
+    def test_example_carries_a_status(self):
+        ex = self.body["example"]
+        assert {"role", "process_id", "notifications_enabled", "last_status"} <= set(ex)
+        assert len(ex["last_status"]) <= self.body["max_chars"]
+
+    @pytest.mark.parametrize("case", load("spin_heartbeat_request.json")["cases"], ids=lambda c: c["name"])
+    def test_case_matches_rule(self, case):
+        limit = self.body["max_chars"]
+        status = self._clean(case["body"].get("last_status"), limit)
+        error = self._clean(case["body"].get("last_error"), limit)
+        assert (status is not None) == case["expect"]["write"]
+        if case["expect"]["write"]:
+            assert status == case["expect"]["last_status"]
+            assert error == case["expect"]["last_error"]
 
 
 def test_spin_status_response():

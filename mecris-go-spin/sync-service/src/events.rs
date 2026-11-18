@@ -126,12 +126,47 @@ pub fn heartbeat_notifications_enabled(body: &serde_json::Value) -> Option<bool>
     body.get("notifications_enabled").and_then(|v| v.as_bool())
 }
 
+/// #395: the longest `last_status` / `last_error` a heartbeat may store, in characters.
+pub const HEARTBEAT_STATUS_MAX_CHARS: usize = 160;
+
+fn heartbeat_text(body: &serde_json::Value, key: &str) -> Option<String> {
+    let s = body.get(key)?.as_str()?.trim();
+    if s.is_empty() { None } else { Some(s.chars().take(HEARTBEAT_STATUS_MAX_CHARS).collect()) }
+}
+
+/// #395: `(last_status, last_error)` to store from a heartbeat body, or None to leave the
+/// stored status alone (no usable `last_status`). See contracts/spin_heartbeat_request.json.
+pub fn heartbeat_status(body: &serde_json::Value) -> Option<(String, Option<String>)> {
+    let status = heartbeat_text(body, "last_status")?;
+    Some((status, heartbeat_text(body, "last_error")))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use serde_json::{json, Value};
 
     const CONTRACT: &str = include_str!("../../../contracts/message_events.json");
+    const HEARTBEAT: &str = include_str!("../../../contracts/spin_heartbeat_request.json");
+
+    #[test]
+    fn contract_heartbeat_status_cases() {
+        let c: Value = serde_json::from_str(HEARTBEAT).expect("contract is JSON");
+        assert_eq!(c["max_chars"].as_u64(), Some(HEARTBEAT_STATUS_MAX_CHARS as u64));
+        for case in c["cases"].as_array().unwrap() {
+            let name = case["name"].as_str().unwrap();
+            let got = heartbeat_status(&case["body"]);
+            let expect = &case["expect"];
+            if expect["write"].as_bool().unwrap() {
+                let (status, error) = got.unwrap_or_else(|| panic!("{name}: expected a write"));
+                assert_eq!(Some(status.as_str()), expect["last_status"].as_str(), "{name}");
+                assert_eq!(error.as_deref(), expect["last_error"].as_str(), "{name}");
+            } else {
+                assert!(got.is_none(), "{name}: expected no write");
+            }
+        }
+        assert!(heartbeat_status(&c["example"]).is_some(), "the example carries a status");
+    }
 
     fn contract() -> Value { serde_json::from_str(CONTRACT).expect("contract is JSON") }
     fn utc(s: &str) -> DateTime<Utc> { DateTime::parse_from_rfc3339(s).unwrap().with_timezone(&Utc) }

@@ -491,6 +491,12 @@ async fn handle_heartbeat_post(req: Request) -> anyhow::Result<Response<String>>
     conn.execute("INSERT INTO scheduler_election (user_id, role, process_id, heartbeat) VALUES ($1, $2, $3, CURRENT_TIMESTAMP) ON CONFLICT (user_id, role) DO UPDATE SET heartbeat = EXCLUDED.heartbeat, process_id = EXCLUDED.process_id", &[ParameterValue::Str(uid.clone()), ParameterValue::Str(role.to_string()), ParameterValue::Str(pid.to_string())]).await?;
     // #363: the phone reports whether its nags can be seen. Best-effort, so a database
     // without migrate_v10 still answers the heartbeat.
+    // #395: what the client's last run did, for the system pulse. Only when the body
+    // carries a status, so the dashboard's own heartbeat leaves the worker's alone.
+    if let Some((status, error)) = events::heartbeat_status(&b) {
+        let err = match error { Some(e) => ParameterValue::Str(e), None => ParameterValue::DbNull };
+        let _ = conn.execute("UPDATE scheduler_election SET last_status = $1, last_error = $2 WHERE user_id = $3 AND role = $4", &[ParameterValue::Str(status), err, ParameterValue::Str(uid.clone()), ParameterValue::Str(role.to_string())]).await;
+    }
     if let Some(enabled) = events::heartbeat_notifications_enabled(&b) {
         let _ = conn.execute("UPDATE users SET notifications_enabled = $1, notifications_checked_at = now() WHERE pocket_id_sub = $2", &[ParameterValue::Boolean(enabled), ParameterValue::Str(uid)]).await;
     }
@@ -1726,6 +1732,14 @@ mod tests {
         let hb = fn_body(src, "async fn handle_heartbeat_post(");
         assert!(hb.contains("events::heartbeat_notifications_enabled("));
         assert!(hb.contains("notifications_checked_at = now()"));
+    }
+
+    #[test]
+    fn test_heartbeat_stores_last_status() {
+        let src = include_str!("lib.rs");
+        let hb = fn_body(src, "async fn handle_heartbeat_post(");
+        assert!(hb.contains("events::heartbeat_status(&b)"), "#395: the heartbeat reads last_status");
+        assert!(hb.contains("SET last_status = $1, last_error = $2 WHERE user_id = $3 AND role = $4"));
     }
 
     // --- Internal endpoints: fail closed, no published key, callers that can actually authenticate ---

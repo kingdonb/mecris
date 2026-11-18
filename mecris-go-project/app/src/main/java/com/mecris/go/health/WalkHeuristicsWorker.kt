@@ -35,6 +35,16 @@ class WalkHeuristicsWorker @JvmOverloads constructor(
         val startedAt = System.currentTimeMillis()
         val phases = mutableListOf<String>()
         val result = runSync(phases)
+        // #395: the next heartbeat reports this run to the system pulse.
+        val outcome = when (result) {
+            is Result.Success -> "success"
+            is Result.Retry -> "retry"
+            else -> "failure"
+        }
+        prefs.edit()
+            .putString("last_run_status", com.mecris.go.sync.HeartbeatStatus.describe(
+                java.time.ZonedDateTime.now(ZoneId.of(WorkerPolicy.WORKER_TIMEZONE)), outcome, phases))
+            .apply()
         Log.i(
             "WalkHeuristicsWorker",
             "WORKER_METRIC run=walk_heuristics duration_ms=${System.currentTimeMillis() - startedAt} " +
@@ -67,7 +77,9 @@ class WalkHeuristicsWorker @JvmOverloads constructor(
                         role = "android_client",
                         process_id = "com.mecris.go",
                         // #363: notifications on AND the nag channel not silenced.
-                        notifications_enabled = com.mecris.go.sync.NagNotificationManager.notificationsEnabled(applicationContext)
+                        notifications_enabled = com.mecris.go.sync.NagNotificationManager.notificationsEnabled(applicationContext),
+                        // #395: what the previous run did (this run's result isn't known yet).
+                        last_status = com.mecris.go.sync.HeartbeatStatus.clean(prefs.getString("last_run_status", null))
                     )
                 )
                 
