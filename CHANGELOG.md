@@ -8,6 +8,9 @@ All notable changes to Mecris are documented here.
 
 - **The Claude Beeminder goal uses the odometer's own reset** (#390). Each reading is pushed as that week's percentage, as Claude reports it. At a weekly reset a `0` datapoint with `@TARE` in the comment goes first, timestamped at the reset, which is how Beeminder odometer goals start over. Before this, Mecris kept its own running total (each week's peak, added up) and pushed that. The tare is sent with every push of the week under one request id, so a tare that failed is retried, and a reading is held back if its tare cannot be sent. `BeeminderClient.add_datapoint` takes an optional `timestamp`.
 
+- **Budget can follow the Helix monthly grant** (#393). New `source_type` `helix_grant`, which needs `scripts/migrate_v11_helix_grant_budget.py`. The period is the wallet's own (`subscription_current_period_start`..`end`), so it rolls over by itself and is never stale. "Used" is what the balance dropped since the period started, with inflows excluded. Spending past the grant raises nothing: this tracks, it does not ration. `HELIX_TARGET_BALANCE` and `HELIX_TARGET_DATE` set an optional target. The narrator, CLI pulse and Pi `/status` then show the daily pace that reaches it, counting grants still to land, and say so when the pace is above `HELIX_BURN_CAP`.
+- **Helix daily burn cap is $6, up from $5** (owner's decision, 2026-11-17). Both spend-down targets on #393 need more than $5/day: about $5.39/day for $500 by 2026-12-31, and about $5.84/day for $0 by mid-2027. The default lives in one place, `HELIX_BURN_CAP_DEFAULT` in `scripts/helix_balance_scraper.py`; `HELIX_BURN_CAP` still overrides it.
+
 ### Fixed
 
 - A record-tool test had a weekly reset date written in, and began failing once that date passed.

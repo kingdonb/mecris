@@ -108,12 +108,45 @@ def _grant() -> float:
     return float(os.getenv("HELIX_MONTHLY_GRANT", "100"))
 
 
+# The know-better daily ceiling on Helix spend. A human raises it; the machine
+# never does. $5 until 2026-11-17, when the owner raised it to $6 so the
+# spend-down targets on #393 fit under it ($500 by 2026-12-31 needs about
+# $5.39/day; $0 by mid-2027 about $5.84/day).
+HELIX_BURN_CAP_DEFAULT = 6.0
+
+
 def _cap() -> float:
-    return float(os.getenv("HELIX_BURN_CAP", "5"))
+    return float(os.getenv("HELIX_BURN_CAP", str(HELIX_BURN_CAP_DEFAULT)))
 
 
 def _floor() -> float:
     return float(os.getenv("HELIX_BURN_FLOOR", "1"))
+
+
+def sum_burn(balances: List[float]) -> float:
+    """What a run of balance readings (oldest first) spent: the drops added up.
+    A rise is a grant or top-up landing, never negative spend (#393)."""
+    return round(sum(max(0.0, a - b) for a, b in zip(balances, balances[1:])), 4)
+
+
+def burned_since(user_id: str, start: datetime) -> Optional[float]:
+    """Helix spend since `start`, from the ok readings in the Neon log: the last
+    reading before `start` is the baseline. None when there is no database (#393)."""
+    url = _neon_url()
+    if not url or psycopg2 is None:
+        return None
+    with psycopg2.connect(url) as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "(SELECT ts, balance FROM helix_balance_log WHERE user_id = %s AND fetch_status = 'ok' "
+                " AND ts < %s ORDER BY ts DESC LIMIT 1) "
+                "UNION ALL "
+                "(SELECT ts, balance FROM helix_balance_log WHERE user_id = %s AND fetch_status = 'ok' "
+                " AND ts >= %s ORDER BY ts ASC)",
+                (user_id, start, user_id, start),
+            )
+            rows = sorted(cur.fetchall(), key=lambda r: r[0])
+    return sum_burn([float(r[1]) for r in rows if r[1] is not None])
 
 
 def _daystamp(dt: Optional[datetime] = None) -> str:

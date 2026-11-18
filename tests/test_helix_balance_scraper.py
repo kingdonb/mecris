@@ -326,3 +326,13 @@ def test_balance_dark_alert_inserts_date_column(monkeypatch):
     sql, params = next((s, p) for s, p in executed if s.lstrip().upper().startswith("INSERT INTO MESSAGE_LOG"))
     cols = sql[sql.index("(") + 1: sql.index(")")].replace(" ", "").split(",")
     assert "date" in cols
+
+
+def test_burn_cap_default_is_six(monkeypatch):
+    """The owner raised the cap from $5 to $6 on 2026-11-17 (#393); the code says so."""
+    from scripts import helix_balance_scraper as s
+    monkeypatch.delenv("HELIX_BURN_CAP", raising=False)
+    assert s.HELIX_BURN_CAP_DEFAULT == 6.0
+    assert s._cap() == 6.0
+    monkeypatch.setenv("HELIX_BURN_CAP", "7.5")
+    assert s._cap() == 7.5

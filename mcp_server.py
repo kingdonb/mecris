@@ -889,6 +889,26 @@ def _claude_subscription_phrase(budget_status: Dict[str, Any], claude_plan: Dict
     return f"{phrase}, {reading}" if reading else phrase
 
 
+def _helix_budget_text(budget_status: Dict[str, Any]) -> tuple:
+    """(summary phrase, recommendation or None) for the Helix grant budget (#393).
+    Tracking, not rationing: the only recommendation is the pace to a target the
+    owner set, with a note when the burn cap stands in its way."""
+    if budget_status.get("used_budget") is None or budget_status.get("helix_balance") is None:
+        return "Budget: Helix grant (wallet unavailable)", None
+    phrase = (f"Budget: Helix ${budget_status['used_budget']:.2f} of ${budget_status['total_budget']:.0f} "
+              f"used this period, {budget_status.get('days_remaining', '?')} days to the next grant "
+              f"(balance ${budget_status['helix_balance']:.2f})")
+    target, pace = budget_status.get("target"), budget_status.get("target_pace_per_day")
+    if not target or pace is None:
+        return phrase, None
+    rec = f"💸 Helix: about ${pace:.2f}/day reaches ${target['balance']:.0f} by {target['date']}"
+    from scripts.helix_balance_scraper import _cap
+    cap = _cap()
+    if pace > cap:
+        rec += f" (above the ${cap:.2f}/day burn cap; raise HELIX_BURN_CAP to allow it)"
+    return phrase, rec
+
+
 def _downgrade_not_due_goals(goals: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """Relabel CRITICAL goals that cannot derail today (#346 fold-in).
 
@@ -1006,9 +1026,11 @@ async def get_narrator_context(user_id: str = None) -> Dict[str, Any]:
         # and a missing/failed budget read is unknown, not zero days left.
         # A subscription (Claude Ultra) merges with the plan reading into one
         # "Claude: ..." phrase; a retired budget says so and never nags.
+        helix_recommendation = None
         source_type = budget_status.get("source_type") or "api_credit"
         subscription = source_type == "subscription" and not budget_status.get("error")
         retired = source_type == "retired" and not budget_status.get("error")
+        helix_grant = source_type == "helix_grant" and not budget_status.get("error")
         budget_days = budget_status.get("days_remaining")
         budget_known = (isinstance(budget_days, (int, float)) and not budget_status.get("error")
                         and source_type == "api_credit")
@@ -1017,6 +1039,8 @@ async def get_narrator_context(user_id: str = None) -> Dict[str, Any]:
             budget_phrase = _claude_subscription_phrase(budget_status, claude_plan)
         elif retired:
             budget_phrase = "Budget: retired (no dollar budget)"
+        elif helix_grant:
+            budget_phrase, helix_recommendation = _helix_budget_text(budget_status)
         elif budget_expired:
             budget_phrase = f"Budget: period ended {budget_status.get('period_end', '?')} (stale)"
         elif budget_known:
@@ -1034,6 +1058,8 @@ async def get_narrator_context(user_id: str = None) -> Dict[str, Any]:
         if len(pending_todos) > 10: recommendations.append("Consider prioritizing todos - large backlog detected")
         if critical_beeminder: recommendations.append("Address critical Beeminder goals immediately")
         if budget_pressure and budget_days <= 2: recommendations.append("Urgent: Focus on highest-value work due to budget constraints")
+        if helix_grant and helix_recommendation:
+            recommendations.append(helix_recommendation)
         if budget_expired:
             recommendations.append(f"💳 Budget period ended {budget_status.get('days_since_period_end', '?')} days ago: update it with update_budget (or retire the dollar budget)")
         if subscription:
@@ -1416,7 +1442,8 @@ def complete_goal(goal_id: int, user_id: str = None) -> Dict[str, Any]:
 @mcp.tool(description=(
     "Manually update budget information. Every field is optional. source_type is "
     "'api_credit' (a dollar budget), 'subscription' (a plan grant such as Claude Ultra, "
-    "whose window is period_start..period_end) or 'retired'. plan names the plan "
+    "whose window is period_start..period_end), 'retired', or 'helix_grant' (total_budget is the "
+    "monthly Helix grant; the period comes from the wallet and rolls over by itself). plan names the plan "
     "(e.g. 'ultra'); monthly_price_usd is optional. Dates are YYYY-MM-DD."
 ))
 def update_budget(remaining_budget: Optional[float] = None, total_budget: Optional[float] = None,
@@ -1682,6 +1709,8 @@ async def get_unified_cost_status(user_id: str = None) -> Dict[str, Any]:
             claude["summary"] = _claude_subscription_phrase(claude, plan_status)
         elif claude.get("source_type") == "retired":
             claude["summary"] = "Budget: retired (no dollar budget)"
+        elif claude.get("source_type") == "helix_grant":
+            claude["summary"] = _helix_budget_text(claude)[0]
         return {"claude": claude, "groq": {**groq_status, **groq_usage}}
     except Exception as e:
         logger.error(f"Failed to get unified cost status: {e}")

@@ -211,6 +211,14 @@ function budgetLine(budget: Record<string, any>): string {
     return `- Budget: Claude ${plan} ${verb} ${end}; ${budget.budget_health ?? "unknown"}; ${budget.days_to_grant_end ?? "?"} days left.`;
   }
   if (budget.source_type === "retired") return "- Budget: retired (no dollar budget).";
+  // #393: the Helix monthly grant, rolling with the wallet's own period.
+  if (budget.source_type === "helix_grant") {
+    if (budget.used_budget == null || budget.helix_balance == null) return "- Budget: Helix grant (wallet unavailable).";
+    const pace = budget.target && budget.target_pace_per_day != null
+      ? `; $${Number(budget.target_pace_per_day).toFixed(2)}/day to $${budget.target.balance} by ${budget.target.date}`
+      : "";
+    return `- Budget: Helix $${Number(budget.used_budget).toFixed(2)} of $${budget.total_budget} this period; balance $${Number(budget.helix_balance).toFixed(2)}; ${budget.days_remaining ?? "?"} days to the next grant${pace}.`;
+  }
   return budget.period_expired
     ? `- Budget: ${budget.budget_health ?? "STALE"}; period ended ${budget.period_end ?? "unknown"}; needs update.`
     : `- Budget: ${budget.budget_health ?? "unknown"}; ${budget.days_remaining ?? "?"} days; ends ${budget.period_end ?? "unknown"}.`;
