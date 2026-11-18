@@ -902,7 +902,8 @@ def _helix_budget_text(budget_status: Dict[str, Any]) -> tuple:
     if not target or pace is None:
         return phrase, None
     rec = f"💸 Helix: about ${pace:.2f}/day reaches ${target['balance']:.0f} by {target['date']}"
-    cap = float(os.getenv("HELIX_BURN_CAP", "5"))
+    from scripts.helix_balance_scraper import _cap
+    cap = _cap()
     if pace > cap:
         rec += f" (above the ${cap:.2f}/day burn cap; raise HELIX_BURN_CAP to allow it)"
     return phrase, rec

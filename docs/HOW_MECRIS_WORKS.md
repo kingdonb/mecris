@@ -471,7 +471,7 @@ required_today    = max( pump_pace,                   # pump-side: normal-month 
                          beeminder_required_today,    # road pressure: ≈$1 pace, or deficit
                          1.00 )                       # keep-the-pulse floor
 allowed_today     = min( envelope_allowance,          # anti-binge backstop (advisory → G4)
-                         cap,                         # know-better sanity ceiling ≈$5
+                         cap,                         # know-better sanity ceiling $6 (was $5 until 2026-11-17)
                          required_today )
 ```
 
@@ -662,7 +662,8 @@ subsystem's standing honey-do list, independent of any one task.
    — not a duplicate governor arm. Spec-003 valve wiring stays deferred (G9, taxonomy follow-up).
 4. **Expose live balance to the narrator** — ✅ closed 2026-09-29: `budget_governor` narrator
    field now carries `live_balance` / `burned_today` / `burn_allowance` (capped scalars; velocity
-   from Neon history, allowance from the normal-month rule clamped floor $1 / cap $5).
+   from Neon history, allowance from the normal-month rule clamped floor $1 / cap $5; the owner raised the cap to $6
+   on 2026-11-17 for the spend-down targets on #393).
 5. **Fix the metering honesty gap** — pre-flight with a real cost estimate (tokens × price),
    not fixed $0.01 (G4); remove or revive the dead WASM first-hop (G5); repair or retire the
    broken HTTP reconciliation scripts (G7); wire or delete the zombie `VirtualBudgetManager` /

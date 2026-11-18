@@ -108,8 +108,15 @@ def _grant() -> float:
     return float(os.getenv("HELIX_MONTHLY_GRANT", "100"))
 
 
+# The know-better daily ceiling on Helix spend. A human raises it; the machine
+# never does. $5 until 2026-11-17, when the owner raised it to $6 so the
+# spend-down targets on #393 fit under it ($500 by 2026-12-31 needs about
+# $5.39/day; $0 by mid-2027 about $5.84/day).
+HELIX_BURN_CAP_DEFAULT = 6.0
+
+
 def _cap() -> float:
-    return float(os.getenv("HELIX_BURN_CAP", "5"))
+    return float(os.getenv("HELIX_BURN_CAP", str(HELIX_BURN_CAP_DEFAULT)))
 
 
 def _floor() -> float:
