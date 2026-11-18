@@ -51,6 +51,8 @@ class CooperativeWorkerTest {
         every { sharedPrefs.getLong("last_cloud_sync_trigger", 0L) } returns 0L
         // Battery diet (task 000622): helix doorbell throttle state
         every { sharedPrefs.getLong("last_helix_request", 0L) } returns 0L
+        // #395: the previous run's status, sent with the heartbeat
+        every { sharedPrefs.getString("last_run_status", null) } returns null
 
         // Debt evaluation is aggregate-status-only now; default to all-clear so no
         // nag work is enqueued unless a test explicitly puts a goal in debt.
@@ -214,4 +216,21 @@ class CooperativeWorkerTest {
         }
         }
 
+
+    // --- #395: the heartbeat reports what the previous run did ---
+
+        @Test
+        fun `heartbeat carries the previous run's status and the run saves its own`() = runBlocking {
+        every { sharedPrefs.getString("last_run_status", null) } returns "run 13:05 ET: success (auth,hb)"
+        val sent = slot<com.mecris.go.sync.HeartbeatRequestDto>()
+        coEvery { syncApi.sendHeartbeat(any(), capture(sent)) } returns retrofit2.Response.success(
+            HeartbeatResponseDto("ok", mcp_server_active = true)
+        )
+
+        WalkHeuristicsWorker(context, workerParams, pocketIdAuth, syncApi, etHourOverride = 3).doWork()
+
+        assertEquals("run 13:05 ET: success (auth,hb)", sent.captured.last_status)
+        verify { prefsEditor.putString("last_run_status", match { it.startsWith("run ") && it.contains(" ET: ") && it.contains("hb") }) }
+        }
 }
+

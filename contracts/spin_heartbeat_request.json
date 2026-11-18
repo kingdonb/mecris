@@ -1,0 +1,95 @@
+{
+  "_doc": "POST /heartbeat request body (#395). role and process_id as before; notifications_enabled since #363. last_status and last_error are optional: what the client's last background run did, shown in the system pulse. Spin writes them only when last_status is present, so a heartbeat without them (old builds, the dashboard's own heartbeat) leaves the stored status alone. A present last_status with no last_error clears the stored error. Values are trimmed and cut to max_chars characters; empty or non-string values count as absent.",
+  "version": 1,
+  "max_chars": 160,
+  "example": {
+    "role": "android_client",
+    "process_id": "com.mecris.go",
+    "notifications_enabled": true,
+    "last_status": "run 14:05 ET: success (auth,hb,helix,nag_phase,agg,health,walk_upload)"
+  },
+  "cases": [
+    {
+      "name": "status only",
+      "body": {
+        "role": "android_client",
+        "last_status": "run 14:05 ET: success (auth,hb)"
+      },
+      "expect": {
+        "write": true,
+        "last_status": "run 14:05 ET: success (auth,hb)",
+        "last_error": null
+      }
+    },
+    {
+      "name": "status and error",
+      "body": {
+        "role": "android_client",
+        "last_status": "run 14:05 ET: retry (auth)",
+        "last_error": "no token"
+      },
+      "expect": {
+        "write": true,
+        "last_status": "run 14:05 ET: retry (auth)",
+        "last_error": "no token"
+      }
+    },
+    {
+      "name": "old body without status leaves the stored one alone",
+      "body": {
+        "role": "android_client",
+        "process_id": "com.mecris.go.ui",
+        "notifications_enabled": true
+      },
+      "expect": {
+        "write": false
+      }
+    },
+    {
+      "name": "error without status is not written",
+      "body": {
+        "role": "android_client",
+        "last_error": "no token"
+      },
+      "expect": {
+        "write": false
+      }
+    },
+    {
+      "name": "blank and non-string values are absent",
+      "body": {
+        "role": "android_client",
+        "last_status": "  ",
+        "last_error": 42
+      },
+      "expect": {
+        "write": false
+      }
+    },
+    {
+      "name": "values are trimmed",
+      "body": {
+        "role": "android_client",
+        "last_status": "  run 09:00 ET: success ()  ",
+        "last_error": "   "
+      },
+      "expect": {
+        "write": true,
+        "last_status": "run 09:00 ET: success ()",
+        "last_error": null
+      }
+    },
+    {
+      "name": "long values are cut to max_chars",
+      "body": {
+        "role": "android_client",
+        "last_status": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+      },
+      "expect": {
+        "write": true,
+        "last_status": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+        "last_error": null
+      }
+    }
+  ]
+}

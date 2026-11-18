@@ -173,7 +173,10 @@ data class HeartbeatRequestDto(
      * #363: notifications on AND the nag channel not silenced. Optional; Gson omits
      * null, so the body is exactly what old servers already accept.
      */
-    val notifications_enabled: Boolean? = null
+    val notifications_enabled: Boolean? = null,
+    /** #395: the worker's previous run, for the system pulse. Omitted when null. */
+    val last_status: String? = null,
+    val last_error: String? = null
 )
 
 data class HeartbeatResponseDto(

@@ -9,6 +9,7 @@ Every arm reads these files **in place**. Do not copy them into an arm.
 | `claude_plan_cases.json` | Python `claude_plan_usage.py` (reference implementation) | Spin `claude_plan.rs`, Android Claude plan card tests |
 | `nag_damping_cases.json` | Spin reminder gates (`trigger-reminders`) | Python send guard (`mcp_server.py`, `twilio_sender.py`) |
 | `spin_heartbeat_response.json` | Spin `POST /heartbeat` | Android `SpinContractTest` |
+| `spin_heartbeat_request.json` | Spin `POST /heartbeat` (#395: `last_status`, `last_error`) | Spin `events.rs` tests, Android `HeartbeatStatusTest`, `tests/test_contracts.py` |
 | `spin_status_response.json` | Spin `{status, message}` responses, including phone verification | Android `SpinContractTest` (as `SyncResponse`) |
 | `spin_aggregate_status_full.json` | Spin `GET /aggregate-status?full=true` (v0.3.0 shape) | Android `SpinContractTest`, web dashboard |
 
