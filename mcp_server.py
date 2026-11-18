@@ -2250,7 +2250,16 @@ except Exception as e:
     logger.warning(f"OpenRouterTracker init failed: {e}")
     _openrouter_tracker = None
 
-_neon_budget_governor = _NeonBudgetGovernor()
+def _local_claude_plan_status() -> Optional[Dict[str, Any]]:
+    """The local user's Claude plan status for the Budget Governor (#396).
+    No local user means an unknown plan, which the governor never treats as free."""
+    target_user_id = resolve_target_user(None)
+    if not target_user_id:
+        return {"state": "unknown", "reason": "no local user"}
+    return _get_claude_plan_status_sync(target_user_id)
+
+
+_neon_budget_governor = _NeonBudgetGovernor(claude_plan_status=_local_claude_plan_status)
 
 @mcp.tool(description="Get per-bucket LLM spend envelope status and routing recommendation (Budget Governor).")
 def get_budget_governor_status(user_id: str = None) -> Dict[str, Any]:

@@ -19,7 +19,7 @@ Manages multi-bucket LLM quotas with:
 Plan: yebyen/mecris#26
 """
 from enum import Enum
-from typing import Dict, Any, Optional, List
+from typing import Any, Callable, Dict, List, Optional
 from datetime import datetime, timedelta, timezone
 import json
 import os
@@ -31,6 +31,9 @@ try:
     import requests
 except ImportError:
     requests = None  # type: ignore
+
+
+CLAUDE_PLAN_BUCKET = "claude_plan"  # #396
 
 
 class BucketType(Enum):
@@ -406,9 +409,13 @@ class NeonBudgetGovernor:
     Uses the same envelope logic (5%/5% rule) as BudgetGovernor.
     """
     
-    def __init__(self, neon_url: Optional[str] = None, user_id: Optional[str] = None):
+    def __init__(self, neon_url: Optional[str] = None, user_id: Optional[str] = None,
+                 claude_plan_status: Optional[Callable[[], Optional[Dict[str, Any]]]] = None):
         self.neon_url = neon_url or os.getenv("NEON_DB_URL")
         self.user_id = user_id or os.getenv("DEFAULT_USER_ID", "yebyen")
+        # #396: returns the Claude plan summary (claude_plan_usage.summarize). When
+        # given, the plan is a bucket: free while available, never charged.
+        self._claude_plan_status = claude_plan_status
         
         # Bucket configuration (same as BudgetGovernor)
         self.buckets: Dict[str, Dict[str, Any]] = {
@@ -551,6 +558,23 @@ class NeonBudgetGovernor:
             if e["bucket"] == bucket_name and e["ts"] >= cutoff
         )
 
+    # The Claude plan (#396)
+
+    def _claude_plan(self) -> Optional[Dict[str, Any]]:
+        """The plan summary, or None when no reader is configured. A reader
+        failure is treated like an unknown state: closed, never free."""
+        if self._claude_plan_status is None:
+            return None
+        try:
+            return self._claude_plan_status() or {"state": "unknown", "reason": "no reading"}
+        except Exception as exc:
+            logger.warning("Claude plan status unavailable: %s", type(exc).__name__)
+            return {"state": "unknown", "reason": "status unavailable"}
+
+    def _claude_plan_state(self) -> Optional[str]:
+        plan = self._claude_plan()
+        return None if plan is None else plan.get("state", "unknown")
+
     def check_envelope(self, bucket_name: str, cost_estimate: float) -> str:
         """
         Returns 'allow', 'defer', or 'deny' based on the 5%/5% rule.
@@ -558,7 +582,11 @@ class NeonBudgetGovernor:
         - 'defer': within the rolling 39-min window, adding this cost would
                    exceed 5% of the period quota.
         - 'allow': safe to proceed.
+        The Claude plan follows its own state instead: available allows,
+        constrained defers, anything else (exhausted, unknown, stale) denies.
         """
+        if bucket_name == CLAUDE_PLAN_BUCKET and self._claude_plan_status is not None:
+            return {"available": "allow", "constrained": "defer"}.get(self._claude_plan_state(), "deny")
         if bucket_name not in self.buckets:
             raise ValueError(f"Unknown bucket: {bucket_name!r}")
 
@@ -579,6 +607,8 @@ class NeonBudgetGovernor:
 
     def record_spend(self, bucket_name: str, cost: float) -> None:
         """Record an actual spend event for rate tracking."""
+        if bucket_name == CLAUDE_PLAN_BUCKET and self._claude_plan_status is not None:
+            return  # the plan is paid for already: its usage is the plan reading, not dollars
         if bucket_name not in self.buckets:
             raise ValueError(f"Unknown bucket: {bucket_name!r}")
         ts = datetime.now(timezone.utc)
@@ -590,10 +620,17 @@ class NeonBudgetGovernor:
         """
         Returns the name of the best available bucket.
         Priority:
+          0. The Claude plan while it is available (#396): paid for already,
+             and its weekly window is use-it-or-lose-it.
           1. SPEND buckets that are not exhausted (Helix Inversion — use them up).
+          1b. The Claude plan while it is constrained.
           2. GUARD buckets that are not exhausted (fallback).
           3. Least-spent GUARD bucket (emergency fallback when all are tight).
+        Exhausted, unknown or stale plan readings never count as free.
         """
+        plan_state = self._claude_plan_state()
+        if plan_state == "available":
+            return CLAUDE_PLAN_BUCKET
         spend_log = self._load_spend_log()
         spend_available = [
             name for name, cfg in self.buckets.items()
@@ -605,6 +642,8 @@ class NeonBudgetGovernor:
                 spend_available,
                 key=lambda n: self.buckets[n]["limit"] - self._total_spent(n, spend_log),
             )
+        if plan_state == "constrained":
+            return CLAUDE_PLAN_BUCKET
 
         guard_available = [
             name for name, cfg in self.buckets.items()
@@ -662,6 +701,20 @@ class NeonBudgetGovernor:
         bucket_report["helix"]["live_balance"] = helix_live
         bucket_report["helix"]["live_balance_source"] = (
             "live" if helix_live is not None else "unavailable")
+
+        plan = self._claude_plan()
+        if plan is not None:
+            envelope = self.check_envelope(CLAUDE_PLAN_BUCKET, 0.01)
+            if envelope != "deny":
+                all_denied = False
+            bucket_report[CLAUDE_PLAN_BUCKET] = {
+                "type": "plan",
+                "state": plan.get("state", "unknown"),
+                "reason": plan.get("reason"),
+                "summary_line": plan.get("summary_line"),
+                "envelope": envelope,
+                "description": "Claude subscription plan (free while available; never usage credits)",
+            }
 
         return {
             "buckets": bucket_report,
