@@ -51,6 +51,27 @@ Fermyon Cloud is inactive (see above), so there is nothing to deploy there. `dep
 ### Internal endpoints and platform cron
 `/internal/trigger-reminders` and `/internal/failover-sync` accept only the internal cron key (v0.3.0). A signed-in user's bearer token is refused: the phone no longer calls them, and one user must not start the all-users loop. The key may be sent as the `x-internal-api-key` header or as the `key` query parameter. Akamai cron can only set path and query, so cron jobs use the query form; `scripts/setup_spin_cron.sh` creates them (`trigger-reminders` at `0 */2 * * *`, `failover-sync` at `5 */2 * * *`). An unset key authorizes nobody, and the service refuses the old published value `test-internal-key`. After rotating the key: redeploy, then recreate the cron jobs.
 
+#### What the key can do (blast radius)
+
+The key opens exactly two routes. It cannot deploy, change variables, read secrets, or reach any paid model API (Helix, Anthropic, OpenRouter, Groq).
+
+| Route | With the key, a caller can | Bounded by |
+|---|---|---|
+| `/internal/trigger-reminders` | Run the all-users walk reminder loop, which may send a WhatsApp template through Twilio (cents per message). With `?dry_run=1`, read each user's New York time, steps, nag counts, phone heartbeat age and verdict. | Verified numbers only, the reminder window, the 2-hour damping, the daily cap and the phone stand-down (`gates.rs`). The cron job is deleted while WhatsApp is off (since 2026-11-15). |
+| `/internal/failover-sync` | Start the cloud Clozemaster sync for users with autonomous sync on. | Users whose stats are under 100 minutes old are skipped (`gates::failover_decision`). Costs Akamai invocations and Clozemaster requests, not money. |
+
+So a leaked key costs privacy (dry-run activity data) and a little nuisance. It does not open a route to cloud spend. Rotate it when it may have reached anyone else: a commit, a log, a screenshot, a shared terminal. A local AI session reading `.env` is not by itself a reason.
+
+#### Rotating `INTERNAL_API_KEY`
+
+The cron jobs carry the key in their query string, so the old key stops working for them the moment the new deploy is live. Do steps 2 and 3 back to back. Refusals in between are counted in `internal_refusals` as `bad_key`, and the narrator shows them; that's expected during a rotation.
+
+1. **New key in `.env`.** `openssl rand -hex 32`, then replace the `INTERNAL_API_KEY=` value in the project root `.env`. Don't paste it anywhere else.
+2. **Deploy:** `./mecris-go-spin/sync-service/deploy-akamai.sh` (it passes `internal_api_key` to Spin). Wait until `spin aka app status` shows Serving.
+3. **Recreate the crons.** `spin aka cron list` prints the old key, so never paste its output. Then `spin aka cron delete failover-sync` (and `trigger-reminders`, if it exists), then `./scripts/setup_spin_cron.sh`. While WhatsApp is off, delete `trigger-reminders` again afterwards (`spin aka cron delete trigger-reminders`), because the script recreates both jobs.
+4. **Verify:** `./scripts/verify_spin_deploy.sh` (a dry run by default). It reads the new key from `.env`, checks that no key and the burned `test-internal-key` are refused, and runs a cron-shaped `failover-sync`. At the next `:05` past an even hour, the pulse should show a fresh AKAMAI FUNCTIONS `sync ...` status.
+5. **Nothing else changes.** The Android app uses the user's bearer token, not this key. CI generates its own key per run. The local MCP server doesn't call these routes.
+
 `GET /internal/trigger-reminders?dry_run=1&key=...` reports, per user (by `familiar_id`), the New York time, steps, minutes since the last nag, nags today, the phone heartbeat age, the verdict and reason, and the template variables. It sends nothing and writes nothing.
 
 ### Status and nag routes (v0.3.0)

@@ -160,7 +160,7 @@ gh attestation verify wasm-components.tar.gz -R kingdonb/mecris
 
 **8c. Crons.** Akamai cron can only carry the key in the query string, so the jobs must be recreated whenever `INTERNAL_API_KEY` rotates or the schedule changes:
 
-1. List the jobs with `spin aka cron list`. It prints the key: never paste its output anywhere.
+1. List the jobs with `spin aka cron list`. It prints the key: never paste its output anywhere. (For a key rotation, follow the full steps in `mecris-go-spin/DEPLOYMENT.md`, "Rotating INTERNAL_API_KEY".)
 2. Delete the jobs the script will recreate, and any retired ones, with `spin aka cron delete <name>`.
 3. Run `./scripts/setup_spin_cron.sh`, then `spin aka cron list` again to confirm the names and schedules.
 
